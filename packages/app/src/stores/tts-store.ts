@@ -47,7 +47,7 @@ export const useTTSStore = create<TTSState>()(
     onEnd: null,
 
     play: (text: string) => {
-      const { config, onEnd } = get();
+      const { config } = get();
       set({ playState: "loading", currentText: text });
 
       const onState = (state: "playing" | "paused" | "stopped") => {
@@ -108,7 +108,7 @@ export const useTTSStore = create<TTSState>()(
     },
 
     toggle: (text?: string) => {
-      const { playState, currentText, play, pause, resume, stop } = get();
+      const { playState, currentText, play, pause, resume } = get();
       if (playState === "playing") {
         pause();
       } else if (playState === "paused") {

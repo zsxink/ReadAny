@@ -93,7 +93,6 @@ export function splitIntoChunks(text: string, maxChars = 500): string[] {
 // ── Browser SpeechSynthesis ──
 
 export class BrowserTTSPlayer {
-  private utterance: SpeechSynthesisUtterance | null = null;
   private chunks: string[] = [];
   private currentIndex = 0;
   private _speaking = false;
@@ -124,7 +123,6 @@ export class BrowserTTSPlayer {
       this._speaking = false;
       this._paused = false;
       window.speechSynthesis.cancel();
-      this.utterance = null;
       this.chunks = [];
       this.currentIndex = 0;
       this.onStateChange?.("stopped");
@@ -157,7 +155,6 @@ export class BrowserTTSPlayer {
       if (this._speaking) this.speakChunk(config);
     };
 
-    this.utterance = utt;
     this.onChunkChange?.(this.currentIndex, this.chunks.length);
     synth.speak(utt);
   }
@@ -178,7 +175,6 @@ export class BrowserTTSPlayer {
 
   stop() {
     window.speechSynthesis.cancel();
-    this.utterance = null;
     this.chunks = [];
     this.currentIndex = 0;
     this._speaking = false;
