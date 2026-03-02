@@ -63,13 +63,14 @@ function useThrottledText(text: string): string {
 
 interface PartProps {
   part: Part;
+  citations?: CitationPart[];
   onCitationClick?: (citation: CitationPart) => void;
 }
 
-export function PartRenderer({ part, onCitationClick }: PartProps) {
+export function PartRenderer({ part, citations, onCitationClick }: PartProps) {
   switch (part.type) {
     case "text":
-      return <TextPartView part={part} />;
+      return <TextPartView part={part} citations={citations} onCitationClick={onCitationClick} />;
     case "reasoning":
       return <ReasoningPartView part={part} />;
     case "tool_call":
@@ -83,7 +84,15 @@ export function PartRenderer({ part, onCitationClick }: PartProps) {
   }
 }
 
-function TextPartView({ part }: { part: TextPart }) {
+function TextPartView({
+  part,
+  citations,
+  onCitationClick
+}: {
+  part: TextPart;
+  citations?: CitationPart[];
+  onCitationClick?: (citation: CitationPart) => void;
+}) {
   const throttledText = useThrottledText(part.text);
   const isStreaming = part.status === "running";
 
@@ -101,7 +110,12 @@ function TextPartView({ part }: { part: TextPart }) {
 
   return (
     <div className="chat-markdown max-w-none text-sm leading-relaxed">
-      <MarkdownRenderer content={throttledText} isStreaming={isStreaming} />
+      <MarkdownRenderer
+        content={throttledText}
+        isStreaming={isStreaming}
+        citations={citations}
+        onCitationClick={onCitationClick}
+      />
     </div>
   );
 }

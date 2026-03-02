@@ -1,22 +1,157 @@
-/**
- * Auto-updater — wraps Tauri updater plugin
- */
+import { check } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 
 export interface UpdateInfo {
   version: string;
-  notes: string;
-  date: string;
+  notes?: string;
+  date?: string;
 }
 
 export type UpdateStatus = "idle" | "checking" | "available" | "downloading" | "ready" | "error";
 
-/** Check for available updates */
-export async function checkForUpdate(): Promise<UpdateInfo | null> {
-  // TODO: Use @tauri-apps/plugin-updater
-  return null;
+let updateStatus: UpdateStatus = "idle";
+let availableUpdate: UpdateInfo | null = null;
+let downloadProgress = 0;
+let errorMessage = "";
+let statusListeners: Array<(status: UpdateStatus, info: UpdateInfo | null, progress: number, error: string) => void> = [];
+
+export function getUpdateStatus(): UpdateStatus {
+  return updateStatus;
 }
 
-/** Download and install update */
+export function getAvailableUpdate(): UpdateInfo | null {
+  return availableUpdate;
+}
+
+export function getDownloadProgress(): number {
+  return downloadProgress;
+}
+
+export function getErrorMessage(): string {
+  return errorMessage;
+}
+
+export function subscribeToUpdates(
+  listener: (status: UpdateStatus, info: UpdateInfo | null, progress: number, error: string) => void
+): () => void {
+  statusListeners.push(listener);
+  return () => {
+    statusListeners = statusListeners.filter((l) => l !== listener);
+  };
+}
+
+function notifyListeners() {
+  for (const listener of statusListeners) {
+    listener(updateStatus, availableUpdate, downloadProgress, errorMessage);
+  }
+}
+
+export async function checkForUpdate(): Promise<UpdateInfo | null> {
+  updateStatus = "checking";
+  errorMessage = "";
+  notifyListeners();
+
+  try {
+    const update = await check();
+
+    if (update) {
+      availableUpdate = {
+        version: update.version,
+        notes: update.body || undefined,
+        date: update.date || undefined,
+      };
+      updateStatus = "available";
+      notifyListeners();
+      return availableUpdate;
+    } else {
+      availableUpdate = null;
+      updateStatus = "idle";
+      notifyListeners();
+      return null;
+    }
+  } catch (error) {
+    console.error("[Updater] Check failed:", error);
+    updateStatus = "error";
+    
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    if (errorMsg.includes("Could not fetch") || errorMsg.includes("network")) {
+      errorMessage = "无法连接到更新服务器，请检查网络连接";
+    } else if (errorMsg.includes("release") || errorMsg.includes("JSON")) {
+      errorMessage = "暂无可用更新或服务暂时不可用";
+    } else {
+      errorMessage = "检查更新失败";
+    }
+    
+    notifyListeners();
+    return null;
+  }
+}
+
+export async function downloadAndInstall(): Promise<boolean> {
+  const update = await check();
+
+  if (!update) {
+    updateStatus = "error";
+    errorMessage = "没有可用的更新";
+    notifyListeners();
+    return false;
+  }
+
+  updateStatus = "downloading";
+  downloadProgress = 0;
+  errorMessage = "";
+  notifyListeners();
+
+  try {
+    let downloaded = 0;
+    let contentLength = 0;
+
+    await update.downloadAndInstall((event) => {
+      switch (event.event) {
+        case "Started":
+          contentLength = event.data.contentLength || 0;
+          console.log(`[Updater] Started downloading, content length: ${contentLength}`);
+          break;
+
+        case "Progress":
+          downloaded += event.data.chunkLength;
+          if (contentLength > 0) {
+            downloadProgress = Math.round((downloaded / contentLength) * 100);
+            notifyListeners();
+          }
+          console.log(`[Updater] Progress: ${downloaded}/${contentLength} (${downloadProgress}%)`);
+          break;
+
+        case "Finished":
+          console.log("[Updater] Download finished");
+          break;
+      }
+    });
+
+    updateStatus = "ready";
+    downloadProgress = 100;
+    notifyListeners();
+
+    return true;
+  } catch (error) {
+    console.error("[Updater] Download/install failed:", error);
+    updateStatus = "error";
+    errorMessage = "下载更新失败";
+    notifyListeners();
+    return false;
+  }
+}
+
 export async function installUpdate(): Promise<void> {
-  // TODO: Use @tauri-apps/plugin-updater
+  await downloadAndInstall();
+}
+
+export async function relaunchApp(): Promise<void> {
+  await relaunch();
+}
+
+export function resetStatus(): void {
+  updateStatus = "idle";
+  errorMessage = "";
+  notifyListeners();
 }

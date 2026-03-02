@@ -122,6 +122,9 @@ function buildToolsSection(skills: Skill[], isVectorized: boolean): string {
   tools.push(
     "- **compareSections**: Compare two chapters (params: chapterIndex1, chapterIndex2, compareType)",
   );
+  tools.push(
+    "- **addCitation**: CRITICAL - Register a citation for specific book content. You MUST call this before referencing any factual information from the book (params: chapterTitle, chapterIndex, cfi, quotedText, reasoning)",
+  );
 
   // Custom skills
   if (skills.length > 0) {
@@ -156,6 +159,38 @@ function buildWorkflowSection(isVectorized: boolean): string {
 
   steps.push("3. **Synthesize and answer** — Analyze the tool results and write your answer");
   steps.push("");
+  steps.push("## CRITICAL: Citation Requirements");
+  steps.push("");
+  steps.push("**You MUST cite all factual claims about the book's content.**");
+  steps.push("");
+  steps.push("When you reference specific information from the book, you MUST:");
+  steps.push("");
+  steps.push("1. **Call addCitation tool** for each source location:");
+  steps.push("   - Use chapterTitle, chapterIndex, cfi from ragSearch/tool results");
+  steps.push("   - Provide a short quotedText excerpt (max 200 chars)");
+  steps.push("   - Each citation registers a verifiable source");
+  steps.push("");
+  steps.push("2. **Reference citations using [1], [2], [3] format** in your response:");
+  steps.push("   - Example: \"The author argues that...[1] and later explains...[2]\"");
+  steps.push("   - Each [N] corresponds to a registered citation");
+  steps.push("   - Users can click [N] to jump to the exact location");
+  steps.push("");
+  steps.push("3. **What requires citation:**");
+  steps.push("   - ✅ Direct quotes from the book");
+  steps.push("   - ✅ Specific facts, data, or statistics from the book");
+  steps.push("   - ✅ Author's arguments, claims, or opinions");
+  steps.push("   - ✅ Plot events, character descriptions, or story details");
+  steps.push("   - ✅ Any content retrieved via ragSearch, summarize, or content tools");
+  steps.push("   - ❌ General knowledge not from this book");
+  steps.push("   - ❌ Your own analysis (but cite the content you're analyzing)");
+  steps.push("");
+  steps.push("4. **Citation workflow:**");
+  steps.push("   - Step 1: Use ragSearch or other tools to retrieve content");
+  steps.push("   - Step 2: Call addCitation for each source you'll reference");
+  steps.push("   - Step 3: Write your response using [1], [2] to reference citations");
+  steps.push("");
+  steps.push("**This is MANDATORY for academic integrity and user trust. Never skip citations for book content.**");
+  steps.push("");
   steps.push("### Tool-Calling Discipline (CRITICAL)");
   steps.push("- **NEVER call the same tool repeatedly with similar/identical arguments.** If ragSearch(\"人物\") returned results, DO NOT call ragSearch(\"人物介绍\"), ragSearch(\"人物关系\") etc. Use the results you already have.");
   steps.push("- **When a tool returns `content` + `instruction` fields**: the `content` IS your data. Read it, follow the `instruction` to analyze it, then write your answer. Do NOT call more tools to \"find more\".");
@@ -176,7 +211,7 @@ function buildConstraintsSection(language: string): string {
   return [
     "## Response Guidelines",
     `- Respond in ${language || "the same language as the user"}`,
-    "- When citing book content, always include chapter/location references",
+    "- When citing book content, use [1], [2] format with registered citations via addCitation tool",
     "- Keep responses concise unless the user asks for detailed analysis",
     "- Use markdown formatting for readability",
   ].join("\n");

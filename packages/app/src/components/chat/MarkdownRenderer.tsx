@@ -10,6 +10,7 @@ import React, { useMemo, useState } from "react";
 import Markdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
+import type { CitationPart } from "@/types/message";
 
 /** Mermaid code block — renders synchronously, zero-flash */
 function MermaidBlock({ code }: { code: string }) {
@@ -67,12 +68,63 @@ interface MarkdownRendererProps {
   content: string;
   className?: string;
   isStreaming?: boolean;
+  citations?: CitationPart[];
+  onCitationClick?: (citation: CitationPart) => void;
 }
 
 const remarkPlugins = [remarkGfm];
 const rehypePlugins = [rehypeHighlight];
 
-const mdComponents = {
+/** Process text children to find and replace [1], [2] citations with clickable links */
+function processCitationText(
+  children: React.ReactNode,
+  citations?: CitationPart[],
+  onCitationClick?: (citation: CitationPart) => void
+): React.ReactNode {
+  if (!citations || citations.length === 0) {
+    return children;
+  }
+
+  return React.Children.map(children, (child) => {
+    if (typeof child === "string") {
+      // Split on [1], [2] patterns
+      const parts = child.split(/(\[\d+\])/g);
+      return parts.map((part, i) => {
+        const match = part.match(/\[(\d+)\]/);
+        if (match) {
+          const num = parseInt(match[1]);
+          const citation = citations[num - 1];
+          if (citation) {
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onCitationClick?.(citation);
+                }}
+                className="inline-flex items-baseline text-primary hover:text-primary/80 font-semibold text-[0.7em] align-super cursor-pointer border-none bg-transparent p-0 mx-0.5 transition-colors"
+                title={`${citation.chapterTitle}: ${citation.text.slice(0, 50)}${citation.text.length > 50 ? "..." : ""}`}
+              >
+                [{num}]
+              </button>
+            );
+          }
+        }
+        return <React.Fragment key={i}>{part}</React.Fragment>;
+      });
+    }
+    return child;
+  });
+}
+
+/** Create markdown components with citation processing */
+function createMdComponents(
+  citations?: CitationPart[],
+  onCitationClick?: (citation: CitationPart) => void
+) {
+  return {
   // Code blocks: mermaid → diagram, others → highlighted with copy button
   code({
     className: codeClassName,
@@ -161,18 +213,56 @@ const mdComponents = {
   th({ children, ...props }: React.ComponentProps<"th">) {
     return (
       <th className="bg-muted/50 px-3 py-2 text-left text-xs font-semibold" {...props}>
-        {children}
+        {processCitationText(children, citations, onCitationClick)}
       </th>
     );
   },
   td({ children, ...props }: React.ComponentProps<"td">) {
     return (
       <td className="border-t px-3 py-2 text-sm" {...props}>
-        {children}
+        {processCitationText(children, citations, onCitationClick)}
       </td>
     );
   },
-};
+
+  // Text-containing elements with citation processing
+  p({ children, ...props }: React.ComponentProps<"p">) {
+    return <p {...props}>{processCitationText(children, citations, onCitationClick)}</p>;
+  },
+  li({ children, ...props }: React.ComponentProps<"li">) {
+    return <li {...props}>{processCitationText(children, citations, onCitationClick)}</li>;
+  },
+  strong({ children, ...props }: React.ComponentProps<"strong">) {
+    return <strong {...props}>{processCitationText(children, citations, onCitationClick)}</strong>;
+  },
+  em({ children, ...props }: React.ComponentProps<"em">) {
+    return <em {...props}>{processCitationText(children, citations, onCitationClick)}</em>;
+  },
+  blockquote({ children, ...props }: React.ComponentProps<"blockquote">) {
+    return (
+      <blockquote {...props}>{processCitationText(children, citations, onCitationClick)}</blockquote>
+    );
+  },
+  h1({ children, ...props }: React.ComponentProps<"h1">) {
+    return <h1 {...props}>{processCitationText(children, citations, onCitationClick)}</h1>;
+  },
+  h2({ children, ...props }: React.ComponentProps<"h2">) {
+    return <h2 {...props}>{processCitationText(children, citations, onCitationClick)}</h2>;
+  },
+  h3({ children, ...props }: React.ComponentProps<"h3">) {
+    return <h3 {...props}>{processCitationText(children, citations, onCitationClick)}</h3>;
+  },
+  h4({ children, ...props }: React.ComponentProps<"h4">) {
+    return <h4 {...props}>{processCitationText(children, citations, onCitationClick)}</h4>;
+  },
+  h5({ children, ...props }: React.ComponentProps<"h5">) {
+    return <h5 {...props}>{processCitationText(children, citations, onCitationClick)}</h5>;
+  },
+  h6({ children, ...props }: React.ComponentProps<"h6">) {
+    return <h6 {...props}>{processCitationText(children, citations, onCitationClick)}</h6>;
+  },
+  };
+}
 
 let mdStreamIdCounter = 0;
 
@@ -180,9 +270,17 @@ export const MarkdownRenderer = React.memo(function MarkdownRenderer({
   content,
   className,
   isStreaming,
+  citations,
+  onCitationClick,
 }: MarkdownRendererProps) {
   // Stable unique id per instance so the streaming cursor CSS is scoped
   const scopeId = useMemo(() => `md-stream-${++mdStreamIdCounter}`, []);
+
+  // Create markdown components with citation processing
+  const mdComponents = useMemo(
+    () => createMdComponents(citations, onCitationClick),
+    [citations, onCitationClick]
+  );
 
   // Append a unicode cursor placeholder that we style via CSS when streaming.
   // This keeps the cursor inline with the last text rather than on a new line.

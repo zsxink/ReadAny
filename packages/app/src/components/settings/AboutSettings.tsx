@@ -1,8 +1,19 @@
 /**
  * AboutSettings — 关于页面
  */
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { ExternalLink, Github, BookOpen, Code2, Zap, Shield } from "lucide-react";
+import { ExternalLink, Github, BookOpen, Code2, Zap, Shield, RefreshCw, Download, Check, AlertCircle } from "lucide-react";
+import { checkForUpdate, getUpdateStatus, getAvailableUpdate, getDownloadProgress, getErrorMessage, subscribeToUpdates, downloadAndInstall, relaunchApp, resetStatus } from "@/lib/updater";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const TECH_STACK = [
   { name: "Tauri", desc: "跨平台桌面框架", icon: Shield },
@@ -11,8 +22,58 @@ const TECH_STACK = [
   { name: "Foliate", desc: "电子书渲染引擎", icon: BookOpen },
 ];
 
+type DialogType = "none" | "updateAvailable" | "upToDate" | "error";
+
 export function AboutSettings() {
   const { t } = useTranslation();
+  const [status, setStatus] = useState(getUpdateStatus());
+  const [update, setUpdate] = useState(getAvailableUpdate());
+  const [progress, setProgress] = useState(getDownloadProgress());
+  const [error, setError] = useState(getErrorMessage());
+  const [dialogType, setDialogType] = useState<DialogType>("none");
+  const [isChecking, setIsChecking] = useState(false);
+
+  useEffect(() => {
+    return subscribeToUpdates((s, u, p, e) => {
+      setStatus(s);
+      setUpdate(u);
+      setProgress(p);
+      setError(e);
+      
+      if (s === "available" && u) {
+        setIsChecking(false);
+        setDialogType("updateAvailable");
+      } else if (s === "error") {
+        setIsChecking(false);
+        setDialogType("error");
+      } else if (s === "idle" && !u && !e && isChecking) {
+        setIsChecking(false);
+        setDialogType("upToDate");
+      }
+    });
+  }, [isChecking]);
+
+  const handleCheckUpdate = () => {
+    setIsChecking(true);
+    checkForUpdate();
+  };
+
+  const handleDownload = () => {
+    setDialogType("none");
+    downloadAndInstall();
+  };
+
+  const handleRelaunch = () => {
+    relaunchApp();
+  };
+
+  const closeDialog = () => {
+    setDialogType("none");
+    if (status === "error") {
+      resetStatus();
+    }
+    setIsChecking(false);
+  };
 
   return (
     <div className="flex flex-col items-center p-6">
@@ -30,12 +91,121 @@ export function AboutSettings() {
       </div>
 
       {/* Version Card */}
-      <div className="mb-6 w-full max-w-md rounded-xl bg-muted/60 p-4">
+      <div className="mb-4 w-full max-w-md rounded-xl bg-muted/60 p-4">
         <div className="flex items-center justify-between">
           <span className="text-sm text-neutral-600">{t("settings.version", "版本")}</span>
-          <span className="font-mono text-sm font-medium text-neutral-900">1.0.0</span>
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-sm font-medium text-neutral-900">1.0.0</span>
+            <button
+              onClick={handleCheckUpdate}
+              disabled={status === "checking" || status === "downloading"}
+              className="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-neutral-600 disabled:opacity-50"
+              title={t("settings.checkUpdate", "检查更新")}
+            >
+              <RefreshCw className={`h-4 w-4 ${status === "checking" ? "animate-spin" : ""}`} />
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Download Progress */}
+      {status === "downloading" && (
+        <div className="mb-4 w-full max-w-md">
+          <div className="rounded-lg bg-muted/60 p-3">
+            <div className="mb-2 flex items-center justify-between text-sm">
+              <span className="text-neutral-600">{t("settings.downloading", "下载中")}</span>
+              <span className="font-mono text-neutral-900">{progress}%</span>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200">
+              <div
+                className="h-full bg-primary transition-all"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Update Ready */}
+      {status === "ready" && (
+        <div className="mb-4 w-full max-w-md space-y-2">
+          <div className="rounded-lg bg-green-50 p-3 text-center text-sm text-green-700">
+            {t("settings.updateReadyMessage", "更新已下载，重启应用以完成安装")}
+          </div>
+          <Button
+            variant="default"
+            className="w-full"
+            onClick={handleRelaunch}
+          >
+            {t("settings.relaunch", "重启应用")}
+          </Button>
+        </div>
+      )}
+
+      {/* Dialogs */}
+      <Dialog open={dialogType === "updateAvailable"} onOpenChange={(open) => !open && closeDialog()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("settings.updateAvailable", "发现新版本")}</DialogTitle>
+            <DialogDescription>
+              {update && (
+                <span>
+                  {t("settings.newVersionAvailable", "发现新版本 {{version}}，是否立即下载更新？", { version: update.version })}
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          {update?.notes && (
+            <div className="rounded-lg bg-muted/60 p-3 text-sm">
+              <p className="whitespace-pre-wrap text-neutral-700">{update.notes}</p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDialog}>
+              {t("settings.later", "稍后提醒")}
+            </Button>
+            <Button onClick={handleDownload}>
+              <Download className="mr-2 h-4 w-4" />
+              {t("settings.downloadUpdate", "下载更新")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={dialogType === "upToDate"} onOpenChange={(open) => !open && closeDialog()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Check className="h-5 w-5 text-green-600" />
+              {t("settings.upToDate", "当前已是最新版本")}
+            </DialogTitle>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={closeDialog}>
+              {t("settings.ok", "确定")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={dialogType === "error"} onOpenChange={(open) => !open && closeDialog()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-red-600" />
+              {t("settings.updateError", "更新失败")}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+            {error || t("settings.updateErrorMessage", "更新失败，请稍后重试")}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDialog}>
+              {t("settings.dismiss", "关闭")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Tech Stack */}
       <div className="mb-6 w-full max-w-md">

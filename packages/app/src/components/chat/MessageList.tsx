@@ -195,6 +195,9 @@ function MessageBubble({ message, onCitationClick, isStreaming, currentStep }: M
 
   if (!hasContent) return null;
 
+  // Collect all CitationPart objects from the message for reference in text
+  const citations = message.parts.filter((p) => p.type === "citation") as CitationPart[];
+
   // Show "thinking" indicator in gaps between parts, but NOT when:
   // - A text part is actively streaming (cursor handles that)
   // - A tool call is pending/running (the tool card already shows its own loading state)
@@ -213,7 +216,12 @@ function MessageBubble({ message, onCitationClick, isStreaming, currentStep }: M
   return (
     <div className="group flex w-full flex-col gap-1">
       {message.parts.map((part) => (
-        <PartRenderer key={part.id} part={part} onCitationClick={onCitationClick} />
+        <PartRenderer
+          key={part.id}
+          part={part}
+          citations={citations}
+          onCitationClick={onCitationClick}
+        />
       ))}
       {showGapIndicator && (
         <StreamingIndicator step="thinking" />

@@ -3,7 +3,7 @@ import type { TOCItem } from "./FoliateViewer";
 import { useAppStore } from "@/stores/app-store";
 import { useReaderStore } from "@/stores/reader-store";
 import { useNotebookStore } from "@/stores/notebook-store";
-import { ArrowLeft, List, MessageSquare, Search, Settings, StickyNote, Volume2 } from "lucide-react";
+import { ArrowLeft, List, MessageSquare, Search, Settings, StickyNote, Volume2, Undo } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   Tooltip,
@@ -52,6 +52,8 @@ export function ReaderToolbar({
   const { t } = useTranslation();
   const setActiveTab = useAppStore((s) => s.setActiveTab);
   const tab = useReaderStore((s) => s.tabs[tabId]);
+  const canGoBack = useReaderStore((s) => s.canGoBack(tabId));
+  const goBack = useReaderStore((s) => s.goBack);
   const { isOpen: isNotebookOpen, toggleNotebook } = useNotebookStore();
 
   if (!tab) return null;
@@ -66,7 +68,7 @@ export function ReaderToolbar({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
-      {/* Left: back + TOC + notebook */}
+      {/* Left: back + history back + TOC + notebook */}
       <div className="flex items-center gap-0.5">
         <Button
           variant="ghost"
@@ -77,6 +79,26 @@ export function ReaderToolbar({
         >
           <ArrowLeft className="h-3.5 w-3.5" />
         </Button>
+
+        {canGoBack && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => goBack(tabId)}
+                >
+                  <Undo className="h-3.5 w-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{t("reader.goBackToPreviousLocation") || "返回上一位置"}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
 
         <div className="mx-0.5 h-3.5 w-px bg-border/40" />
 

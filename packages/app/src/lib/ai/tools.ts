@@ -31,7 +31,7 @@ function createRagSearchTool(bookId: string): ToolDefinition {
   return {
     name: "ragSearch",
     description:
-      "Search book content using semantic or keyword search. Use this when the user asks about specific content, themes, or topics in the book.",
+      "Search book content using semantic or keyword search. Use this when the user asks about specific content, themes, or topics in the book. IMPORTANT: Call addCitation for any content you reference from the search results.",
     parameters: {
       query: {
         type: "string",
@@ -141,7 +141,7 @@ function createSummarizeTool(bookId: string): ToolDefinition {
   return {
     name: "summarize",
     description:
-      "Generate a summary of a chapter or the entire book. Returns book content that YOU must summarize. After receiving the results, write your summary — do NOT call more tools.",
+      "Generate a summary of a chapter or the entire book. Returns book content that YOU must summarize. After receiving the results, call addCitation to cite the source, then write your summary. Do NOT call content retrieval tools again.",
     parameters: {
       scope: {
         type: "string",
@@ -224,7 +224,7 @@ function createExtractEntitiesTool(bookId: string): ToolDefinition {
   return {
     name: "extractEntities",
     description:
-      "Extract named entities from the book content. Returns raw text from the book — YOU must read through it and identify the entities (characters, places, concepts, etc.) yourself. Do NOT call this tool again after receiving results; instead, analyze the returned content and answer the user.",
+      "Extract named entities from the book content. Returns raw text from the book — YOU must read through it and identify the entities (characters, places, concepts, etc.) yourself. After receiving results, call addCitation for the source, then analyze the content and answer the user. Do NOT call content retrieval tools again.",
     parameters: {
       entityType: {
         type: "string",
@@ -285,7 +285,7 @@ function createAnalyzeArgumentsTool(bookId: string): ToolDefinition {
   return {
     name: "analyzeArguments",
     description:
-      "Analyze the author's arguments, reasoning, and logical structure. Returns book content that YOU must analyze. After receiving the results, write your analysis — do NOT call more tools.",
+      "Analyze the author's arguments, reasoning, and logical structure. Returns book content that YOU must analyze. After receiving the results, call addCitation to cite the source, then write your analysis. Do NOT call content retrieval tools again.",
     parameters: {
       chapterIndex: {
         type: "number",
@@ -337,7 +337,7 @@ function createFindQuotesTool(bookId: string): ToolDefinition {
   return {
     name: "findQuotes",
     description:
-      "Find notable quotes, passages, and memorable sentences from the book. Returns book content that YOU must search through for quotes. After receiving the results, present the quotes — do NOT call more tools.",
+      "Find notable quotes, passages, and memorable sentences from the book. Returns book content that YOU must search through for quotes. After receiving the results, call addCitation for each quote's location, then present the quotes. Do NOT call content retrieval tools again.",
     parameters: {
       quoteType: {
         type: "string",
@@ -430,6 +430,61 @@ function createGetAnnotationsTool(bookId: string): ToolDefinition {
       }
 
       return result;
+    },
+  };
+}
+
+/** Create add citation tool for a specific book */
+function createAddCitationTool(bookId: string): ToolDefinition {
+  return {
+    name: "addCitation",
+    description:
+      "CRITICAL: Register a citation for specific content from the book. You MUST call this tool whenever you reference factual information from the book in your response. This creates a verifiable citation that users can click to jump to the exact location. Returns citation metadata that you should reference using [1], [2], [3] format in your response text.",
+    parameters: {
+      chapterTitle: {
+        type: "string",
+        description: "The chapter title where this content is from (get this from ragSearch or other tool results)",
+        required: true,
+      },
+      chapterIndex: {
+        type: "number",
+        description: "The chapter index number (get this from ragSearch or other tool results)",
+        required: true,
+      },
+      cfi: {
+        type: "string",
+        description: "The CFI (Canonical Fragment Identifier) location in the book for precise navigation (get this from ragSearch results). If not available, use empty string.",
+        required: false,
+      },
+      quotedText: {
+        type: "string",
+        description: "A short excerpt of the actual text being cited (max 200 characters). This helps users verify the citation.",
+        required: true,
+      },
+      reasoning: {
+        type: "string",
+        description: "Brief explanation of why you are citing this source",
+        required: true,
+      },
+    },
+    execute: async (args) => {
+      const chapterTitle = args.chapterTitle as string;
+      const chapterIndex = args.chapterIndex as number;
+      const cfi = (args.cfi as string) || "";
+      const quotedText = (args.quotedText as string).slice(0, 200);
+
+      // Return citation metadata
+      // The message pipeline will assign citation numbers and create CitationPart objects
+      return {
+        type: "citation",
+        bookId,
+        chapterTitle,
+        chapterIndex,
+        cfi,
+        text: quotedText,
+        timestamp: Date.now(),
+        message: `Citation registered: "${chapterTitle}" - Use this citation in your response with [N] format where N is the citation number.`,
+      };
     },
   };
 }
@@ -903,6 +958,7 @@ export function getAvailableTools(options: {
       createFindQuotesTool(options.bookId),
       createGetAnnotationsTool(options.bookId),
       createCompareSectionsTool(options.bookId),
+      createAddCitationTool(options.bookId),
     );
   }
 

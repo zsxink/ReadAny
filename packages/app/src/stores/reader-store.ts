@@ -4,6 +4,13 @@ import type { TOCItem } from "@/components/reader/FoliateViewer";
  */
 import { create } from "zustand";
 
+export interface NavigationHistoryItem {
+  cfi: string;
+  chapterIndex: number;
+  chapterTitle: string;
+  timestamp: number;
+}
+
 export interface ReaderTab {
   bookId: string;
   currentCfi: string;
@@ -15,12 +22,14 @@ export interface ReaderTab {
   searchResults: string[];
   selectedText: string;
   selectionCfi: string | null;
+  navigationHistory: NavigationHistoryItem[];
 }
 
 export interface ReaderState {
   tabs: Record<string, ReaderTab>; // keyed by tab id
   tocItems: TOCItem[];
   goToChapterFn: ((index: number) => void) | null;
+  goToCfiFn: ((cfi: string) => void) | null;
 
   // Actions
   initTab: (tabId: string, bookId: string) => void;
@@ -32,12 +41,17 @@ export interface ReaderState {
   setSearchResults: (tabId: string, results: string[]) => void;
   setTocItems: (items: TOCItem[]) => void;
   setGoToChapterFn: (fn: ((index: number) => void) | null) => void;
+  setGoToCfiFn: (fn: ((cfi: string) => void) | null) => void;
+  pushHistory: (tabId: string, item: Omit<NavigationHistoryItem, "timestamp">) => void;
+  goBack: (tabId: string) => void;
+  canGoBack: (tabId: string) => boolean;
 }
 
-export const useReaderStore = create<ReaderState>((set) => ({
+export const useReaderStore = create<ReaderState>((set, get) => ({
   tabs: {},
   tocItems: [],
   goToChapterFn: null,
+  goToCfiFn: null,
 
   initTab: (tabId, bookId) =>
     set((state) => ({
@@ -54,6 +68,7 @@ export const useReaderStore = create<ReaderState>((set) => ({
           searchResults: [],
           selectedText: "",
           selectionCfi: null,
+          navigationHistory: [],
         },
       },
     })),
@@ -118,4 +133,62 @@ export const useReaderStore = create<ReaderState>((set) => ({
   setTocItems: (items) => set({ tocItems: items }),
 
   setGoToChapterFn: (fn) => set({ goToChapterFn: fn }),
+
+  setGoToCfiFn: (fn) => set({ goToCfiFn: fn }),
+
+  pushHistory: (tabId, item) =>
+    set((state) => {
+      const tab = state.tabs[tabId];
+      if (!tab) return state;
+
+      // Don't add to history if it's the same as the last item
+      const lastItem = tab.navigationHistory[tab.navigationHistory.length - 1];
+      if (lastItem && lastItem.cfi === item.cfi) {
+        return state;
+      }
+
+      return {
+        tabs: {
+          ...state.tabs,
+          [tabId]: {
+            ...tab,
+            navigationHistory: [
+              ...tab.navigationHistory,
+              { ...item, timestamp: Date.now() },
+            ],
+          },
+        },
+      };
+    }),
+
+  goBack: (tabId) => {
+    const state = get();
+    const tab = state.tabs[tabId];
+    if (!tab || tab.navigationHistory.length === 0) return;
+
+    const history = [...tab.navigationHistory];
+    const previousItem = history.pop();
+
+    if (previousItem && state.goToCfiFn) {
+      // Update history first
+      set((state) => ({
+        tabs: {
+          ...state.tabs,
+          [tabId]: {
+            ...state.tabs[tabId],
+            navigationHistory: history,
+          },
+        },
+      }));
+
+      // Then navigate
+      state.goToCfiFn(previousItem.cfi);
+    }
+  },
+
+  canGoBack: (tabId) => {
+    const state = get();
+    const tab = state.tabs[tabId];
+    return tab ? tab.navigationHistory.length > 0 : false;
+  },
 }));
