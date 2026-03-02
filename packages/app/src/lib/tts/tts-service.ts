@@ -502,8 +502,13 @@ export class EdgeTTSPlayer {
   /** Timer to detect when all audio has finished playing */
   private checkEndTimer: ReturnType<typeof setInterval> | null = null;
   private allChunksDone = false;
-  /** Prefetched audio data keyed by chunk index */
-  private prefetchCache = new Map<number, Promise<ArrayBuffer>>();
+  /** Buffer of pre-fetched audio: producer fills up to BUFFER_SIZE, consumer drains */
+  private fetchBuffer = new Map<number, Promise<ArrayBuffer>>();
+  /** Next chunk index the producer should fetch */
+  private producerIndex = 0;
+  /** Resolve function to wake up producer when buffer has room */
+  private producerWake: (() => void) | null = null;
+  private static readonly BUFFER_SIZE = 3;
 
   onStateChange?: (state: "playing" | "paused" | "stopped") => void;
   onChunkChange?: (index: number, total: number) => void;
@@ -513,20 +518,22 @@ export class EdgeTTSPlayer {
   get paused() { return this._paused; }
 
   async speak(text: string, config: TTSConfig) {
-    // Clean up previous playback without firing onStateChange (same pattern as DashScope)
+    // Clean up previous playback without firing onStateChange
     this.aborted = true;
     this.cleanupAudio();
-    this.prefetchCache.clear();
+    this.fetchBuffer.clear();
+    this.producerWake?.();
     if (this.checkEndTimer) { clearInterval(this.checkEndTimer); this.checkEndTimer = null; }
 
-    this.chunks = splitIntoChunks(text);
+    // Moderate chunk size: small enough for fast first-chunk response,
+    // large enough to reduce total WebSocket connections
+    this.chunks = splitIntoChunks(text, 800);
     this._playing = true;
     this._paused = false;
     this.aborted = false;
     this.allChunksDone = false;
     this.hasAudioData = false;
     this.playingNotified = false;
-    this.prefetchCache.clear();
 
     // Create AudioContext for gapless playback
     this.audioCtx = new AudioContext();
@@ -556,57 +563,81 @@ export class EdgeTTSPlayer {
 
     const voice = config.edgeVoice || "zh-CN-XiaoxiaoNeural";
     const lang = voice.split("-").slice(0, 2).join("-");
-    const fetchPayloadBase = { voice, lang, rate: config.rate, pitch: config.pitch };
+    const base = { voice, lang, rate: config.rate, pitch: config.pitch };
 
-    // Kick off prefetch for chunk 0 (and chunk 1 if exists)
-    this.startPrefetch(0, fetchPayloadBase);
-    if (this.chunks.length > 1) {
-      this.startPrefetch(1, fetchPayloadBase);
-    }
+    // Producer-consumer: producer sequentially fetches chunks one by one,
+    // keeping up to BUFFER_SIZE completed results buffered ahead.
+    this.producerIndex = 0;
+    this.fetchBuffer.clear();
 
+    // Start producer (runs in background)
+    this.runProducer(base);
+
+    // Consumer: consume chunks in order
     for (let i = 0; i < this.chunks.length; i++) {
       if (!this._playing || this.aborted) return;
       this.onChunkChange?.(i, this.chunks.length);
 
-      // Prefetch the chunk after next (i+2) while we play chunk i
-      if (i + 2 < this.chunks.length) {
-        this.startPrefetch(i + 2, fetchPayloadBase);
-      }
-
       try {
-        const audioData = await this.getPrefetchedAudio(i, fetchPayloadBase);
+        // Wait for the producer to have this chunk ready, then await the fetch result
+        const audioData = await this.waitForChunk(i);
         if (!this._playing || this.aborted) return;
-
         await this.decodeAndSchedule(audioData);
       } catch (err) {
         console.error("[Edge TTS] chunk error:", err);
       }
 
-      // Clean up used cache entry
-      this.prefetchCache.delete(i);
+      // Release completed entry and wake producer to fill the slot
+      this.fetchBuffer.delete(i);
+      this.producerWake?.();
     }
 
     this.allChunksDone = true;
   }
 
-  /** Start prefetching audio for chunk at given index (no-op if already started) */
-  private startPrefetch(index: number, base: { voice: string; lang: string; rate: number; pitch: number }) {
-    if (this.prefetchCache.has(index) || index >= this.chunks.length) return;
-    const promise = fetchEdgeTTSAudio({
-      text: this.chunks[index],
-      ...base,
-    }).catch((err) => {
-      this.prefetchCache.delete(index);
-      throw err;
-    });
-    this.prefetchCache.set(index, promise);
+  /**
+   * Producer: sequentially fetches chunks one at a time.
+   * After each fetch is *initiated* (not awaited), checks if buffer is full.
+   * If full, pauses until consumer drains a slot.
+   * This avoids high concurrency while keeping the buffer filled.
+   */
+  private async runProducer(base: { voice: string; lang: string; rate: number; pitch: number }) {
+    while (this.producerIndex < this.chunks.length) {
+      if (!this._playing || this.aborted) return;
+
+      // Wait until buffer has room
+      while (this.fetchBuffer.size >= EdgeTTSPlayer.BUFFER_SIZE) {
+        if (!this._playing || this.aborted) return;
+        await new Promise<void>((resolve) => { this.producerWake = resolve; });
+        this.producerWake = null;
+      }
+
+      if (!this._playing || this.aborted) return;
+
+      const idx = this.producerIndex++;
+      // Initiate fetch (non-blocking), store the promise
+      const promise = fetchEdgeTTSAudio({ text: this.chunks[idx], ...base });
+      this.fetchBuffer.set(idx, promise);
+
+      // Wait for this fetch to complete before starting the next one
+      // This ensures serial WebSocket connections — no concurrent connections
+      try {
+        await promise;
+      } catch {
+        // Error will be handled by the consumer
+      }
+    }
   }
 
-  /** Get prefetched audio, or fetch on-demand as fallback */
-  private async getPrefetchedAudio(index: number, base: { voice: string; lang: string; rate: number; pitch: number }): Promise<ArrayBuffer> {
-    const cached = this.prefetchCache.get(index);
-    if (cached) return cached;
-    return fetchEdgeTTSAudio({ text: this.chunks[index], ...base });
+  /** Wait until the producer has queued this chunk, then return the fetched audio data */
+  private async waitForChunk(index: number): Promise<ArrayBuffer> {
+    while (!this.fetchBuffer.has(index)) {
+      if (!this._playing || this.aborted) {
+        throw new Error("aborted");
+      }
+      await new Promise<void>((r) => setTimeout(r, 50));
+    }
+    return this.fetchBuffer.get(index)!;
   }
 
   /**
@@ -643,7 +674,8 @@ export class EdgeTTSPlayer {
     }
     const onEnd = this.onEnd;
     this.cleanupAudio();
-    this.prefetchCache.clear();
+    this.fetchBuffer.clear();
+    this.producerWake?.();
     this.chunks = [];
     this._playing = false;
     this._paused = false;
@@ -672,8 +704,9 @@ export class EdgeTTSPlayer {
       this.checkEndTimer = null;
     }
     this.cleanupAudio();
+    this.fetchBuffer.clear();
+    this.producerWake?.();
     this.chunks = [];
-    this.prefetchCache.clear();
     this._playing = false;
     this._paused = false;
     this.onStateChange?.("stopped");

@@ -205,6 +205,15 @@ function genMessage(headers: Record<string, string>, content: string): string {
 
 // ── Edge TTS WebSocket Client (using Tauri WebSocket plugin) ──
 
+// Cache the dynamic import so it's only loaded once
+let _TauriWebSocket: Awaited<typeof import("@tauri-apps/plugin-websocket")>["default"] | null = null;
+async function getTauriWebSocket() {
+  if (!_TauriWebSocket) {
+    _TauriWebSocket = (await import("@tauri-apps/plugin-websocket")).default;
+  }
+  return _TauriWebSocket;
+}
+
 export interface EdgeTTSPayload {
   text: string;
   voice: string;
@@ -220,7 +229,7 @@ export interface EdgeTTSPayload {
  * Returns the accumulated MP3 audio as an ArrayBuffer.
  */
 export async function fetchEdgeTTSAudio(payload: EdgeTTSPayload): Promise<ArrayBuffer> {
-  const TauriWebSocket = (await import("@tauri-apps/plugin-websocket")).default;
+  const TauriWebSocket = await getTauriWebSocket();
 
   const connectId = randomHex(16);
   const secMsGec = await generateSecMsGec();
