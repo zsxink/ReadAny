@@ -3,8 +3,8 @@
  */
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useAppStore, type SettingsTab } from "@/stores/app-store";
 import { AboutSettings } from "./AboutSettings";
 import { AISettings } from "./AISettings";
 import { GeneralSettings } from "./GeneralSettings";
@@ -12,8 +12,6 @@ import { ReadSettingsPanel } from "./ReadSettings";
 import { TranslationSettings } from "./TranslationSettings";
 import { TTSSettings } from "./TTSSettings";
 import { VectorModelSettings } from "./VectorModelSettings";
-
-type SettingsTab = "general" | "reading" | "ai" | "vectorModel" | "tts" | "translation" | "about";
 
 interface SettingsDialogProps {
   open: boolean;
@@ -33,7 +31,12 @@ const TAB_KEYS: Record<SettingsTab, string> = {
 
 export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+  const settingsTab = useAppStore((s) => s.settingsTab);
+  const setShowSettings = useAppStore((s) => s.setShowSettings);
+
+  const setActiveTab = (tab: SettingsTab) => {
+    setShowSettings(true, tab);
+  };
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -52,7 +55,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   key={id}
                   className={cn(
                     "flex w-full items-center rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors",
-                    activeTab === id
+                    settingsTab === id
                       ? "bg-muted/80 font-medium text-neutral-900"
                       : "text-neutral-600 hover:bg-muted/50",
                   )}
@@ -66,13 +69,13 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
           {/* Content */}
           <div className="min-w-0 flex-1 overflow-y-auto">
-            {activeTab === "general" && <GeneralSettings />}
-            {activeTab === "reading" && <ReadSettingsPanel />}
-            {activeTab === "ai" && <AISettings />}
-            {activeTab === "vectorModel" && <VectorModelSettings />}
-            {activeTab === "tts" && <TTSSettings />}
-            {activeTab === "translation" && <TranslationSettings />}
-            {activeTab === "about" && <AboutSettings />}
+            {settingsTab === "general" && <GeneralSettings />}
+            {settingsTab === "reading" && <ReadSettingsPanel />}
+            {settingsTab === "ai" && <AISettings />}
+            {settingsTab === "vectorModel" && <VectorModelSettings />}
+            {settingsTab === "tts" && <TTSSettings />}
+            {settingsTab === "translation" && <TranslationSettings />}
+            {settingsTab === "about" && <AboutSettings />}
           </div>
         </div>
       </DialogContent>

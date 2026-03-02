@@ -17,12 +17,15 @@ export interface Tab {
 
 export type SidebarTab = "chat" | "notes" | "toc" | "highlights" | "stats";
 
+export type SettingsTab = "general" | "reading" | "ai" | "vectorModel" | "tts" | "translation" | "about";
+
 export interface AppState {
   tabs: Tab[];
   activeTabId: string | null;
   sidebarOpen: boolean;
   sidebarTab: SidebarTab;
   showSettings: boolean;
+  settingsTab: SettingsTab;
 
   // Actions
   addTab: (tab: Tab) => void;
@@ -31,7 +34,7 @@ export interface AppState {
   reorderTabs: (fromIndex: number, toIndex: number) => void;
   toggleSidebar: () => void;
   setSidebarTab: (tab: SidebarTab) => void;
-  setShowSettings: (show: boolean) => void;
+  setShowSettings: (show: boolean, tab?: SettingsTab) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -40,6 +43,7 @@ export const useAppStore = create<AppState>((set) => ({
   sidebarOpen: false,
   sidebarTab: "chat",
   showSettings: false,
+  settingsTab: "general",
 
   addTab: (tab) =>
     set((state) => {
@@ -82,5 +86,5 @@ export const useAppStore = create<AppState>((set) => ({
 
   setSidebarTab: (tab) => set({ sidebarTab: tab, sidebarOpen: true }),
 
-  setShowSettings: (show) => set({ showSettings: show }),
+  setShowSettings: (show, tab) => set({ showSettings: show, settingsTab: tab ?? "general" }),
 }));

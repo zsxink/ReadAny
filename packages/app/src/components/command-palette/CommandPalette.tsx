@@ -9,7 +9,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore } from "@/stores/app-store";
+import { useAppStore, type SettingsTab } from "@/stores/app-store";
 import { cn } from "@/lib/utils";
 import {
   Settings,
@@ -154,8 +154,8 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
 
   // Build command registry
   const commands = useMemo<CommandItem[]>(() => {
-    const openSettings = () => {
-      setShowSettings(true);
+    const openSettingsTab = (tab: SettingsTab) => {
+      setShowSettings(true, tab);
       onClose();
     };
 
@@ -167,7 +167,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         keywords: ["general", "settings", "theme", "language", "通用", "设置", "主题", "语言"],
         category: "settings",
         icon: Settings,
-        action: openSettings,
+        action: () => openSettingsTab("general"),
       },
       {
         id: "settings.reading",
@@ -175,7 +175,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         keywords: ["reading", "font", "layout", "size", "阅读", "字体", "排版"],
         category: "settings",
         icon: BookOpen,
-        action: openSettings,
+        action: () => openSettingsTab("reading"),
       },
       {
         id: "settings.ai",
@@ -183,7 +183,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         keywords: ["ai", "model", "endpoint", "openai", "claude", "模型", "端点"],
         category: "settings",
         icon: Brain,
-        action: openSettings,
+        action: () => openSettingsTab("ai"),
       },
       {
         id: "settings.vectorModel",
@@ -191,7 +191,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         keywords: ["vector", "embedding", "semantic", "search", "向量", "嵌入", "语义"],
         category: "settings",
         icon: Search,
-        action: openSettings,
+        action: () => openSettingsTab("vectorModel"),
       },
       {
         id: "settings.tts",
@@ -199,7 +199,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         keywords: ["tts", "speech", "voice", "read aloud", "edge", "语音", "朗读"],
         category: "settings",
         icon: Volume2,
-        action: openSettings,
+        action: () => openSettingsTab("tts"),
       },
       {
         id: "settings.translation",
@@ -207,7 +207,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         keywords: ["translation", "translate", "language", "翻译", "语言"],
         category: "settings",
         icon: Languages,
-        action: openSettings,
+        action: () => openSettingsTab("translation"),
       },
       {
         id: "settings.about",
@@ -215,7 +215,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         keywords: ["about", "version", "info", "关于", "版本"],
         category: "settings",
         icon: Info,
-        action: openSettings,
+        action: () => openSettingsTab("about"),
       },
       // ── Action commands ──
       {
@@ -224,7 +224,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         keywords: ["settings", "preferences", "设置", "偏好"],
         category: "actions",
         icon: Settings,
-        action: openSettings,
+        action: () => openSettingsTab("general"),
         shortcut: "⌘,",
       },
       {
