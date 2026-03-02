@@ -2,9 +2,8 @@ name: Release
 
 on:
   push:
-    branches:
-      - master
-      - main
+    tags:
+      - "v*"
 
 jobs:
   build:
@@ -15,19 +14,15 @@ jobs:
           - platform: macos-latest
             args: --target aarch64-apple-darwin
             target: aarch64-apple-darwin
-            suffix: '-aarch64'
           - platform: macos-latest
             args: --target x86_64-apple-darwin
             target: x86_64-apple-darwin
-            suffix: '-x64'
           - platform: ubuntu-22.04
             args: ""
             target: x86_64-unknown-linux-gnu
-            suffix: ''
           - platform: windows-latest
             args: ""
             target: x86_64-pc-windows-msvc
-            suffix: ''
 
     runs-on: ${{ matrix.platform }}
 
@@ -68,39 +63,28 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: "./packages/app"
-          tagName: v__VERSION__
-          releaseName: "ReadAny v__VERSION__"
+          tagName: ${{ github.ref_name }}
+          releaseName: "ReadAny ${{ github.ref_name }}"
           releaseBody: "See ASSETS to download and install this version."
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
 
   create-updater-json:
     needs: build
     runs-on: ubuntu-latest
-    if: success()
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Get version from package.json
+      - name: Get version
         id: version
         run: |
-          VERSION=$(cat packages/app/package.json | grep '"version"' | head -1 | sed 's/.*: *"//;s/".*//')
+          VERSION=${GITHUB_REF_NAME#v}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Get latest release
-        id: release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          RELEASE=$(gh release view v${{ steps.version.outputs.version }} --json tagName,name,assets --jq '.' 2>/dev/null || echo "not_found")
-          echo "release=$RELEASE" >> $GITHUB_OUTPUT
 
       - name: Generate latest.json
         env:
@@ -109,13 +93,6 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           REPO="${{ github.repository }}"
           
-          # Download signature files and get download URLs
-          MAC_ARM_URL="https://github.com/${REPO}/releases/download/v${VERSION}/ReadAny_aarch64.app.tar.gz"
-          MAC_X64_URL="https://github.com/${REPO}/releases/download/v${VERSION}/ReadAny_x64.app.tar.gz"
-          WIN_URL="https://github.com/${REPO}/releases/download/v${VERSION}/ReadAny_${VERSION}_x64-setup.exe"
-          LINUX_URL="https://github.com/${REPO}/releases/download/v${VERSION}/readany_${VERSION}_amd64.deb"
-          
-          # Create latest.json for Tauri updater
           cat > latest.json << EOF
           {
             "version": "${VERSION}",
@@ -124,30 +101,26 @@ jobs:
             "platforms": {
               "darwin-aarch64": {
                 "signature": "",
-                "url": "${MAC_ARM_URL}"
+                "url": "https://github.com/${REPO}/releases/download/v${VERSION}/ReadAny_aarch64.app.tar.gz"
               },
               "darwin-x86_64": {
                 "signature": "",
-                "url": "${MAC_X64_URL}"
+                "url": "https://github.com/${REPO}/releases/download/v${VERSION}/ReadAny_x64.app.tar.gz"
               },
               "windows-x86_64": {
                 "signature": "",
-                "url": "${WIN_URL}"
+                "url": "https://github.com/${REPO}/releases/download/v${VERSION}/ReadAny_${VERSION}_x64-setup.exe"
               },
               "linux-x86_64": {
                 "signature": "",
-                "url": "${LINUX_URL}"
+                "url": "https://github.com/${REPO}/releases/download/v${VERSION}/readany_${VERSION}_amd64.deb"
               }
             }
           }
           EOF
-          
-          echo "Generated latest.json:"
-          cat latest.json
 
-      - name: Upload latest.json to release
+      - name: Upload latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          gh release upload v${VERSION} latest.json --clobber || echo "Release not found, skipping upload"
+          gh release upload ${{ github.ref_name }} latest.json --clobber
