@@ -4,7 +4,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { ExternalLink, Github, BookOpen, Code2, Zap, Shield, RefreshCw, Download, Check, AlertCircle } from "lucide-react";
-import { getName, getVersion } from "@tauri-apps/api/app";
+import { getVersion } from "@tauri-apps/api/app";
 import { checkForUpdate, getUpdateStatus, getAvailableUpdate, getDownloadProgress, getErrorMessage, subscribeToUpdates, downloadAndInstall, relaunchApp, resetStatus } from "@/lib/updater";
 import { Button } from "@/components/ui/button";
 import {
