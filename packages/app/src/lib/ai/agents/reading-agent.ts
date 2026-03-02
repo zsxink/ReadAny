@@ -121,9 +121,14 @@ export async function* streamReadingAgent(
     // Build input messages (history + user input, without system — handled by agent prompt)
     // For DeepSeek reasoner, we must include reasoning_content in assistant messages
     // to avoid 400 errors during multi-turn tool-calling conversations.
-    const isDeepSeek = aiConfig.endpoints.find(
+    const activeEndpoint = aiConfig.endpoints.find(
       (e) => e.id === aiConfig.activeEndpointId,
-    )?.provider === "deepseek";
+    );
+    const isDeepSeek = 
+      activeEndpoint?.provider === "deepseek" ||
+      activeEndpoint?.baseUrl?.includes("deepseek") ||
+      aiConfig.activeModel?.toLowerCase().includes("deepseek") ||
+      aiConfig.activeModel?.toLowerCase().includes("reasoner");
 
     const inputMessages: BaseMessage[] = [
       ...history.map((h) => {
