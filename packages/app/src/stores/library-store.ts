@@ -6,7 +6,7 @@ import * as db from "@/lib/db/database";
  * Uses FS-level JSON cache for fast startup (avoids re-querying SQLite every launch).
  */
 import { create } from "zustand";
-import { debouncedSave, loadFromFS } from "./persist";
+import { debouncedSave, loadFromFS } from "@readany/core/stores/persist";
 
 interface EpubMeta {
   title: string;

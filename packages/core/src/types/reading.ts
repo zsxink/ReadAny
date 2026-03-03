@@ -38,3 +38,13 @@ export interface SessionDetectorConfig {
   stopThreshold: number; // ms, default 30 min
   minSessionDuration: number; // ms, default 30s
 }
+
+/** Converted TOC item for UI consumption */
+export interface TOCItem {
+  id: string;
+  title: string;
+  level: number;
+  href?: string;
+  index?: number;
+  subitems?: TOCItem[];
+}

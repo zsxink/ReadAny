@@ -31,14 +31,17 @@
     "./tts": "./src/tts/index.ts",
     "./tts/*": "./src/tts/*.ts",
     "./reader": "./src/reader/index.ts",
-    "./reader/*": "./src/reader/*.ts"
+    "./reader/*": "./src/reader/*.ts",
+    "./stores": "./src/stores/index.ts",
+    "./stores/*": "./src/stores/*.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",
     "tailwind-merge": "^3.0.0",
     "i18next": "^25.8.13",
     "react-i18next": "^16.5.4",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "zustand": "^5.0.5"
   },
   "peerDependencies": {
     "react": "^19.0.0",
