@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { cn } from "@readany/core/utils";
 import * as SliderPrimitive from "@radix-ui/react-slider";
 import type { ComponentPropsWithoutRef } from "react";
 

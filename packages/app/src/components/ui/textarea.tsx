@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { cn } from "@readany/core/utils";
 import type { TextareaHTMLAttributes } from "react";
 
 export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {

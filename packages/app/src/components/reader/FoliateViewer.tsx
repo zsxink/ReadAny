@@ -22,7 +22,7 @@ import { usePagination } from "@/hooks/reader/usePagination";
 import { useBookShortcuts } from "@/hooks/reader/useBookShortcuts";
 import type { FoliateView } from "@/hooks/reader/useFoliateView";
 import { wrappedFoliateView } from "@/hooks/reader/useFoliateView";
-import type { ViewSettings } from "@/types";
+import type { ViewSettings } from "@readany/core/types";
 import { readingContextService } from "@/lib/ai/reading-context-service";
 import { Overlayer } from "foliate-js/overlayer.js";
 import { getFontTheme } from "@/lib/reader/font-themes";

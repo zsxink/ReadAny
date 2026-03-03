@@ -1,7 +1,7 @@
 /**
  * Semantic Reading Context (SRC) — generates context based on reader state
  */
-import type { SemanticContext } from "@/types";
+import type { SemanticContext } from "@readany/core/types";
 
 export type OperationType = "reading" | "highlighting" | "searching" | "navigating";
 

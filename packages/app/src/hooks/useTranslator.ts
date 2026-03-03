@@ -8,7 +8,7 @@ import { useCallback, useState } from "react";
 import { useSettingsStore } from "@/stores/settings-store";
 import { getFromCache, storeInCache } from "@/lib/translation/cache";
 import { aiTranslate, deeplTranslate } from "@/lib/translation/providers";
-import type { TranslationTargetLang } from "@/types/translation";
+import type { TranslationTargetLang } from "@readany/core/types/translation";
 
 export interface UseTranslatorOptions {
   sourceLang?: string;

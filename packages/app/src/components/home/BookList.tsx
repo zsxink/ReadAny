@@ -2,7 +2,7 @@
  * BookList — list view for books
  */
 import { useAppStore } from "@/stores/app-store";
-import type { Book } from "@/types";
+import type { Book } from "@readany/core/types";
 import { useTranslation } from "react-i18next";
 
 interface BookListProps {

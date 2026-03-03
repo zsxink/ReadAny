@@ -2,7 +2,7 @@
  * MessageList — scrollable message list with streaming support
  * Uses Part-based rendering for real-time updates
  */
-import type { MessageV2, CitationPart, QuotePart } from "@/types/message";
+import type { MessageV2, CitationPart, QuotePart } from "@readany/core/types/message";
 import { ArrowDown, Quote } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PartRenderer } from "./PartRenderer";

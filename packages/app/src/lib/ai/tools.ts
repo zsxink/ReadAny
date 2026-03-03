@@ -11,7 +11,7 @@ import { getContextTools } from "./context-tools";
  * - Analysis Tools: summarize, extractEntities, analyzeArguments, findQuotes
  * - Annotation Tools: getAnnotations
  */
-import type { SearchQuery, Skill } from "@/types";
+import type { SearchQuery, Skill } from "@readany/core/types";
 
 export interface ToolDefinition {
   name: string;

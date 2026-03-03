@@ -6,7 +6,7 @@ import { getChunks } from "@/lib/db/database";
  * Optimization: In-memory embedding cache per book to avoid repeated
  * SQLite BLOB deserialization on every search query.
  */
-import type { Chunk, SearchQuery, SearchResult } from "@/types";
+import type { Chunk, SearchQuery, SearchResult } from "@readany/core/types";
 import { cosineSimilarity } from "./embedding";
 import type { EmbeddingService } from "./embedding-service";
 

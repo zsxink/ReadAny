@@ -4,10 +4,10 @@
  *
  * Supports both built-in (Transformers.js via Web Worker) and remote (OpenAI-compatible API) embedding models.
  */
-import { eventBus } from "@/lib/event-bus";
+import { eventBus } from "@readany/core/utils/event-bus";
 import { useLibraryStore } from "@/stores/library-store";
 import { useVectorModelStore } from "@/stores/vector-model-store";
-import type { VectorizeProgress } from "@/types";
+import type { VectorizeProgress } from "@readany/core/types";
 import { BUILTIN_EMBEDDING_MODELS } from "../ai/builtin-embedding-models";
 import { generateLocalEmbeddings, loadEmbeddingPipeline } from "../ai/local-embedding-service";
 import { insertChunks, deleteChunks } from "../db/database";

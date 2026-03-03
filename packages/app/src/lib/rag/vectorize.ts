@@ -2,7 +2,7 @@ import { deleteChunks, insertChunks } from "@/lib/db/database";
 /**
  * Vectorize pipeline — orchestrates chunking + embedding + indexing for a book
  */
-import type { Chunk, VectorConfig, VectorizeProgress } from "@/types";
+import type { Chunk, VectorConfig, VectorizeProgress } from "@readany/core/types";
 import { chunkContent } from "./chunker";
 import type { TextSegment } from "./book-extractor";
 import { EmbeddingService } from "./embedding-service";

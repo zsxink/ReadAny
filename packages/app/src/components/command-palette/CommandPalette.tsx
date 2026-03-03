@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, type SettingsTab } from "@/stores/app-store";
-import { cn } from "@/lib/utils";
+import { cn } from "@readany/core/utils";
 import {
   Settings,
   Sun,

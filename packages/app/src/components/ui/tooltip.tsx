@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { cn } from "@readany/core/utils";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import type { ComponentPropsWithoutRef } from "react";
 

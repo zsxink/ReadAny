@@ -1,7 +1,7 @@
 /**
  * BookGrid — responsive grid layout with Readest-style spacing
  */
-import type { Book } from "@/types";
+import type { Book } from "@readany/core/types";
 import { BookCard } from "./BookCard";
 
 export function BookGrid({ books }: { books: Book[] }) {

@@ -2,7 +2,7 @@
  * SettingsDialog — main settings modal using shadcn Dialog
  */
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
+import { cn } from "@readany/core/utils";
 import { useTranslation } from "react-i18next";
 import { useAppStore, type SettingsTab } from "@/stores/app-store";
 import { AboutSettings } from "./AboutSettings";

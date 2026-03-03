@@ -2,7 +2,7 @@
  * Annotation Exporter — export highlights and notes in multiple formats
  * Supports: Markdown, JSON, Obsidian (with frontmatter), Notion (clipboard-friendly)
  */
-import type { Book, Highlight, Note } from "@/types";
+import type { Book, Highlight, Note } from "@readany/core/types";
 
 export type ExportFormat = "markdown" | "json" | "obsidian" | "notion";
 

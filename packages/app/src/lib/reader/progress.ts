@@ -1,7 +1,7 @@
 /**
  * Progress tracking and auto-save
  */
-import type { Book } from "@/types";
+import type { Book } from "@readany/core/types";
 
 export interface ProgressData {
   bookId: string;

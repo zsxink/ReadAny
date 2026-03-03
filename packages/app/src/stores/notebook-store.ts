@@ -1,7 +1,7 @@
 /**
  * Notebook store — manages notebook panel state for note editing
  */
-import type { Highlight } from "@/types";
+import type { Highlight } from "@readany/core/types";
 import { create } from "zustand";
 
 export interface PendingNote {

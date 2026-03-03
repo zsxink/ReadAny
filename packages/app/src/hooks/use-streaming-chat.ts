@@ -3,7 +3,7 @@ import { useChatStore } from "@/stores/chat-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { getSkills as getDbSkills } from "@/lib/db/database";
 import { getBuiltinSkills } from "@/lib/ai/skills/builtin-skills";
-import type { Book, SemanticContext, Skill, Thread, Part, TextPart, ToolCallPart, MessageV2, ReasoningPart, CitationPart } from "@/types";
+import type { Book, SemanticContext, Skill, Thread, Part, TextPart, ToolCallPart, MessageV2, ReasoningPart, CitationPart } from "@readany/core/types";
 import { useCallback, useRef, useState } from "react";
 import {
   createTextPart,
@@ -12,7 +12,7 @@ import {
   createQuotePart,
   createMindmapPart,
   createCitationPart,
-} from "@/types/message";
+} from "@readany/core/types/message";
 import type { AttachedQuote } from "@/components/chat/ChatInput";
 
 /** Type guard for mindmap tool result */
@@ -238,8 +238,8 @@ export function useStreamingChat(options?: StreamingChatOptions) {
                 // Store mindmap data so it can be reconstructed from database
                 return {
                   ...base,
-                  title: (p as import("@/types/message").MindmapPart).title,
-                  markdown: (p as import("@/types/message").MindmapPart).markdown,
+                  title: (p as import("@readany/core/types/message").MindmapPart).title,
+                  markdown: (p as import("@readany/core/types/message").MindmapPart).markdown,
                 };
               }
               if (p.type === "citation") {
@@ -324,8 +324,8 @@ export function useStreamingChat(options?: StreamingChatOptions) {
               if (p.type === "mindmap") {
                 return {
                   ...base,
-                  title: (p as import("@/types/message").MindmapPart).title,
-                  markdown: (p as import("@/types/message").MindmapPart).markdown,
+                  title: (p as import("@readany/core/types/message").MindmapPart).title,
+                  markdown: (p as import("@readany/core/types/message").MindmapPart).markdown,
                 };
               }
               if (p.type === "citation") {

@@ -13,7 +13,7 @@ import { Slider } from "@/components/ui/slider";
  * Supports OpenAI-compatible, Anthropic Claude, Google Gemini
  */
 import { useSettingsStore } from "@/stores/settings-store";
-import type { AIEndpoint, AIProviderType } from "@/types";
+import type { AIEndpoint, AIProviderType } from "@readany/core/types";
 import { Loader2, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";

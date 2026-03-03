@@ -1,7 +1,7 @@
 /**
  * Font theme presets for reading
  */
-import type { FontTheme } from "@/types";
+import type { FontTheme } from "@readany/core/types";
 
 export const FONT_THEMES: FontTheme[] = [
   {

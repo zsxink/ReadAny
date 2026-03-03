@@ -2,7 +2,7 @@
  * HighlightList — list of highlights for the current book
  */
 import { useAnnotationStore } from "@/stores/annotation-store";
-import type { HighlightColor } from "@/types";
+import type { HighlightColor } from "@readany/core/types";
 import { Highlighter } from "lucide-react";
 import { useTranslation } from "react-i18next";
 

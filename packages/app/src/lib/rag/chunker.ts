@@ -5,7 +5,7 @@
  * Supports optional TextSegment mapping from book-extractor
  * to record precise EPUB CFI positions for each chunk.
  */
-import type { Chunk } from "@/types";
+import type { Chunk } from "@readany/core/types";
 import type { TextSegment } from "./book-extractor";
 
 export interface ChunkerConfig {

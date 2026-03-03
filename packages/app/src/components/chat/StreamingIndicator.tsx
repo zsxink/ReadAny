@@ -3,7 +3,7 @@
  * Displays thinking/tool-calling/responding state with animation
  */
 import { Brain, Loader2, Wrench } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "@readany/core/utils";
 
 interface StreamingIndicatorProps {
   step: "thinking" | "tool_calling" | "responding" | "idle";

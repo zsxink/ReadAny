@@ -4,7 +4,7 @@
  * - Remote API endpoints (OpenAI-compatible, Ollama, etc.)
  * - Built-in local models via Transformers.js (downloaded & cached automatically)
  */
-import type { VectorModelConfig } from "@/types";
+import type { VectorModelConfig } from "@readany/core/types";
 import { create } from "zustand";
 import { withPersist } from "./persist";
 

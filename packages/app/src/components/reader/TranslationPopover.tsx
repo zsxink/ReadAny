@@ -7,7 +7,7 @@ import { useTranslator } from "@/hooks/useTranslator";
 import { Check, ChevronDown, Copy, Loader2, Languages, X } from "lucide-react";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { TRANSLATOR_LANGS, TranslationTargetLang } from "@/types/translation";
+import { TRANSLATOR_LANGS, TranslationTargetLang } from "@readany/core/types/translation";
 
 interface TranslationPopoverProps {
   text: string;

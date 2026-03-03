@@ -2,9 +2,9 @@
  * ChatPanel — book-scoped sidebar chat panel.
  */
 import { useStreamingChat } from "@/hooks/use-streaming-chat";
-import { convertToMessageV2, mergeMessagesWithStreaming } from "@/lib/chat-utils";
+import { convertToMessageV2, mergeMessagesWithStreaming } from "@readany/core/utils/chat-utils";
 import { useChatStore } from "@/stores/chat-store";
-import type { Book, CitationPart } from "@/types";
+import type { Book, CitationPart } from "@readany/core/types";
 import { Brain, History, MessageCirclePlus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";

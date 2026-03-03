@@ -1,5 +1,5 @@
 import { Input } from "@/components/ui/input";
-import { TRANSLATOR_PROVIDERS } from "@/types/translation";
+import { TRANSLATOR_PROVIDERS } from "@readany/core/types/translation";
 import { Check, ChevronDown } from "lucide-react";
 /**
  * TranslationSettings — translation provider config

@@ -1,4 +1,4 @@
-import type { ReadingSession, ReadingStats, SessionState } from "@/types";
+import type { ReadingSession, ReadingStats, SessionState } from "@readany/core/types";
 import * as db from "@/lib/db/database";
 /**
  * Reading session store — session state machine (ACTIVE/PAUSED/STOPPED)

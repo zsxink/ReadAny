@@ -3,7 +3,7 @@
  * Renders individual parts of a message (text, reasoning, tool calls, citations)
  */
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { cn } from "@/lib/utils";
+import { cn } from "@readany/core/utils";
 import {
   CheckCircle,
   ChevronDown,
@@ -14,7 +14,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
-import type { Part, TextPart, ReasoningPart, ToolCallPart, CitationPart, MindmapPart } from "@/types/message";
+import type { Part, TextPart, ReasoningPart, ToolCallPart, CitationPart, MindmapPart } from "@readany/core/types/message";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
 const TEXT_RENDER_THROTTLE_MS = 100;

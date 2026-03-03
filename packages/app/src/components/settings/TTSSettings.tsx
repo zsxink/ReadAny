@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-import { cn } from "@/lib/utils";
+import { cn } from "@readany/core/utils";
 import { Volume2, Zap, Globe, Mic } from "lucide-react";
 
 export function TTSSettings() {

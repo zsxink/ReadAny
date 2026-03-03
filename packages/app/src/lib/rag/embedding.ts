@@ -1,7 +1,7 @@
 /**
  * Embedding model management and utilities
  */
-import type { EmbeddingModel } from "@/types";
+import type { EmbeddingModel } from "@readany/core/types";
 import { EmbeddingService } from "./embedding-service";
 
 const BUILTIN_MODELS: EmbeddingModel[] = [

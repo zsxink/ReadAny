@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { cn } from "@readany/core/utils";
 import * as SelectPrimitive from "@radix-ui/react-select";
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
 import type { ComponentPropsWithoutRef } from "react";

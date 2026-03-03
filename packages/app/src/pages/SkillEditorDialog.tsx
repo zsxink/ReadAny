@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import type { Skill } from "@/types";
+import type { Skill } from "@readany/core/types";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 

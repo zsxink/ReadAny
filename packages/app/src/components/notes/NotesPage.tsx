@@ -19,7 +19,7 @@ import {
   ChevronLeft,
   FileText,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "@readany/core/utils";
 import { useAnnotationStore } from "@/stores/annotation-store";
 import { useLibraryStore } from "@/stores/library-store";
 import { useAppStore } from "@/stores/app-store";
@@ -29,8 +29,8 @@ import { MarkdownEditor } from "@/components/ui/markdown-editor";
 import { ExportDropdown } from "./ExportDropdown";
 import { annotationExporter, type ExportFormat } from "@/lib/export/annotation-exporter";
 import type { HighlightWithBook } from "@/lib/db/database";
-import type { Highlight, Note } from "@/types";
-import { HIGHLIGHT_COLOR_HEX } from "@/types";
+import type { Highlight, Note } from "@readany/core/types";
+import { HIGHLIGHT_COLOR_HEX } from "@readany/core/types";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 

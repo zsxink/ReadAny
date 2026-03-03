@@ -4,8 +4,8 @@
  * - 8-message sliding window
  * - Context assembly
  */
-import type { Message, SemanticContext, Thread } from "@/types";
-import type { Book, Skill } from "@/types";
+import type { Message, SemanticContext, Thread } from "@readany/core/types";
+import type { Book, Skill } from "@readany/core/types";
 import { buildSystemPrompt } from "./system-prompt";
 
 interface PipelineConfig {

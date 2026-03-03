@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { BUILTIN_EMBEDDING_MODELS } from "@/lib/ai/builtin-embedding-models";
 import { loadEmbeddingPipeline } from "@/lib/ai/local-embedding-service";
 import { useVectorModelStore } from "@/stores/vector-model-store";
-import type { VectorModelConfig } from "@/types";
+import type { VectorModelConfig } from "@readany/core/types";
 import { Check, Download, Edit2, Loader2, Plus, Trash2, X } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";

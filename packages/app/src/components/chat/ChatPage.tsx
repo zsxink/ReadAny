@@ -2,10 +2,10 @@
  * ChatPage — standalone full-page chat for general conversations.
  */
 import { useStreamingChat } from "@/hooks/use-streaming-chat";
-import { convertToMessageV2, mergeMessagesWithStreaming } from "@/lib/chat-utils";
+import { convertToMessageV2, mergeMessagesWithStreaming } from "@readany/core/utils/chat-utils";
 import { useChatReaderStore } from "@/stores/chat-reader-store";
 import { useChatStore } from "@/stores/chat-store";
-import type { CitationPart } from "@/types";
+import type { CitationPart } from "@readany/core/types";
 import {
   BookOpen,
   Brain,

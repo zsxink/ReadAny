@@ -13,14 +13,14 @@ import {
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "@readany/core/utils";
 import { useNotebookStore } from "@/stores/notebook-store";
 import { useAnnotationStore } from "@/stores/annotation-store";
 import { useLibraryStore } from "@/stores/library-store";
 import { ExportDropdown } from "@/components/notes/ExportDropdown";
 import { annotationExporter, type ExportFormat } from "@/lib/export/annotation-exporter";
-import type { Highlight, HighlightColor, Note } from "@/types";
-import { HIGHLIGHT_COLOR_HEX } from "@/types";
+import type { Highlight, HighlightColor, Note } from "@readany/core/types";
+import { HIGHLIGHT_COLOR_HEX } from "@readany/core/types";
 import { MarkdownEditor } from "@/components/ui/markdown-editor";
 import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";

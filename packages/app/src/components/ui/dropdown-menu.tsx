@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { cn } from "@readany/core/utils";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import type { ComponentPropsWithoutRef } from "react";
 

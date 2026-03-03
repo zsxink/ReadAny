@@ -3,7 +3,7 @@
  * Uses LangGraph reading agent for unified model support with tool calling.
  * Supports OpenAI-compatible, Anthropic Claude, and Google Gemini providers.
  */
-import type { AIConfig, Book, SemanticContext, Skill, Thread } from "@/types";
+import type { AIConfig, Book, SemanticContext, Skill, Thread } from "@readany/core/types";
 import { streamReadingAgent } from "./agents/reading-agent";
 import { processMessages } from "./message-pipeline";
 

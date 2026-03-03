@@ -4,7 +4,7 @@
  * Executes skills by combining their prompts with context and calling the LLM.
  * Skills can be built-in or custom user-defined.
  */
-import type { AIConfig, Skill } from "@/types";
+import type { AIConfig, Skill } from "@readany/core/types";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { createChatModel } from "../llm-provider";

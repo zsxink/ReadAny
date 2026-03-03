@@ -1,7 +1,7 @@
 /**
  * QuotaDisplay — shows usage quota (AI messages, vectorize, translation)
  */
-import type { Quota } from "@/types";
+import type { Quota } from "@readany/core/types";
 
 interface QuotaDisplayProps {
   quota: Quota;

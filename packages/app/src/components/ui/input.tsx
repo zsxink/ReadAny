@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { cn } from "@readany/core/utils";
 import type { InputHTMLAttributes } from "react";
 
 export function Input({ className, type, ...props }: InputHTMLAttributes<HTMLInputElement>) {

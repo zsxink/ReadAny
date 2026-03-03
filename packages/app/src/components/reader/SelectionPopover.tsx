@@ -4,9 +4,9 @@
 import { useState } from "react";
 import { Check, Copy, Highlighter, Languages, Sparkles, StickyNote, Trash2, Volume2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { cn } from "@/lib/utils";
-import type { HighlightColor } from "@/types";
-import { HIGHLIGHT_COLORS, HIGHLIGHT_COLOR_HEX } from "@/types";
+import { cn } from "@readany/core/utils";
+import type { HighlightColor } from "@readany/core/types";
+import { HIGHLIGHT_COLORS, HIGHLIGHT_COLOR_HEX } from "@readany/core/types";
 
 interface SelectionPopoverProps {
   position: { x: number; y: number };

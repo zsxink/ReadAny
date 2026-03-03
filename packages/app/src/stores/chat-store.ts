@@ -1,4 +1,4 @@
-import type { Message, SemanticContext, Thread, ToolCall, ReasoningStep } from "@/types";
+import type { Message, SemanticContext, Thread, ToolCall, ReasoningStep } from "@readany/core/types";
 /**
  * Chat store — conversation threads, messages, streaming state.
  *

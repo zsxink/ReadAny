@@ -2,10 +2,10 @@
  * Translation Types for internal use
  */
 
-import type { TranslatorName, TranslationTargetLang } from "@/types/translation";
+import type { TranslatorName, TranslationTargetLang } from "@readany/core/types/translation";
 
 // Re-export for convenience
-export type { TranslatorName, TranslationTargetLang } from "@/types/translation";
+export type { TranslatorName, TranslationTargetLang } from "@readany/core/types/translation";
 
 // Internal provider interface (includes translate method)
 export interface TranslationProvider {

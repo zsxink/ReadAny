@@ -1,4 +1,4 @@
-import type { Bookmark, Highlight, HighlightColor, Note } from "@/types";
+import type { Bookmark, Highlight, HighlightColor, Note } from "@readany/core/types";
 import * as db from "@/lib/db/database";
 import type { HighlightWithBook } from "@/lib/db/database";
 /**

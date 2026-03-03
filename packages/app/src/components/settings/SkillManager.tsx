@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { getSkills, updateSkill } from "@/lib/db/database";
 import { builtinSkills } from "@/lib/ai/skills/builtin-skills";
-import type { Skill } from "@/types";
+import type { Skill } from "@readany/core/types";
 import { BookOpen, Compass, FileText, GitBranch, Languages, Lightbulb, Plus, Puzzle, Quote, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";

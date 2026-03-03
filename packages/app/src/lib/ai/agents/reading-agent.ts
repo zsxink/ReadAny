@@ -8,7 +8,7 @@
  * 4. Real streaming via streamEvents API
  * 5. System prompt from system-prompt.ts
  */
-import type { AIConfig, Book, SemanticContext, Skill } from "@/types";
+import type { AIConfig, Book, SemanticContext, Skill } from "@readany/core/types";
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
 import { z } from "zod";

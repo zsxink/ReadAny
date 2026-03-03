@@ -2,8 +2,8 @@
  * Database access layer — wraps Tauri SQL plugin
  * Full implementation with actual SQL queries
  */
-import type { Book, Bookmark, Chunk, Highlight, Message, Note, Skill, Thread } from "@/types";
-import type { ReadingSession } from "@/types/reading";
+import type { Book, Bookmark, Chunk, Highlight, Message, Note, Skill, Thread } from "@readany/core/types";
+import type { ReadingSession } from "@readany/core/types/reading";
 
 // Lazy-loaded database instance
 let db: Awaited<ReturnType<typeof import("@tauri-apps/plugin-sql").default.load>> | null = null;

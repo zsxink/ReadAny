@@ -2,8 +2,8 @@ import type {
   AIConfig,
   AIEndpoint,
   ReadSettings,
-} from "@/types";
-import type { TranslationConfig, TranslationTargetLang } from "@/types/translation";
+} from "@readany/core/types";
+import type { TranslationConfig, TranslationTargetLang } from "@readany/core/types/translation";
 /**
  * Settings store — global reading settings, AI config, translation config
  */

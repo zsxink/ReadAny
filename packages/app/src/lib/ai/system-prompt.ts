@@ -7,7 +7,7 @@
  * 5. Core workflow & strict tool-use rules
  * 6. Response constraints
  */
-import type { Book, SemanticContext, Skill } from "@/types";
+import type { Book, SemanticContext, Skill } from "@readany/core/types";
 
 interface PromptContext {
   book: Book | null;

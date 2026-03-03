@@ -5,7 +5,7 @@ import { triggerVectorizeBook } from "@/lib/rag/vectorize-trigger";
 import { useLibraryStore } from "@/stores/library-store";
 import { useAppStore } from "@/stores/app-store";
 import { useVectorModelStore } from "@/stores/vector-model-store";
-import type { Book, VectorizeProgress } from "@/types";
+import type { Book, VectorizeProgress } from "@readany/core/types";
 import { Check, ChevronRight, Database, Hash, Loader2, MoreVertical, Plus, Trash2 } from "lucide-react";
 import { memo, useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";

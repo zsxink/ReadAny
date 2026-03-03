@@ -1,7 +1,7 @@
 /**
  * Embedding service — handles API calls to embedding providers
  */
-import type { EmbeddingModel } from "@/types";
+import type { EmbeddingModel } from "@readany/core/types";
 
 export interface EmbeddingConfig {
   model: EmbeddingModel;

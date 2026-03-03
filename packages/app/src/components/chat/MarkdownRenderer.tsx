@@ -10,7 +10,7 @@ import React, { useMemo, useState } from "react";
 import Markdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
-import type { CitationPart } from "@/types/message";
+import type { CitationPart } from "@readany/core/types/message";
 
 /** Mermaid code block — renders synchronously, zero-flash */
 function MermaidBlock({ code }: { code: string }) {

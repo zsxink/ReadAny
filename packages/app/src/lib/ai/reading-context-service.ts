@@ -10,7 +10,7 @@
  * Provides real-time context for AI tools.
  */
 import { getHighlights } from "@/lib/db/database";
-import type { ReadingContext } from "@/types/chat";
+import type { ReadingContext } from "@readany/core/types/chat";
 
 type ReadingContextListener = (context: ReadingContext | null) => void;
 

@@ -1,7 +1,7 @@
 /**
  * VectorProgress — circular progress ring
  */
-import type { VectorizeProgress } from "@/types";
+import type { VectorizeProgress } from "@readany/core/types";
 
 interface VectorProgressProps {
   progress: VectorizeProgress;

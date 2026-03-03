@@ -1,4 +1,4 @@
-import type { Book, LibraryFilter, SortField, SortOrder } from "@/types";
+import type { Book, LibraryFilter, SortField, SortOrder } from "@readany/core/types";
 import * as db from "@/lib/db/database";
 /**
  * Library store — book collection CRUD, import, filtering

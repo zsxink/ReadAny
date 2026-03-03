@@ -23,7 +23,7 @@ import {
   Undo2,
   Redo2,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "@readany/core/utils";
 
 interface MarkdownEditorProps {
   value: string;

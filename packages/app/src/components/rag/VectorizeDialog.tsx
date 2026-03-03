@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 /**
  * VectorizeDialog — dialog for starting/monitoring vectorization
  */
-import type { VectorizeProgress } from "@/types";
+import type { VectorizeProgress } from "@readany/core/types";
 import { useTranslation } from "react-i18next";
 import { VectorProgress } from "./VectorProgress";
 
