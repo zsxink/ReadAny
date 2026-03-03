@@ -135,7 +135,7 @@ export function MarkdownEditor({
       className
     )}>
       {/* Toolbar */}
-      <div className="flex items-center gap-0.5 border-b border-border/40 bg-muted/20 px-2 py-1.5">
+      <div className="flex flex-wrap items-center gap-0.5 border-b border-border/40 bg-muted/20 px-2 py-1.5">
         {/* History */}
         <ToolbarGroup>
           <ToolbarButton
@@ -260,7 +260,8 @@ export function MarkdownEditor({
       <EditorContent 
         editor={editor} 
         className={cn(
-          "px-3.5 py-2.5",
+          "max-h-[30vh] overflow-y-auto px-4 py-3",
+          "[&_.ProseMirror]:outline-none",
           "[&_.is-editor-empty:first-child::before]:text-muted-foreground/60",
           "[&_.is-editor-empty:first-child::before]:pointer-events-none",
           "[&_.is-editor-empty:first-child::before]:float-left",

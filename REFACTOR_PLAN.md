@@ -460,24 +460,7 @@ export function createPersistMiddleware() {
 | `use-streaming-chat.ts` | 🔧 间接依赖 db，db 抽象后自动跟随 |
 | `useTranslator.ts` | 🔧 间接依赖 stores，stores 迁移后自动跟随 |
 
-### Phase 7：Components 迁移（2-3 天）
-
-| 子目录 | 文件数 | 处理方式 |
-|--------|--------|----------|
-| `ui/` | 12 | ✅ 整体迁移到 `@readany/ui`（全部平台无关） |
-| `chat/` | 8 | ✅ 可迁移到 core（全部平台无关） |
-| `annotation/` | 3 | ✅ 可迁移到 core |
-| `stats/` | 1 | ✅ 可迁移到 core |
-| `rag/` | 3 | ✅ 可迁移到 core |
-| `common/` | 2 | ✅ 可迁移到 core |
-| `command-palette/` | 1 | ⚠️ 桌面端保留（移动端交互方式不同） |
-| `notes/` | 2 | ✅ 可迁移到 core |
-| `layout/` | 3 | ⚠️ 各端独立（布局差异大） |
-| `reader/` | 12 | 🔧 11 个可共享，`ReaderView.tsx` 需改用 `IPlatformService` |
-| `settings/` | 8 | 🔧 7 个可共享，`AboutSettings.tsx` 需改用 `IPlatformService.getAppVersion()` |
-| `home/` | 5 | 🔧 3 个可共享，`HomePage.tsx` 和 `ImportDropZone.tsx` 需改用 `IPlatformService.pickFile()` |
-
-### Phase 8：创建移动端应用（5-7 天）
+### Phase 7：创建移动端应用（5-7 天）
 
 | 步骤 | 说明 |
 |------|------|

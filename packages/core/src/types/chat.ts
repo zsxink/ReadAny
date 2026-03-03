@@ -3,6 +3,14 @@
  * Enhanced with tool calling, reasoning, and citation support
  */
 
+/** A piece of selected text attached as context to the chat input */
+export interface AttachedQuote {
+  id: string;
+  text: string;
+  /** Optional source info, e.g. chapter title */
+  source?: string;
+}
+
 export type MessageRole = "user" | "assistant" | "system";
 
 export interface Citation {

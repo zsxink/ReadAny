@@ -614,7 +614,7 @@ function NoteDetailCard({
             className="mt-2 cursor-pointer"
             onClick={onStartEdit}
           >
-            <div className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed">
+            <div className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed break-words overflow-hidden [overflow-wrap:anywhere]">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {highlight.note || ""}
               </ReactMarkdown>

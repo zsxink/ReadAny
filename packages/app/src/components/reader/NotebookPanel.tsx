@@ -414,7 +414,7 @@ function HighlightNoteItem({ highlight, onClick, onEdit, onDeleteNote, isActive 
             "{highlight.text}"
           </p>
           {highlight.note && (
-            <div className="mt-1.5 text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1.5 prose prose-xs dark:prose-invert max-w-none">
+            <div className="mt-1.5 text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1.5 prose prose-xs dark:prose-invert max-w-none break-words overflow-hidden [overflow-wrap:anywhere]">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {highlight.note}
               </ReactMarkdown>

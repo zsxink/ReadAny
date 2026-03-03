@@ -12,14 +12,8 @@ import {
 import { ArrowUp, Brain, Paperclip, Quote, X } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-
-/** A piece of selected text attached as context to the chat input */
-export interface AttachedQuote {
-  id: string;
-  text: string;
-  /** Optional source info, e.g. chapter title */
-  source?: string;
-}
+import type { AttachedQuote } from "@readany/core/types";
+export type { AttachedQuote };
 
 interface ChatInputProps {
   onSend: (content: string, deepThinking?: boolean, quotes?: AttachedQuote[]) => void;

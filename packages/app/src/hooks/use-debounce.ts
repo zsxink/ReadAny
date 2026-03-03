@@ -1,15 +1,4 @@
 /**
- * useDebounce — debounced value hook
+ * useDebounce — thin re-export from core
  */
-import { useEffect, useState } from "react";
-
-export function useDebounce<T>(value: T, delay = 300): T {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedValue(value), delay);
-    return () => clearTimeout(timer);
-  }, [value, delay]);
-
-  return debouncedValue;
-}
+export { useDebounce } from "@readany/core/hooks/use-debounce";

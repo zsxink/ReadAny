@@ -261,6 +261,10 @@ importers:
       zustand:
         specifier: ^5.0.5
         version: 5.0.11(@types/react@19.2.14)(react@19.2.4)(use-sync-external-store@1.6.0(react@19.2.4))
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.14
 
   packages/foliate-js:
     devDependencies:

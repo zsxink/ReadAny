@@ -58,7 +58,7 @@ function ThreadsSidebar({
         onClick={onClose}
       />
       <div
-        className={`absolute left-0 top-0 h-full w-72 transform rounded-r-2xl border-r bg-background px-3 py-3 shadow-lg transition-all duration-300 ease-out ${open ? "translate-x-0 opacity-100" : "-translate-x-full opacity-0"}`}
+        className={`absolute left-0 top-0 h-full w-72 transform rounded-r-2xl border-r bg-background px-3 py-3 shadow-lg transition-all duration-300 ease-out flex flex-col ${open ? "translate-x-0 opacity-100" : "-translate-x-full opacity-0"}`}
       >
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-neutral-900">{t("chat.history")}</h3>
@@ -66,7 +66,7 @@ function ThreadsSidebar({
             <X className="size-4" />
           </button>
         </div>
-        <div className="flex flex-col gap-1 overflow-y-auto">
+        <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
           {generalThreads.length === 0 && (
             <p className="py-8 text-center text-xs text-muted-foreground">
               {t("chat.noConversations")}
