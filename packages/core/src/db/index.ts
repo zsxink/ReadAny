@@ -1,7 +1,3 @@
-/**
- * Proxy re-export — actual implementation lives in @readany/core/db
- * This file maintains backward compatibility for app-level imports.
- */
 export {
   initDatabase,
   getBooks,
@@ -42,6 +38,6 @@ export {
   insertSkill,
   updateSkill,
   deleteSkill,
-} from "@readany/core/db/database";
+} from "./database";
 
-export type { HighlightWithBook } from "@readany/core/db/database";
+export type { HighlightWithBook } from "./database";

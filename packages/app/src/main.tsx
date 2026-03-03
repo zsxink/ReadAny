@@ -8,6 +8,13 @@ import "@readany/core/i18n";
 import "./styles/globals.css";
 import { useLibraryStore } from "./stores/library-store";
 import { flushAllWrites } from "./stores/persist";
+import { setPlatformService } from "@readany/core/services";
+import { TauriPlatformService } from "./lib/platform/tauri-platform-service";
+
+// Register platform service before any database/core operations
+const tauriPlatform = new TauriPlatformService();
+tauriPlatform.initSync().catch(console.error);
+setPlatformService(tauriPlatform);
 
 // Flush pending state writes before window closes
 window.addEventListener("beforeunload", () => {

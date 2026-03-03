@@ -22,3 +22,9 @@ export {
   generateLocalEmbeddings,
   disposeEmbeddingPipeline,
 } from "./local-embedding-service";
+
+export { getAvailableTools } from "./tools";
+
+export { getContextTools } from "./context-tools";
+
+export { readingContextService, getReadingContextSnapshot } from "./reading-context-service";

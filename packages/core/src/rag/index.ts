@@ -13,3 +13,20 @@ export {
   getEmbeddings,
   cosineSimilarity,
 } from "./embedding";
+
+export {
+  search,
+  configureSearch,
+  invalidateChunkCache,
+  clearChunkCache,
+} from "./search";
+
+export { vectorizeBook } from "./vectorize";
+export type { VectorizeCallback } from "./vectorize";
+
+export { triggerVectorizeBook } from "./vectorize-trigger";
+export type {
+  VectorizeStatusCallback,
+  VectorizeTriggerConfig,
+  VectorizeTriggerCallbacks,
+} from "./vectorize-trigger";
