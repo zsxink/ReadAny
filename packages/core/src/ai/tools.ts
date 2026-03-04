@@ -791,7 +791,7 @@ function createSearchAllNotesTool(): ToolDefinition {
           bookTitle: bookMap.get(n.bookId) || "Unknown",
           chapterTitle: n.chapterTitle,
           highlightedText: n.type === "highlight_note" ? (n as any).highlightedText : undefined,
-          tags: n.tags,
+          tags: n.type === "note" ? (n as any).tags : undefined,
           createdAt: n.createdAt,
         })),
       };
