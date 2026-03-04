@@ -7,6 +7,7 @@
     "copy": "复制",
     "copied": "已复制",
     "remove": "删除",
+    "add": "添加",
     "loading": "加载中...",
     "settings": "设置",
     "done": "完成",
@@ -26,7 +27,23 @@
     "addTag": "新建标签",
     "tagPlaceholder": "标签名称",
     "renameTag": "重命名",
-    "deleteTag": "删除标签"
+    "deleteTag": "删除标签",
+    "noTags": "还没有标签"
+  },
+  "library": {
+    "sortRecent": "最近打开",
+    "sortAdded": "添加时间",
+    "sortTitle": "书名",
+    "sortAuthor": "作者",
+    "sortProgress": "进度",
+    "searchPlaceholder": "搜索书籍...",
+    "all": "全部",
+    "empty": "还没有书籍",
+    "emptyHint": "点击 + 按钮导入你的第一本书",
+    "importFirst": "导入书籍",
+    "noResults": "没有找到匹配的书籍",
+    "resultsCount": "找到 {{count}} 本书",
+    "importing": "导入中..."
   },
   "home": {
     "library": "书库",

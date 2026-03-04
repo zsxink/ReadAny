@@ -276,6 +276,9 @@ importers:
       '@tauri-apps/plugin-websocket':
         specifier: ^2.0.0
         version: 2.4.2
+      '@zip.js/zip.js':
+        specifier: ^2.7.52
+        version: 2.8.21
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -291,6 +294,9 @@ importers:
       lucide-react:
         specifier: ^0.468.0
         version: 0.468.0(react@19.2.4)
+      pdfjs-dist:
+        specifier: ^5.5.207
+        version: 5.5.207
       react:
         specifier: ^19.1.0
         version: 19.2.4
@@ -3084,6 +3090,10 @@ packages:
   pdfjs-dist@5.4.624:
     resolution: {integrity: sha512-sm6TxKTtWv1Oh6n3C6J6a8odejb5uO4A4zo/2dgkHuC0iu8ZMAXOezEODkVaoVp8nX1Xzr+0WxFJJmUr45hQzg==}
     engines: {node: '>=20.16.0 || >=22.3.0'}
+
+  pdfjs-dist@5.5.207:
+    resolution: {integrity: sha512-WMqqw06w1vUt9ZfT0gOFhMf3wHsWhaCrxGrckGs5Cci6ybDW87IvPaOd2pnBwT6BJuP/CzXDZxjFgmSULLdsdw==}
+    engines: {node: '>=20.19.0 || >=22.13.0 || >=24'}
 
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
@@ -6309,6 +6319,11 @@ snapshots:
       '@napi-rs/canvas': 0.1.95
 
   pdfjs-dist@5.4.624:
+    optionalDependencies:
+      '@napi-rs/canvas': 0.1.95
+      node-readable-to-web-readable-stream: 0.4.2
+
+  pdfjs-dist@5.5.207:
     optionalDependencies:
       '@napi-rs/canvas': 0.1.95
       node-readable-to-web-readable-stream: 0.4.2

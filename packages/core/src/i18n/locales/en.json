@@ -7,6 +7,7 @@
     "copy": "Copy",
     "copied": "Copied",
     "remove": "Remove",
+    "add": "Add",
     "loading": "Loading...",
     "settings": "Settings",
     "done": "done",
@@ -26,7 +27,23 @@
     "addTag": "New Tag",
     "tagPlaceholder": "Tag name",
     "renameTag": "Rename",
-    "deleteTag": "Delete Tag"
+    "deleteTag": "Delete Tag",
+    "noTags": "No tags yet"
+  },
+  "library": {
+    "sortRecent": "Recently Opened",
+    "sortAdded": "Date Added",
+    "sortTitle": "Title",
+    "sortAuthor": "Author",
+    "sortProgress": "Progress",
+    "searchPlaceholder": "Search books...",
+    "all": "All",
+    "empty": "No books yet",
+    "emptyHint": "Tap the + button to import your first book",
+    "importFirst": "Import Book",
+    "noResults": "No matching books found",
+    "resultsCount": "{{count}} book(s) found",
+    "importing": "Importing..."
   },
   "home": {
     "library": "Library",
