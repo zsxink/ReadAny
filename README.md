@@ -13,17 +13,24 @@
 </p>
 
 <p align="center">
-  <a href="#features">Features</a> &bull;
-  <a href="#screenshots">Screenshots</a> &bull;
-  <a href="#installation">Installation</a> &bull;
-  <a href="#development">Development</a> &bull;
+  <a href="#features">Features</a> •
+  <a href="#screenshots">Screenshots</a> •
+  <a href="#installation">Installation</a> •
+  <a href="#development">Development</a> •
   <a href="README_CN.md">中文文档</a>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.1.0-blue" alt="Version">
+  <a href="https://github.com/codedogQBY/ReadAny/releases">
+    <img src="https://img.shields.io/github/v/release/codedogQBY/ReadAny?color=blue" alt="Release">
+  </a>
+  <a href="https://github.com/codedogQBY/ReadAny/stargazers">
+    <img src="https://img.shields.io/github/stars/codedogQBY/ReadAny?color=yellow" alt="Stars">
+  </a>
+  <a href="https://github.com/codedogQBY/ReadAny/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/codedogQBY/ReadAny?color=green" alt="License">
+  </a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey" alt="Platform">
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
 </p>
 
 ---
@@ -80,15 +87,15 @@ Read your favorite e-books in any format:
 
 ## Screenshots
 
-<!-- TODO: Add screenshots to docs/screenshots/ directory, then uncomment below -->
+> 📸 Screenshots coming soon! The app features a modern library view, immersive reader, AI chat panel, and comprehensive notes management.
 
 | Library View | Reader View | AI Chat |
 |:------------:|:-----------:|:-------:|
-| ![Library](docs/screenshots/library.png) | ![Reader](docs/screenshots/reader.png) | ![AI Chat](docs/screenshots/chat.png) |
+| *Coming Soon* | *Coming Soon* | *Coming Soon* |
 
 | Notes Panel | Mindmap | Settings |
 |:-----------:|:-------:|:--------:|
-| ![Notes](docs/screenshots/notes.png) | ![Mindmap](docs/screenshots/mindmap.png) | ![Settings](docs/screenshots/settings.png) |
+| *Coming Soon* | *Coming Soon* | *Coming Soon* |
 
 ---
 
@@ -117,11 +124,10 @@ Read your favorite e-books in any format:
 
 Download the latest release for your platform:
 
-<!-- TODO: Update download links when releases are available -->
-- [macOS (Apple Silicon)](https://github.com/xxx/ReadAny/releases)
-- [macOS (Intel)](https://github.com/xxx/ReadAny/releases)
-- [Windows](https://github.com/xxx/ReadAny/releases)
-- [Linux](https://github.com/xxx/ReadAny/releases)
+- [macOS (Apple Silicon)](https://github.com/codedogQBY/ReadAny/releases/latest)
+- [macOS (Intel)](https://github.com/codedogQBY/ReadAny/releases/latest)
+- [Windows](https://github.com/codedogQBY/ReadAny/releases/latest)
+- [Linux](https://github.com/codedogQBY/ReadAny/releases/latest)
 
 ### Build from Source
 
@@ -136,7 +142,7 @@ Download the latest release for your platform:
 
 ```bash
 # Clone the repository
-git clone https://github.com/xxx/ReadAny.git
+git clone https://github.com/codedogQBY/ReadAny.git
 cd ReadAny
 
 # Install dependencies

@@ -13,23 +13,27 @@
 </p>
 
 <p align="center">
-  <a href="#功能特性">功能特性</a> &bull;
-  <a href="#应用截图">应用截图</a> &bull;
-  <a href="#安装">安装</a> &bull;
-  <a href="#开发">开发</a> &bull;
+  <a href="#功能特性">功能特性</a> •
+  <a href="#应用截图">应用截图</a> •
+  <a href="#安装">安装</a> •
+  <a href="#开发">开发</a> •
   <a href="README.md">English</a>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/版本-0.1.0-blue" alt="Version">
+  <a href="https://github.com/codedogQBY/ReadAny/releases">
+    <img src="https://img.shields.io/github/v/release/codedogQBY/ReadAny?color=blue" alt="Release">
+  </a>
+  <a href="https://github.com/codedogQBY/ReadAny/stargazers">
+    <img src="https://img.shields.io/github/stars/codedogQBY/ReadAny?color=yellow" alt="Stars">
+  </a>
+  <a href="https://github.com/codedogQBY/ReadAny/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/codedogQBY/ReadAny?color=green" alt="License">
+  </a>
   <img src="https://img.shields.io/badge/平台-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey" alt="Platform">
-  <img src="https://img.shields.io/badge/许可证-MIT-green" alt="License">
 </p>
 
 ---
-
-<!-- TODO: 替换为真实的产品截图或 GIF -->
-<!-- ![ReadAny Hero](docs/screenshots/hero.png) -->
 
 ## 功能特性
 
@@ -80,15 +84,15 @@
 
 ## 应用截图
 
-<!-- TODO: 将截图添加到 docs/screenshots/ 目录，然后取消下方注释 -->
+> 📸 截图即将上线！应用包含现代书库视图、沉浸式阅读器、AI 对话面板和全面的笔记管理功能。
 
 | 书库视图 | 阅读视图 | AI 对话 |
 |:--------:|:--------:|:-------:|
-| ![书库](docs/screenshots/library.png) | ![阅读器](docs/screenshots/reader.png) | ![AI 对话](docs/screenshots/chat.png) |
+| *即将上线* | *即将上线* | *即将上线* |
 
 | 笔记面板 | 思维导图 | 设置 |
 |:--------:|:--------:|:----:|
-| ![笔记](docs/screenshots/notes.png) | ![思维导图](docs/screenshots/mindmap.png) | ![设置](docs/screenshots/settings.png) |
+| *即将上线* | *即将上线* | *即将上线* |
 
 ---
 
@@ -117,11 +121,10 @@
 
 根据你的平台下载最新版本：
 
-<!-- TODO: 发布后更新下载链接 -->
-- [macOS (Apple Silicon)](https://github.com/xxx/ReadAny/releases)
-- [macOS (Intel)](https://github.com/xxx/ReadAny/releases)
-- [Windows](https://github.com/xxx/ReadAny/releases)
-- [Linux](https://github.com/xxx/ReadAny/releases)
+- [macOS (Apple Silicon)](https://github.com/codedogQBY/ReadAny/releases/latest)
+- [macOS (Intel)](https://github.com/codedogQBY/ReadAny/releases/latest)
+- [Windows](https://github.com/codedogQBY/ReadAny/releases/latest)
+- [Linux](https://github.com/codedogQBY/ReadAny/releases/latest)
 
 ### 从源码构建
 
@@ -136,7 +139,7 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/xxx/ReadAny.git
+git clone https://github.com/codedogQBY/ReadAny.git
 cd ReadAny
 
 # 安装依赖
