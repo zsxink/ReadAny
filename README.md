@@ -100,11 +100,20 @@ Read your favorite e-books in any format:
   <a href="https://github.com/codedogQBY/ReadAny/issues">
     <img src="https://img.shields.io/badge/GitHub-Issues-green?logo=github" alt="GitHub Issues">
   </a>
+  <a href="#">
+    <img src="https://img.shields.io/badge/Discord-Coming_Soon-5865F2?logo=discord" alt="Discord">
+  </a>
+  <a href="#">
+    <img src="https://img.shields.io/badge/Twitter-Coming_Soon-1DA1F2?logo=twitter" alt="Twitter">
+  </a>
 </p>
 
 - **💬 Discussions** - Join the conversation, ask questions, share ideas in [GitHub Discussions](https://github.com/codedogQBY/ReadAny/discussions)
 - **🐛 Bug Reports** - Found a bug? Open an [Issue](https://github.com/codedogQBY/ReadAny/issues)
 - **💡 Feature Requests** - Have an idea? We'd love to hear it in [Discussions](https://github.com/codedogQBY/ReadAny/discussions/categories/ideas)
+- **🎮 Discord** - *Coming soon* - Join our community chat
+- **🐦 Twitter/X** - *Coming soon* - Follow for updates and tips
+- **💬 WeChat Group** - *Coming soon* - For Chinese users
 
 ---
 

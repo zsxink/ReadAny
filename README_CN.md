@@ -97,11 +97,20 @@
   <a href="https://github.com/codedogQBY/ReadAny/issues">
     <img src="https://img.shields.io/badge/GitHub-问题反馈-green?logo=github" alt="GitHub Issues">
   </a>
+  <a href="#">
+    <img src="https://img.shields.io/badge/Discord-即将上线-5865F2?logo=discord" alt="Discord">
+  </a>
+  <a href="#">
+    <img src="https://img.shields.io/badge/Twitter-即将上线-1DA1F2?logo=twitter" alt="Twitter">
+  </a>
 </p>
 
 - **💬 讨论区** - 参与讨论、提问、分享想法，请访问 [GitHub Discussions](https://github.com/codedogQBY/ReadAny/discussions)
 - **🐛 问题反馈** - 发现 Bug？请提交 [Issue](https://github.com/codedogQBY/ReadAny/issues)
 - **💡 功能建议** - 有好点子？欢迎在 [讨论区](https://github.com/codedogQBY/ReadAny/discussions/categories/ideas) 分享
+- **🎮 Discord** - *即将上线* - 加入社区聊天
+- **🐦 Twitter/X** - *即将上线* - 关注获取更新和技巧
+- **💬 微信群** - *即将上线* - 面向中文用户
 
 ---
 
