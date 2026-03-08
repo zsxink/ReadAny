@@ -18,7 +18,7 @@ export interface Tab {
 
 export type SidebarTab = "chat" | "notes" | "toc" | "highlights" | "stats";
 
-export type SettingsTab = "general" | "reading" | "ai" | "vectorModel" | "tts" | "translation" | "about";
+export type SettingsTab = "general" | "reading" | "ai" | "vectorModel" | "tts" | "translation" | "sync" | "about";
 
 export interface AppState {
   tabs: Tab[];

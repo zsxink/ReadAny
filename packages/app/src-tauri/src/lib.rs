@@ -1,4 +1,5 @@
 mod db;
+mod sync;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -11,6 +12,16 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_websocket::init())
+        .invoke_handler(tauri::generate_handler![
+            sync::commands::sync_test_connection,
+            sync::commands::sync_configure,
+            sync::commands::sync_get_config,
+            sync::commands::sync_now,
+            sync::commands::sync_get_status,
+            sync::commands::sync_hash_file,
+            sync::commands::sync_set_auto_sync,
+            sync::commands::sync_reset,
+        ])
         .setup(|app| {
             let app_handle = app.handle().clone();
             if let Err(e) = db::init_database_sync(&app_handle) {

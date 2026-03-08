@@ -139,5 +139,58 @@ pub fn initialize(db_path: &Path) -> Result<()> {
     // Add segment_cfis column if missing
     let _ = conn.execute_batch("ALTER TABLE chunks ADD COLUMN segment_cfis TEXT");
 
+    // --- Sync migrations ---
+
+    // Migration 4: Add updated_at and file_hash to books
+    let _ = conn.execute_batch("ALTER TABLE books ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0");
+    let _ = conn.execute_batch("ALTER TABLE books ADD COLUMN file_hash TEXT");
+    let _ = conn.execute_batch("UPDATE books SET updated_at = added_at WHERE updated_at = 0");
+
+    // Migration 5: Tombstones table for tracking deletions across sync
+    let _ = conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS sync_tombstones (
+            id TEXT NOT NULL,
+            table_name TEXT NOT NULL,
+            deleted_at INTEGER NOT NULL,
+            device_id TEXT NOT NULL,
+            PRIMARY KEY (id, table_name)
+        )",
+    );
+    let _ = conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_tombstones_deleted_at ON sync_tombstones(deleted_at)",
+    );
+
+    // Migration 6: Sync metadata table
+    let _ = conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS sync_metadata (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )",
+    );
+
+    // Migration 7: Add sync_version and last_modified_by to all synced tables
+    let _ = conn.execute_batch("ALTER TABLE books ADD COLUMN sync_version INTEGER DEFAULT 0");
+    let _ = conn.execute_batch("ALTER TABLE books ADD COLUMN last_modified_by TEXT");
+    let _ =
+        conn.execute_batch("ALTER TABLE highlights ADD COLUMN sync_version INTEGER DEFAULT 0");
+    let _ = conn.execute_batch("ALTER TABLE highlights ADD COLUMN last_modified_by TEXT");
+    let _ = conn.execute_batch("ALTER TABLE notes ADD COLUMN sync_version INTEGER DEFAULT 0");
+    let _ = conn.execute_batch("ALTER TABLE notes ADD COLUMN last_modified_by TEXT");
+    let _ =
+        conn.execute_batch("ALTER TABLE bookmarks ADD COLUMN sync_version INTEGER DEFAULT 0");
+    let _ = conn.execute_batch("ALTER TABLE bookmarks ADD COLUMN last_modified_by TEXT");
+    let _ = conn.execute_batch("ALTER TABLE threads ADD COLUMN sync_version INTEGER DEFAULT 0");
+    let _ = conn.execute_batch("ALTER TABLE threads ADD COLUMN last_modified_by TEXT");
+    let _ =
+        conn.execute_batch("ALTER TABLE messages ADD COLUMN sync_version INTEGER DEFAULT 0");
+    let _ = conn.execute_batch("ALTER TABLE messages ADD COLUMN last_modified_by TEXT");
+    let _ = conn.execute_batch(
+        "ALTER TABLE reading_sessions ADD COLUMN sync_version INTEGER DEFAULT 0",
+    );
+    let _ =
+        conn.execute_batch("ALTER TABLE reading_sessions ADD COLUMN last_modified_by TEXT");
+    let _ = conn.execute_batch("ALTER TABLE skills ADD COLUMN sync_version INTEGER DEFAULT 0");
+    let _ = conn.execute_batch("ALTER TABLE skills ADD COLUMN last_modified_by TEXT");
+
     Ok(())
 }

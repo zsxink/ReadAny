@@ -23,11 +23,13 @@ export interface Book {
   meta: BookMeta;
   addedAt: number;
   lastOpenedAt?: number;
+  updatedAt: number;
   progress: number; // 0-1
   currentCfi?: string; // EPUB CFI position or PDF page marker (e.g. "page-5")
   isVectorized: boolean;
   vectorizeProgress: number; // 0-1
   tags: string[];
+  fileHash?: string;
 }
 
 export type ViewMode = "paginated" | "scroll";

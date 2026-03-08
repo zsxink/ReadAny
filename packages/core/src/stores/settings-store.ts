@@ -14,6 +14,7 @@ export interface SettingsState {
   readSettings: ReadSettings;
   translationConfig: TranslationConfig;
   aiConfig: AIConfig;
+  settingsUpdatedAt: number;
 
   // Actions
   updateReadSettings: (updates: Partial<ReadSettings>) => void;
@@ -185,15 +186,18 @@ export const useSettingsStore = create<SettingsState>()(
   readSettings: defaultReadSettings,
   translationConfig: defaultTranslationConfig,
   aiConfig: defaultAIConfig,
+  settingsUpdatedAt: 0,
 
   updateReadSettings: (updates) =>
     set((state) => ({
       readSettings: { ...state.readSettings, ...updates },
+      settingsUpdatedAt: Date.now(),
     })),
 
   updateTranslationConfig: (updates) =>
     set((state) => ({
       translationConfig: { ...state.translationConfig, ...updates },
+      settingsUpdatedAt: Date.now(),
     })),
 
   updateAIConfig: (updates) =>

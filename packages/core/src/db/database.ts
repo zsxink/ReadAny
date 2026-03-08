@@ -14,12 +14,65 @@ let dbInitialized = false;
 
 const DB_NAME = "sqlite:readany.db";
 
+// Cached device ID for sync tracking
+let cachedDeviceId: string | null = null;
+
 async function getDB(): Promise<IDatabase> {
   if (!db) {
     const platform = getPlatformService();
     db = await platform.loadDatabase(DB_NAME);
   }
   return db;
+}
+
+/** Get or create device ID for sync tracking */
+export async function getDeviceId(): Promise<string> {
+  if (cachedDeviceId) return cachedDeviceId;
+  const database = await getDB();
+  try {
+    const rows = await database.select<{ value: string }>(
+      "SELECT value FROM sync_metadata WHERE key = 'device_id'"
+    );
+    if (rows.length > 0) {
+      cachedDeviceId = rows[0].value;
+      return cachedDeviceId;
+    }
+  } catch {
+    // Table might not exist yet
+  }
+  // Generate new device ID
+  const id = crypto.randomUUID();
+  try {
+    await database.execute(
+      "INSERT OR REPLACE INTO sync_metadata (key, value) VALUES ('device_id', ?)",
+      [id]
+    );
+  } catch {
+    // Table might not exist yet during init
+  }
+  cachedDeviceId = id;
+  return id;
+}
+
+/** Get next sync version for a table */
+async function nextSyncVersion(database: IDatabase, table: string): Promise<number> {
+  const rows = await database.select<{ max_v: number | null }>(
+    `SELECT MAX(sync_version) as max_v FROM ${table}`
+  );
+  return (rows[0]?.max_v || 0) + 1;
+}
+
+/** Insert a tombstone record for sync deletion tracking */
+async function insertTombstone(database: IDatabase, id: string, tableName: string): Promise<void> {
+  const deviceId = await getDeviceId();
+  try {
+    await database.execute(
+      "INSERT OR REPLACE INTO sync_tombstones (id, table_name, deleted_at, device_id) VALUES (?, ?, ?, ?)",
+      [id, tableName, Date.now(), deviceId]
+    );
+  } catch {
+    // sync_tombstones table might not exist on older schema
+  }
 }
 
 /** Initialize the database, creating tables if needed */
@@ -203,6 +256,61 @@ export async function initDatabase(): Promise<void> {
     // Column already exists, ignore
   }
 
+  // --- Sync migrations ---
+  // Migration 4: Add updated_at and file_hash to books
+  try {
+    await database.execute("ALTER TABLE books ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0");
+  } catch {
+    // Column already exists
+  }
+  try {
+    await database.execute("ALTER TABLE books ADD COLUMN file_hash TEXT");
+  } catch {
+    // Column already exists
+  }
+  try {
+    await database.execute("UPDATE books SET updated_at = added_at WHERE updated_at = 0");
+  } catch {
+    // Already updated
+  }
+
+  // Migration 5: Tombstones table
+  await database.execute(`
+    CREATE TABLE IF NOT EXISTS sync_tombstones (
+      id TEXT NOT NULL,
+      table_name TEXT NOT NULL,
+      deleted_at INTEGER NOT NULL,
+      device_id TEXT NOT NULL,
+      PRIMARY KEY (id, table_name)
+    )
+  `);
+  await database.execute(
+    "CREATE INDEX IF NOT EXISTS idx_tombstones_deleted_at ON sync_tombstones(deleted_at)"
+  );
+
+  // Migration 6: Sync metadata table
+  await database.execute(`
+    CREATE TABLE IF NOT EXISTS sync_metadata (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )
+  `);
+
+  // Migration 7: Add sync_version and last_modified_by to all synced tables
+  const syncTables = ["books", "highlights", "notes", "bookmarks", "threads", "messages", "reading_sessions", "skills"];
+  for (const table of syncTables) {
+    try {
+      await database.execute(`ALTER TABLE ${table} ADD COLUMN sync_version INTEGER DEFAULT 0`);
+    } catch {
+      // Column already exists
+    }
+    try {
+      await database.execute(`ALTER TABLE ${table} ADD COLUMN last_modified_by TEXT`);
+    } catch {
+      // Column already exists
+    }
+  }
+
   dbInitialized = true;
 }
 
@@ -255,11 +363,13 @@ interface BookRow {
   total_chapters: number;
   added_at: number;
   last_opened_at: number | null;
+  updated_at: number;
   progress: number;
   current_cfi: string | null;
   is_vectorized: number;
   vectorize_progress: number;
   tags: string;
+  file_hash: string | null;
 }
 
 function rowToBook(row: BookRow): Book {
@@ -282,11 +392,13 @@ function rowToBook(row: BookRow): Book {
     },
     addedAt: row.added_at,
     lastOpenedAt: row.last_opened_at || undefined,
+    updatedAt: row.updated_at || row.added_at,
     progress: row.progress,
     currentCfi: row.current_cfi || undefined,
     isVectorized: row.is_vectorized === 1,
     vectorizeProgress: row.vectorize_progress,
     tags: parseJSON(row.tags, []),
+    fileHash: row.file_hash || undefined,
   };
 }
 
@@ -306,9 +418,12 @@ export async function getBook(id: string): Promise<Book | null> {
 
 export async function insertBook(book: Book): Promise<void> {
   const database = await getDB();
+  const deviceId = await getDeviceId();
+  const syncVersion = await nextSyncVersion(database, "books");
+  const now = Date.now();
   await database.execute(
-    `INSERT INTO books (id, file_path, format, title, author, publisher, language, isbn, description, cover_url, publish_date, subjects, total_pages, total_chapters, added_at, last_opened_at, progress, current_cfi, is_vectorized, vectorize_progress, tags)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO books (id, file_path, format, title, author, publisher, language, isbn, description, cover_url, publish_date, subjects, total_pages, total_chapters, added_at, last_opened_at, updated_at, progress, current_cfi, is_vectorized, vectorize_progress, tags, file_hash, sync_version, last_modified_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       book.id,
       book.filePath,
@@ -326,11 +441,15 @@ export async function insertBook(book: Book): Promise<void> {
       book.meta.totalChapters || 0,
       book.addedAt,
       book.lastOpenedAt || null,
+      now,
       book.progress,
       book.currentCfi || null,
       book.isVectorized ? 1 : 0,
       book.vectorizeProgress,
       JSON.stringify(book.tags),
+      book.fileHash || null,
+      syncVersion,
+      deviceId,
     ],
   );
 }
@@ -400,8 +519,22 @@ export async function updateBook(id: string, updates: Partial<Book>): Promise<vo
     sets.push("tags = ?");
     values.push(JSON.stringify(updates.tags));
   }
+  if (updates.fileHash !== undefined) {
+    sets.push("file_hash = ?");
+    values.push(updates.fileHash);
+  }
 
   if (sets.length === 0) return;
+
+  // Add sync tracking fields
+  const deviceId = await getDeviceId();
+  const syncVersion = await nextSyncVersion(database, "books");
+  sets.push("updated_at = ?");
+  values.push(Date.now());
+  sets.push("sync_version = ?");
+  values.push(syncVersion);
+  sets.push("last_modified_by = ?");
+  values.push(deviceId);
 
   values.push(id);
   await database.execute(`UPDATE books SET ${sets.join(", ")} WHERE id = ?`, values);
@@ -409,6 +542,7 @@ export async function updateBook(id: string, updates: Partial<Book>): Promise<vo
 
 export async function deleteBook(id: string): Promise<void> {
   const database = await getDB();
+  await insertTombstone(database, id, "books");
   await database.execute("DELETE FROM books WHERE id = ?", [id]);
 }
 
@@ -559,8 +693,10 @@ export async function getHighlightStats(): Promise<{
 
 export async function insertHighlight(highlight: Highlight): Promise<void> {
   const database = await getDB();
+  const deviceId = await getDeviceId();
+  const syncVersion = await nextSyncVersion(database, "highlights");
   await database.execute(
-    "INSERT INTO highlights (id, book_id, cfi, text, color, note, chapter_title, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO highlights (id, book_id, cfi, text, color, note, chapter_title, created_at, updated_at, sync_version, last_modified_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
       highlight.id,
       highlight.bookId,
@@ -571,6 +707,8 @@ export async function insertHighlight(highlight: Highlight): Promise<void> {
       highlight.chapterTitle || null,
       highlight.createdAt,
       highlight.updatedAt,
+      syncVersion,
+      deviceId,
     ],
   );
 }
@@ -595,6 +733,14 @@ export async function updateHighlight(id: string, updates: Partial<Highlight>): 
   sets.push("updated_at = ?");
   values.push(Date.now());
 
+  // Add sync tracking
+  const deviceId = await getDeviceId();
+  const syncVersion = await nextSyncVersion(database, "highlights");
+  sets.push("sync_version = ?");
+  values.push(syncVersion);
+  sets.push("last_modified_by = ?");
+  values.push(deviceId);
+
   if (sets.length === 0) return;
   values.push(id);
   await database.execute(`UPDATE highlights SET ${sets.join(", ")} WHERE id = ?`, values);
@@ -602,6 +748,7 @@ export async function updateHighlight(id: string, updates: Partial<Highlight>): 
 
 export async function deleteHighlight(id: string): Promise<void> {
   const database = await getDB();
+  await insertTombstone(database, id, "highlights");
   await database.execute("DELETE FROM highlights WHERE id = ?", [id]);
 }
 
@@ -666,8 +813,10 @@ export async function getAllNotes(limit = 50): Promise<Note[]> {
 
 export async function insertNote(note: Note): Promise<void> {
   const database = await getDB();
+  const deviceId = await getDeviceId();
+  const syncVersion = await nextSyncVersion(database, "notes");
   await database.execute(
-    "INSERT INTO notes (id, book_id, highlight_id, cfi, title, content, chapter_title, tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO notes (id, book_id, highlight_id, cfi, title, content, chapter_title, tags, created_at, updated_at, sync_version, last_modified_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
       note.id,
       note.bookId,
@@ -679,6 +828,8 @@ export async function insertNote(note: Note): Promise<void> {
       JSON.stringify(note.tags),
       note.createdAt,
       note.updatedAt,
+      syncVersion,
+      deviceId,
     ],
   );
 }
@@ -703,6 +854,14 @@ export async function updateNote(id: string, updates: Partial<Note>): Promise<vo
   sets.push("updated_at = ?");
   values.push(Date.now());
 
+  // Add sync tracking
+  const deviceId = await getDeviceId();
+  const syncVersion = await nextSyncVersion(database, "notes");
+  sets.push("sync_version = ?");
+  values.push(syncVersion);
+  sets.push("last_modified_by = ?");
+  values.push(deviceId);
+
   if (sets.length === 0) return;
   values.push(id);
   await database.execute(`UPDATE notes SET ${sets.join(", ")} WHERE id = ?`, values);
@@ -710,6 +869,7 @@ export async function updateNote(id: string, updates: Partial<Note>): Promise<vo
 
 export async function deleteNote(id: string): Promise<void> {
   const database = await getDB();
+  await insertTombstone(database, id, "notes");
   await database.execute("DELETE FROM notes WHERE id = ?", [id]);
 }
 
@@ -737,8 +897,10 @@ export async function getBookmarks(bookId: string): Promise<Bookmark[]> {
 
 export async function insertBookmark(bookmark: Bookmark): Promise<void> {
   const database = await getDB();
+  const deviceId = await getDeviceId();
+  const syncVersion = await nextSyncVersion(database, "bookmarks");
   await database.execute(
-    "INSERT INTO bookmarks (id, book_id, cfi, label, chapter_title, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    "INSERT INTO bookmarks (id, book_id, cfi, label, chapter_title, created_at, sync_version, last_modified_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     [
       bookmark.id,
       bookmark.bookId,
@@ -746,12 +908,15 @@ export async function insertBookmark(bookmark: Bookmark): Promise<void> {
       bookmark.label || null,
       bookmark.chapterTitle || null,
       bookmark.createdAt,
+      syncVersion,
+      deviceId,
     ],
   );
 }
 
 export async function deleteBookmark(id: string): Promise<void> {
   const database = await getDB();
+  await insertTombstone(database, id, "bookmarks");
   await database.execute("DELETE FROM bookmarks WHERE id = ?", [id]);
 }
 
@@ -815,23 +980,37 @@ export async function getThread(id: string): Promise<Thread | null> {
 
 export async function insertThread(thread: Thread): Promise<void> {
   const database = await getDB();
+  const deviceId = await getDeviceId();
+  const syncVersion = await nextSyncVersion(database, "threads");
   await database.execute(
-    "INSERT INTO threads (id, book_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-    [thread.id, thread.bookId || null, thread.title, thread.createdAt, thread.updatedAt],
+    "INSERT INTO threads (id, book_id, title, created_at, updated_at, sync_version, last_modified_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    [thread.id, thread.bookId || null, thread.title, thread.createdAt, thread.updatedAt, syncVersion, deviceId],
   );
 }
 
 export async function updateThreadTitle(id: string, title: string): Promise<void> {
   const database = await getDB();
-  await database.execute("UPDATE threads SET title = ?, updated_at = ? WHERE id = ?", [
+  const deviceId = await getDeviceId();
+  const syncVersion = await nextSyncVersion(database, "threads");
+  await database.execute("UPDATE threads SET title = ?, updated_at = ?, sync_version = ?, last_modified_by = ? WHERE id = ?", [
     title,
     Date.now(),
+    syncVersion,
+    deviceId,
     id,
   ]);
 }
 
 export async function deleteThread(id: string): Promise<void> {
   const database = await getDB();
+  // Get all message IDs in this thread for tombstones
+  const messages = await database.select<{ id: string }>(
+    "SELECT id FROM messages WHERE thread_id = ?", [id]
+  );
+  for (const msg of messages) {
+    await insertTombstone(database, msg.id, "messages");
+  }
+  await insertTombstone(database, id, "threads");
   await database.execute("DELETE FROM messages WHERE thread_id = ?", [id]);
   await database.execute("DELETE FROM threads WHERE id = ?", [id]);
 }
@@ -866,8 +1045,10 @@ export async function getMessages(threadId: string): Promise<Message[]> {
 
 export async function insertMessage(message: Message): Promise<void> {
   const database = await getDB();
+  const deviceId = await getDeviceId();
+  const syncVersion = await nextSyncVersion(database, "messages");
   await database.execute(
-    "INSERT INTO messages (id, thread_id, role, content, citations, tool_calls, reasoning, parts_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO messages (id, thread_id, role, content, citations, tool_calls, reasoning, parts_order, created_at, sync_version, last_modified_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
       message.id,
       message.threadId,
@@ -878,6 +1059,8 @@ export async function insertMessage(message: Message): Promise<void> {
       message.reasoning ? JSON.stringify(message.reasoning) : null,
       (message as any).partsOrder ? JSON.stringify((message as any).partsOrder) : null,
       message.createdAt,
+      syncVersion,
+      deviceId,
     ],
   );
 }
@@ -936,8 +1119,10 @@ export async function getReadingSessionsByDateRange(
 
 export async function insertReadingSession(session: ReadingSession): Promise<void> {
   const database = await getDB();
+  const deviceId = await getDeviceId();
+  const syncVersion = await nextSyncVersion(database, "reading_sessions");
   await database.execute(
-    "INSERT INTO reading_sessions (id, book_id, started_at, ended_at, total_active_time, pages_read, state) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO reading_sessions (id, book_id, started_at, ended_at, total_active_time, pages_read, state, sync_version, last_modified_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
       session.id,
       session.bookId,
@@ -946,6 +1131,8 @@ export async function insertReadingSession(session: ReadingSession): Promise<voi
       session.totalActiveTime,
       session.pagesRead,
       session.state,
+      syncVersion,
+      deviceId,
     ],
   );
 }
@@ -976,6 +1163,15 @@ export async function updateReadingSession(
   }
 
   if (sets.length === 0) return;
+
+  // Add sync tracking
+  const deviceId = await getDeviceId();
+  const syncVersion = await nextSyncVersion(database, "reading_sessions");
+  sets.push("sync_version = ?");
+  values.push(syncVersion);
+  sets.push("last_modified_by = ?");
+  values.push(deviceId);
+
   values.push(id);
   await database.execute(`UPDATE reading_sessions SET ${sets.join(", ")} WHERE id = ?`, values);
 }
@@ -1068,8 +1264,10 @@ export async function getSkills(): Promise<Skill[]> {
 
 export async function insertSkill(skill: Skill): Promise<void> {
   const database = await getDB();
+  const deviceId = await getDeviceId();
+  const syncVersion = await nextSyncVersion(database, "skills");
   await database.execute(
-    "INSERT INTO skills (id, name, description, icon, enabled, parameters, prompt, built_in, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO skills (id, name, description, icon, enabled, parameters, prompt, built_in, created_at, updated_at, sync_version, last_modified_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
       skill.id,
       skill.name,
@@ -1081,6 +1279,8 @@ export async function insertSkill(skill: Skill): Promise<void> {
       skill.builtIn ? 1 : 0,
       skill.createdAt,
       skill.updatedAt,
+      syncVersion,
+      deviceId,
     ],
   );
 }
@@ -1113,6 +1313,14 @@ export async function updateSkill(id: string, updates: Partial<Skill>): Promise<
   sets.push("updated_at = ?");
   values.push(Date.now());
 
+  // Add sync tracking
+  const deviceId = await getDeviceId();
+  const syncVersion = await nextSyncVersion(database, "skills");
+  sets.push("sync_version = ?");
+  values.push(syncVersion);
+  sets.push("last_modified_by = ?");
+  values.push(deviceId);
+
   if (sets.length === 0) return;
   values.push(id);
   await database.execute(`UPDATE skills SET ${sets.join(", ")} WHERE id = ?`, values);
@@ -1120,5 +1328,6 @@ export async function updateSkill(id: string, updates: Partial<Skill>): Promise<
 
 export async function deleteSkill(id: string): Promise<void> {
   const database = await getDB();
+  await insertTombstone(database, id, "skills");
   await database.execute("DELETE FROM skills WHERE id = ?", [id]);
 }

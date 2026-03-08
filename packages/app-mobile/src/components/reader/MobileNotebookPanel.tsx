@@ -177,6 +177,7 @@ export function MobileNotebookPanel({
       filePath: "",
       format: "epub" as const,
       addedAt: Date.now(),
+      updatedAt: Date.now(),
       progress: 0,
       isVectorized: false,
       vectorizeProgress: 0,
