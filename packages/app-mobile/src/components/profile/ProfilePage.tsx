@@ -3,10 +3,11 @@ import { useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { cn } from "@readany/core/utils";
 import { readingStatsService } from "@readany/core/stats";
-import type { DailyStats, OverallStats } from "@readany/core/stats";
+import type { DailyStats, OverallStats, PeriodBookStats, TrendPoint } from "@readany/core/stats";
 import { useReadingSessionStore } from "@readany/core/stores/reading-session-store";
 import {
   ChevronRight,
+  ChevronLeft,
   Info,
   Palette,
   Database,
@@ -20,6 +21,28 @@ import {
   Languages,
   Cpu,
 } from "lucide-react";
+import { MobileBarChart } from "../stats/MobileBarChart";
+import { MobileTrendChart } from "../stats/MobileTrendChart";
+import { MobilePeriodBookList } from "../stats/MobilePeriodBookList";
+
+type ChartView = "heatmap" | "bar";
+type ChartMode = "week" | "month";
+
+function getWeekStart(date: Date): Date {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function getWeekEnd(weekStart: Date): Date {
+  const d = new Date(weekStart);
+  d.setDate(d.getDate() + 6);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
 
 /* ── Settings menu ── */
 
@@ -55,12 +78,22 @@ function useMenuSections() {
 
 export function ProfilePage() {
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const menuSections = useMenuSections();
   const [overall, setOverall] = useState<OverallStats | null>(null);
   const [dailyStats, setDailyStats] = useState<DailyStats[]>([]);
   const [statsLoading, setStatsLoading] = useState(true);
   const saveCurrentSession = useReadingSessionStore((s) => s.saveCurrentSession);
+
+  // Chart state
+  const [chartView, setChartView] = useState<ChartView>("heatmap");
+  const [chartMode, setChartMode] = useState<ChartMode>("week");
+  const [chartDate, setChartDate] = useState<Date>(() => getWeekStart(new Date()));
+  const [chartData, setChartData] = useState<DailyStats[]>([]);
+  const [periodBooks, setPeriodBooks] = useState<PeriodBookStats[]>([]);
+  const [trendData, setTrendData] = useState<TrendPoint[]>([]);
+
+  const lang = i18n.language;
 
   useEffect(() => {
     const loadStats = async () => {
@@ -72,12 +105,14 @@ export function ProfilePage() {
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - 365);
 
-        const [daily, overallStats] = await Promise.all([
+        const [daily, overallStats, trend] = await Promise.all([
           readingStatsService.getDailyStats(startDate, endDate),
           readingStatsService.getOverallStats(),
+          readingStatsService.getRecentTrend(30),
         ]);
         setDailyStats(daily);
         setOverall(overallStats);
+        setTrendData(trend);
       } catch (err) {
         console.error("[ProfilePage] Failed to load stats:", err);
       } finally {
@@ -86,6 +121,90 @@ export function ProfilePage() {
     };
     loadStats();
   }, [saveCurrentSession]);
+
+  // Load chart data when mode/date changes
+  useEffect(() => {
+    if (!statsLoading) loadChartData();
+  }, [chartMode, chartDate, statsLoading]);
+
+  const loadChartData = async () => {
+    try {
+      let barData: DailyStats[];
+      let periodStart: Date;
+      let periodEnd: Date;
+
+      if (chartMode === "week") {
+        barData = await readingStatsService.getWeeklyStats(chartDate);
+        periodStart = chartDate;
+        periodEnd = getWeekEnd(chartDate);
+      } else {
+        const year = chartDate.getFullYear();
+        const month = chartDate.getMonth();
+        barData = await readingStatsService.getMonthlyStats(year, month);
+        periodStart = new Date(year, month, 1);
+        periodEnd = new Date(year, month + 1, 0, 23, 59, 59, 999);
+      }
+
+      setChartData(barData);
+      const books = await readingStatsService.getBookStatsForPeriod(periodStart, periodEnd);
+      setPeriodBooks(books);
+    } catch {
+      // ignore
+    }
+  };
+
+  const navigatePeriod = (direction: -1 | 1) => {
+    setChartDate((prev) => {
+      const d = new Date(prev);
+      if (chartMode === "week") {
+        d.setDate(d.getDate() + direction * 7);
+      } else {
+        d.setMonth(d.getMonth() + direction);
+      }
+      return d;
+    });
+  };
+
+  const switchChartMode = (mode: ChartMode) => {
+    setChartMode(mode);
+    if (mode === "week") {
+      setChartDate(getWeekStart(new Date()));
+    } else {
+      const now = new Date();
+      setChartDate(new Date(now.getFullYear(), now.getMonth(), 1));
+    }
+  };
+
+  const periodLabel = useMemo(() => {
+    const locale = lang === "zh" ? "zh-CN" : "en";
+    if (chartMode === "week") {
+      const end = getWeekEnd(chartDate);
+      const fmt = (d: Date) => d.toLocaleDateString(locale, { month: "short", day: "numeric" });
+      return `${fmt(chartDate)} – ${fmt(end)}`;
+    }
+    return chartDate.toLocaleDateString(locale, { year: "numeric", month: "long" });
+  }, [chartDate, chartMode, lang]);
+
+  const barChartData = useMemo(() => {
+    if (chartMode === "week") {
+      const dayNames = lang === "zh"
+        ? ["一", "二", "三", "四", "五", "六", "日"]
+        : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+      return chartData.map((d, i) => ({
+        label: dayNames[i] || d.date.slice(5),
+        value: d.totalTime,
+      }));
+    }
+    return chartData.map((d) => ({
+      label: String(new Date(d.date).getDate()),
+      value: d.totalTime,
+    }));
+  }, [chartData, chartMode, lang]);
+
+  const trendChartData = useMemo(
+    () => trendData.map((p) => ({ date: p.date, value: p.dailyTime })),
+    [trendData],
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -128,14 +247,123 @@ export function ProfilePage() {
           )}
         </div>
 
-        {/* ── Reading Heatmap ── */}
+        {/* ── Heatmap / Bar Chart (switchable) ── */}
         <div className="mx-4 mt-4 rounded-xl bg-card border border-border p-4">
-          <h2 className="text-sm font-medium text-muted-foreground mb-3">
-            {t("profile.readingActivity")}
-          </h2>
-          <MobileHeatmap dailyStats={dailyStats.map((s) => ({ date: s.date, time: s.totalTime }))} />
-          <HeatmapLegend />
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-medium text-muted-foreground">
+              {t("profile.readingActivity")}
+            </h2>
+            {/* Heatmap / Bar toggle */}
+            <div className="flex rounded-md border border-border bg-muted p-0.5">
+              <button
+                className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                  chartView === "heatmap"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground"
+                }`}
+                onClick={() => setChartView("heatmap")}
+              >
+                {t("stats.viewHeatmap")}
+              </button>
+              <button
+                className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                  chartView === "bar"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground"
+                }`}
+                onClick={() => setChartView("bar")}
+              >
+                {t("stats.viewBarChart")}
+              </button>
+            </div>
+          </div>
+
+          {chartView === "bar" && (
+            <div className="mb-3 flex items-center justify-between">
+              {/* Week / Month toggle */}
+              <div className="flex rounded-md border border-border bg-muted p-0.5">
+                <button
+                  className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                    chartMode === "week"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground"
+                  }`}
+                  onClick={() => switchChartMode("week")}
+                >
+                  {t("stats.periodWeek")}
+                </button>
+                <button
+                  className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                    chartMode === "month"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground"
+                  }`}
+                  onClick={() => switchChartMode("month")}
+                >
+                  {t("stats.periodMonth")}
+                </button>
+              </div>
+              {/* Date navigation */}
+              <div className="flex items-center gap-0.5">
+                <button
+                  className="rounded p-1 text-muted-foreground active:bg-accent"
+                  onClick={() => navigatePeriod(-1)}
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
+                <span className="min-w-[90px] text-center text-[10px] font-medium text-muted-foreground">
+                  {periodLabel}
+                </span>
+                <button
+                  className="rounded p-1 text-muted-foreground active:bg-accent"
+                  onClick={() => navigatePeriod(1)}
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {chartView === "heatmap" ? (
+            <>
+              <MobileHeatmap dailyStats={dailyStats.map((s) => ({ date: s.date, time: s.totalTime }))} />
+              <HeatmapLegend />
+            </>
+          ) : (
+            <MobileBarChart data={barChartData} height={160} emptyMessage={t("stats.noData")} />
+          )}
         </div>
+
+        {/* ── Trend Chart ── */}
+        <div className="mx-4 mt-3 rounded-xl bg-card border border-border p-4">
+          <h2 className="text-sm font-medium text-muted-foreground mb-3">
+            {t("stats.trendTitle")}
+          </h2>
+          <MobileTrendChart data={trendChartData} height={130} emptyMessage={t("stats.noData")} />
+        </div>
+
+        {/* ── Period Book List ── */}
+        <div className="mx-4 mt-3 rounded-xl bg-card border border-border p-4">
+          <h2 className="text-sm font-medium text-muted-foreground mb-2">
+            {t("stats.periodBooks")}
+          </h2>
+          <MobilePeriodBookList books={periodBooks} />
+        </div>
+
+        {/* ── Longest Streak ── */}
+        {overall && overall.longestStreak > 0 && (
+          <div className="mx-4 mt-3 flex items-center gap-2.5 rounded-xl bg-card border border-border p-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-50">
+              <Flame className="h-4 w-4 text-orange-500" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold">
+                {t("stats.longestStreak", { days: overall.longestStreak })}
+              </p>
+              <p className="text-[10px] text-muted-foreground">{t("stats.longestStreakDesc")}</p>
+            </div>
+          </div>
+        )}
 
         {/* ── Settings Menu ── */}
         {menuSections.map((section) => (
@@ -227,7 +455,6 @@ function MobileHeatmap({ dailyStats }: { dailyStats: Array<{ date: string; time:
 
     const today = new Date();
     const todayDay = today.getDay();
-    // Show ~6 months on mobile for compact display
     const totalWeeks = 26;
     const startDate = new Date(today);
     startDate.setDate(startDate.getDate() - (totalWeeks * 7 + todayDay - 1));

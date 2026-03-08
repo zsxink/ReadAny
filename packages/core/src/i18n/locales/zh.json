@@ -550,7 +550,21 @@
     "less": "少",
     "more": "多",
     "longestStreak": "最长连续：{{days}} 天",
-    "longestStreakDesc": "你的个人最佳阅读连续记录"
+    "longestStreakDesc": "你的个人最佳阅读连续记录",
+    "periodWeek": "周",
+    "periodMonth": "月",
+    "trendTitle": "近 30 天趋势",
+    "trendDesc": "过去 30 天的阅读时长趋势",
+    "periodBooks": "本周期书籍",
+    "noBooksInPeriod": "该时间段内暂无阅读记录",
+    "minutesShort": "{{time}}m",
+    "readingDays": "阅读天数",
+    "readingDaysDesc": "有阅读活动的天数",
+    "noData": "开始阅读，查看你的统计数据！",
+    "prevPeriod": "上一期",
+    "nextPeriod": "下一期",
+    "viewHeatmap": "热力图",
+    "viewBarChart": "柱状图"
   },
   "vectorize": {
     "title": "向量测试",

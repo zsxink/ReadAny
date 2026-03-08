@@ -556,7 +556,21 @@
     "less": "Less",
     "more": "More",
     "longestStreak": "Longest Streak: {{days}} days",
-    "longestStreakDesc": "Your personal best reading streak"
+    "longestStreakDesc": "Your personal best reading streak",
+    "periodWeek": "Week",
+    "periodMonth": "Month",
+    "trendTitle": "30-Day Trend",
+    "trendDesc": "Reading time trend over the past 30 days",
+    "periodBooks": "Books This Period",
+    "noBooksInPeriod": "No reading records in this period",
+    "minutesShort": "{{time}}m",
+    "readingDays": "Reading Days",
+    "readingDaysDesc": "Total days with reading activity",
+    "noData": "Start reading to see your stats!",
+    "prevPeriod": "Previous",
+    "nextPeriod": "Next",
+    "viewHeatmap": "Heatmap",
+    "viewBarChart": "Bar Chart"
   },
   "vectorize": {
     "title": "Vector Test",

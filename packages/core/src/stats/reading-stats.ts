@@ -23,9 +23,25 @@ export interface OverallStats {
   totalBooks: number;
   totalReadingTime: number; // minutes
   totalSessions: number;
+  totalReadingDays: number; // days
   avgDailyTime: number; // minutes
   longestStreak: number; // days
   currentStreak: number; // days
+}
+
+export interface PeriodBookStats {
+  bookId: string;
+  title: string;
+  author: string;
+  coverUrl?: string;
+  totalTime: number; // minutes
+  progress: number; // 0-1
+}
+
+export interface TrendPoint {
+  date: string; // YYYY-MM-DD
+  dailyTime: number; // minutes
+  cumulativeTime: number; // minutes
 }
 
 export class ReadingStatsService {
@@ -116,10 +132,77 @@ export class ReadingStatsService {
       totalBooks: books.filter((b) => b.progress > 0).length,
       totalReadingTime: totalTime / 60000,
       totalSessions,
+      totalReadingDays: readingDays.size,
       avgDailyTime: totalTime / 60000 / daysCount,
       longestStreak,
       currentStreak,
     };
+  }
+
+  /** Get weekly stats (7 days starting from weekStart, which should be a Monday) */
+  async getWeeklyStats(weekStart: Date): Promise<DailyStats[]> {
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    weekEnd.setHours(23, 59, 59, 999);
+    return this.getDailyStats(weekStart, weekEnd);
+  }
+
+  /** Get monthly stats (all days in a given month) */
+  async getMonthlyStats(year: number, month: number): Promise<DailyStats[]> {
+    const start = new Date(year, month, 1);
+    const end = new Date(year, month + 1, 0); // last day of month
+    end.setHours(23, 59, 59, 999);
+    return this.getDailyStats(start, end);
+  }
+
+  /** Get per-book reading time for a date range */
+  async getBookStatsForPeriod(start: Date, end: Date): Promise<PeriodBookStats[]> {
+    const sessions = await getReadingSessionsByDateRange(start, end);
+    const books = await getBooks();
+    const bookMap = new Map(books.map((b) => [b.id, b]));
+
+    // Group reading time by book
+    const timeByBook = new Map<string, number>();
+    for (const session of sessions) {
+      const existing = timeByBook.get(session.bookId) || 0;
+      timeByBook.set(session.bookId, existing + session.totalActiveTime);
+    }
+
+    // Build results sorted by total time descending
+    const results: PeriodBookStats[] = [];
+    for (const [bookId, totalMs] of timeByBook) {
+      const book = bookMap.get(bookId);
+      if (!book) continue;
+      results.push({
+        bookId,
+        title: book.meta.title,
+        author: book.meta.author,
+        coverUrl: book.meta.coverUrl,
+        totalTime: totalMs / 60000,
+        progress: book.progress,
+      });
+    }
+
+    return results.sort((a, b) => b.totalTime - a.totalTime);
+  }
+
+  /** Get recent trend data (daily + cumulative) for the last N days */
+  async getRecentTrend(days: number): Promise<TrendPoint[]> {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - days + 1);
+    start.setHours(0, 0, 0, 0);
+
+    const daily = await this.getDailyStats(start, end);
+    let cumulative = 0;
+    return daily.map((d) => {
+      cumulative += d.totalTime;
+      return {
+        date: d.date,
+        dailyTime: d.totalTime,
+        cumulativeTime: cumulative,
+      };
+    });
   }
 
   /** Calculate reading streaks from a set of reading dates */

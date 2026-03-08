@@ -1,14 +1,48 @@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { readingStatsService } from "@/lib/stats/reading-stats";
-import type { DailyStats, OverallStats } from "@/lib/stats/reading-stats";
-import { BookOpen, Clock, Flame, TrendingUp } from "lucide-react";
+import type { DailyStats, OverallStats, PeriodBookStats, TrendPoint } from "@/lib/stats/reading-stats";
+import { BookOpen, ChevronLeft, ChevronRight, Clock, Flame, TrendingUp } from "lucide-react";
 /**
- * ReadingStatsPanel — displays reading statistics with heatmap
+ * ReadingStatsPanel — displays reading statistics with charts, heatmap and book list
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "@/stores/app-store";
 import { useReadingSessionStore } from "@/stores/reading-session-store";
+import { BarChart } from "./BarChart";
+import { TrendChart } from "./TrendChart";
+import { PeriodBookList } from "./PeriodBookList";
+
+type ChartMode = "week" | "month";
+type ChartView = "heatmap" | "bar";
+
+/** Get the Monday of the week containing `date` */
+function getWeekStart(date: Date): Date {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day; // Monday = 1
+  d.setDate(d.getDate() + diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/** Get the Sunday of the week starting on `weekStart` */
+function getWeekEnd(weekStart: Date): Date {
+  const d = new Date(weekStart);
+  d.setDate(d.getDate() + 6);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+/** Get first day of month */
+function getMonthStart(year: number, month: number): Date {
+  return new Date(year, month, 1);
+}
+
+/** Get last day of month */
+function getMonthEnd(year: number, month: number): Date {
+  return new Date(year, month + 1, 0, 23, 59, 59, 999);
+}
 
 export function ReadingStatsPanel() {
   const { t, i18n } = useTranslation();
@@ -18,33 +52,141 @@ export function ReadingStatsPanel() {
   const [overall, setOverall] = useState<OverallStats | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Chart state
+  const [chartView, setChartView] = useState<ChartView>("heatmap");
+  const [chartMode, setChartMode] = useState<ChartMode>("week");
+  const [chartDate, setChartDate] = useState<Date>(() => getWeekStart(new Date()));
+  const [chartData, setChartData] = useState<DailyStats[]>([]);
+  const [periodBooks, setPeriodBooks] = useState<PeriodBookStats[]>([]);
+  const [trendData, setTrendData] = useState<TrendPoint[]>([]);
+
+  const lang = i18n.language;
+
   useEffect(() => {
     if (activeTabId === "stats") {
-      // Flush any in-memory reading session to DB before loading stats
       saveCurrentSession().then(() => loadStats());
     }
   }, [activeTabId]);
 
+  // Load chart data when mode or date changes
+  useEffect(() => {
+    if (activeTabId === "stats" && !loading) {
+      loadChartData();
+    }
+  }, [chartMode, chartDate, activeTabId]);
+
   const loadStats = async () => {
     setLoading(true);
     try {
-      // Load last 365 days for heatmap
       const endDate = new Date();
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - 365);
 
-      const [daily, overallStats] = await Promise.all([
+      const [daily, overallStats, trend] = await Promise.all([
         readingStatsService.getDailyStats(startDate, endDate),
         readingStatsService.getOverallStats(),
+        readingStatsService.getRecentTrend(30),
       ]);
 
       setDailyStats(daily);
       setOverall(overallStats);
+      setTrendData(trend);
     } catch {
       // Stats may fail if DB isn't initialized
     }
     setLoading(false);
+    // Load chart data after base stats are ready
+    loadChartData();
   };
+
+  const loadChartData = async () => {
+    try {
+      let barData: DailyStats[];
+      let periodStart: Date;
+      let periodEnd: Date;
+
+      if (chartMode === "week") {
+        barData = await readingStatsService.getWeeklyStats(chartDate);
+        periodStart = chartDate;
+        periodEnd = getWeekEnd(chartDate);
+      } else {
+        const year = chartDate.getFullYear();
+        const month = chartDate.getMonth();
+        barData = await readingStatsService.getMonthlyStats(year, month);
+        periodStart = getMonthStart(year, month);
+        periodEnd = getMonthEnd(year, month);
+      }
+
+      setChartData(barData);
+
+      const books = await readingStatsService.getBookStatsForPeriod(periodStart, periodEnd);
+      setPeriodBooks(books);
+    } catch {
+      // ignore
+    }
+  };
+
+  // Chart date navigation
+  const navigatePeriod = (direction: -1 | 1) => {
+    setChartDate((prev) => {
+      const d = new Date(prev);
+      if (chartMode === "week") {
+        d.setDate(d.getDate() + direction * 7);
+      } else {
+        d.setMonth(d.getMonth() + direction);
+      }
+      return d;
+    });
+  };
+
+  const switchChartMode = (mode: ChartMode) => {
+    setChartMode(mode);
+    if (mode === "week") {
+      setChartDate(getWeekStart(new Date()));
+    } else {
+      const now = new Date();
+      setChartDate(new Date(now.getFullYear(), now.getMonth(), 1));
+    }
+  };
+
+  // Format the current period label
+  const periodLabel = useMemo(() => {
+    if (chartMode === "week") {
+      const end = getWeekEnd(chartDate);
+      const fmt = (d: Date) =>
+        d.toLocaleDateString(lang === "zh" ? "zh-CN" : "en", { month: "short", day: "numeric" });
+      return `${fmt(chartDate)} – ${fmt(end)}`;
+    }
+    return chartDate.toLocaleDateString(lang === "zh" ? "zh-CN" : "en", {
+      year: "numeric",
+      month: "long",
+    });
+  }, [chartDate, chartMode, lang]);
+
+  // Transform DailyStats → BarChart data
+  const barChartData = useMemo(() => {
+    if (chartMode === "week") {
+      const dayNames =
+        lang === "zh"
+          ? ["一", "二", "三", "四", "五", "六", "日"]
+          : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+      return chartData.map((d, i) => ({
+        label: dayNames[i] || d.date.slice(5),
+        value: d.totalTime,
+      }));
+    }
+    // Month mode: show day numbers
+    return chartData.map((d) => ({
+      label: String(new Date(d.date).getDate()),
+      value: d.totalTime,
+    }));
+  }, [chartData, chartMode, lang]);
+
+  // Transform TrendPoint → TrendChart data
+  const trendChartData = useMemo(
+    () => trendData.map((p) => ({ date: p.date, value: p.dailyTime })),
+    [trendData],
+  );
 
   if (loading) {
     return (
@@ -55,7 +197,7 @@ export function ReadingStatsPanel() {
   }
 
   return (
-    <div className="flex-1 space-y-6 overflow-auto p-6">
+    <div className="h-full space-y-6 overflow-auto p-6">
       {/* Page Header */}
       <div className="space-y-1">
         <h1 className="text-2xl font-bold text-neutral-900">{t("stats.title")}</h1>
@@ -92,14 +234,115 @@ export function ReadingStatsPanel() {
         </div>
       )}
 
-      {/* Heatmap Section */}
+      {/* Heatmap / Bar Chart Section (switchable) */}
+      <div className="rounded-xl border border-neutral-150 p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="space-y-1">
+            <h3 className="text-base font-semibold text-neutral-900">{t("stats.heatmapTitle")}</h3>
+            {chartView === "heatmap" && (
+              <p className="text-xs text-neutral-500">{t("stats.heatmapDesc")}</p>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {/* Heatmap / Bar toggle */}
+            <div className="flex rounded-lg border border-neutral-200 bg-neutral-50 p-0.5">
+              <button
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  chartView === "heatmap"
+                    ? "bg-white text-neutral-900 shadow-sm"
+                    : "text-neutral-500 hover:text-neutral-700"
+                }`}
+                onClick={() => setChartView("heatmap")}
+              >
+                {t("stats.viewHeatmap")}
+              </button>
+              <button
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  chartView === "bar"
+                    ? "bg-white text-neutral-900 shadow-sm"
+                    : "text-neutral-500 hover:text-neutral-700"
+                }`}
+                onClick={() => setChartView("bar")}
+              >
+                {t("stats.viewBarChart")}
+              </button>
+            </div>
+
+            {/* Week/Month toggle + date navigation (only for bar view) */}
+            {chartView === "bar" && (
+              <>
+                <div className="flex rounded-lg border border-neutral-200 bg-neutral-50 p-0.5">
+                  <button
+                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                      chartMode === "week"
+                        ? "bg-white text-neutral-900 shadow-sm"
+                        : "text-neutral-500 hover:text-neutral-700"
+                    }`}
+                    onClick={() => switchChartMode("week")}
+                  >
+                    {t("stats.periodWeek")}
+                  </button>
+                  <button
+                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                      chartMode === "month"
+                        ? "bg-white text-neutral-900 shadow-sm"
+                        : "text-neutral-500 hover:text-neutral-700"
+                    }`}
+                    onClick={() => switchChartMode("month")}
+                  >
+                    {t("stats.periodMonth")}
+                  </button>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600"
+                    onClick={() => navigatePeriod(-1)}
+                    title={t("stats.prevPeriod")}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <span className="min-w-[120px] text-center text-xs font-medium text-neutral-600">
+                    {periodLabel}
+                  </span>
+                  <button
+                    className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600"
+                    onClick={() => navigatePeriod(1)}
+                    title={t("stats.nextPeriod")}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Chart content */}
+        {chartView === "heatmap" ? (
+          <>
+            <HeatmapChart dailyStats={dailyStats} lang={lang} />
+            <HeatmapLegend />
+          </>
+        ) : (
+          <BarChart data={barChartData} height={200} emptyMessage={t("stats.noData")} />
+        )}
+      </div>
+
+      {/* Trend Chart Section */}
       <div className="rounded-xl border border-neutral-150 p-5">
         <div className="mb-4 space-y-1">
-          <h3 className="text-base font-semibold text-neutral-900">{t("stats.heatmapTitle")}</h3>
-          <p className="text-xs text-neutral-500">{t("stats.heatmapDesc")}</p>
+          <h3 className="text-base font-semibold text-neutral-900">{t("stats.trendTitle")}</h3>
+          <p className="text-xs text-neutral-500">{t("stats.trendDesc")}</p>
         </div>
-        <HeatmapChart dailyStats={dailyStats} lang={i18n.language} />
-        <HeatmapLegend />
+        <TrendChart data={trendChartData} height={160} emptyMessage={t("stats.noData")} />
+      </div>
+
+      {/* Period Book List */}
+      <div className="rounded-xl border border-neutral-150 p-5">
+        <div className="mb-4 space-y-1">
+          <h3 className="text-base font-semibold text-neutral-900">{t("stats.periodBooks")}</h3>
+        </div>
+        <PeriodBookList books={periodBooks} />
       </div>
 
       {/* Longest Streak */}
@@ -129,12 +372,10 @@ function HeatmapChart({ dailyStats, lang }: { dailyStats: DailyStats[]; lang: st
   const gap = 2;
   const labelWidth = 28;
 
-  // Measure container and compute cell size to fill available width
   const updateSize = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
     const availableWidth = el.clientWidth - labelWidth;
-    // 53 columns, with gap between each: 53 * (cell + gap) - gap = availableWidth
     const computed = Math.floor((availableWidth + gap) / 53 - gap);
     setCellSize(Math.max(6, Math.min(computed, 16)));
   }, []);
