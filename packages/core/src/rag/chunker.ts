@@ -3,7 +3,7 @@
  * Each chunk preserves precise CFI references for navigation.
  *
  * Strategy: Group consecutive segments into chunks by token count,
- * preserving the first segment's CFI as startCfi and last as endCfi.
+ * preserving per-segment CFIs for paragraph-level navigation.
  */
 import type { Chunk } from "../types";
 import type { TextSegment } from "./rag-types";
@@ -40,6 +40,7 @@ export function chunkContent(
 
   const chunks: Chunk[] = [];
   let currentTexts: string[] = [];
+  let currentCfis: string[] = [];
   let currentTokens = 0;
   let startCfi = "";
   let endCfi = "";
@@ -63,6 +64,7 @@ export function chunkContent(
         chunks.length,
         startCfi,
         endCfi,
+        currentCfis,
       ));
 
       const overlapTokens = Math.floor(currentTokens * config.overlapRatio);
@@ -70,10 +72,13 @@ export function chunkContent(
       currentTexts = overlapResult.texts;
       currentTokens = overlapResult.tokens;
       startCfi = overlapResult.startCfi;
-      // Rebuild segmentIndices for the overlap portion
-      segmentIndices = segmentIndices.slice(segmentIndices.length - currentTexts.length);
+      // Rebuild segmentIndices and currentCfis for the overlap portion
+      const overlapLen = currentTexts.length;
+      segmentIndices = segmentIndices.slice(segmentIndices.length - overlapLen);
+      currentCfis = currentCfis.slice(currentCfis.length - overlapLen);
       endCfi = seg.cfi;
       currentTexts.push(segText);
+      currentCfis.push(seg.cfi);
       currentTokens += segTokens;
       segmentIndices.push(i);
     } else {
@@ -81,6 +86,7 @@ export function chunkContent(
         startCfi = seg.cfi;
       }
       currentTexts.push(segText);
+      currentCfis.push(seg.cfi);
       currentTokens += segTokens;
       endCfi = seg.cfi;
       segmentIndices.push(i);
@@ -96,6 +102,7 @@ export function chunkContent(
       chunks.length,
       startCfi,
       endCfi,
+      currentCfis,
     ));
   }
 
@@ -110,6 +117,7 @@ function createChunkFromSegments(
   index: number,
   startCfi: string,
   endCfi: string,
+  segmentCfis?: string[],
 ): Chunk {
   return {
     id: `${bookId}-${chapterIndex}-${index}`,
@@ -120,6 +128,7 @@ function createChunkFromSegments(
     tokenCount: estimateTokens(content),
     startCfi,
     endCfi,
+    segmentCfis,
   };
 }
 

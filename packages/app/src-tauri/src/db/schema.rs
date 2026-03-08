@@ -105,6 +105,7 @@ pub fn initialize(db_path: &Path) -> Result<()> {
             token_count INTEGER NOT NULL DEFAULT 0,
             start_cfi TEXT,
             end_cfi TEXT,
+            segment_cfis TEXT,
             embedding BLOB
         );
 
@@ -135,6 +136,8 @@ pub fn initialize(db_path: &Path) -> Result<()> {
     let _ = conn.execute_batch("ALTER TABLE books ADD COLUMN format TEXT NOT NULL DEFAULT 'epub'");
     // Add tags column if missing
     let _ = conn.execute_batch("ALTER TABLE books ADD COLUMN tags TEXT DEFAULT '[]'");
+    // Add segment_cfis column if missing
+    let _ = conn.execute_batch("ALTER TABLE chunks ADD COLUMN segment_cfis TEXT");
 
     Ok(())
 }

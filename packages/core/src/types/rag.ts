@@ -9,6 +9,7 @@ export interface Chunk {
   tokenCount: number;
   startCfi: string;
   endCfi: string;
+  segmentCfis?: string[];
   embedding?: number[];
 }
 

@@ -104,6 +104,7 @@ export async function triggerVectorizeBook(
       tokenCount: number;
       startCfi: string;
       endCfi: string;
+      segmentCfis?: string[];
       embedding?: number[];
     }> = [];
 

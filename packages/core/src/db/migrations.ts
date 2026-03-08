@@ -21,6 +21,11 @@ const migrations: Migration[] = [
     description: "Add format column to books",
     up: "ALTER TABLE books ADD COLUMN format TEXT NOT NULL DEFAULT 'epub'",
   },
+  {
+    version: 3,
+    description: "Add segment_cfis column to chunks",
+    up: "ALTER TABLE chunks ADD COLUMN segment_cfis TEXT",
+  },
 ];
 
 /** Run pending migrations */

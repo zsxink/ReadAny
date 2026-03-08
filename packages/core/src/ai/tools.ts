@@ -501,8 +501,80 @@ function createAddCitationTool(bookId: string): ToolDefinition {
       const citationIndex = args.citationIndex as number;
       const chapterTitle = args.chapterTitle as string;
       const chapterIndex = args.chapterIndex as number;
-      const cfi = (args.cfi as string) || "";
+      const aiCfi = (args.cfi as string) || "";
       const quotedText = (args.quotedText as string).slice(0, 200);
+
+      // Refine CFI: the AI only gets chunk-level startCfi, which may point to the
+      // beginning of a chunk while the quoted text is in the middle/end.
+      // Use segmentCfis (per-paragraph CFIs) for precise navigation when available,
+      // falling back to startCfi/endCfi heuristic for older data.
+      let refinedCfi = aiCfi;
+      try {
+        const chunks = await getChunks(bookId);
+        const chapterChunks = chunks.filter((c) => c.chapterIndex === chapterIndex);
+
+        // Find the chunk that contains the quoted text
+        const normalizedQuote = quotedText.replace(/\s+/g, "");
+        let bestChunk = null;
+        let bestPos = -1;
+        for (const chunk of chapterChunks) {
+          const normalizedContent = chunk.content.replace(/\s+/g, "");
+          const pos = normalizedContent.indexOf(normalizedQuote);
+          if (pos !== -1) {
+            bestChunk = chunk;
+            bestPos = pos;
+            break;
+          }
+        }
+
+        // Fallback: try partial match (first 30 chars of quoted text)
+        if (!bestChunk && normalizedQuote.length > 30) {
+          const partialQuote = normalizedQuote.slice(0, 30);
+          for (const chunk of chapterChunks) {
+            const normalizedContent = chunk.content.replace(/\s+/g, "");
+            const pos = normalizedContent.indexOf(partialQuote);
+            if (pos !== -1) {
+              bestChunk = chunk;
+              bestPos = pos;
+              break;
+            }
+          }
+        }
+
+        if (bestChunk) {
+          if (bestChunk.segmentCfis && bestChunk.segmentCfis.length > 0) {
+            // Paragraph-level lookup: split chunk content into segments,
+            // find which segment contains the quoted text, use that segment's CFI
+            const segments = bestChunk.content.split("\n\n");
+            let charsBefore = 0;
+            let found = false;
+            for (let i = 0; i < segments.length; i++) {
+              const segLen = segments[i].replace(/\s+/g, "").length;
+              if (charsBefore + segLen > bestPos && i < bestChunk.segmentCfis.length) {
+                refinedCfi = bestChunk.segmentCfis[i];
+                found = true;
+                break;
+              }
+              charsBefore += segLen;
+            }
+            if (!found) {
+              refinedCfi = bestChunk.startCfi || aiCfi;
+            }
+          } else {
+            // No segmentCfis (old data): use startCfi/endCfi heuristic
+            const normalizedContent = bestChunk.content.replace(/\s+/g, "");
+            const contentLen = normalizedContent.length;
+            if (bestPos > contentLen / 2 && bestChunk.endCfi) {
+              refinedCfi = bestChunk.endCfi;
+            } else {
+              refinedCfi = bestChunk.startCfi || aiCfi;
+            }
+          }
+        }
+      } catch (e) {
+        // If refinement fails, fall back to AI-provided CFI
+        console.warn("[addCitation] CFI refinement failed, using AI-provided CFI:", e);
+      }
 
       // Return citation metadata
       // The message pipeline will assign citation numbers and create CitationPart objects
@@ -511,7 +583,7 @@ function createAddCitationTool(bookId: string): ToolDefinition {
         bookId,
         chapterTitle,
         chapterIndex,
-        cfi,
+        cfi: refinedCfi,
         text: quotedText,
         citationIndex,
         timestamp: Date.now(),

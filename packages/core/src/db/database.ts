@@ -145,6 +145,7 @@ export async function initDatabase(): Promise<void> {
       token_count INTEGER NOT NULL DEFAULT 0,
       start_cfi TEXT,
       end_cfi TEXT,
+      segment_cfis TEXT,
       embedding BLOB,
       FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
     )
@@ -193,6 +194,11 @@ export async function initDatabase(): Promise<void> {
   }
   try {
     await database.execute("ALTER TABLE messages ADD COLUMN parts_order TEXT");
+  } catch {
+    // Column already exists, ignore
+  }
+  try {
+    await database.execute("ALTER TABLE chunks ADD COLUMN segment_cfis TEXT");
   } catch {
     // Column already exists, ignore
   }
@@ -987,6 +993,7 @@ export async function getChunks(bookId: string): Promise<Chunk[]> {
       token_count: number;
       start_cfi: string | null;
       end_cfi: string | null;
+      segment_cfis: string | null;
       embedding: unknown;
     }>("SELECT * FROM chunks WHERE book_id = ? ORDER BY chapter_index, id", [bookId]);
   return rows.map((r) => ({
@@ -998,6 +1005,7 @@ export async function getChunks(bookId: string): Promise<Chunk[]> {
     tokenCount: r.token_count,
     startCfi: r.start_cfi || "",
     endCfi: r.end_cfi || "",
+    segmentCfis: r.segment_cfis ? JSON.parse(r.segment_cfis) : undefined,
     embedding: deserializeEmbedding(r.embedding),
   }));
 }
@@ -1006,7 +1014,7 @@ export async function insertChunks(chunks: Chunk[]): Promise<void> {
   const database = await getDB();
   for (const chunk of chunks) {
     await database.execute(
-      "INSERT INTO chunks (id, book_id, chapter_index, chapter_title, content, token_count, start_cfi, end_cfi, embedding) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO chunks (id, book_id, chapter_index, chapter_title, content, token_count, start_cfi, end_cfi, segment_cfis, embedding) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       [
         chunk.id,
         chunk.bookId,
@@ -1016,6 +1024,7 @@ export async function insertChunks(chunks: Chunk[]): Promise<void> {
         chunk.tokenCount,
         chunk.startCfi || null,
         chunk.endCfi || null,
+        chunk.segmentCfis ? JSON.stringify(chunk.segmentCfis) : null,
         serializeEmbedding(chunk.embedding),
       ],
     );

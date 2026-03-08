@@ -121,6 +121,7 @@ CREATE TABLE IF NOT EXISTS chunks (
   token_count INTEGER NOT NULL,
   start_cfi TEXT,
   end_cfi TEXT,
+  segment_cfis TEXT,
   embedding BLOB -- serialized float32 array
 );
 
