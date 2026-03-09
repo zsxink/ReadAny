@@ -56,7 +56,7 @@ export interface IPlatformService {
   convertFileSrc(path: string): string;
 
   // ---- File picker ----
-  pickFile(options?: FilePickerOptions): Promise<string | null>;
+  pickFile(options?: FilePickerOptions): Promise<string | string[] | null>;
 
   // ---- Database ----
   loadDatabase(path: string): Promise<IDatabase>;

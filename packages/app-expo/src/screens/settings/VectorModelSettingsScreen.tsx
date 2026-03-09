@@ -19,11 +19,12 @@ import { useTranslation } from "react-i18next";
 import { BUILTIN_EMBEDDING_MODELS } from "@readany/core/ai/builtin-embedding-models";
 import { useVectorModelStore } from "@readany/core/stores/vector-model-store";
 import type { VectorModelConfig } from "@readany/core/types";
-import { colors, radius, fontSize, fontWeight, useColors } from "@/styles/theme";
+import { type ThemeColors, radius, fontSize, fontWeight, useColors } from "@/styles/theme";
 import { ChevronLeftIcon, PlusIcon, EditIcon, Trash2Icon, CheckIcon, XIcon } from "@/components/ui/Icon";
 
 export default function VectorModelSettingsScreen() {
   const colors = useColors();
+  const s = makeStyles(colors);
   const nav = useNavigation();
   const { t } = useTranslation();
   const {
@@ -108,6 +109,8 @@ export default function VectorModelSettingsScreen() {
 }
 
 function BuiltinModelsSection() {
+  const colors = useColors();
+  const s = makeStyles(colors);
   const { t } = useTranslation();
   const {
     selectedBuiltinModelId,
@@ -185,6 +188,8 @@ function BuiltinModelsSection() {
 }
 
 function RemoteModelsSection() {
+  const colors = useColors();
+  const s = makeStyles(colors);
   const { t } = useTranslation();
   const {
     vectorModels,
@@ -341,7 +346,7 @@ function RemoteModelsSection() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: colors.border },
   backBtn: { padding: 4 },
@@ -359,19 +364,19 @@ const s = StyleSheet.create({
   modeTitle: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.foreground, marginBottom: 8 },
   modeRow: { flexDirection: "row", gap: 8 },
   modeCard: { flex: 1, borderWidth: 0.5, borderColor: colors.border, borderRadius: radius.xl, backgroundColor: colors.card, padding: 12 },
-  modeCardActive: { borderColor: "rgba(224,224,230,0.5)", backgroundColor: "rgba(224,224,230,0.05)" },
+  modeCardActive: { borderColor: colors.primary, backgroundColor: colors.accent },
   modeCardTitle: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.foreground },
   modeCardDesc: { fontSize: 11, color: colors.mutedForeground, marginTop: 2 },
   // Model card
   modelCard: { backgroundColor: colors.card, borderRadius: radius.xl, borderWidth: 0.5, borderColor: colors.border, padding: 14, marginBottom: 8 },
-  modelCardActive: { borderColor: "rgba(224,224,230,0.5)", backgroundColor: "rgba(224,224,230,0.05)" },
+  modelCardActive: { borderColor: colors.primary, backgroundColor: colors.accent },
   modelCardTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   modelInfo: { flex: 1, minWidth: 0 },
   modelNameRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
   modelName: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.foreground },
   modelSize: { fontSize: 11, color: colors.mutedForeground },
   modelBadges: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
-  recommendBadge: { backgroundColor: "rgba(224,224,230,0.1)", borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 2 },
+  recommendBadge: { backgroundColor: colors.muted, borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 2 },
   recommendText: { fontSize: 10, fontWeight: fontWeight.medium, color: colors.primary },
   readyBadge: { flexDirection: "row", alignItems: "center", gap: 2 },
   readyText: { fontSize: 10, color: "#16a34a" },

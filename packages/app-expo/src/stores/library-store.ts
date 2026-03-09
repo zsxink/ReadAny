@@ -7,6 +7,8 @@ import * as db from "@readany/core/db/database";
 import { create } from "zustand";
 import { debouncedSave, loadFromFS } from "@readany/core/stores/persist";
 import { getPlatformService } from "@readany/core/services";
+import { extractBookMetadata } from "@/lib/book/metadata-extractor";
+import { generateId } from "@readany/core/utils";
 
 export type LibraryViewMode = "grid" | "list";
 
@@ -28,7 +30,7 @@ export interface LibraryState {
   setViewMode: (mode: LibraryViewMode) => void;
   setSortField: (field: SortField) => void;
   setSortOrder: (order: SortOrder) => void;
-  importBooks: (filePaths: string[]) => Promise<void>;
+  importBooks: (files: Array<{ uri: string; name?: string }>) => Promise<void>;
   setActiveTag: (tag: string) => void;
   addTag: (tag: string) => void;
   removeTag: (tag: string) => void;
@@ -184,12 +186,17 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   setSortField: (field) => set((state) => ({ filter: { ...state.filter, sortField: field } })),
   setSortOrder: (order) => set((state) => ({ filter: { ...state.filter, sortOrder: order } })),
 
-  importBooks: async (filePaths) => {
+  importBooks: async (files) => {
     set({ isImporting: true });
     try {
-      for (const filePath of filePaths) {
+      for (const fileInfo of files) {
         try {
-          const ext = filePath.split(".").pop()?.toLowerCase();
+          const filePath = fileInfo.uri;
+          // Use the original file name from DocumentPicker (not the cache UUID)
+          const originalName = fileInfo.name
+            ? decodeURIComponent(fileInfo.name)
+            : decodeURIComponent(filePath.split("/").pop() || "book");
+          const ext = originalName.split(".").pop()?.toLowerCase();
           const formatMap: Record<string, Book["format"]> = {
             epub: "epub",
             pdf: "pdf",
@@ -202,13 +209,48 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             fbz: "fbz",
           };
           const format: Book["format"] = formatMap[ext || ""] || "epub";
-          const title = filePath.split("/").pop()?.replace(/\.\w+$/i, "") || "Untitled";
-          const author = "";
-          const coverUrl: string | undefined = undefined;
-          const bookId = crypto.randomUUID();
+          const fileName = originalName;
+          const bookId = generateId();
 
-          const { relativePath } = await copyBookToAppData(bookId, ext || "epub", filePath);
+          console.log(`[importBooks] Importing: name=${fileName}, format=${format}, uri=${filePath}`);
 
+          const { relativePath, fileBytes } = await copyBookToAppData(bookId, ext || "epub", filePath);
+          console.log(`[importBooks] File copied. Bytes length: ${fileBytes.length}, relativePath: ${relativePath}`);
+
+          // Extract metadata (title, author, cover) from book content
+          let title = fileName.replace(/\.\w+$/i, "") || "Untitled";
+          let author = "";
+          let coverUrl: string | undefined;
+
+          try {
+            console.log(`[importBooks] Extracting metadata for format=${format}...`);
+            const meta = await extractBookMetadata(fileBytes, format, fileName);
+            console.log(`[importBooks] Metadata result: title="${meta.title}", author="${meta.author}", hasCover=${!!meta.coverBytes}, coverSize=${meta.coverBytes?.length ?? 0}`);
+            if (meta.title) title = meta.title;
+            if (meta.author) author = meta.author;
+
+            // Save cover image to app data
+            if (meta.coverBytes && meta.coverBytes.length > 0) {
+              try {
+                const mimeType = meta.coverMimeType || "image/jpeg";
+                const coverExt = mimeType.includes("png") ? "png" : "jpg";
+                await ensureAppSubDir("covers");
+                const coverRelPath = `covers/${bookId}.${coverExt}`;
+                const coverAbsPath = await resolveAppPath(coverRelPath);
+                console.log(`[importBooks] Saving cover to: ${coverAbsPath}`);
+                const platform = getPlatformService();
+                await platform.writeFile(coverAbsPath, meta.coverBytes);
+                coverUrl = coverRelPath;
+                console.log(`[importBooks] Cover saved. coverUrl=${coverUrl}`);
+              } catch (coverErr) {
+                console.warn(`[importBooks] Failed to save cover for ${fileName}:`, coverErr);
+              }
+            }
+          } catch (metaErr) {
+            console.warn(`[importBooks] Metadata extraction failed for ${fileName}:`, metaErr);
+          }
+
+          console.log(`[importBooks] Final book: title="${title}", author="${author}", coverUrl="${coverUrl}"`);
           const book: Book = {
             id: bookId,
             filePath: relativePath,
@@ -224,7 +266,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           };
           await get().addBook(book);
         } catch (err) {
-          console.error(`Failed to import ${filePath}:`, err);
+          console.error(`Failed to import ${fileInfo.uri}:`, err);
         }
       }
     } finally {

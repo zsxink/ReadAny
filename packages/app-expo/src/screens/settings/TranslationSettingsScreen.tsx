@@ -15,10 +15,11 @@ import {
   type TranslationTargetLang,
 } from "@readany/core/types/translation";
 import { SettingsHeader } from "./SettingsHeader";
-import { colors, fontSize, fontWeight, spacing, radius, useColors } from "../../styles/theme";
+import { type ThemeColors, fontSize, fontWeight, spacing, radius, useColors } from "../../styles/theme";
 
 export default function TranslationSettingsScreen() {
   const colors = useColors();
+  const styles = makeStyles(colors);
   const { t } = useTranslation();
   const { translationConfig, updateTranslationConfig, aiConfig } =
     useSettingsStore();
@@ -140,7 +141,7 @@ export default function TranslationSettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   scroll: { flex: 1 },
   scrollContent: { padding: spacing.lg, gap: 24 },

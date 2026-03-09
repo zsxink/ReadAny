@@ -99,13 +99,13 @@ export class TauriPlatformService implements IPlatformService {
 
   // ---- File picker ----
 
-  async pickFile(options?: FilePickerOptions): Promise<string | null> {
+  async pickFile(options?: FilePickerOptions): Promise<string | string[] | null> {
     const { open } = await import("@tauri-apps/plugin-dialog");
     const result = await open({
       multiple: options?.multiple ?? false,
       filters: options?.filters,
     });
-    if (Array.isArray(result)) return result[0] ?? null;
+    if (Array.isArray(result)) return result.length > 0 ? result : null;
     return result;
   }
 

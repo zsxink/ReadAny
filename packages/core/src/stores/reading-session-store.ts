@@ -5,6 +5,7 @@
 import type { ReadingSession, ReadingStats, SessionState } from "../types";
 import * as db from "../db/database";
 import { create } from "zustand";
+import { generateId } from "../utils/generate-id";
 
 export interface ReadingSessionState {
   currentSession: ReadingSession | null;
@@ -30,7 +31,7 @@ export const useReadingSessionStore = create<ReadingSessionState>((set, get) => 
 
   startSession: (bookId) => {
     const session: ReadingSession = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       bookId,
       state: "ACTIVE",
       startedAt: Date.now(),
@@ -104,7 +105,7 @@ export const useReadingSessionStore = create<ReadingSessionState>((set, get) => 
         set({
           currentSession: {
             ...currentSession,
-            id: crypto.randomUUID(),
+            id: generateId(),
             startedAt: Date.now(),
             totalActiveTime: 0,
             pagesRead: 0,

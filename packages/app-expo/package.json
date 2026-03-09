@@ -20,6 +20,7 @@
     "expo-clipboard": "~55.0.8",
     "expo-constants": "~55.0.7",
     "expo-crypto": "~55.0.9",
+    "expo-document-picker": "~55.0.8",
     "expo-file-system": "~55.0.10",
     "expo-font": "~55.0.4",
     "expo-linking": "~55.0.7",
@@ -30,6 +31,7 @@
     "expo-sqlite": "~55.0.10",
     "expo-status-bar": "~55.0.4",
     "i18next": "^25.8.13",
+    "pako": "^2.1.0",
     "react": "^19.0.0",
     "react-i18next": "^16.5.4",
     "react-native": "~0.83.2",
@@ -44,6 +46,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.0",
+    "@types/pako": "^2.0.4",
     "@types/react": "^19.0.0",
     "babel-plugin-module-resolver": "^5.0.2",
     "typescript": "^5.8.0"

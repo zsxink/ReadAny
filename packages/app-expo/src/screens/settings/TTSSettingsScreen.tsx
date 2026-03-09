@@ -16,7 +16,7 @@ import {
   type TTSEngine,
 } from "@readany/core/tts";
 import { SettingsHeader } from "./SettingsHeader";
-import { colors, fontSize, fontWeight, spacing, radius, useColors } from "../../styles/theme";
+import { type ThemeColors, fontSize, fontWeight, spacing, radius, useColors } from "../../styles/theme";
 
 const ENGINES: { id: TTSEngine; labelKey: string }[] = [
   { id: "edge", labelKey: "tts.edgeEngine" },
@@ -26,6 +26,7 @@ const ENGINES: { id: TTSEngine; labelKey: string }[] = [
 
 export default function TTSSettingsScreen() {
   const colors = useColors();
+  const styles = makeStyles(colors);
   const { t } = useTranslation();
   const { config, updateConfig, play, stop } = useTTSStore();
 
@@ -113,7 +114,7 @@ export default function TTSSettingsScreen() {
           </Text>
 
           {config.engine === "edge" && (
-            <View style={styles.voiceList}>
+            <ScrollView style={styles.voiceList} nestedScrollEnabled>
               {edgeVoiceGroups.map(([lang, voices]) => (
                 <View key={lang}>
                   <View style={styles.voiceGroupHeader}>
@@ -142,12 +143,12 @@ export default function TTSSettingsScreen() {
                   ))}
                 </View>
               ))}
-            </View>
+            </ScrollView>
           )}
 
           {config.engine === "dashscope" && (
             <>
-              <View style={styles.voiceList}>
+              <ScrollView style={styles.voiceList} nestedScrollEnabled>
                 {DASHSCOPE_VOICES.map((v) => (
                   <TouchableOpacity
                     key={v.id}
@@ -172,7 +173,7 @@ export default function TTSSettingsScreen() {
                     )}
                   </TouchableOpacity>
                 ))}
-              </View>
+              </ScrollView>
 
               {/* DashScope API Key */}
               <View style={styles.fieldGroup}>
@@ -269,7 +270,7 @@ export default function TTSSettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   scroll: { flex: 1 },
   scrollContent: { padding: spacing.lg, gap: 24 },
@@ -306,7 +307,7 @@ const styles = StyleSheet.create({
   },
   engineCardActive: {
     borderColor: colors.primary,
-    backgroundColor: "rgba(224,224,230,0.05)",
+    backgroundColor: colors.accent,
   },
   engineLabel: {
     fontSize: fontSize.xs,

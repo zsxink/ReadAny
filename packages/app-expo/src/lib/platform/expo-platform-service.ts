@@ -22,6 +22,8 @@ import * as Clipboard from "expo-clipboard";
 import * as Sharing from "expo-sharing";
 import Constants from "expo-constants";
 
+import * as DocumentPicker from "expo-document-picker";
+
 /** Simple KV storage keys tracking (SecureStore doesn't have getAllKeys) */
 const KV_KEYS_INDEX = "__readany_kv_keys__";
 
@@ -76,7 +78,13 @@ export class ExpoPlatformService implements IPlatformService {
   }
 
   async joinPath(...parts: string[]): Promise<string> {
-    return parts.join("/").replace(/\/+/g, "/");
+    const joined = parts.join("/");
+    // Preserve file:// protocol prefix while collapsing duplicate slashes in path
+    const match = joined.match(/^(file:\/\/)(\/.*)/);
+    if (match) {
+      return match[1] + match[2].replace(/\/+/g, "/");
+    }
+    return joined.replace(/\/+/g, "/");
   }
 
   convertFileSrc(path: string): string {
@@ -85,15 +93,37 @@ export class ExpoPlatformService implements IPlatformService {
     return `file://${path}`;
   }
 
-  // ---- File picker ----
+  // ---- File picker (expo-document-picker) ----
 
-  async pickFile(_options?: FilePickerOptions): Promise<string | null> {
+  async pickFile(options?: FilePickerOptions): Promise<string | string[] | null> {
     try {
-      const result = await File.pickFileAsync();
-      if (Array.isArray(result)) {
-        return result[0]?.uri ?? null;
+      // Convert extension-based filters to MIME types for expo-document-picker
+      const mimeTypes: string[] = [];
+      if (options?.filters) {
+        for (const filter of options.filters) {
+          for (const ext of filter.extensions) {
+            const mime = extensionToMime(ext);
+            if (mime && !mimeTypes.includes(mime)) {
+              mimeTypes.push(mime);
+            }
+          }
+        }
       }
-      return result?.uri ?? null;
+
+      const result = await DocumentPicker.getDocumentAsync({
+        type: mimeTypes.length > 0 ? mimeTypes : ["*/*"],
+        multiple: options?.multiple ?? false,
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return null;
+      }
+
+      if (options?.multiple) {
+        return result.assets.map((a) => a.uri);
+      }
+      return result.assets[0].uri;
     } catch {
       return null;
     }
@@ -240,4 +270,21 @@ export class ExpoPlatformService implements IPlatformService {
       console.warn("Sharing not available on this device");
     }
   }
+}
+
+/** Map book file extensions to MIME types for document picker */
+function extensionToMime(ext: string): string {
+  const map: Record<string, string> = {
+    epub: "application/epub+zip",
+    pdf: "application/pdf",
+    mobi: "application/x-mobipocket-ebook",
+    azw: "application/vnd.amazon.ebook",
+    azw3: "application/vnd.amazon.ebook",
+    cbz: "application/vnd.comicbook+zip",
+    fb2: "application/x-fictionbook+xml",
+    fbz: "application/x-zip-compressed-fb2",
+    // Common archive types that may contain books
+    zip: "application/zip",
+  };
+  return map[ext.toLowerCase()] || "application/octet-stream";
 }

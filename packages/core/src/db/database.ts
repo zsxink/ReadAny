@@ -7,6 +7,7 @@ import type { Book, Bookmark, Chunk, Highlight, Message, Note, Skill, Thread } f
 import type { ReadingSession } from "../types/reading";
 import type { IDatabase } from "../services/platform";
 import { getPlatformService } from "../services/platform";
+import { generateId } from "../utils/generate-id";
 
 // Lazy-loaded database instance
 let db: IDatabase | null = null;
@@ -41,7 +42,7 @@ export async function getDeviceId(): Promise<string> {
     // Table might not exist yet
   }
   // Generate new device ID
-  const id = crypto.randomUUID();
+  const id = generateId();
   try {
     await database.execute(
       "INSERT OR REPLACE INTO sync_metadata (key, value) VALUES ('device_id', ?)",

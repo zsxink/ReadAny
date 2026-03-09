@@ -24,7 +24,6 @@ import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import type { Book, SortField } from "@readany/core/types";
-import { getPlatformService } from "@readany/core/services";
 import { useLibraryStore } from "@/stores/library-store";
 import { type ThemeColors, radius, fontSize, fontWeight, useColors } from "@/styles/theme";
 import {
@@ -41,6 +40,7 @@ import {
   HashIcon,
   CheckIcon,
 } from "@/components/ui/Icon";
+import * as DocumentPicker from "expo-document-picker";
 import { BookCard } from "@/components/library/BookCard";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -149,20 +149,36 @@ export function LibraryScreen() {
 
   const handleImport = useCallback(async () => {
     try {
-      const platform = getPlatformService();
-      const result = await platform.pickFile({
-        multiple: true,
-        filters: [
-          { name: "Books", extensions: ["epub", "pdf", "mobi", "azw", "azw3", "cbz", "fb2", "fbz"] },
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [
+          "application/epub+zip",
+          "application/pdf",
+          "application/x-mobipocket-ebook",
+          "application/vnd.amazon.ebook",
+          "application/vnd.comicbook+zip",
+          "application/x-fictionbook+xml",
+          "application/octet-stream",
         ],
+        multiple: true,
+        copyToCacheDirectory: true,
       });
-      if (result) {
-        await importBooks(Array.isArray(result) ? result : [result]);
-      }
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
+
+      const files = result.assets.map((a) => ({ uri: a.uri, name: a.name }));
+      console.log("[handleImport] Picked files:", files.map(f => `${f.name} -> ${f.uri}`));
+      await importBooks(files);
+      Alert.alert(
+        t("library.importComplete", "导入完成"),
+        t("library.importedCount", { count: files.length, defaultValue: `成功导入 ${files.length} 本书` }),
+      );
     } catch (err) {
       console.error("Import failed:", err);
+      Alert.alert(
+        t("common.error", "错误"),
+        t("library.importFailed", "导入失败，请重试"),
+      );
     }
-  }, [importBooks]);
+  }, [importBooks, t]);
 
   const handleOpen = useCallback(
     (book: Book) => {
@@ -590,8 +606,11 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   resultsCount: { fontSize: fontSize.xs, color: colors.mutedForeground, marginBottom: 8 },
   // Grid
   gridRow: { gap: GRID_GAP },
-  gridContent: { paddingBottom: 16 },
-  gridItem: { marginBottom: 16 },
+  gridContent: { paddingBottom: 16, paddingTop: 4 },
+  gridItem: {
+    width: (screenWidth - SCREEN_PADDING * 2 - GRID_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS,
+    marginBottom: 4,
+  },
   // Tag Management Sheet
   tagSheetOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)" },
   tagSheet: { backgroundColor: colors.background, borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingBottom: 34, maxHeight: "70%" },

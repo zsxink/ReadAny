@@ -97,27 +97,57 @@ export const BookCard = memo(function BookCard({
         {/* Cover — 28:41 aspect ratio */}
         <View style={s.coverWrap}>
           {resolvedCoverUrl && !imageError ? (
-            <Image
-              source={{ uri: resolvedCoverUrl }}
-              style={s.coverImage}
-              resizeMode="cover"
-              onError={() => setImageError(true)}
-            />
+            <>
+              <Image
+                source={{ uri: resolvedCoverUrl }}
+                style={s.coverImage}
+                resizeMode="cover"
+                onError={() => setImageError(true)}
+              />
+              {/* Book spine crease overlay — matches desktop .book-spine */}
+              <View style={s.spineOverlay} pointerEvents="none">
+                {/* Left edge dark line */}
+                <View style={s.spineStrip1} />
+                {/* Spine shadow dip */}
+                <View style={s.spineStrip2} />
+                {/* Highlight reflection */}
+                <View style={s.spineStrip3} />
+                {/* Transition bright */}
+                <View style={s.spineStrip4} />
+                {/* Crease dark */}
+                <View style={s.spineStrip5} />
+                {/* Deep fold */}
+                <View style={s.spineStrip6} />
+                {/* Subtle bright transition */}
+                <View style={s.spineStrip7} />
+                {/* Right edge subtle shadow */}
+                <View style={s.spineEdgeRight} />
+              </View>
+              {/* Top highlight */}
+              <View style={s.spineTopHighlight} pointerEvents="none" />
+              {/* Bottom shadow */}
+              <View style={s.spineBottomShadow} pointerEvents="none" />
+            </>
           ) : (
             <View style={s.fallbackCover}>
-              <View style={s.fallbackTitleWrap}>
-                <Text style={s.fallbackTitle} numberOfLines={3}>
-                  {book.meta.title}
-                </Text>
-              </View>
-              <View style={s.fallbackDivider} />
-              {book.meta.author ? (
-                <View style={s.fallbackAuthorWrap}>
-                  <Text style={s.fallbackAuthor} numberOfLines={1}>
-                    {book.meta.author}
+              {/* Simulate gradient: stone-100 top half, stone-200 bottom half */}
+              <View style={s.fallbackGradientTop} />
+              <View style={s.fallbackGradientBottom} />
+              <View style={s.fallbackContentOverlay}>
+                <View style={s.fallbackTitleWrap}>
+                  <Text style={s.fallbackTitle} numberOfLines={3}>
+                    {book.meta.title}
                   </Text>
                 </View>
-              ) : null}
+                <View style={s.fallbackDivider} />
+                {book.meta.author ? (
+                  <View style={s.fallbackAuthorWrap}>
+                    <Text style={s.fallbackAuthor} numberOfLines={1}>
+                      {book.meta.author}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
             </View>
           )}
 
@@ -261,19 +291,117 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     borderRadius: radius.sm,
     overflow: "hidden",
     position: "relative",
+    // Book cover shadow
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
   },
   coverImage: {
     width: "100%",
     height: "100%",
     borderRadius: radius.sm,
   },
+  // Book spine crease effect — simulates desktop .book-spine linear-gradient overlay
+  spineOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    bottom: 0,
+    width: "8%",
+    flexDirection: "row",
+    zIndex: 2,
+  },
+  spineStrip1: {
+    width: "6%",
+    height: "100%",
+    backgroundColor: "rgba(0,0,0,0.10)",
+  },
+  spineStrip2: {
+    width: "8%",
+    height: "100%",
+    backgroundColor: "rgba(20,20,20,0.20)",
+  },
+  spineStrip3: {
+    width: "5%",
+    height: "100%",
+    backgroundColor: "rgba(240,240,240,0.40)",
+  },
+  spineStrip4: {
+    width: "18%",
+    height: "100%",
+    backgroundColor: "rgba(215,215,215,0.35)",
+  },
+  spineStrip5: {
+    width: "12%",
+    height: "100%",
+    backgroundColor: "rgba(150,150,150,0.25)",
+  },
+  spineStrip6: {
+    width: "20%",
+    height: "100%",
+    backgroundColor: "rgba(100,100,100,0.18)",
+  },
+  spineStrip7: {
+    width: "31%",
+    height: "100%",
+    backgroundColor: "rgba(175,175,175,0.12)",
+  },
+  spineEdgeRight: {
+    position: "absolute",
+    top: 0,
+    right: -coverWidth * 0.92,
+    bottom: 0,
+    width: coverWidth * 0.02,
+    backgroundColor: "rgba(30,30,30,0.12)",
+  },
+  spineTopHighlight: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: "3%",
+    backgroundColor: "rgba(240,240,240,0.15)",
+    zIndex: 3,
+  },
+  spineBottomShadow: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: "8%",
+    backgroundColor: "rgba(15,15,15,0.15)",
+    zIndex: 3,
+  },
   fallbackCover: {
     flex: 1,
-    padding: 8,
+    borderRadius: radius.sm,
+    overflow: "hidden",
+    position: "relative",
+  },
+  fallbackGradientTop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: "50%",
+    backgroundColor: colors.stone100,
+  },
+  fallbackGradientBottom: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: "50%",
+    backgroundColor: colors.stone200,
+  },
+  fallbackContentOverlay: {
+    flex: 1,
+    padding: 10,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.stone200,
-    borderRadius: radius.sm,
+    zIndex: 1,
   },
   fallbackTitleWrap: {
     flex: 1,
@@ -284,14 +412,15 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     textAlign: "center",
     fontSize: fontSize.sm,
     fontWeight: fontWeight.medium,
+    fontFamily: "serif",
     color: colors.stone500,
-    lineHeight: 16,
+    lineHeight: 18,
   },
   fallbackDivider: {
-    width: 24,
+    width: 32,
     height: 1,
-    backgroundColor: "rgba(168,162,158,0.4)",
-    marginVertical: 4,
+    backgroundColor: `${colors.stone300}99`,
+    marginVertical: 6,
   },
   fallbackAuthorWrap: {
     height: "25%",
@@ -300,7 +429,8 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   fallbackAuthor: {
     textAlign: "center",
-    fontSize: 8,
+    fontSize: 10,
+    fontFamily: "serif",
     color: colors.stone400,
   },
   progressBarBg: {
@@ -347,48 +477,48 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingVertical: 2,
   },
   vecBadgeText: { fontSize: 7, fontWeight: fontWeight.medium, color: "#fff" },
-  infoWrap: { paddingTop: 6 },
+  infoWrap: { paddingTop: 6, paddingHorizontal: 1 },
   bookTitle: {
     fontSize: 11,
     fontWeight: fontWeight.semibold,
     color: colors.foreground,
     lineHeight: 14,
   },
-  tagsRow: { flexDirection: "row", flexWrap: "wrap", gap: 2, marginTop: 2 },
+  tagsRow: { flexDirection: "row", flexWrap: "wrap", gap: 3, marginTop: 3 },
   tagBadge: {
-    backgroundColor: "rgba(245,245,244,0.1)",
+    backgroundColor: `${colors.muted}`,
     borderRadius: radius.full,
-    paddingHorizontal: 5,
+    paddingHorizontal: 6,
     paddingVertical: 1,
   },
   tagText: { fontSize: 8, color: colors.mutedForeground },
   tagBadgeUncategorized: {
-    backgroundColor: "rgba(245,245,244,0.05)",
+    backgroundColor: `${colors.muted}80`,
     borderRadius: radius.full,
-    paddingHorizontal: 5,
+    paddingHorizontal: 6,
     paddingVertical: 1,
   },
-  tagTextUncategorized: { fontSize: 8, color: "rgba(124,124,130,0.6)" },
-  tagOverflow: { fontSize: 8, color: "rgba(124,124,130,0.6)" },
+  tagTextUncategorized: { fontSize: 8, color: `${colors.mutedForeground}99` },
+  tagOverflow: { fontSize: 8, color: `${colors.mutedForeground}99`, alignSelf: "center" },
   statusRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 2,
-    minHeight: 12,
+    marginTop: 3,
+    minHeight: 14,
   },
   progressText: { fontSize: 9, color: colors.mutedForeground, fontVariant: ["tabular-nums"] },
   completeText: { fontSize: 9, fontWeight: fontWeight.medium, color: "#16a34a" },
   newBadge: {
-    backgroundColor: "rgba(224,224,230,0.08)",
+    backgroundColor: `${colors.primary}14`,
     borderRadius: radius.full,
-    paddingHorizontal: 4,
+    paddingHorizontal: 5,
     paddingVertical: 1,
   },
   newText: { fontSize: 8, fontWeight: fontWeight.medium, color: colors.primary },
   formatText: {
     fontSize: 8,
-    color: "rgba(124,124,130,0.4)",
+    color: `${colors.mutedForeground}99`,
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
