@@ -8,10 +8,10 @@ export function NotesScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>{t("notes", "笔记")}</Text>
+        <Text style={styles.title}>{t("tabs.notes", "笔记")}</Text>
       </View>
       <View style={styles.content}>
-        <Text style={styles.placeholder}>{t("notesEmpty", "阅读时添加的笔记将显示在这里")}</Text>
+        <Text style={styles.placeholder}>{t("notes.emptyHint", "阅读时添加的笔记将显示在这里")}</Text>
       </View>
     </SafeAreaView>
   );

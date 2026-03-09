@@ -12,18 +12,18 @@ export function ProfileScreen() {
   const nav = useNavigation<Nav>();
 
   const items = [
-    { label: t("appearance", "外观设置"), route: "AppearanceSettings" as const },
-    { label: t("aiSettings", "AI 设置"), route: "AISettings" as const },
-    { label: t("ttsSettings", "TTS 设置"), route: "TTSSettings" as const },
-    { label: t("translationSettings", "翻译设置"), route: "TranslationSettings" as const },
-    { label: t("syncSettings", "同步设置"), route: "SyncSettings" as const },
-    { label: t("about", "关于"), route: "About" as const },
+    { label: t("settings.general", "通用设置"), route: "AppearanceSettings" as const },
+    { label: t("settings.ai", "AI 设置"), route: "AISettings" as const },
+    { label: t("settings.tts", "TTS 设置"), route: "TTSSettings" as const },
+    { label: t("settings.translationTab", "翻译设置"), route: "TranslationSettings" as const },
+    { label: t("sync.title", "同步设置"), route: "SyncSettings" as const },
+    { label: t("settings.about", "关于"), route: "About" as const },
   ];
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>{t("profile", "我的")}</Text>
+        <Text style={styles.title}>{t("profile.title", "我的")}</Text>
       </View>
       <ScrollView contentContainerStyle={styles.list}>
         {items.map((item) => (

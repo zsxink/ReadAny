@@ -8,10 +8,10 @@ export function LibraryScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>{t("library", "书架")}</Text>
+        <Text style={styles.title}>{t("tabs.library", "书架")}</Text>
       </View>
       <View style={styles.content}>
-        <Text style={styles.placeholder}>{t("libraryEmpty", "暂无书籍，点击 + 导入")}</Text>
+        <Text style={styles.placeholder}>{t("library.emptyHint", "暂无书籍，点击 + 导入")}</Text>
       </View>
     </SafeAreaView>
   );

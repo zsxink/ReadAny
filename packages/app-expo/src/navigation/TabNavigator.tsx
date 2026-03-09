@@ -35,22 +35,22 @@ export function TabNavigator() {
       <Tab.Screen
         name="Library"
         component={LibraryScreen}
-        options={{ tabBarLabel: t("library", "书架") }}
+        options={{ tabBarLabel: t("tabs.library", "书架") }}
       />
       <Tab.Screen
         name="Chat"
         component={ChatScreen}
-        options={{ tabBarLabel: t("chat", "对话") }}
+        options={{ tabBarLabel: t("tabs.ai", "AI") }}
       />
       <Tab.Screen
         name="Notes"
         component={NotesScreen}
-        options={{ tabBarLabel: t("notes", "笔记") }}
+        options={{ tabBarLabel: t("tabs.notes", "笔记") }}
       />
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
-        options={{ tabBarLabel: t("profile", "我的") }}
+        options={{ tabBarLabel: t("tabs.profile", "我的") }}
       />
     </Tab.Navigator>
   );

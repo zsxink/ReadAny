@@ -8,10 +8,10 @@ export function ChatScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>{t("chat", "对话")}</Text>
+        <Text style={styles.title}>{t("tabs.ai", "AI")}</Text>
       </View>
       <View style={styles.content}>
-        <Text style={styles.placeholder}>{t("chatEmpty", "开始与你的书籍对话")}</Text>
+        <Text style={styles.placeholder}>{t("chat.emptyHint", "开始与你的书籍对话")}</Text>
       </View>
     </SafeAreaView>
   );
