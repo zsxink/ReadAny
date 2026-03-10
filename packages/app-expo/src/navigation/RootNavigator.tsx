@@ -4,6 +4,7 @@
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { TabNavigator } from "./TabNavigator";
 import { ReaderScreen } from "@/screens/ReaderScreen";
+import { BookChatScreen } from "@/screens/BookChatScreen";
 import StatsScreen from "@/screens/StatsScreen";
 import SkillsScreen from "@/screens/SkillsScreen";
 import VectorModelSettingsScreen from "@/screens/settings/VectorModelSettingsScreen";
@@ -17,6 +18,7 @@ import AboutScreen from "@/screens/settings/AboutScreen";
 export type RootStackParamList = {
   Tabs: undefined;
   Reader: { bookId: string };
+  BookChat: { bookId: string };
   Stats: undefined;
   Skills: undefined;
   VectorModelSettings: undefined;
@@ -37,6 +39,11 @@ export function RootNavigator() {
       <Stack.Screen
         name="Reader"
         component={ReaderScreen}
+        options={{ animation: "slide_from_right" }}
+      />
+      <Stack.Screen
+        name="BookChat"
+        component={BookChatScreen}
         options={{ animation: "slide_from_right" }}
       />
       <Stack.Screen

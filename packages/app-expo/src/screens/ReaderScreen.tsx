@@ -1,9 +1,8 @@
 /**
- * ReaderScreen — WebView-based reader matching Tauri mobile MobileReaderView.
+ * ReaderScreen — WebView-based reader with foliate-js engine.
  * Features: toolbar with back/notebook/chat/TTS/TOC/search/settings,
- * footer with prev/next + slider + progress, TOC panel, settings panel (font size,
- * line height, paragraph spacing, page margin, font theme, view mode),
- * search bar with debounce + result nav.
+ * footer with prev/next + slider + progress, TOC panel, settings panel,
+ * search bar, selection popover for highlights/notes.
  */
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import {
@@ -22,12 +21,16 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { WebView } from "react-native-webview";
+import * as FileSystem from "expo-file-system/legacy";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore, useAnnotationStore, useReadingSessionStore } from "@/stores";
-import { getPlatformService } from "@readany/core/services";
+import { useReaderBridge } from "@/hooks/use-reader-bridge";
+import type { RelocateEvent, SelectionEvent } from "@/hooks/use-reader-bridge";
+import { SelectionPopover } from "@/components/reader/SelectionPopover";
 import type { TOCItem } from "@readany/core/types";
 import { type ThemeColors, radius, fontSize, fontWeight, useColors } from "@/styles/theme";
+import { useTheme } from "@/styles/ThemeContext";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -36,11 +39,14 @@ import {
   NotebookPenIcon,
   BookOpenIcon,
   XIcon,
-  SortAscIcon,
   Volume2Icon,
   MessageSquareIcon,
   HighlighterIcon,
 } from "@/components/ui/Icon";
+import Svg, { Path } from "react-native-svg";
+
+// Read the bundled reader.html
+const READER_HTML = require("../../assets/reader/reader.html");
 
 type Props = NativeStackScreenProps<RootStackParamList, "Reader">;
 
@@ -57,8 +63,6 @@ const FONT_THEMES = [
 ];
 
 // ──────────────────────────── Settings Icon (Gear) ────────────────────────────
-import Svg, { Path } from "react-native-svg";
-
 function SettingsIcon({ size = 24, color = "#e8e8ed" }: { size?: number; color?: string }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -77,23 +81,15 @@ function ListIcon({ size = 24, color = "#e8e8ed" }: { size?: number; color?: str
 }
 
 // ──────────────────────────── TOC Tree Item ────────────────────────────
-
 function TOCTreeItem({
-  item,
-  level,
-  currentChapter,
-  onSelect,
+  item, level, currentChapter, onSelect,
 }: {
-  item: TOCItem;
-  level: number;
-  currentChapter: string;
-  onSelect: (href: string) => void;
+  item: TOCItem; level: number; currentChapter: string; onSelect: (href: string) => void;
 }) {
   const colors = useColors();
   const tocS = makeTocStyles(colors);
   const hasChildren = item.subitems && item.subitems.length > 0;
   const isCurrent = item.title === currentChapter;
-
   const hasCurrentChild = (items: TOCItem[]): boolean => {
     for (const child of items) {
       if (child.title === currentChapter) return true;
@@ -101,53 +97,29 @@ function TOCTreeItem({
     }
     return false;
   };
-
   const shouldExpand = hasChildren && hasCurrentChild(item.subitems!);
   const [expanded, setExpanded] = useState(shouldExpand);
 
   return (
     <View>
       <TouchableOpacity
-        style={[
-          tocS.item,
-          { paddingLeft: 12 + level * 16 },
-          isCurrent && tocS.itemActive,
-        ]}
+        style={[tocS.item, { paddingLeft: 12 + level * 16 }, isCurrent && tocS.itemActive]}
         onPress={() => item.href && onSelect(item.href)}
         activeOpacity={0.7}
       >
         {hasChildren ? (
-          <TouchableOpacity
-            style={tocS.expandBtn}
-            onPress={() => setExpanded(!expanded)}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            {expanded ? (
-              <ChevronDownIcon size={14} color={colors.mutedForeground} />
-            ) : (
-              <ChevronRightIcon size={14} color={colors.mutedForeground} />
-            )}
+          <TouchableOpacity style={tocS.expandBtn} onPress={() => setExpanded(!expanded)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            {expanded ? <ChevronDownIcon size={14} color={colors.mutedForeground} /> : <ChevronRightIcon size={14} color={colors.mutedForeground} />}
           </TouchableOpacity>
         ) : (
           <View style={tocS.expandPlaceholder} />
         )}
-        <Text
-          style={[tocS.itemText, isCurrent && tocS.itemTextActive]}
-          numberOfLines={1}
-        >
-          {item.title}
-        </Text>
+        <Text style={[tocS.itemText, isCurrent && tocS.itemTextActive]} numberOfLines={1}>{item.title}</Text>
       </TouchableOpacity>
       {expanded && hasChildren && (
         <View>
           {item.subitems!.map((child) => (
-            <TOCTreeItem
-              key={child.id || child.href}
-              item={child}
-              level={level + 1}
-              currentChapter={currentChapter}
-              onSelect={onSelect}
-            />
+            <TOCTreeItem key={child.id || child.href} item={child} level={level + 1} currentChapter={currentChapter} onSelect={onSelect} />
           ))}
         </View>
       )}
@@ -156,14 +128,7 @@ function TOCTreeItem({
 }
 
 const makeTocStyles = (colors: ThemeColors) => StyleSheet.create({
-  item: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 10,
-    paddingRight: 12,
-    borderRadius: radius.lg,
-  },
+  item: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 10, paddingRight: 12, borderRadius: radius.lg },
   itemActive: { backgroundColor: "rgba(99,102,241,0.1)" },
   expandBtn: { width: 20, height: 20, alignItems: "center", justifyContent: "center" },
   expandPlaceholder: { width: 20 },
@@ -172,9 +137,9 @@ const makeTocStyles = (colors: ThemeColors) => StyleSheet.create({
 });
 
 // ──────────────────────────── ReaderScreen ────────────────────────────
-
 export function ReaderScreen({ route, navigation }: Props) {
   const colors = useColors();
+  const { mode: themeMode } = useTheme();
   const s = makeStyles(colors);
   const { bookId } = route.params;
   const { t } = useTranslation();
@@ -198,8 +163,11 @@ export function ReaderScreen({ route, navigation }: Props) {
   const [totalPages, setTotalPages] = useState(1);
   const [toc, setToc] = useState<TOCItem[]>([]);
   const [bookTitle, setBookTitle] = useState("");
+  const [webViewReady, setWebViewReady] = useState(false);
+  const [currentCfi, setCurrentCfi] = useState("");
+  const [selection, setSelection] = useState<SelectionEvent | null>(null);
 
-  // Settings matching Tauri MobileReadSettings
+  // Settings
   const [settingFontSize, setSettingFontSize] = useState(16);
   const [settingLineHeight, setSettingLineHeight] = useState(1.6);
   const [settingParagraphSpacing, setSettingParagraphSpacing] = useState(8);
@@ -209,14 +177,71 @@ export function ReaderScreen({ route, navigation }: Props) {
 
   const controlsTimer = useRef<NodeJS.Timeout | null>(null);
   const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
-  const webViewRef = useRef<WebView>(null);
   const toolbarAnim = useRef(new Animated.Value(-80)).current;
   const footerAnim = useRef(new Animated.Value(80)).current;
 
   const { books, updateBook } = useLibraryStore();
   const { startSession, stopSession } = useReadingSessionStore();
+  const { addHighlight, loadAnnotations, highlights } = useAnnotationStore();
 
   const book = useMemo(() => books.find((b) => b.id === bookId), [books, bookId]);
+
+  // Reader bridge
+  const bridge = useReaderBridge({
+    onReady: () => {
+      setWebViewReady(true);
+    },
+    onLoaded: () => {
+      setLoading(false);
+    },
+    onRelocate: (detail: RelocateEvent) => {
+      if (detail.fraction != null) setProgress(detail.fraction);
+      if (detail.location) {
+        setCurrentPage(detail.location.current);
+        setTotalPages(detail.location.total);
+      }
+      if (detail.tocItem?.label) setCurrentChapter(detail.tocItem.label);
+      if (detail.cfi) {
+        setCurrentCfi(detail.cfi);
+        // Persist progress
+        updateBook(bookId, {
+          progress: detail.fraction ?? 0,
+          lastLocation: detail.cfi,
+        });
+      }
+    },
+    onTocReady: (items: TOCItem[]) => {
+      setToc(items);
+    },
+    onSelection: (detail: SelectionEvent) => {
+      setSelection(detail);
+    },
+    onSelectionCleared: () => {
+      setSelection(null);
+    },
+    onTap: () => {
+      if (selection) {
+        setSelection(null);
+        return;
+      }
+      toggleControls();
+    },
+    onSearchResult: (index: number, count: number) => {
+      setSearchIndex(index);
+      setSearchResultCount(count);
+    },
+    onSearchComplete: (count: number) => {
+      setSearchResultCount(count);
+      setIsSearching(false);
+    },
+    onError: (message: string) => {
+      console.error("[Reader] WebView error:", message);
+      if (loading) {
+        setError(message);
+        setLoading(false);
+      }
+    },
+  });
 
   // Load book
   useEffect(() => {
@@ -226,36 +251,73 @@ export function ReaderScreen({ route, navigation }: Props) {
       return;
     }
     setBookTitle(book.meta.title);
-    try {
-      updateBook(bookId, { lastOpenedAt: Date.now() });
-      startSession(bookId);
-      setLoading(false);
-    } catch (err: any) {
-      setError(err.message || "Failed to load book");
-      setLoading(false);
-    }
+    updateBook(bookId, { lastOpenedAt: Date.now() });
+    startSession(bookId);
+    loadAnnotations(bookId);
+
     return () => {
       stopSession();
     };
-  }, [book, bookId, updateBook, startSession, stopSession, t]);
+  }, [bookId]);
+
+  // When WebView is ready and book is available, send the open command
+  useEffect(() => {
+    if (!webViewReady || !book?.filePath) return;
+
+    const loadBook = async () => {
+      try {
+        // Read the book file and send as base64 for reliability
+        const base64 = await FileSystem.readAsStringAsync(book.filePath, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+
+        bridge.openBook({
+          base64,
+          fileName: book.filePath.split("/").pop() || "book.epub",
+          lastLocation: book.lastLocation || undefined,
+          pageMargin: settingPageMargin,
+        });
+
+        // Set theme colors
+        bridge.setThemeColors({
+          background: colors.background,
+          foreground: colors.foreground,
+          muted: colors.mutedForeground,
+        });
+      } catch (err: any) {
+        setError(err.message || "Failed to load book file");
+        setLoading(false);
+      }
+    };
+
+    loadBook();
+  }, [webViewReady, book?.filePath]);
+
+  // Apply theme colors when theme changes
+  useEffect(() => {
+    if (!webViewReady) return;
+    bridge.setThemeColors({
+      background: colors.background,
+      foreground: colors.foreground,
+      muted: colors.mutedForeground,
+    });
+  }, [themeMode, webViewReady]);
+
+  // Load annotations into reader when ready
+  useEffect(() => {
+    if (!webViewReady || highlights.length === 0) return;
+    for (const h of highlights) {
+      bridge.addAnnotation({ value: h.cfi, color: h.color, note: h.note });
+    }
+  }, [webViewReady, highlights.length]);
 
   // Controls toggle
   const toggleControls = useCallback(() => {
     const willShow = !showControls;
     setShowControls(willShow);
     Animated.parallel([
-      Animated.spring(toolbarAnim, {
-        toValue: willShow ? 0 : -80,
-        useNativeDriver: true,
-        friction: 20,
-        tension: 100,
-      }),
-      Animated.spring(footerAnim, {
-        toValue: willShow ? 0 : 80,
-        useNativeDriver: true,
-        friction: 20,
-        tension: 100,
-      }),
+      Animated.spring(toolbarAnim, { toValue: willShow ? 0 : -80, useNativeDriver: true, friction: 20, tension: 100 }),
+      Animated.spring(footerAnim, { toValue: willShow ? 0 : 80, useNativeDriver: true, friction: 20, tension: 100 }),
     ]).start();
 
     if (willShow) {
@@ -270,131 +332,88 @@ export function ReaderScreen({ route, navigation }: Props) {
     }
   }, [showControls, toolbarAnim, footerAnim]);
 
-  // WebView message handler
-  const handleMessage = useCallback(
-    (event: any) => {
-      try {
-        const msg = JSON.parse(event.nativeEvent.data);
-        switch (msg.type) {
-          case "progress":
-            setProgress(msg.value || 0);
-            setCurrentPage(msg.currentPage || 1);
-            setTotalPages(msg.totalPages || 1);
-            if (msg.chapter) setCurrentChapter(msg.chapter);
-            break;
-          case "toc":
-            setToc(msg.items || []);
-            break;
-          case "loaded":
-            setLoading(false);
-            break;
-          case "tap":
-            toggleControls();
-            break;
-          case "searchResult":
-            setSearchResultCount(msg.count || 0);
-            setIsSearching(false);
-            break;
-          case "error":
-            setError(msg.message);
-            break;
-        }
-      } catch {
-        // ignore
-      }
-    },
-    [toggleControls],
-  );
-
   const goToTocItem = useCallback((href: string) => {
-    webViewRef.current?.injectJavaScript(`window.goToHref && window.goToHref("${href}"); true;`);
+    bridge.goToHref(href);
     setShowTOC(false);
-  }, []);
+  }, [bridge]);
 
-  const handleSearchInput = useCallback(
-    (query: string) => {
-      setSearchQuery(query);
-      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-      searchDebounceRef.current = setTimeout(() => {
-        const trimmed = query.trim();
-        if (trimmed) {
-          setIsSearching(true);
-          webViewRef.current?.injectJavaScript(
-            `window.search && window.search("${trimmed.replace(/"/g, '\\"')}"); true;`,
-          );
-        } else {
-          setSearchResultCount(0);
-          setSearchIndex(0);
-        }
-      }, 300);
-    },
-    [],
-  );
-
-  const navigateSearch = useCallback(
-    (direction: "prev" | "next") => {
-      if (searchResultCount === 0) return;
-      const newIdx =
-        direction === "next"
-          ? (searchIndex + 1) % searchResultCount
-          : (searchIndex - 1 + searchResultCount) % searchResultCount;
-      setSearchIndex(newIdx);
-      webViewRef.current?.injectJavaScript(
-        `window.navigateSearch && window.navigateSearch(${newIdx}); true;`,
-      );
-    },
-    [searchIndex, searchResultCount],
-  );
-
-  const goToPrev = useCallback(() => {
-    webViewRef.current?.injectJavaScript("window.goPrev && window.goPrev(); true;");
-  }, []);
-
-  const goToNext = useCallback(() => {
-    webViewRef.current?.injectJavaScript("window.goNext && window.goNext(); true;");
-  }, []);
-
-  const handleSliderChange = useCallback((value: number) => {
-    setProgress(value);
-    webViewRef.current?.injectJavaScript(
-      `window.goToProgress && window.goToProgress(${value}); true;`,
-    );
-  }, []);
-
-  // Settings updates
-  const updateSetting = useCallback(
-    (key: string, value: number | string) => {
-      switch (key) {
-        case "fontSize":
-          setSettingFontSize(value as number);
-          webViewRef.current?.injectJavaScript(`window.setFontSize && window.setFontSize(${value}); true;`);
-          break;
-        case "lineHeight":
-          setSettingLineHeight(value as number);
-          webViewRef.current?.injectJavaScript(`window.setLineHeight && window.setLineHeight(${value}); true;`);
-          break;
-        case "paragraphSpacing":
-          setSettingParagraphSpacing(value as number);
-          webViewRef.current?.injectJavaScript(`window.setParagraphSpacing && window.setParagraphSpacing(${value}); true;`);
-          break;
-        case "pageMargin":
-          setSettingPageMargin(value as number);
-          webViewRef.current?.injectJavaScript(`window.setPageMargin && window.setPageMargin(${value}); true;`);
-          break;
-        case "fontTheme":
-          setSettingFontTheme(value as string);
-          webViewRef.current?.injectJavaScript(`window.setFontTheme && window.setFontTheme("${value}"); true;`);
-          break;
-        case "viewMode":
-          setSettingViewMode(value as "paginated" | "scroll");
-          webViewRef.current?.injectJavaScript(`window.setViewMode && window.setViewMode("${value}"); true;`);
-          break;
+  const handleSearchInput = useCallback((query: string) => {
+    setSearchQuery(query);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      const trimmed = query.trim();
+      if (trimmed) {
+        setIsSearching(true);
+        bridge.search(trimmed);
+      } else {
+        setSearchResultCount(0);
+        setSearchIndex(0);
+        bridge.clearSearch();
       }
-    },
-    [],
-  );
+    }, 300);
+  }, [bridge]);
 
-  if (loading) {
+  const navigateSearch = useCallback((direction: "prev" | "next") => {
+    if (searchResultCount === 0) return;
+    const newIdx = direction === "next"
+      ? (searchIndex + 1) % searchResultCount
+      : (searchIndex - 1 + searchResultCount) % searchResultCount;
+    setSearchIndex(newIdx);
+    bridge.navigateSearch(newIdx);
+  }, [searchIndex, searchResultCount, bridge]);
+
+  const updateSetting = useCallback((key: string, value: number | string) => {
+    switch (key) {
+      case "fontSize":
+        setSettingFontSize(value as number);
+        bridge.applySettings({ fontSize: value as number });
+        break;
+      case "lineHeight":
+        setSettingLineHeight(value as number);
+        bridge.applySettings({ lineHeight: value as number });
+        break;
+      case "paragraphSpacing":
+        setSettingParagraphSpacing(value as number);
+        bridge.applySettings({ paragraphSpacing: value as number });
+        break;
+      case "pageMargin":
+        setSettingPageMargin(value as number);
+        bridge.applySettings({ pageMargin: value as number });
+        break;
+      case "fontTheme":
+        setSettingFontTheme(value as string);
+        bridge.applySettings({ fontTheme: value as string });
+        break;
+      case "viewMode":
+        setSettingViewMode(value as "paginated" | "scroll");
+        bridge.applySettings({ viewMode: value as string });
+        break;
+    }
+  }, [bridge]);
+
+  // Selection popover handlers
+  const handleHighlight = useCallback((color: string) => {
+    if (!selection) return;
+    const highlight = {
+      id: `hl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      bookId,
+      cfi: selection.cfi,
+      text: selection.text,
+      color: color as any,
+      chapterTitle: currentChapter,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    addHighlight(highlight);
+    bridge.addAnnotation({ value: selection.cfi, color });
+    setSelection(null);
+  }, [selection, bookId, currentChapter, addHighlight, bridge]);
+
+  const handleDismissSelection = useCallback(() => {
+    setSelection(null);
+  }, []);
+
+  if (loading && !webViewReady) {
     return (
       <SafeAreaView style={[s.container, { backgroundColor: colors.background }]}>
         <View style={s.loadingWrap}>
@@ -418,165 +437,104 @@ export function ReaderScreen({ route, navigation }: Props) {
     );
   }
 
-  const readerHtml = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-      <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-          font-size: ${settingFontSize}px;
-          line-height: ${settingLineHeight};
-          color: ${colors.foreground};
-          background: ${colors.background};
-          padding: ${settingPageMargin}px;
-          font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-          -webkit-user-select: text;
-          user-select: text;
-        }
-        p { margin-bottom: ${settingParagraphSpacing}px; }
-        .placeholder {
-          display: flex; flex-direction: column; align-items: center; justify-content: center;
-          min-height: 80vh; text-align: center; color: ${colors.mutedForeground};
-        }
-        .placeholder h2 { font-size: 18px; margin-bottom: 8px; color: ${colors.foreground}; }
-        .placeholder p { font-size: 14px; }
-      </style>
-    </head>
-    <body>
-      <div class="placeholder">
-        <h2>${book?.meta.title || "Book"}</h2>
-        <p>The foliate-js reader engine will render the book content here.</p>
-        <p style="margin-top: 12px; font-size: 12px; opacity: 0.6;">
-          Book format: ${book?.format || "unknown"}<br/>
-          File: ${book?.filePath || "N/A"}
-        </p>
-      </div>
-      <script>
-        document.addEventListener('click', function(e) {
-          var x = e.clientX / window.innerWidth;
-          if (x > 0.25 && x < 0.75) {
-            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'tap' }));
-          }
-        });
-        window.goToHref = function(href) {};
-        window.search = function(query) {};
-        window.navigateSearch = function(idx) {};
-        window.goPrev = function() {};
-        window.goNext = function() {};
-        window.goToProgress = function(p) {};
-        window.setFontSize = function(s) { document.body.style.fontSize = s + 'px'; };
-        window.setLineHeight = function(lh) { document.body.style.lineHeight = lh; };
-        window.setParagraphSpacing = function(s) {
-          var style = document.querySelector('#ps-style') || document.createElement('style');
-          style.id = 'ps-style';
-          style.textContent = 'p { margin-bottom: ' + s + 'px; }';
-          document.head.appendChild(style);
-        };
-        window.setPageMargin = function(m) { document.body.style.padding = m + 'px'; };
-        window.setFontTheme = function(theme) {};
-        window.setViewMode = function(mode) {};
-      </script>
-    </body>
-    </html>
-  `;
-
   const percent = Math.round(progress * 100);
 
   return (
     <View style={s.container}>
-      {/* WebView */}
+      {/* WebView with foliate-js */}
       <WebView
-        ref={webViewRef}
-        source={{ html: readerHtml }}
+        ref={bridge.webViewRef}
+        source={READER_HTML}
         style={s.webview}
-        onMessage={handleMessage}
+        onMessage={bridge.handleMessage}
         javaScriptEnabled
         domStorageEnabled
+        allowFileAccess
+        allowFileAccessFromFileURLs
+        allowUniversalAccessFromFileURLs
         allowsInlineMediaPlayback
-        scrollEnabled
+        scrollEnabled={false}
         showsVerticalScrollIndicator={false}
+        originWhitelist={["*"]}
+        mixedContentMode="always"
       />
 
-      {/* ─── Toolbar (gradient bg, slide in/out) ─── */}
-      <Animated.View
-        style={[s.toolbar, { paddingTop: insets.top, transform: [{ translateY: toolbarAnim }] }]}
-      >
+      {/* Loading overlay */}
+      {loading && (
+        <View style={s.loadingOverlay}>
+          <ActivityIndicator size="large" color={colors.indigo} />
+        </View>
+      )}
+
+      {/* Selection Popover */}
+      {selection && (
+        <SelectionPopover
+          selection={selection}
+          onHighlight={handleHighlight}
+          onDismiss={handleDismissSelection}
+          onCopy={() => {
+            // Copy handled in popover
+            setSelection(null);
+          }}
+          onAIChat={() => {
+            setSelection(null);
+            navigation.navigate("BookChat", { bookId });
+          }}
+        />
+      )}
+
+      {/* ─── Toolbar ─── */}
+      <Animated.View style={[s.toolbar, { paddingTop: insets.top, transform: [{ translateY: toolbarAnim }] }]}>
         <View style={s.toolbarRow}>
-          {/* Back */}
           <TouchableOpacity style={s.toolbarBtn} onPress={() => navigation.goBack()}>
             <ChevronLeftIcon size={20} color="#fff" />
           </TouchableOpacity>
-
-          {/* Title */}
           <View style={s.toolbarCenter}>
             <Text style={s.toolbarTitle} numberOfLines={1}>{bookTitle}</Text>
-            {currentChapter ? (
-              <Text style={s.toolbarChapter} numberOfLines={1}>{currentChapter}</Text>
-            ) : null}
+            {currentChapter ? <Text style={s.toolbarChapter} numberOfLines={1}>{currentChapter}</Text> : null}
           </View>
-
-          {/* Notebook */}
           <TouchableOpacity style={s.toolbarBtn} onPress={() => setShowNotebook(true)}>
             <NotebookPenIcon size={18} color="#fff" />
           </TouchableOpacity>
-
-          {/* AI Chat placeholder */}
-          <TouchableOpacity style={s.toolbarBtn} onPress={() => {}}>
+          <TouchableOpacity style={s.toolbarBtn} onPress={() => navigation.navigate("BookChat", { bookId })}>
             <MessageSquareIcon size={18} color="#fff" />
           </TouchableOpacity>
-
-          {/* TTS placeholder */}
-          <TouchableOpacity style={s.toolbarBtn} onPress={() => {}}>
-            <Volume2Icon size={18} color="#fff" />
-          </TouchableOpacity>
-
-          {/* TOC */}
           <TouchableOpacity style={s.toolbarBtn} onPress={() => setShowTOC(true)}>
             <ListIcon size={18} color="#fff" />
           </TouchableOpacity>
-
-          {/* Search */}
           <TouchableOpacity style={s.toolbarBtn} onPress={() => setShowSearch(true)}>
             <SearchIcon size={18} color="#fff" />
           </TouchableOpacity>
-
-          {/* Settings */}
           <TouchableOpacity style={s.toolbarBtn} onPress={() => setShowSettings(true)}>
             <SettingsIcon size={18} color="#fff" />
           </TouchableOpacity>
         </View>
       </Animated.View>
 
-      {/* ─── Footer (gradient bg, slider + nav) ─── */}
-      <Animated.View
-        style={[s.footer, { paddingBottom: insets.bottom || 8, transform: [{ translateY: footerAnim }] }]}
-      >
-        {/* Page info */}
+      {/* ─── Footer ─── */}
+      <Animated.View style={[s.footer, { paddingBottom: insets.bottom || 8, transform: [{ translateY: footerAnim }] }]}>
         <View style={s.footerPageRow}>
           <Text style={s.footerPageText}>
             {currentPage > 0 && totalPages > 0 ? `${currentPage} / ${totalPages}` : ""}
           </Text>
           <Text style={s.footerPageText}>{percent}%</Text>
         </View>
-        {/* Slider + nav */}
         <View style={s.footerSliderRow}>
-          <TouchableOpacity style={s.footerNavBtn} onPress={goToPrev}>
+          <TouchableOpacity style={s.footerNavBtn} onPress={bridge.goPrev}>
             <ChevronLeftIcon size={20} color="#fff" />
           </TouchableOpacity>
           <View style={s.sliderWrap}>
             <View style={s.sliderTrack}>
-              <View style={[s.sliderFill, { width: `${Math.round(progress * 100)}%` }]} />
+              <View style={[s.sliderFill, { width: `${percent}%` }]} />
             </View>
           </View>
-          <TouchableOpacity style={s.footerNavBtn} onPress={goToNext}>
+          <TouchableOpacity style={s.footerNavBtn} onPress={bridge.goNext}>
             <ChevronRightIcon size={20} color="#fff" />
           </TouchableOpacity>
         </View>
       </Animated.View>
 
-      {/* ─── Search Bar (top overlay) ─── */}
+      {/* ─── Search Bar ─── */}
       {showSearch && (
         <View style={[s.searchBarWrap, { paddingTop: insets.top }]}>
           <View style={s.searchBarRow}>
@@ -596,36 +554,18 @@ export function ReaderScreen({ route, navigation }: Props) {
               {isSearching ? (
                 <ActivityIndicator size="small" color={colors.mutedForeground} />
               ) : searchQuery && searchResultCount > 0 ? (
-                <Text style={s.searchCount}>
-                  {searchIndex + 1} / {searchResultCount}
-                </Text>
+                <Text style={s.searchCount}>{searchIndex + 1} / {searchResultCount}</Text>
               ) : searchQuery && !isSearching ? (
                 <Text style={s.searchCount}>0</Text>
               ) : null}
             </View>
-            <TouchableOpacity
-              style={s.searchNavBtn}
-              onPress={() => navigateSearch("prev")}
-              disabled={searchResultCount === 0}
-            >
+            <TouchableOpacity style={s.searchNavBtn} onPress={() => navigateSearch("prev")} disabled={searchResultCount === 0}>
               <ChevronLeftIcon size={16} color={searchResultCount > 0 ? colors.foreground : colors.mutedForeground} />
             </TouchableOpacity>
-            <TouchableOpacity
-              style={s.searchNavBtn}
-              onPress={() => navigateSearch("next")}
-              disabled={searchResultCount === 0}
-            >
+            <TouchableOpacity style={s.searchNavBtn} onPress={() => navigateSearch("next")} disabled={searchResultCount === 0}>
               <ChevronRightIcon size={16} color={searchResultCount > 0 ? colors.foreground : colors.mutedForeground} />
             </TouchableOpacity>
-            <TouchableOpacity
-              style={s.searchNavBtn}
-              onPress={() => {
-                setShowSearch(false);
-                setSearchQuery("");
-                setSearchResultCount(0);
-                setSearchIndex(0);
-              }}
-            >
+            <TouchableOpacity style={s.searchNavBtn} onPress={() => { setShowSearch(false); setSearchQuery(""); setSearchResultCount(0); setSearchIndex(0); bridge.clearSearch(); }}>
               <XIcon size={16} color={colors.mutedForeground} />
             </TouchableOpacity>
           </View>
@@ -645,13 +585,7 @@ export function ReaderScreen({ route, navigation }: Props) {
           <ScrollView showsVerticalScrollIndicator={false} style={s.sheetScroll}>
             {toc.length > 0 ? (
               toc.map((item) => (
-                <TOCTreeItem
-                  key={item.id || item.href}
-                  item={item}
-                  level={0}
-                  currentChapter={currentChapter}
-                  onSelect={goToTocItem}
-                />
+                <TOCTreeItem key={item.id || item.href} item={item} level={0} currentChapter={currentChapter} onSelect={goToTocItem} />
               ))
             ) : (
               <Text style={s.sheetEmpty}>{t("reader.noToc", "暂无目录信息")}</Text>
@@ -660,7 +594,7 @@ export function ReaderScreen({ route, navigation }: Props) {
         </View>
       </Modal>
 
-      {/* ─── Settings Panel (matching Tauri MobileReadSettings) ─── */}
+      {/* ─── Settings Panel ─── */}
       <Modal visible={showSettings} transparent animationType="slide" onRequestClose={() => setShowSettings(false)}>
         <Pressable style={s.modalBackdrop} onPress={() => setShowSettings(false)} />
         <View style={[s.bottomSheet, { paddingBottom: insets.bottom || 16 }]}>
@@ -675,157 +609,76 @@ export function ReaderScreen({ route, navigation }: Props) {
             <View style={s.settingRow}>
               <Text style={s.settingLabel}>{t("reader.fontSize", "字号")}</Text>
               <View style={s.settingControl}>
-                <TouchableOpacity
-                  style={s.stepBtn}
-                  onPress={() => updateSetting("fontSize", Math.max(12, settingFontSize - 1))}
-                >
+                <TouchableOpacity style={s.stepBtn} onPress={() => updateSetting("fontSize", Math.max(12, settingFontSize - 1))}>
                   <Text style={s.stepBtnText}>A-</Text>
                 </TouchableOpacity>
                 <Text style={s.settingValue}>{settingFontSize}</Text>
-                <TouchableOpacity
-                  style={s.stepBtn}
-                  onPress={() => updateSetting("fontSize", Math.min(32, settingFontSize + 1))}
-                >
+                <TouchableOpacity style={s.stepBtn} onPress={() => updateSetting("fontSize", Math.min(32, settingFontSize + 1))}>
                   <Text style={s.stepBtnText}>A+</Text>
                 </TouchableOpacity>
               </View>
             </View>
-
             {/* Line Height */}
             <View style={s.settingRow}>
               <Text style={s.settingLabel}>{t("reader.lineHeight", "行高")}</Text>
               <View style={s.settingControl}>
-                <TouchableOpacity
-                  style={s.stepBtn}
-                  onPress={() =>
-                    updateSetting("lineHeight", Math.round(Math.max(1.2, settingLineHeight - 0.1) * 10) / 10)
-                  }
-                >
+                <TouchableOpacity style={s.stepBtn} onPress={() => updateSetting("lineHeight", Math.round(Math.max(1.2, settingLineHeight - 0.1) * 10) / 10)}>
                   <Text style={s.stepBtnText}>-</Text>
                 </TouchableOpacity>
                 <Text style={s.settingValue}>{settingLineHeight.toFixed(1)}</Text>
-                <TouchableOpacity
-                  style={s.stepBtn}
-                  onPress={() =>
-                    updateSetting("lineHeight", Math.round(Math.min(2.5, settingLineHeight + 0.1) * 10) / 10)
-                  }
-                >
+                <TouchableOpacity style={s.stepBtn} onPress={() => updateSetting("lineHeight", Math.round(Math.min(2.5, settingLineHeight + 0.1) * 10) / 10)}>
                   <Text style={s.stepBtnText}>+</Text>
                 </TouchableOpacity>
               </View>
             </View>
-
             {/* Paragraph Spacing */}
             <View style={s.settingRow}>
               <Text style={s.settingLabel}>{t("reader.paragraphSpacing", "段间距")}</Text>
               <View style={s.settingControl}>
-                <TouchableOpacity
-                  style={s.stepBtn}
-                  onPress={() =>
-                    updateSetting("paragraphSpacing", Math.max(0, settingParagraphSpacing - 2))
-                  }
-                >
+                <TouchableOpacity style={s.stepBtn} onPress={() => updateSetting("paragraphSpacing", Math.max(0, settingParagraphSpacing - 2))}>
                   <Text style={s.stepBtnText}>-</Text>
                 </TouchableOpacity>
                 <Text style={s.settingValue}>{settingParagraphSpacing}</Text>
-                <TouchableOpacity
-                  style={s.stepBtn}
-                  onPress={() =>
-                    updateSetting("paragraphSpacing", Math.min(24, settingParagraphSpacing + 2))
-                  }
-                >
+                <TouchableOpacity style={s.stepBtn} onPress={() => updateSetting("paragraphSpacing", Math.min(24, settingParagraphSpacing + 2))}>
                   <Text style={s.stepBtnText}>+</Text>
                 </TouchableOpacity>
               </View>
             </View>
-
             {/* Page Margin */}
             <View style={s.settingRow}>
               <Text style={s.settingLabel}>{t("reader.pageMargin", "页边距")}</Text>
               <View style={s.settingControl}>
-                <TouchableOpacity
-                  style={s.stepBtn}
-                  onPress={() =>
-                    updateSetting("pageMargin", Math.max(0, settingPageMargin - 4))
-                  }
-                >
+                <TouchableOpacity style={s.stepBtn} onPress={() => updateSetting("pageMargin", Math.max(0, settingPageMargin - 4))}>
                   <Text style={s.stepBtnText}>-</Text>
                 </TouchableOpacity>
                 <Text style={s.settingValue}>{settingPageMargin}</Text>
-                <TouchableOpacity
-                  style={s.stepBtn}
-                  onPress={() =>
-                    updateSetting("pageMargin", Math.min(48, settingPageMargin + 4))
-                  }
-                >
+                <TouchableOpacity style={s.stepBtn} onPress={() => updateSetting("pageMargin", Math.min(48, settingPageMargin + 4))}>
                   <Text style={s.stepBtnText}>+</Text>
                 </TouchableOpacity>
               </View>
             </View>
-
             {/* Font Theme */}
             <View style={s.settingRow}>
               <Text style={s.settingLabel}>{t("reader.fontTheme", "字体主题")}</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.themeScroll}>
                 <View style={s.themeRow}>
                   {FONT_THEMES.map((theme) => (
-                    <TouchableOpacity
-                      key={theme.id}
-                      style={[
-                        s.themeBtn,
-                        settingFontTheme === theme.id && s.themeBtnActive,
-                      ]}
-                      onPress={() => updateSetting("fontTheme", theme.id)}
-                    >
-                      <Text
-                        style={[
-                          s.themeBtnText,
-                          settingFontTheme === theme.id && s.themeBtnTextActive,
-                        ]}
-                      >
-                        {t(theme.labelKey, theme.fallback)}
-                      </Text>
+                    <TouchableOpacity key={theme.id} style={[s.themeBtn, settingFontTheme === theme.id && s.themeBtnActive]} onPress={() => updateSetting("fontTheme", theme.id)}>
+                      <Text style={[s.themeBtnText, settingFontTheme === theme.id && s.themeBtnTextActive]}>{t(theme.labelKey, theme.fallback)}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
               </ScrollView>
             </View>
-
             {/* View Mode */}
             <View style={s.settingRow}>
               <Text style={s.settingLabel}>{t("reader.viewMode", "阅读模式")}</Text>
               <View style={s.viewModeRow}>
-                <TouchableOpacity
-                  style={[
-                    s.viewModeBtn,
-                    settingViewMode === "paginated" && s.viewModeBtnActive,
-                  ]}
-                  onPress={() => updateSetting("viewMode", "paginated")}
-                >
-                  <Text
-                    style={[
-                      s.viewModeBtnText,
-                      settingViewMode === "paginated" && s.viewModeBtnTextActive,
-                    ]}
-                  >
-                    {t("reader.paginated", "翻页")}
-                  </Text>
+                <TouchableOpacity style={[s.viewModeBtn, settingViewMode === "paginated" && s.viewModeBtnActive]} onPress={() => updateSetting("viewMode", "paginated")}>
+                  <Text style={[s.viewModeBtnText, settingViewMode === "paginated" && s.viewModeBtnTextActive]}>{t("reader.paginated", "翻页")}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    s.viewModeBtn,
-                    settingViewMode === "scroll" && s.viewModeBtnActive,
-                  ]}
-                  onPress={() => updateSetting("viewMode", "scroll")}
-                >
-                  <Text
-                    style={[
-                      s.viewModeBtnText,
-                      settingViewMode === "scroll" && s.viewModeBtnTextActive,
-                    ]}
-                  >
-                    {t("reader.scrollMode", "滚动")}
-                  </Text>
+                <TouchableOpacity style={[s.viewModeBtn, settingViewMode === "scroll" && s.viewModeBtnActive]} onPress={() => updateSetting("viewMode", "scroll")}>
+                  <Text style={[s.viewModeBtnText, settingViewMode === "scroll" && s.viewModeBtnTextActive]}>{t("reader.scrollMode", "滚动")}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -833,7 +686,7 @@ export function ReaderScreen({ route, navigation }: Props) {
         </View>
       </Modal>
 
-      {/* ─── Notebook Panel Placeholder ─── */}
+      {/* ─── Notebook Panel ─── */}
       <Modal visible={showNotebook} transparent animationType="slide" onRequestClose={() => setShowNotebook(false)}>
         <Pressable style={s.modalBackdrop} onPress={() => setShowNotebook(false)} />
         <View style={[s.bottomSheet, { maxHeight: SCREEN_HEIGHT * 0.7, paddingBottom: insets.bottom || 16 }]}>
@@ -843,12 +696,24 @@ export function ReaderScreen({ route, navigation }: Props) {
               <XIcon size={18} color={colors.mutedForeground} />
             </TouchableOpacity>
           </View>
-          <View style={s.notebookPlaceholder}>
-            <NotebookPenIcon size={40} color={colors.mutedForeground} />
-            <Text style={s.notebookPlaceholderText}>
-              {t("reader.notebookHint", "在阅读时选中文字来创建笔记和高亮")}
-            </Text>
-          </View>
+          {highlights.length > 0 ? (
+            <ScrollView showsVerticalScrollIndicator={false} style={s.sheetScroll}>
+              {highlights.map((h) => (
+                <View key={h.id} style={s.highlightItem}>
+                  <View style={[s.highlightColorDot, { backgroundColor: h.color === "yellow" ? "#facc15" : h.color === "green" ? "#4ade80" : h.color === "blue" ? "#60a5fa" : h.color === "pink" ? "#ec4899" : h.color === "red" ? "#f87171" : "#a78bfa" }]} />
+                  <View style={s.highlightContent}>
+                    <Text style={s.highlightText} numberOfLines={3}>{h.text}</Text>
+                    {h.note && <Text style={s.highlightNote}>{h.note}</Text>}
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+          ) : (
+            <View style={s.notebookPlaceholder}>
+              <NotebookPenIcon size={40} color={colors.mutedForeground} />
+              <Text style={s.notebookPlaceholderText}>{t("reader.notebookHint", "在阅读时选中文字来创建笔记和高亮")}</Text>
+            </View>
+          )}
         </View>
       </Modal>
     </View>
@@ -863,169 +728,63 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   errorText: { fontSize: fontSize.base, color: colors.destructive, textAlign: "center", paddingHorizontal: 24 },
   backButton: { marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, borderRadius: radius.lg, backgroundColor: colors.primary },
   backButtonText: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.primaryForeground },
+  loadingOverlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center", backgroundColor: colors.background, zIndex: 20 },
 
-  // Toolbar — gradient-like dark bg
-  toolbar: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    paddingBottom: 8,
-    zIndex: 30,
-  },
-  toolbarRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 8,
-    paddingTop: 4,
-  },
-  toolbarBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  toolbar: { position: "absolute", top: 0, left: 0, right: 0, backgroundColor: "rgba(0,0,0,0.6)", paddingBottom: 8, zIndex: 30 },
+  toolbarRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 8, paddingTop: 4 },
+  toolbarBtn: { width: 36, height: 36, borderRadius: radius.full, alignItems: "center", justifyContent: "center" },
   toolbarCenter: { flex: 1, paddingHorizontal: 4 },
   toolbarTitle: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: "#fff" },
   toolbarChapter: { fontSize: fontSize.xs, color: "rgba(255,255,255,0.7)" },
 
-  // Footer — gradient-like dark bg
-  footer: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    paddingTop: 8,
-    paddingHorizontal: 16,
-    zIndex: 30,
-  },
-  footerPageRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 4,
-  },
+  footer: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: "rgba(0,0,0,0.6)", paddingTop: 8, paddingHorizontal: 16, zIndex: 30 },
+  footerPageRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 4 },
   footerPageText: { fontSize: fontSize.xs, color: "rgba(255,255,255,0.7)" },
   footerSliderRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  footerNavBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  footerNavBtn: { width: 32, height: 32, borderRadius: radius.full, alignItems: "center", justifyContent: "center" },
   sliderWrap: { flex: 1, justifyContent: "center", paddingVertical: 8 },
   sliderTrack: { height: 4, backgroundColor: "rgba(255,255,255,0.3)", borderRadius: 2, overflow: "hidden" },
   sliderFill: { height: "100%", backgroundColor: "#fff", borderRadius: 2 },
 
-  // Search bar overlay
-  searchBarWrap: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: colors.background,
-    borderBottomWidth: 0.5,
-    borderBottomColor: colors.border,
-    zIndex: 40,
-  },
+  searchBarWrap: { position: "absolute", top: 0, left: 0, right: 0, backgroundColor: colors.background, borderBottomWidth: 0.5, borderBottomColor: colors.border, zIndex: 40 },
   searchBarRow: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 12, paddingVertical: 8 },
-  searchInputWrap: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.muted,
-    borderRadius: radius.lg,
-    paddingHorizontal: 10,
-    height: 36,
-    gap: 6,
-  },
+  searchInputWrap: { flex: 1, flexDirection: "row", alignItems: "center", backgroundColor: colors.muted, borderRadius: radius.lg, paddingHorizontal: 10, height: 36, gap: 6 },
   searchInput: { flex: 1, fontSize: fontSize.sm, color: colors.foreground, padding: 0 },
   searchMetaRow: { flexDirection: "row", alignItems: "center" },
   searchCount: { fontSize: fontSize.xs, color: colors.mutedForeground },
-  searchNavBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.lg,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  searchNavBtn: { width: 32, height: 32, borderRadius: radius.lg, alignItems: "center", justifyContent: "center" },
 
-  // Modals
   modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)" },
-  bottomSheet: {
-    backgroundColor: colors.card,
-    borderTopLeftRadius: radius.xxl,
-    borderTopRightRadius: radius.xxl,
-    padding: 16,
-  },
-  sheetHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 12,
-  },
+  bottomSheet: { backgroundColor: colors.card, borderTopLeftRadius: radius.xxl, borderTopRightRadius: radius.xxl, padding: 16 },
+  sheetHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
   sheetTitle: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.foreground },
   sheetScroll: { maxHeight: SCREEN_HEIGHT * 0.5 },
-  sheetEmpty: {
-    fontSize: fontSize.sm,
-    color: colors.mutedForeground,
-    textAlign: "center",
-    paddingVertical: 32,
-  },
+  sheetEmpty: { fontSize: fontSize.sm, color: colors.mutedForeground, textAlign: "center", paddingVertical: 32 },
 
-  // Settings
-  settingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 12,
-    borderBottomWidth: 0.5,
-    borderBottomColor: colors.border,
-  },
+  settingRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: colors.border },
   settingLabel: { fontSize: fontSize.sm, color: colors.mutedForeground },
   settingControl: { flexDirection: "row", alignItems: "center", gap: 12 },
-  stepBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.lg,
-    backgroundColor: colors.muted,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  stepBtn: { width: 32, height: 32, borderRadius: radius.lg, backgroundColor: colors.muted, alignItems: "center", justifyContent: "center" },
   stepBtnText: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.foreground },
-  settingValue: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.foreground,
-    minWidth: 32,
-    textAlign: "center",
-  },
+  settingValue: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.foreground, minWidth: 32, textAlign: "center" },
   themeScroll: { maxWidth: 220 },
   themeRow: { flexDirection: "row", gap: 6 },
-  themeBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: radius.lg,
-    backgroundColor: colors.muted,
-  },
+  themeBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.lg, backgroundColor: colors.muted },
   themeBtnActive: { backgroundColor: colors.primary },
   themeBtnText: { fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.mutedForeground },
   themeBtnTextActive: { color: colors.primaryForeground },
   viewModeRow: { flexDirection: "row", gap: 8 },
-  viewModeBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: radius.lg,
-    backgroundColor: colors.muted,
-  },
+  viewModeBtn: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: radius.lg, backgroundColor: colors.muted },
   viewModeBtnActive: { backgroundColor: colors.primary },
   viewModeBtnText: { fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.mutedForeground },
   viewModeBtnTextActive: { color: colors.primaryForeground },
 
-  // Notebook placeholder
   notebookPlaceholder: { alignItems: "center", justifyContent: "center", paddingVertical: 48, gap: 12 },
   notebookPlaceholderText: { fontSize: fontSize.sm, color: colors.mutedForeground, textAlign: "center", paddingHorizontal: 32 },
+
+  highlightItem: { flexDirection: "row", alignItems: "flex-start", gap: 8, paddingVertical: 8, borderBottomWidth: 0.5, borderBottomColor: colors.border },
+  highlightColorDot: { width: 8, height: 8, borderRadius: 4, marginTop: 4 },
+  highlightContent: { flex: 1 },
+  highlightText: { fontSize: fontSize.sm, color: colors.foreground, lineHeight: 18 },
+  highlightNote: { fontSize: fontSize.xs, color: colors.mutedForeground, marginTop: 4 },
 });

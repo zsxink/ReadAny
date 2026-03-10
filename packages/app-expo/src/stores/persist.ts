@@ -2,7 +2,7 @@
  * Persist utility for React Native
  * Uses expo-file-system for file I/O
  */
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import * as SecureStore from "expo-secure-store";
 import type { StateCreator, StoreApi } from "zustand";
 

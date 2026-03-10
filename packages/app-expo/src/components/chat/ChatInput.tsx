@@ -1,0 +1,244 @@
+/**
+ * ChatInput — touch-optimized chat input matching app-mobile MobileChatInput.
+ * Rounded container with textarea on top, action bar (deep thinking + send) below.
+ */
+import { useState, useRef, useCallback } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+} from "react-native";
+import { useTranslation } from "react-i18next";
+import type { AttachedQuote } from "@readany/core/types";
+import { useColors, fontSize as fs, radius, fontWeight as fw } from "@/styles/theme";
+import type { ThemeColors } from "@/styles/theme";
+import { SendIcon, BrainIcon, XIcon, StopCircleIcon } from "@/components/ui/Icon";
+
+interface ChatInputProps {
+  onSend: (text: string, deepThinking: boolean, quotes?: AttachedQuote[]) => void;
+  onStop?: () => void;
+  isStreaming?: boolean;
+  quotes?: AttachedQuote[];
+  onRemoveQuote?: (id: string) => void;
+  placeholder?: string;
+}
+
+const MAX_INPUT_HEIGHT = 120;
+
+export function ChatInput({
+  onSend,
+  onStop,
+  isStreaming,
+  quotes = [],
+  onRemoveQuote,
+  placeholder,
+}: ChatInputProps) {
+  const [text, setText] = useState("");
+  const [deepThinking, setDeepThinking] = useState(false);
+  const [inputHeight, setInputHeight] = useState(36);
+  const { t } = useTranslation();
+  const colors = useColors();
+  const s = makeStyles(colors);
+  const inputRef = useRef<TextInput>(null);
+
+  const handleSend = useCallback(() => {
+    const trimmed = text.trim();
+    if (!trimmed && quotes.length === 0) return;
+    onSend(trimmed, deepThinking, quotes.length > 0 ? quotes : undefined);
+    setText("");
+    setDeepThinking(false);
+    setInputHeight(36);
+  }, [text, deepThinking, quotes, onSend]);
+
+  const handleContentSizeChange = useCallback(
+    (e: any) => {
+      const h = Math.min(e.nativeEvent.contentSize.height, MAX_INPUT_HEIGHT);
+      setInputHeight(Math.max(36, h));
+    },
+    [],
+  );
+
+  const canSend = text.trim().length > 0 || quotes.length > 0;
+
+  return (
+    <View style={s.wrapper}>
+      <View style={s.container}>
+        {/* Attached quotes chips */}
+        {quotes.length > 0 && (
+          <View style={s.quotesRow}>
+            {quotes.map((q) => (
+              <View key={q.id} style={s.quoteChip}>
+                <Text style={s.quoteChipText} numberOfLines={1}>
+                  {q.text.slice(0, 40)}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => onRemoveQuote?.(q.id)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <XIcon size={10} color={colors.mutedForeground} />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Input area */}
+        <TextInput
+          ref={inputRef}
+          style={[s.input, { height: inputHeight }]}
+          placeholder={
+            quotes.length > 0
+              ? t("chat.askAboutQuote", "关于引用提问...")
+              : placeholder || t("chat.inputPlaceholder", "输入消息...")
+          }
+          placeholderTextColor={colors.mutedForeground}
+          value={text}
+          onChangeText={setText}
+          multiline
+          onContentSizeChange={handleContentSizeChange}
+          returnKeyType="default"
+          blurOnSubmit={false}
+          editable={!isStreaming}
+        />
+
+        {/* Action bar: deep thinking toggle + send */}
+        <View style={s.actionBar}>
+          <TouchableOpacity
+            style={[s.deepThinkBtn, deepThinking && s.deepThinkBtnActive]}
+            onPress={() => setDeepThinking(!deepThinking)}
+            activeOpacity={0.7}
+          >
+            <BrainIcon
+              size={13}
+              color={deepThinking ? "#7c3aed" : colors.mutedForeground}
+            />
+            <Text
+              style={[s.deepThinkText, deepThinking && s.deepThinkTextActive]}
+            >
+              {t("chat.deepThinking", "深度思考")}
+            </Text>
+          </TouchableOpacity>
+
+          {isStreaming ? (
+            <TouchableOpacity style={s.sendBtn} onPress={onStop} activeOpacity={0.7}>
+              <StopCircleIcon size={16} color={colors.destructive} />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[s.sendBtn, canSend && s.sendBtnActive]}
+              onPress={handleSend}
+              disabled={!canSend}
+              activeOpacity={0.7}
+            >
+              <SendIcon
+                size={14}
+                color={canSend ? colors.primaryForeground : colors.mutedForeground}
+              />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+      {deepThinking && (
+        <Text style={s.deepThinkHint}>
+          {t("chat.deepThinkingHint", "深度思考模式会使用更多 tokens")}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+const makeStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    wrapper: {
+      paddingHorizontal: 12,
+      paddingTop: 4,
+      paddingBottom: 4,
+    },
+    container: {
+      borderRadius: radius.xl + 4,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+      overflow: "hidden",
+    },
+    quotesRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 6,
+      paddingHorizontal: 12,
+      paddingTop: 10,
+    },
+    quoteChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      backgroundColor: "rgba(99,102,241,0.06)",
+      borderWidth: 0.5,
+      borderColor: "rgba(99,102,241,0.2)",
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: radius.md,
+      maxWidth: "70%",
+    },
+    quoteChipText: {
+      fontSize: fs.xs,
+      color: colors.indigo,
+      flex: 1,
+    },
+    input: {
+      fontSize: fs.sm,
+      color: colors.foreground,
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      paddingBottom: 4,
+      maxHeight: MAX_INPUT_HEIGHT,
+      lineHeight: 20,
+    },
+    actionBar: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 12,
+      paddingBottom: 8,
+    },
+    deepThinkBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      borderRadius: radius.full,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
+    deepThinkBtnActive: {
+      borderColor: "rgba(139,92,246,0.3)",
+      backgroundColor: "rgba(139,92,246,0.06)",
+    },
+    deepThinkText: {
+      fontSize: fs.xs,
+      color: colors.mutedForeground,
+    },
+    deepThinkTextActive: {
+      color: "#7c3aed",
+    },
+    sendBtn: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.muted,
+    },
+    sendBtnActive: {
+      backgroundColor: colors.primary,
+    },
+    deepThinkHint: {
+      fontSize: fs.xs,
+      color: colors.mutedForeground,
+      textAlign: "center",
+      marginTop: 6,
+    },
+  });

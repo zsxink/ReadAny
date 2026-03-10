@@ -2,21 +2,9 @@
  * Hooks for React Native
  */
 
-export function useStreamingChat(_options?: unknown) {
-  return {
-    messages: [],
-    isLoading: false,
-    error: null,
-    sendMessage: async () => {
-      console.warn("useStreamingChat: AI features not available in React Native");
-    },
-    clearMessages: () => {},
-    retry: async () => {},
-  };
-}
-
-export type StreamingChatOptions = Record<string, unknown>;
-export type StreamingState = "idle" | "loading" | "error" | "streaming";
+// Re-export the real useStreamingChat from core
+export { useStreamingChat } from "@readany/core/hooks/use-streaming-chat";
+export type { StreamingChatOptions, StreamingState } from "@readany/core/hooks/use-streaming-chat";
 
 export interface SessionEventSource {
   emit: (event: string, data: unknown) => void;

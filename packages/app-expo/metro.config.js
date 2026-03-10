@@ -18,6 +18,9 @@ config.resolver.nodeModulesPaths = [
 // 3. Add support for TypeScript files
 config.resolver.sourceExts = [...config.resolver.sourceExts, "ts", "tsx"];
 
+// 4. Add .html to asset extensions so WebView can load local HTML files
+config.resolver.assetExts = [...config.resolver.assetExts, "html"];
+
 // 4. Force all packages to use the same React instance
 config.resolver.extraNodeModules = {
   ...config.resolver.extraNodeModules,
@@ -25,6 +28,21 @@ config.resolver.extraNodeModules = {
   "react/jsx-runtime": path.resolve(projectRoot, "node_modules/react/jsx-runtime"),
   "react/jsx-dev-runtime": path.resolve(projectRoot, "node_modules/react/jsx-dev-runtime"),
   "react-native": path.resolve(projectRoot, "node_modules/react-native"),
+};
+
+// 5. Override resolver to redirect Node built-in "punycode" to the npm package
+const nodeBuiltinRedirects = {
+  punycode: path.resolve(projectRoot, "node_modules/punycode/punycode.js"),
+};
+const originalResolveRequest = config.resolver.resolveRequest;
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (nodeBuiltinRedirects[moduleName]) {
+    return { type: "sourceFile", filePath: nodeBuiltinRedirects[moduleName] };
+  }
+  if (originalResolveRequest) {
+    return originalResolveRequest(context, moduleName, platform);
+  }
+  return context.resolveRequest(context, moduleName, platform);
 };
 
 module.exports = config;
