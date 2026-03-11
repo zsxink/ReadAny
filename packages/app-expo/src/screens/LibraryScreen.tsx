@@ -42,6 +42,7 @@ import {
 } from "@/components/ui/Icon";
 import * as DocumentPicker from "expo-document-picker";
 import { BookCard } from "@/components/library/BookCard";
+import BookIllustration from "@/assets/book.svg";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -449,9 +450,7 @@ export function LibraryScreen() {
         {/* Empty state */}
         {isLoaded && books.length === 0 && (
           <View style={s.emptyWrap}>
-            <View style={s.emptyIconWrap}>
-              <BookOpenIcon size={40} color={colors.mutedForeground} />
-            </View>
+            <BookIllustration width={160} height={160} />
             <Text style={s.emptyTitle}>{t("library.empty", "暂无书籍")}</Text>
             <Text style={s.emptyHint}>{t("library.emptyHint", "导入电子书开始阅读之旅")}</Text>
             <TouchableOpacity style={s.emptyImportBtn} onPress={handleImport} activeOpacity={0.8}>

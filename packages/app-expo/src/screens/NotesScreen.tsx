@@ -39,6 +39,7 @@ import {
   CheckIcon,
   ShareIcon,
 } from "@/components/ui/Icon";
+import NoteIllustration from "@/assets/note.svg";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type DetailTab = "notes" | "highlights";
@@ -255,9 +256,7 @@ export function NotesScreen() {
           <Text style={s.headerTitle}>{t("notes.title", "笔记")}</Text>
         </View>
         <View style={s.emptyWrap}>
-          <View style={s.emptyIconWrap}>
-            <NotebookPenIcon size={40} color={colors.mutedForeground} />
-          </View>
+          <NoteIllustration width={160} height={160} />
           <Text style={s.emptyTitle}>{t("notes.empty", "暂无笔记")}</Text>
           <Text style={s.emptyHint}>{t("notes.emptyHint", "阅读时长按文字添加高亮和笔记")}</Text>
         </View>
