@@ -46,7 +46,8 @@ import {
   XIcon,
   Trash2Icon,
 } from "@/components/ui/Icon";
-import ThinkIllustration from "../../assets/think.svg";
+
+const THINK_PNG = require("../../assets/think.png");
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SIDEBAR_WIDTH = Math.min(SCREEN_WIDTH * 0.75, 300);
@@ -380,29 +381,27 @@ function EmptyState({
 
   return (
     <View style={s.emptyContainer}>
-      <View style={s.emptyRow}>
-        <Image source={ThinkIllustration} style={{ width: 140, height: 140 }} />
-        <View style={s.emptyContent}>
-          <Text style={s.emptyTitle}>
-            {t("chat.howCanIHelp", "有什么我可以帮你的？")}
-          </Text>
-          <Text style={s.emptySubtitle}>
-            {t("chat.askAboutBooks", "关于书籍的任何问题都可以问我")}
-          </Text>
-          <View style={s.suggestionsColumn}>
-            {suggestions.map(({ icon, text }) => (
-              <TouchableOpacity
-                key={text}
-                style={s.suggestionCard}
-                onPress={() => onSuggestionPress(text, false)}
-                activeOpacity={0.7}
-              >
-                {icon}
-                <Text style={s.suggestionText}>{text}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
+      <View style={s.emptyInner}>
+        <Image source={THINK_PNG} style={{ width: 140, height: 140 }} />
+        <Text style={s.emptyTitle}>
+          {t("chat.howCanIHelp", "有什么我可以帮你的？")}
+        </Text>
+        <Text style={s.emptySubtitle}>
+          {t("chat.askAboutBooks", "关于书籍的任何问题都可以问我")}
+        </Text>
+      </View>
+      <View style={s.suggestionsGrid}>
+        {suggestions.map(({ icon, text }) => (
+          <TouchableOpacity
+            key={text}
+            style={s.suggestionCard}
+            onPress={() => onSuggestionPress(text, false)}
+            activeOpacity={0.7}
+          >
+            {icon}
+            <Text style={s.suggestionText}>{text}</Text>
+          </TouchableOpacity>
+        ))}
       </View>
     </View>
   );
@@ -439,19 +438,15 @@ const makeStyles = (colors: ThemeColors) =>
     },
     content: { flex: 1 },
 
-    // Empty state — matching desktop ChatPage
+    // Empty state — matching mobile ChatPage
     emptyContainer: {
       flex: 1,
       justifyContent: "center",
-      alignItems: "center",
       paddingHorizontal: 24,
-    },
-    emptyRow: {
-      flexDirection: "row",
-      alignItems: "center",
       gap: 32,
     },
-    emptyContent: {
+    emptyInner: {
+      alignItems: "center",
       gap: 8,
     },
     emptyTitle: {
@@ -462,22 +457,24 @@ const makeStyles = (colors: ThemeColors) =>
     emptySubtitle: {
       fontSize: fs.sm,
       color: colors.mutedForeground,
+      textAlign: "center",
     },
-    suggestionsColumn: {
-      marginTop: 12,
-      gap: 8,
+    suggestionsGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 10,
     },
     suggestionCard: {
-      flexDirection: "row",
-      alignItems: "center",
+      width: "48%",
+      flexGrow: 1,
       backgroundColor: colors.muted,
-      borderRadius: radius.lg,
-      paddingVertical: 10,
-      paddingHorizontal: 12,
+      borderRadius: radius.xl,
+      padding: 14,
       gap: 10,
     },
     suggestionText: {
       fontSize: fs.xs,
+      lineHeight: 16,
       color: colors.foreground,
     },
 
