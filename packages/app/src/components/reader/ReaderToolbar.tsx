@@ -94,7 +94,7 @@ export function ReaderToolbar({
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>{t("reader.goBackToPreviousLocation") || "返回上一位置"}</p>
+                <p>{t("reader.goBackToPreviousLocation")}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -176,7 +176,7 @@ export function ReaderToolbar({
             </TooltipTrigger>
             {isFixedLayout && (
               <TooltipContent>
-                <p className="text-xs">{t("settings.notAvailableForPdf", "PDF 不支持此设置")}</p>
+                <p className="text-xs">{t("settings.notAvailableForPdf")}</p>
               </TooltipContent>
             )}
           </Tooltip>

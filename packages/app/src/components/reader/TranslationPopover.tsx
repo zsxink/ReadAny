@@ -229,7 +229,7 @@ export function TranslationPopover({ text, position, onClose }: TranslationPopov
           {loading && (
             <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              <span>{t("translation.translating", "翻译中...")}</span>
+              <span>{t("translation.translating")}</span>
             </div>
           )}
 
@@ -250,12 +250,12 @@ export function TranslationPopover({ text, position, onClose }: TranslationPopov
                   {copied ? (
                     <>
                       <Check className="h-3 w-3" />
-                      <span>{t("common.copied", "已复制")}</span>
+                      <span>{t("common.copied")}</span>
                     </>
                   ) : (
                     <>
                       <Copy className="h-3 w-3" />
-                      <span>{t("common.copy", "复制")}</span>
+                      <span>{t("common.copy")}</span>
                     </>
                   )}
                 </button>

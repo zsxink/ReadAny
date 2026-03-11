@@ -3,6 +3,7 @@
  * Editorial design with elegant toolbar and rich formatting support
  */
 import { useEffect, useCallback, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
@@ -40,6 +41,7 @@ export function MarkdownEditor({
   className,
   autoFocus = false,
 }: MarkdownEditorProps) {
+  const { t } = useTranslation();
   // Track internal updates to prevent sync loop
   const isInternalUpdate = useRef(false);
 
@@ -114,7 +116,7 @@ export function MarkdownEditor({
   const setLink = useCallback(() => {
     if (!editor) return;
     const previousUrl = editor.getAttributes("link").href;
-    const url = window.prompt("输入链接地址", previousUrl);
+    const url = window.prompt(t("editor.enterLink"), previousUrl);
     if (url === null) return;
     if (url === "") {
       editor.chain().focus().extendMarkRange("link").unsetLink().run();
@@ -141,14 +143,14 @@ export function MarkdownEditor({
           <ToolbarButton
             onClick={() => editor.chain().focus().undo().run()}
             disabled={!editor.can().undo()}
-            title="撤销 (Ctrl+Z)"
+            title={t("editor.undo")}
           >
             <Undo2 className="h-3.5 w-3.5" />
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().redo().run()}
             disabled={!editor.can().redo()}
-            title="重做 (Ctrl+Y)"
+            title={t("editor.redo")}
           >
             <Redo2 className="h-3.5 w-3.5" />
           </ToolbarButton>
@@ -161,21 +163,21 @@ export function MarkdownEditor({
           <ToolbarButton
             onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
             isActive={editor.isActive("heading", { level: 1 })}
-            title="标题 1"
+            title={t("editor.heading1")}
           >
             <Heading1 className="h-3.5 w-3.5" />
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
             isActive={editor.isActive("heading", { level: 2 })}
-            title="标题 2"
+            title={t("editor.heading2")}
           >
             <Heading2 className="h-3.5 w-3.5" />
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
             isActive={editor.isActive("heading", { level: 3 })}
-            title="标题 3"
+            title={t("editor.heading3")}
           >
             <Heading3 className="h-3.5 w-3.5" />
           </ToolbarButton>
@@ -188,35 +190,35 @@ export function MarkdownEditor({
           <ToolbarButton
             onClick={() => editor.chain().focus().toggleBold().run()}
             isActive={editor.isActive("bold")}
-            title="粗体 (Ctrl+B)"
+            title={t("editor.bold")}
           >
             <Bold className="h-3.5 w-3.5" />
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().toggleItalic().run()}
             isActive={editor.isActive("italic")}
-            title="斜体 (Ctrl+I)"
+            title={t("editor.italic")}
           >
             <Italic className="h-3.5 w-3.5" />
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().toggleStrike().run()}
             isActive={editor.isActive("strike")}
-            title="删除线"
+            title={t("editor.strikethrough")}
           >
             <Strikethrough className="h-3.5 w-3.5" />
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().toggleCode().run()}
             isActive={editor.isActive("code")}
-            title="行内代码"
+            title={t("editor.inlineCode")}
           >
             <Code className="h-3.5 w-3.5" />
           </ToolbarButton>
           <ToolbarButton
             onClick={setLink}
             isActive={editor.isActive("link")}
-            title="链接"
+            title={t("editor.link")}
           >
             <Link2 className="h-3.5 w-3.5" />
           </ToolbarButton>
@@ -229,27 +231,27 @@ export function MarkdownEditor({
           <ToolbarButton
             onClick={() => editor.chain().focus().toggleBulletList().run()}
             isActive={editor.isActive("bulletList")}
-            title="无序列表"
+            title={t("editor.bulletList")}
           >
             <List className="h-3.5 w-3.5" />
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().toggleOrderedList().run()}
             isActive={editor.isActive("orderedList")}
-            title="有序列表"
+            title={t("editor.orderedList")}
           >
             <ListOrdered className="h-3.5 w-3.5" />
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().toggleBlockquote().run()}
             isActive={editor.isActive("blockquote")}
-            title="引用"
+            title={t("editor.blockquote")}
           >
             <Quote className="h-3.5 w-3.5" />
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().setHorizontalRule().run()}
-            title="分割线"
+            title={t("editor.horizontalRule")}
           >
             <Minus className="h-3.5 w-3.5" />
           </ToolbarButton>

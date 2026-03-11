@@ -394,6 +394,7 @@ interface HighlightNoteItemProps {
 }
 
 function HighlightNoteItem({ highlight, onClick, onEdit, onDeleteNote, isActive }: HighlightNoteItemProps) {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
@@ -435,7 +436,7 @@ function HighlightNoteItem({ highlight, onClick, onEdit, onDeleteNote, isActive 
             e.stopPropagation();
             onEdit();
           }}
-          title="编辑笔记"
+          title={t("notebook.editNote")}
         >
           <Edit3 className="h-3.5 w-3.5" />
         </button>
@@ -446,7 +447,7 @@ function HighlightNoteItem({ highlight, onClick, onEdit, onDeleteNote, isActive 
             e.stopPropagation();
             onDeleteNote();
           }}
-          title="删除笔记"
+          title={t("notebook.deleteNote")}
         >
           <Trash2 className="h-3.5 w-3.5" />
         </button>
@@ -464,6 +465,7 @@ interface HighlightItemProps {
 }
 
 function HighlightItem({ highlight, onClick, onAddNote, onDelete }: HighlightItemProps) {
+  const { t } = useTranslation();
   return (
     <div
       className="group mt-2 flex items-start gap-2 rounded-md p-2 transition-colors cursor-pointer hover:bg-muted/50"
@@ -491,7 +493,7 @@ function HighlightItem({ highlight, onClick, onAddNote, onDelete }: HighlightIte
             e.stopPropagation();
             onAddNote();
           }}
-          title="添加笔记"
+          title={t("notebook.addNoteBtn")}
         >
           <NotebookPen className="h-3.5 w-3.5" />
         </button>
@@ -502,7 +504,7 @@ function HighlightItem({ highlight, onClick, onAddNote, onDelete }: HighlightIte
             e.stopPropagation();
             onDelete();
           }}
-          title="删除高亮"
+          title={t("notebook.deleteHighlightBtn")}
         >
           <Trash2 className="h-3.5 w-3.5" />
         </button>

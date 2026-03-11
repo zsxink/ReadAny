@@ -99,14 +99,14 @@ export function AboutSettings() {
       {/* Version Card */}
       <div className="mb-4 w-full max-w-md rounded-xl bg-muted/60 p-4">
         <div className="flex items-center justify-between">
-          <span className="text-sm text-neutral-600">{t("settings.version", "版本")}</span>
+          <span className="text-sm text-neutral-600">{t("settings.version")}</span>
           <div className="flex items-center gap-2">
             <span className="font-mono text-sm font-medium text-neutral-900">{appVersion || "..."}</span>
             <button
               onClick={handleCheckUpdate}
               disabled={status === "checking" || status === "downloading"}
               className="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-neutral-600 disabled:opacity-50"
-              title={t("settings.checkUpdate", "检查更新")}
+              title={t("settings.checkUpdate")}
             >
               <RefreshCw className={`h-4 w-4 ${status === "checking" ? "animate-spin" : ""}`} />
             </button>
@@ -119,7 +119,7 @@ export function AboutSettings() {
         <div className="mb-4 w-full max-w-md">
           <div className="rounded-lg bg-muted/60 p-3">
             <div className="mb-2 flex items-center justify-between text-sm">
-              <span className="text-neutral-600">{t("settings.downloading", "下载中")}</span>
+              <span className="text-neutral-600">{t("settings.downloading")}</span>
               <span className="font-mono text-neutral-900">{progress}%</span>
             </div>
             <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200">
@@ -136,14 +136,14 @@ export function AboutSettings() {
       {status === "ready" && (
         <div className="mb-4 w-full max-w-md space-y-2">
           <div className="rounded-lg bg-green-50 p-3 text-center text-sm text-green-700">
-            {t("settings.updateReadyMessage", "更新已下载，重启应用以完成安装")}
+            {t("settings.updateReadyMessage")}
           </div>
           <Button
             variant="default"
             className="w-full"
             onClick={handleRelaunch}
           >
-            {t("settings.relaunch", "重启应用")}
+            {t("settings.relaunch")}
           </Button>
         </div>
       )}
@@ -152,11 +152,11 @@ export function AboutSettings() {
       <Dialog open={dialogType === "updateAvailable"} onOpenChange={(open) => !open && closeDialog()}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t("settings.updateAvailable", "发现新版本")}</DialogTitle>
+            <DialogTitle>{t("settings.updateAvailable")}</DialogTitle>
             <DialogDescription>
               {update && (
                 <span>
-                  {t("settings.newVersionAvailable", "发现新版本 {{version}}，是否立即下载更新？", { version: update.version })}
+                  {t("settings.newVersionAvailable", { version: update.version })}
                 </span>
               )}
             </DialogDescription>
@@ -168,11 +168,11 @@ export function AboutSettings() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={closeDialog}>
-              {t("settings.later", "稍后提醒")}
+              {t("settings.later")}
             </Button>
             <Button onClick={handleDownload}>
               <Download className="mr-2 h-4 w-4" />
-              {t("settings.downloadUpdate", "下载更新")}
+              {t("settings.downloadUpdate")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -183,12 +183,12 @@ export function AboutSettings() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Check className="h-5 w-5 text-green-600" />
-              {t("settings.upToDate", "当前已是最新版本")}
+              {t("settings.upToDate")}
             </DialogTitle>
           </DialogHeader>
           <DialogFooter>
             <Button onClick={closeDialog}>
-              {t("settings.ok", "确定")}
+              {t("settings.ok")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -199,15 +199,15 @@ export function AboutSettings() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-red-600" />
-              {t("settings.updateError", "更新失败")}
+              {t("settings.updateError")}
             </DialogTitle>
           </DialogHeader>
           <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
-            {error || t("settings.updateErrorMessage", "更新失败，请稍后重试")}
+            {error || t("settings.updateErrorMessage")}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={closeDialog}>
-              {t("settings.dismiss", "关闭")}
+              {t("settings.dismiss")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -216,7 +216,7 @@ export function AboutSettings() {
       {/* Tech Stack */}
       <div className="mb-6 w-full max-w-md">
         <h2 className="mb-3 text-sm font-medium text-neutral-900">
-          {t("settings.techStack", "技术栈")}
+          {t("settings.techStack")}
         </h2>
         <div className="grid grid-cols-2 gap-2">
           {TECH_STACK.map(({ name, descKey, icon: Icon }) => (
@@ -260,7 +260,7 @@ export function AboutSettings() {
           <div className="flex items-center gap-3">
             <BookOpen className="h-5 w-5 text-neutral-600" />
             <span className="text-sm font-medium text-neutral-900">
-              {t("settings.feedback", "反馈问题")}
+              {t("settings.feedback")}
             </span>
           </div>
           <ExternalLink className="h-4 w-4 text-neutral-400" />
@@ -271,7 +271,7 @@ export function AboutSettings() {
       <div className="mt-8 text-center text-xs text-neutral-400">
         <p>© 2026 codedogQBY. All rights reserved.</p>
         <p className="mt-1">
-          {t("settings.license", "基于 MIT 许可证开源")}
+          {t("settings.license")}
         </p>
       </div>
     </div>

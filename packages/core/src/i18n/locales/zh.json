@@ -217,7 +217,8 @@
     "fontThemeClassic": "经典",
     "fontThemeModern": "现代",
     "fontThemeElegant": "优雅",
-    "fontThemeLiterary": "文学"
+    "fontThemeLiterary": "文学",
+    "goBackToPreviousLocation": "返回上一位置"
   },
   "translation": {
     "translateTo": "翻译为 {{lang}}",
@@ -304,7 +305,26 @@
     "highlightsSection": "高亮",
     "empty": "暂无高亮或笔记",
     "emptyHint": "选择书中文本进行高亮或添加笔记",
-    "editNote": "编辑笔记"
+    "editNote": "编辑笔记",
+    "addNoteBtn": "添加笔记",
+    "deleteHighlightBtn": "删除高亮"
+  },
+  "editor": {
+    "enterLink": "输入链接地址",
+    "undo": "撤销 (Ctrl+Z)",
+    "redo": "重做 (Ctrl+Y)",
+    "heading1": "标题 1",
+    "heading2": "标题 2",
+    "heading3": "标题 3",
+    "bold": "粗体 (Ctrl+B)",
+    "italic": "斜体 (Ctrl+I)",
+    "strikethrough": "删除线",
+    "inlineCode": "行内代码",
+    "link": "链接",
+    "bulletList": "无序列表",
+    "orderedList": "有序列表",
+    "blockquote": "引用",
+    "horizontalRule": "分割线"
   },
   "settings": {
     "title": "设置",
@@ -527,7 +547,14 @@
     "syncResetConfirm": "确定要重置吗？这将清除所有同步状态，下次同步时将完整重新同步。",
     "syncResetDone": "同步数据已重置",
     "syncDisconnect": "断开连接",
-    "syncDisconnectConfirm": "确定要断开连接吗？本设备上的数据不会被删除。"
+    "syncDisconnectConfirm": "确定要断开连接吗？本设备上的数据不会被删除。",
+    "translationProvider": "翻译引擎",
+    "selectModel": "选择模型",
+    "noModelsFetched": "请先在 AI 设置中获取模型列表",
+    "apiKeyPlaceholder": "输入 API 密钥",
+    "deeplKeyHint": "DeepL API 密钥",
+    "translationModel": "翻译模型",
+    "selectEngine": "选择引擎"
   },
   "stats": {
     "title": "阅读统计",

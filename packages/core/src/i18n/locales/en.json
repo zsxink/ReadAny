@@ -219,7 +219,8 @@
     "fontThemeClassic": "Classic",
     "fontThemeModern": "Modern",
     "fontThemeElegant": "Elegant",
-    "fontThemeLiterary": "Literary"
+    "fontThemeLiterary": "Literary",
+    "goBackToPreviousLocation": "Go back to previous location"
   },
   "translation": {
     "translateTo": "Translate to {{lang}}",
@@ -309,6 +310,23 @@
     "editNote": "Edit note",
     "addNoteBtn": "Add note",
     "deleteHighlightBtn": "Delete highlight"
+  },
+  "editor": {
+    "enterLink": "Enter link URL",
+    "undo": "Undo (Ctrl+Z)",
+    "redo": "Redo (Ctrl+Y)",
+    "heading1": "Heading 1",
+    "heading2": "Heading 2",
+    "heading3": "Heading 3",
+    "bold": "Bold (Ctrl+B)",
+    "italic": "Italic (Ctrl+I)",
+    "strikethrough": "Strikethrough",
+    "inlineCode": "Inline Code",
+    "link": "Link",
+    "bulletList": "Bullet List",
+    "orderedList": "Ordered List",
+    "blockquote": "Blockquote",
+    "horizontalRule": "Horizontal Rule"
   },
   "settings": {
     "title": "Settings",
@@ -533,7 +551,14 @@
     "syncResetConfirm": "Are you sure? This will clear all sync state and force a full re-sync next time.",
     "syncResetDone": "Sync data has been reset",
     "syncDisconnect": "Disconnect",
-    "syncDisconnectConfirm": "Are you sure you want to disconnect? Your data will remain on this device."
+    "syncDisconnectConfirm": "Are you sure you want to disconnect? Your data will remain on this device.",
+    "translationProvider": "Translation Engine",
+    "selectModel": "Select model",
+    "noModelsFetched": "Please fetch models from AI settings first",
+    "apiKeyPlaceholder": "Enter API key",
+    "deeplKeyHint": "DeepL API Key",
+    "translationModel": "Translation Model",
+    "selectEngine": "Select engine"
   },
   "stats": {
     "title": "Reading Statistics",

@@ -5,7 +5,7 @@ import zh from "./locales/zh.json";
 
 // Initialize with default "en". Each platform should call
 // `initI18nLanguage()` after setPlatformService() to restore the saved lang.
-i18n.use(initReactI18next).init({
+export const i18nReady = i18n.use(initReactI18next).init({
   resources: {
     en: { translation: en },
     zh: { translation: zh },

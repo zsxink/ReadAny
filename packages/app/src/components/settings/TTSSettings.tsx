@@ -214,7 +214,7 @@ export function TTSSettings() {
                     rel="noopener noreferrer"
                     className="text-primary underline hover:text-primary/80"
                   >
-                    {t("tts.getApiKey", "获取 API Key")}
+                    {t("tts.getApiKey")}
                   </a>
                 </p>
               </div>

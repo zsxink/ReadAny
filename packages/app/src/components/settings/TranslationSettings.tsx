@@ -91,22 +91,22 @@ export function TranslationSettings() {
   return (
     <div className="space-y-4 p-4 pt-3">
       <section className="rounded-lg bg-muted/60 p-4">
-        <h2 className="mb-4 text-sm font-medium text-neutral-900">{t("settings.translation_title", "翻译设置")}</h2>
+        <h2 className="mb-4 text-sm font-medium text-neutral-900">{t("settings.translation_title")}</h2>
         <p className="mb-4 text-xs text-neutral-500">
-          {t("settings.translation_desc", "配置翻译服务，目标语言在翻译时选择")}
+          {t("settings.translation_desc")}
         </p>
 
         <div className="space-y-4">
           {/* 翻译引擎选择 */}
           <div className="space-y-2">
-            <label className="text-sm text-neutral-800">{t("settings.translationProvider", "翻译引擎")}</label>
+            <label className="text-sm text-neutral-800">{t("settings.translationProvider")}</label>
             <div className="relative" ref={providerPopoverRef}>
               <button
                 type="button"
                 onClick={() => setProviderOpen(!providerOpen)}
                 className="flex w-full items-center justify-between rounded-lg border border-input bg-background px-3 py-2 text-sm hover:bg-muted"
               >
-                <span>{currentProvider?.name || "选择引擎"}</span>
+                <span>{currentProvider?.name || t("settings.selectEngine")}</span>
                 <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
               </button>
               {providerOpen && (
@@ -138,7 +138,7 @@ export function TranslationSettings() {
           {/* AI 模型选择 (only show for AI provider) */}
           {isAIProvider && (
             <div className="space-y-2">
-              <label className="text-sm text-neutral-800">{t("settings.translationModel", "翻译模型")}</label>
+              <label className="text-sm text-neutral-800">{t("settings.translationModel")}</label>
               {endpointsWithModels.length > 0 ? (
                 <div className="relative" ref={modelPopoverRef}>
                   <button
@@ -148,7 +148,7 @@ export function TranslationSettings() {
                       totalModels > 1 ? "hover:bg-muted" : ""
                     }`}
                   >
-                    <span className="truncate">{selectedModel || t("settings.selectModel", "选择模型")}</span>
+                    <span className="truncate">{selectedModel || t("settings.selectModel")}</span>
                     {totalModels > 1 && <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />}
                   </button>
                   {modelOpen && totalModels > 1 && (
@@ -185,7 +185,7 @@ export function TranslationSettings() {
                 </div>
               ) : (
                 <div className="rounded-lg border border-input bg-background px-3 py-2 text-sm text-muted-foreground">
-                  {t("settings.noModelsFetched", "请先在 AI 设置中获取模型列表")}
+                  {t("settings.noModelsFetched")}
                 </div>
               )}
             </div>
@@ -194,15 +194,15 @@ export function TranslationSettings() {
           {/* DeepL API Key (only show for DeepL) */}
           {!isAIProvider && (
             <div className="space-y-2">
-              <label className="text-sm text-neutral-800">{t("settings.apiKey", "API 密钥")}</label>
+              <label className="text-sm text-neutral-800">{t("settings.apiKey")}</label>
               <Input
                 type="password"
-                placeholder={t("settings.apiKeyPlaceholder", "输入 API 密钥")}
+                placeholder={t("settings.apiKeyPlaceholder")}
                 value={translationConfig.provider.apiKey || ""}
                 onChange={(e) => handleApiKeyChange(e.target.value)}
               />
               <p className="text-xs text-neutral-500">
-                {t("settings.deeplKeyHint", "DeepL API 密钥")}
+                {t("settings.deeplKeyHint")}
               </p>
             </div>
           )}

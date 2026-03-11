@@ -22,12 +22,12 @@ export function ReadSettingsPanel() {
       <section className="rounded-lg bg-muted/60 p-4">
         <h2 className="mb-4 text-sm font-medium text-neutral-900">{t("settings.reading_title")}</h2>
         <p className="mb-2 text-xs text-neutral-500">{t("settings.reading_desc")}</p>
-        <p className="mb-4 text-xs text-neutral-400">{t("settings.readingNotice", "字体和排版设置仅适用于 EPUB 等流式布局格式，PDF 不支持。")}</p>
+        <p className="mb-4 text-xs text-neutral-400">{t("settings.readingNotice")}</p>
 
         <div className="space-y-5">
           {/* Font Theme */}
           <div className="flex items-center justify-between">
-            <span className="text-sm text-neutral-800">{t("settings.fontTheme", "字体主题")}</span>
+            <span className="text-sm text-neutral-800">{t("settings.fontTheme")}</span>
             <Select
               value={readSettings.fontTheme}
               onValueChange={(v) => updateReadSettings({ fontTheme: v })}
@@ -78,7 +78,7 @@ export function ReadSettingsPanel() {
           {/* Paragraph Spacing */}
           <div>
             <div className="mb-3 flex items-center justify-between">
-              <span className="text-sm text-neutral-800">{t("settings.paragraphSpacing", "段落间距")}</span>
+              <span className="text-sm text-neutral-800">{t("settings.paragraphSpacing")}</span>
               <span className="rounded bg-background px-2 py-0.5 text-xs font-medium text-neutral-600">{readSettings.paragraphSpacing}px</span>
             </div>
             <Slider

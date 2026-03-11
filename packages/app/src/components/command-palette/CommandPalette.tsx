@@ -164,7 +164,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       {
         id: "settings.general",
         label: t("settings.general_title"),
-        keywords: ["general", "settings", "theme", "language", "通用", "设置", "主题", "语言"],
+        keywords: ["general", "settings", "theme", "language"],
         category: "settings",
         icon: Settings,
         action: () => openSettingsTab("general"),
@@ -172,7 +172,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       {
         id: "settings.reading",
         label: t("settings.reading_title"),
-        keywords: ["reading", "font", "layout", "size", "阅读", "字体", "排版"],
+        keywords: ["reading", "font", "layout", "size"],
         category: "settings",
         icon: BookOpen,
         action: () => openSettingsTab("reading"),
@@ -180,7 +180,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       {
         id: "settings.ai",
         label: t("settings.ai_title"),
-        keywords: ["ai", "model", "endpoint", "openai", "claude", "模型", "端点"],
+        keywords: ["ai", "model", "endpoint", "openai", "claude"],
         category: "settings",
         icon: Brain,
         action: () => openSettingsTab("ai"),
@@ -188,7 +188,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       {
         id: "settings.vectorModel",
         label: t("settings.vm_title"),
-        keywords: ["vector", "embedding", "semantic", "search", "向量", "嵌入", "语义"],
+        keywords: ["vector", "embedding", "semantic", "search"],
         category: "settings",
         icon: Search,
         action: () => openSettingsTab("vectorModel"),
@@ -196,7 +196,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       {
         id: "settings.tts",
         label: t("tts.settingsTitle"),
-        keywords: ["tts", "speech", "voice", "read aloud", "edge", "语音", "朗读"],
+        keywords: ["tts", "speech", "voice", "read aloud", "edge"],
         category: "settings",
         icon: Volume2,
         action: () => openSettingsTab("tts"),
@@ -204,7 +204,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       {
         id: "settings.translation",
         label: t("settings.translation_title"),
-        keywords: ["translation", "translate", "language", "翻译", "语言"],
+        keywords: ["translation", "translate", "language"],
         category: "settings",
         icon: Languages,
         action: () => openSettingsTab("translation"),
@@ -212,7 +212,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       {
         id: "settings.about",
         label: t("settings.about"),
-        keywords: ["about", "version", "info", "关于", "版本"],
+        keywords: ["about", "version", "info"],
         category: "settings",
         icon: Info,
         action: () => openSettingsTab("about"),
@@ -221,7 +221,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       {
         id: "action.settings",
         label: t("common.settings"),
-        keywords: ["settings", "preferences", "设置", "偏好"],
+        keywords: ["settings", "preferences"],
         category: "actions",
         icon: Settings,
         action: () => openSettingsTab("general"),
@@ -230,7 +230,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       {
         id: "action.theme.light",
         label: `${t("settings.theme")}: ${t("settings.light")}`,
-        keywords: ["theme", "light", "bright", "主题", "浅色"],
+        keywords: ["theme", "light", "bright"],
         category: "actions",
         icon: Sun,
         action: () => {
@@ -242,7 +242,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       {
         id: "action.theme.dark",
         label: `${t("settings.theme")}: ${t("settings.dark")}`,
-        keywords: ["theme", "dark", "night", "主题", "深色", "夜间"],
+        keywords: ["theme", "dark", "night"],
         category: "actions",
         icon: Moon,
         action: () => {
@@ -254,7 +254,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       {
         id: "action.theme.sepia",
         label: `${t("settings.theme")}: ${t("settings.sepia")}`,
-        keywords: ["theme", "sepia", "eye", "warm", "主题", "护眼"],
+        keywords: ["theme", "sepia", "eye", "warm"],
         category: "actions",
         icon: Sun,
         action: () => {
@@ -266,7 +266,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       {
         id: "action.shortcuts",
         label: t("commandPalette.placeholder"),
-        keywords: ["command", "palette", "shortcut", "keyboard", "命令", "快捷键"],
+        keywords: ["command", "palette", "shortcut", "keyboard"],
         category: "actions",
         icon: Keyboard,
         action: () => { /* already open */ },
