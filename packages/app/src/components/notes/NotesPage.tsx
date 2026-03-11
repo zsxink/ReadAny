@@ -248,9 +248,9 @@ export function NotesPage() {
   if (bookNotebooks.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center p-6 text-center">
-        <NotebookPen className="mb-3 h-12 w-12 text-muted-foreground/50" />
-        <p className="text-sm font-medium text-muted-foreground">{t("notes.empty")}</p>
-        <p className="mt-1 text-xs text-muted-foreground/70">{t("notes.emptyHint")}</p>
+        <img src="/note.svg" alt="" className="mb-6 h-48 w-48" />
+        <p className="text-base font-medium text-foreground">{t("notes.empty")}</p>
+        <p className="mt-2 text-sm text-muted-foreground">{t("notes.emptyHint")}</p>
       </div>
     );
   }

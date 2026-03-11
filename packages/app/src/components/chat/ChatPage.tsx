@@ -9,7 +9,6 @@ import { useSettingsStore } from "@/stores/settings-store";
 import type { CitationPart } from "@readany/core/types";
 import {
   BookOpen,
-  Brain,
   History,
   Lightbulb,
   MessageCirclePlus,
@@ -135,9 +134,7 @@ function EmptyState({ onSuggestionClick }: { onSuggestionClick: (text: string) =
     <div className="flex h-full w-full select-none flex-col items-center justify-center overflow-y-auto p-6">
       <div className="mx-auto w-full max-w-2xl space-y-8">
         <div className="flex flex-col items-center gap-3">
-          <div className="rounded-full bg-primary/10 p-3">
-            <Brain className="size-10 text-primary" />
-          </div>
+          <img src="/think.svg" alt="" className="h-40 w-40" />
           <h1 className="text-2xl font-semibold text-foreground">{t("chat.howCanIHelp")}</h1>
           <p className="text-sm text-muted-foreground">{t("chat.askAboutBooks")}</p>
         </div>

@@ -3,7 +3,6 @@
  */
 import { useLibraryStore } from "@/stores/library-store";
 import { open } from "@tauri-apps/plugin-dialog";
-import { Upload } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -55,10 +54,8 @@ export function ImportDropZone() {
   return (
     <div className="flex h-full flex-col items-center justify-center p-8">
       <div className="w-full max-w-md text-center">
-        <p className="mb-8 text-lg text-muted-foreground">{t("home.emptyLibrary")}</p>
-
         <div
-          className={`rounded-2xl border-2 border-dashed p-12 transition-colors ${
+          className={`rounded-2xl border-2 border-dashed p-8 transition-colors ${
             isDragging ? "border-primary bg-primary/5" : "border-border bg-muted/30"
           }`}
           onDragOver={(e) => {
@@ -68,14 +65,12 @@ export function ImportDropZone() {
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}
         >
-          <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center">
-            <img src="/logo.svg" alt="" className="h-16 w-16" />
+          <div className="mx-auto mb-6">
+            <img src="/book.svg" alt="" className="h-40 w-40 mx-auto" />
           </div>
-          <div className="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-200">
-            <Upload className="h-5 w-5 text-neutral-500" />
-          </div>
-          <p className="mb-1 text-sm font-medium text-neutral-700">{t("home.dropToUpload")}</p>
-          <p className="mb-4 text-xs text-muted-foreground">{t("home.supportedFormat")}</p>
+          <p className="mb-1 text-base font-medium text-foreground">{t("home.emptyLibrary")}</p>
+          <p className="mb-4 text-sm text-muted-foreground">{t("home.dropToUpload")}</p>
+          <p className="mb-4 text-xs text-muted-foreground/70">{t("home.supportedFormat")}</p>
           <button
             type="button"
             onClick={handleImportClick}
