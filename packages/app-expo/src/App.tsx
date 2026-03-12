@@ -14,19 +14,18 @@ if (typeof AbortSignal !== "undefined" && !AbortSignal.prototype.throwIfAborted)
   };
 }
 
+import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native";
+import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
-import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { NavigationContainer, DefaultTheme, DarkTheme } from "@react-navigation/native";
-import { StatusBar } from "expo-status-bar";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
-import { setPlatformService } from "@readany/core/services";
+import { rnSessionEventSource, setSessionEventSource } from "@/hooks";
+import { setStreamingFetch } from "@readany/core/ai/llm-provider";
 import { initDatabase } from "@readany/core/db/database";
 import { initI18nLanguage } from "@readany/core/i18n";
-import { setStreamingFetch } from "@readany/core/ai/llm-provider";
-import { setSessionEventSource, rnSessionEventSource } from "@/hooks";
-import { setTTSPlayerFactories } from "@/stores";
+import { setPlatformService } from "@readany/core/services";
 
 import { ExpoPlatformService } from "@/lib/platform/expo-platform-service";
 import { RootNavigator } from "@/navigation/RootNavigator";
@@ -61,7 +60,14 @@ export default function App() {
 
   if (!ready) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#1c1c1e" }}>
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: "#1c1c1e",
+        }}
+      >
         <ActivityIndicator size="large" color="#6366f1" />
       </View>
     );

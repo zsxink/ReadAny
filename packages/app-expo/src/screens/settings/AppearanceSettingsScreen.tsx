@@ -1,22 +1,12 @@
-import { useCallback, useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useTranslation } from "react-i18next";
-import { SettingsHeader } from "./SettingsHeader";
+import { BookOpenIcon, MoonIcon, SunIcon } from "@/components/ui/Icon";
 import { useTheme } from "@/styles/ThemeContext";
 import type { ThemeMode } from "@/styles/ThemeContext";
-import { fontSize, fontWeight, spacing, radius } from "@/styles/theme";
-import {
-  SunIcon,
-  MoonIcon,
-  BookOpenIcon,
-} from "@/components/ui/Icon";
+import { fontSize, fontWeight, radius, spacing } from "@/styles/theme";
+import { useCallback, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { SettingsHeader } from "./SettingsHeader";
 
 const THEMES: { id: ThemeMode; labelKey: string; Icon: typeof SunIcon }[] = [
   { id: "light", labelKey: "settings.light", Icon: SunIcon },
@@ -32,24 +22,17 @@ const LANGUAGES = [
 export default function AppearanceSettingsScreen() {
   const { t, i18n } = useTranslation();
   const { mode, setMode, colors } = useTheme();
-  const [lang, setLang] = useState(() =>
-    i18n.language?.startsWith("zh") ? "zh" : "en",
-  );
+  const [lang, setLang] = useState(() => (i18n.language?.startsWith("zh") ? "zh" : "en"));
 
-  const handleLangChange = useCallback(
-    async (code: string) => {
-      setLang(code);
-      try {
-        const { changeAndPersistLanguage } = await import(
-          "@readany/core/i18n"
-        );
-        await changeAndPersistLanguage(code);
-      } catch {
-        // fallback
-      }
-    },
-    [],
-  );
+  const handleLangChange = useCallback(async (code: string) => {
+    setLang(code);
+    try {
+      const { changeAndPersistLanguage } = await import("@readany/core/i18n");
+      await changeAndPersistLanguage(code);
+    } catch {
+      // fallback
+    }
+  }, []);
 
   const s = makeStyles(colors);
 
@@ -57,10 +40,7 @@ export default function AppearanceSettingsScreen() {
     <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={["top"]}>
       <SettingsHeader title={t("settings.appearance", "外观设置")} />
 
-      <ScrollView
-        style={s.scroll}
-        contentContainerStyle={s.scrollContent}
-      >
+      <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent}>
         {/* Theme */}
         <View style={s.section}>
           <Text style={[s.sectionTitle, { color: colors.mutedForeground }]}>
@@ -75,15 +55,15 @@ export default function AppearanceSettingsScreen() {
                   style={[
                     s.themeCard,
                     { borderColor: colors.border, backgroundColor: colors.card },
-                    active && { borderColor: colors.primary, backgroundColor: colors.primary + "0D" },
+                    active && {
+                      borderColor: colors.primary,
+                      backgroundColor: colors.primary + "0D",
+                    },
                   ]}
                   onPress={() => setMode(item.id)}
                   activeOpacity={0.7}
                 >
-                  <item.Icon
-                    size={24}
-                    color={active ? colors.primary : colors.mutedForeground}
-                  />
+                  <item.Icon size={24} color={active ? colors.primary : colors.mutedForeground} />
                   <Text
                     style={[
                       s.themeLabel,

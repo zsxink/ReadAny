@@ -1,14 +1,14 @@
+import { extractBookMetadata } from "@/lib/book/metadata-extractor";
+import * as db from "@readany/core/db/database";
+import { getPlatformService } from "@readany/core/services";
 /**
  * Expo Library Store — book collection CRUD, import, filtering, tags
  * Adapted from app-mobile library-store. Uses core DB + FS persistence.
  */
 import type { Book, LibraryFilter, SortField, SortOrder } from "@readany/core/types";
-import * as db from "@readany/core/db/database";
+import { generateId } from "@readany/core/utils";
 import { create } from "zustand";
 import { debouncedSave, loadFromFS } from "./persist";
-import { getPlatformService } from "@readany/core/services";
-import { extractBookMetadata } from "@/lib/book/metadata-extractor";
-import { generateId } from "@readany/core/utils";
 
 export type LibraryViewMode = "grid" | "list";
 
@@ -212,10 +212,18 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           const fileName = originalName;
           const bookId = generateId();
 
-          console.log(`[importBooks] Importing: name=${fileName}, format=${format}, uri=${filePath}`);
+          console.log(
+            `[importBooks] Importing: name=${fileName}, format=${format}, uri=${filePath}`,
+          );
 
-          const { relativePath, fileBytes } = await copyBookToAppData(bookId, ext || "epub", filePath);
-          console.log(`[importBooks] File copied. Bytes length: ${fileBytes.length}, relativePath: ${relativePath}`);
+          const { relativePath, fileBytes } = await copyBookToAppData(
+            bookId,
+            ext || "epub",
+            filePath,
+          );
+          console.log(
+            `[importBooks] File copied. Bytes length: ${fileBytes.length}, relativePath: ${relativePath}`,
+          );
 
           // Extract metadata (title, author, cover) from book content
           let title = fileName.replace(/\.\w+$/i, "") || "Untitled";
@@ -225,7 +233,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           try {
             console.log(`[importBooks] Extracting metadata for format=${format}...`);
             const meta = await extractBookMetadata(fileBytes, format, fileName);
-            console.log(`[importBooks] Metadata result: title="${meta.title}", author="${meta.author}", hasCover=${!!meta.coverBytes}, coverSize=${meta.coverBytes?.length ?? 0}`);
+            console.log(
+              `[importBooks] Metadata result: title="${meta.title}", author="${meta.author}", hasCover=${!!meta.coverBytes}, coverSize=${meta.coverBytes?.length ?? 0}`,
+            );
             if (meta.title) title = meta.title;
             if (meta.author) author = meta.author;
 
@@ -250,7 +260,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             console.warn(`[importBooks] Metadata extraction failed for ${fileName}:`, metaErr);
           }
 
-          console.log(`[importBooks] Final book: title="${title}", author="${author}", coverUrl="${coverUrl}"`);
+          console.log(
+            `[importBooks] Final book: title="${title}", author="${author}", coverUrl="${coverUrl}"`,
+          );
           const book: Book = {
             id: bookId,
             filePath: relativePath,

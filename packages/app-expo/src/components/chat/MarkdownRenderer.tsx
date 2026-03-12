@@ -1,13 +1,13 @@
+import { fontSize as fs, radius, useColors } from "@/styles/theme";
+import type { ThemeColors } from "@/styles/theme";
+import * as Clipboard from "expo-clipboard";
 /**
  * MarkdownRenderer — renders markdown content using react-native-markdown-display.
  * Supports streaming with blinking cursor, code blocks with copy, themed styles.
  */
 import { useCallback } from "react";
-import { Text, View, StyleSheet } from "react-native";
+import { StyleSheet, View } from "react-native";
 import Markdown from "react-native-markdown-display";
-import * as Clipboard from "expo-clipboard";
-import { useColors, fontSize as fs, radius } from "@/styles/theme";
-import type { ThemeColors } from "@/styles/theme";
 
 interface MarkdownRendererProps {
   content: string;

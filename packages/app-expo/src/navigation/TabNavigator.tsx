@@ -1,15 +1,15 @@
+import { BookOpenIcon, MessageSquareIcon, NotebookPenIcon, UserIcon } from "@/components/ui/Icon";
+import { ChatScreen } from "@/screens/ChatScreen";
+import { LibraryScreen } from "@/screens/LibraryScreen";
+import { NotesScreen } from "@/screens/NotesScreen";
+import { ProfileScreen } from "@/screens/ProfileScreen";
+import { useTheme } from "@/styles/ThemeContext";
 /**
  * TabNavigator — bottom tab bar matching the Tauri mobile app's 4 tabs.
  * Icons: BookOpen, MessageSquare, NotebookPen, User (matching BottomTabBar.tsx)
  */
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { LibraryScreen } from "@/screens/LibraryScreen";
-import { ChatScreen } from "@/screens/ChatScreen";
-import { NotesScreen } from "@/screens/NotesScreen";
-import { ProfileScreen } from "@/screens/ProfileScreen";
 import { useTranslation } from "react-i18next";
-import { BookOpenIcon, MessageSquareIcon, NotebookPenIcon, UserIcon } from "@/components/ui/Icon";
-import { useTheme } from "@/styles/ThemeContext";
 
 export type TabParamList = {
   Library: undefined;

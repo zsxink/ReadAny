@@ -1,10 +1,16 @@
+import { EyeIcon, EyeOffIcon } from "@/components/ui/Icon";
+import { useColors } from "@/styles/theme";
 /**
  * PasswordInput — TextInput with show/hide toggle for secret fields.
  */
 import { useState } from "react";
-import { View, TextInput, TouchableOpacity, type TextInputProps, type ViewStyle } from "react-native";
-import { EyeIcon, EyeOffIcon } from "@/components/ui/Icon";
-import { useColors } from "@/styles/theme";
+import {
+  TextInput,
+  type TextInputProps,
+  TouchableOpacity,
+  View,
+  type ViewStyle,
+} from "react-native";
 
 interface PasswordInputProps extends TextInputProps {
   containerStyle?: ViewStyle;
@@ -16,11 +22,7 @@ export function PasswordInput({ containerStyle, style, ...props }: PasswordInput
 
   return (
     <View style={[{ position: "relative", justifyContent: "center" }, containerStyle]}>
-      <TextInput
-        {...props}
-        secureTextEntry={!visible}
-        style={[style, { paddingRight: 36 }]}
-      />
+      <TextInput {...props} secureTextEntry={!visible} style={[style, { paddingRight: 36 }]} />
       <TouchableOpacity
         onPress={() => setVisible(!visible)}
         style={{

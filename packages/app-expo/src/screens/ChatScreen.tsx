@@ -1,50 +1,48 @@
+import type { RootStackParamList } from "@/navigation/RootNavigator";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 /**
  * ChatScreen — full AI chat matching app-mobile ChatPage layout.
  * Sliding sidebar for threads, compact header, empty state with suggestions.
  */
-import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
   Animated,
   Dimensions,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { useTranslation } from "react-i18next";
-import { useNavigation } from "@react-navigation/native";
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import type { RootStackParamList } from "@/navigation/RootNavigator";
 
-import { useStreamingChat } from "@readany/core/hooks";
 import { useChatStore } from "@/stores/chat-store";
 import { useSettingsStore } from "@/stores/settings-store";
+import { useStreamingChat } from "@readany/core/hooks";
+import type { AttachedQuote } from "@readany/core/types";
 import { convertToMessageV2, mergeMessagesWithStreaming } from "@readany/core/utils/chat-utils";
-import type { MessageV2 } from "@readany/core/types/message";
-import type { AttachedQuote, Thread } from "@readany/core/types";
 import { Alert } from "react-native";
 
-import { useColors, fontSize as fs, radius, fontWeight as fw, withOpacity } from "@/styles/theme";
-import type { ThemeColors } from "@/styles/theme";
-import { MessageList } from "@/components/chat/MessageList";
 import { ChatInput } from "@/components/chat/ChatInput";
+import { MessageList } from "@/components/chat/MessageList";
 import { ModelSelector } from "@/components/chat/ModelSelector";
 import {
-  MessageCirclePlusIcon,
-  HistoryIcon,
-  BrainIcon,
-  ScrollTextIcon,
-  LightbulbIcon,
-  SearchIcon,
   BookOpenIcon,
-  XIcon,
+  HistoryIcon,
+  LightbulbIcon,
+  MessageCirclePlusIcon,
+  ScrollTextIcon,
+  SearchIcon,
   Trash2Icon,
+  XIcon,
 } from "@/components/ui/Icon";
+import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from "@/styles/theme";
+import type { ThemeColors } from "@/styles/theme";
 
 const THINK_PNG = require("../../assets/think.png");
 
@@ -56,8 +54,7 @@ export function ChatScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const s = useMemo(() => makeStyles(colors), [colors]);
-  const navigation =
-    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   // Thread sidebar
   const [showSidebar, setShowSidebar] = useState(false);
@@ -112,20 +109,11 @@ export function ChatScreen() {
     if (!initialized) loadAllThreads();
   }, [initialized, loadAllThreads]);
 
-  const generalThreads = useMemo(
-    () => getThreadsForContext(),
-    [threads, getThreadsForContext],
-  );
+  const generalThreads = useMemo(() => getThreadsForContext(), [threads, getThreadsForContext]);
 
   // Streaming chat
-  const {
-    isStreaming,
-    currentMessage,
-    currentStep,
-    error,
-    sendMessage,
-    stopStream,
-  } = useStreamingChat();
+  const { isStreaming, currentMessage, currentStep, error, sendMessage, stopStream } =
+    useStreamingChat();
 
   // Messages - compute directly without useMemo to ensure reactivity
   const activeThread = generalActiveThreadId
@@ -194,23 +182,13 @@ export function ChatScreen() {
       {/* Header — compact, matching mobile */}
       <View style={s.header}>
         <View style={s.headerLeft}>
-          <TouchableOpacity
-            style={s.iconBtn}
-            onPress={openSidebar}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity style={s.iconBtn} onPress={openSidebar} activeOpacity={0.7}>
             <HistoryIcon size={16} color={colors.foreground} />
           </TouchableOpacity>
         </View>
         <View style={s.headerRight}>
-          <ModelSelector
-            onNavigateToSettings={() => navigation.navigate("AISettings")}
-          />
-          <TouchableOpacity
-            style={s.iconBtn}
-            onPress={handleNewThread}
-            activeOpacity={0.7}
-          >
+          <ModelSelector onNavigateToSettings={() => navigation.navigate("AISettings")} />
+          <TouchableOpacity style={s.iconBtn} onPress={handleNewThread} activeOpacity={0.7}>
             <MessageCirclePlusIcon size={16} color={colors.foreground} />
           </TouchableOpacity>
         </View>
@@ -233,11 +211,7 @@ export function ChatScreen() {
             <EmptyState colors={colors} onSuggestionPress={handleSend} />
           )}
         </View>
-        <ChatInput
-          onSend={handleSend}
-          onStop={stopStream}
-          isStreaming={isStreaming}
-        />
+        <ChatInput onSend={handleSend} onStop={stopStream} isStreaming={isStreaming} />
       </KeyboardAvoidingView>
 
       {/* Error */}
@@ -252,16 +226,8 @@ export function ChatScreen() {
       {/* Thread sidebar overlay */}
       {showSidebar && (
         <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-          <Animated.View
-            style={[
-              s.sidebarBackdrop,
-              { opacity: backdropAnim },
-            ]}
-          >
-            <Pressable
-              style={StyleSheet.absoluteFill}
-              onPress={closeSidebar}
-            />
+          <Animated.View style={[s.sidebarBackdrop, { opacity: backdropAnim }]}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={closeSidebar} />
           </Animated.View>
           <Animated.View
             style={[
@@ -270,29 +236,20 @@ export function ChatScreen() {
             ]}
           >
             <View style={s.sidebarHeader}>
-              <Text style={s.sidebarTitle}>
-                {t("chat.history", "历史记录")}
-              </Text>
-              <TouchableOpacity
-                style={s.iconBtn}
-                onPress={closeSidebar}
-              >
+              <Text style={s.sidebarTitle}>{t("chat.history", "历史记录")}</Text>
+              <TouchableOpacity style={s.iconBtn} onPress={closeSidebar}>
                 <XIcon size={16} color={colors.foreground} />
               </TouchableOpacity>
             </View>
             {generalThreads.length === 0 ? (
               <View style={s.sidebarEmpty}>
-                <Text style={s.sidebarEmptyText}>
-                  {t("chat.noConversations", "暂无对话")}
-                </Text>
+                <Text style={s.sidebarEmptyText}>{t("chat.noConversations", "暂无对话")}</Text>
               </View>
             ) : (
               generalThreads.map((thread) => {
                 const isActive = thread.id === generalActiveThreadId;
                 const lastMsg =
-                  thread.messages.length > 0
-                    ? thread.messages[thread.messages.length - 1]
-                    : null;
+                  thread.messages.length > 0 ? thread.messages[thread.messages.length - 1] : null;
                 const preview = lastMsg?.content?.slice(0, 60) || "";
                 return (
                   <TouchableOpacity
@@ -304,17 +261,12 @@ export function ChatScreen() {
                     <View style={s.threadContent}>
                       <View style={s.threadTitleRow}>
                         <Text
-                          style={[
-                            s.threadTitle,
-                            isActive && s.threadTitleActive,
-                          ]}
+                          style={[s.threadTitle, isActive && s.threadTitleActive]}
                           numberOfLines={1}
                         >
                           {thread.title || t("chat.newChat", "新对话")}
                         </Text>
-                        <Text style={s.threadTime}>
-                          {formatTime(thread.updatedAt)}
-                        </Text>
+                        <Text style={s.threadTime}>{formatTime(thread.updatedAt)}</Text>
                       </View>
                       {preview ? (
                         <Text style={s.threadPreview} numberOfLines={1}>
@@ -376,9 +328,7 @@ function EmptyState({
     <View style={s.emptyContainer}>
       <View style={s.emptyInner}>
         <Image source={THINK_PNG} style={{ width: 140, height: 140 }} />
-        <Text style={s.emptyTitle}>
-          {t("chat.howCanIHelp", "有什么我可以帮你的？")}
-        </Text>
+        <Text style={s.emptyTitle}>{t("chat.howCanIHelp", "有什么我可以帮你的？")}</Text>
         <Text style={s.emptySubtitle}>
           {t("chat.askAboutBooks", "关于书籍的任何问题都可以问我")}
         </Text>

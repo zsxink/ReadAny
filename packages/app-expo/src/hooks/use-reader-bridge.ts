@@ -1,10 +1,10 @@
+import type { TOCItem } from "@readany/core/types";
 /**
  * useReaderBridge — encapsulates RN ↔ WebView postMessage communication
  * for the foliate-js reader engine.
  */
 import { useCallback, useRef } from "react";
 import type { WebView } from "react-native-webview";
-import type { TOCItem } from "@readany/core/types";
 
 export interface RelocateEvent {
   fraction?: number;
@@ -37,7 +37,11 @@ export interface ReaderBridgeCallbacks {
   onError?: (message: string) => void;
   onReady?: () => void;
   onLoaded?: () => void;
-  onShowAnnotation?: (detail: { value: string; range: Range; position: { x: number; y: number; selectionTop: number; selectionBottom: number } }) => void;
+  onShowAnnotation?: (detail: {
+    value: string;
+    range: Range;
+    position: { x: number; y: number; selectionTop: number; selectionBottom: number };
+  }) => void;
 }
 
 export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
@@ -61,7 +65,11 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       lastLocation?: string;
       pageMargin?: number;
     }) => {
-      console.log("[ReaderBridge] openBook called with params:", { fileName: params.fileName, base64Length: params.base64?.length, lastLocation: params.lastLocation });
+      console.log("[ReaderBridge] openBook called with params:", {
+        fileName: params.fileName,
+        base64Length: params.base64?.length,
+        lastLocation: params.lastLocation,
+      });
       const msg = JSON.stringify({ type: "openBook", ...params });
       console.log("[ReaderBridge] Message JSON length:", msg.length);
       inject(`handleCommand(${msg})`);

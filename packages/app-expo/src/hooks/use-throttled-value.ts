@@ -1,7 +1,7 @@
 /**
  * useThrottledValue hook
  */
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export function useThrottledValue<T>(value: T, interval: number): T {
   const [throttledValue, setThrottledValue] = useState<T>(value);
@@ -13,10 +13,13 @@ export function useThrottledValue<T>(value: T, interval: number): T {
       lastUpdated.current = now;
       setThrottledValue(value);
     } else {
-      const timer = setTimeout(() => {
-        lastUpdated.current = Date.now();
-        setThrottledValue(value);
-      }, interval - (now - lastUpdated.current));
+      const timer = setTimeout(
+        () => {
+          lastUpdated.current = Date.now();
+          setThrottledValue(value);
+        },
+        interval - (now - lastUpdated.current),
+      );
 
       return () => clearTimeout(timer);
     }
@@ -42,10 +45,13 @@ export function useThrottledCallback<T extends (...args: unknown[]) => void>(
         if (timeoutRef.current) {
           clearTimeout(timeoutRef.current);
         }
-        timeoutRef.current = setTimeout(() => {
-          lastCalled.current = Date.now();
-          callback(...args);
-        }, interval - (now - lastCalled.current));
+        timeoutRef.current = setTimeout(
+          () => {
+            lastCalled.current = Date.now();
+            callback(...args);
+          },
+          interval - (now - lastCalled.current),
+        );
       }
     },
     [callback, interval],

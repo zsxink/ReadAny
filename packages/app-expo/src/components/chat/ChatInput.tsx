@@ -1,20 +1,14 @@
+import { BrainIcon, SendIcon, StopCircleIcon, XIcon } from "@/components/ui/Icon";
+import { fontSize as fs, radius, useColors, withOpacity } from "@/styles/theme";
+import type { ThemeColors } from "@/styles/theme";
+import type { AttachedQuote } from "@readany/core/types";
 /**
  * ChatInput — touch-optimized chat input matching app-mobile MobileChatInput.
  * Rounded container with textarea on top, action bar (deep thinking + send) below.
  */
-import { useState, useRef, useCallback } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-} from "react-native";
+import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { AttachedQuote } from "@readany/core/types";
-import { useColors, fontSize as fs, radius, fontWeight as fw, withOpacity } from "@/styles/theme";
-import type { ThemeColors } from "@/styles/theme";
-import { SendIcon, BrainIcon, XIcon, StopCircleIcon } from "@/components/ui/Icon";
+import { StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 interface ChatInputProps {
   onSend: (text: string, deepThinking: boolean, quotes?: AttachedQuote[]) => void;
@@ -53,13 +47,10 @@ export function ChatInput({
     setInputHeight(36);
   }, [text, deepThinking, quotes, onSend]);
 
-  const handleContentSizeChange = useCallback(
-    (e: any) => {
-      const h = Math.min(e.nativeEvent.contentSize.height, MAX_INPUT_HEIGHT);
-      setInputHeight(Math.max(36, h));
-    },
-    [],
-  );
+  const handleContentSizeChange = useCallback((e: any) => {
+    const h = Math.min(e.nativeEvent.contentSize.height, MAX_INPUT_HEIGHT);
+    setInputHeight(Math.max(36, h));
+  }, []);
 
   const canSend = text.trim().length > 0 || quotes.length > 0;
 
@@ -111,13 +102,8 @@ export function ChatInput({
             onPress={() => setDeepThinking(!deepThinking)}
             activeOpacity={0.7}
           >
-            <BrainIcon
-              size={13}
-              color={deepThinking ? colors.violet : colors.mutedForeground}
-            />
-            <Text
-              style={[s.deepThinkText, deepThinking && s.deepThinkTextActive]}
-            >
+            <BrainIcon size={13} color={deepThinking ? colors.violet : colors.mutedForeground} />
+            <Text style={[s.deepThinkText, deepThinking && s.deepThinkTextActive]}>
               {t("chat.deepThinking", "深度思考")}
             </Text>
           </TouchableOpacity>

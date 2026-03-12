@@ -1,33 +1,40 @@
+import {
+  BookOpenIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ClockIcon,
+  FlameIcon,
+  TrendingUpIcon,
+} from "@/components/ui/Icon";
+import { useReadingSessionStore } from "@/stores";
+import {
+  type ThemeColors,
+  fontSize,
+  fontWeight,
+  radius,
+  useColors,
+  withOpacity,
+} from "@/styles/theme";
+import { useNavigation } from "@react-navigation/native";
+import { readingStatsService } from "@readany/core/stats";
+import type { DailyStats, OverallStats, PeriodBookStats, TrendPoint } from "@readany/core/stats";
 /**
  * StatsScreen — Full reading stats page matching Tauri mobile MobileStatsPage.
  * Features: stats cards, heatmap/bar chart toggle, trend chart, period book list,
  * longest streak card.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Dimensions,
   ActivityIndicator,
+  Dimensions,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useTranslation } from "react-i18next";
-import { useNavigation } from "@react-navigation/native";
-import { readingStatsService } from "@readany/core/stats";
-import type { OverallStats, DailyStats, PeriodBookStats, TrendPoint } from "@readany/core/stats";
-import { useReadingSessionStore } from "@/stores";
-import { type ThemeColors, radius, fontSize, fontWeight, useColors, withOpacity } from "@/styles/theme";
-import {
-  BookOpenIcon,
-  ClockIcon,
-  FlameIcon,
-  TrendingUpIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-} from "@/components/ui/Icon";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 
@@ -155,7 +162,10 @@ function FullHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
             const nextCol = i + 1 < monthLabels.length ? monthLabels[i + 1].col : weeks.length;
             const span = nextCol - m.col;
             return (
-              <View key={`${m.label}-${m.col}`} style={{ width: span * UNIT, minWidth: span * UNIT }}>
+              <View
+                key={`${m.label}-${m.col}`}
+                style={{ width: span * UNIT, minWidth: span * UNIT }}
+              >
                 {span >= 2 && (
                   <Text style={{ fontSize: 9, color: colors.mutedForeground }}>{m.label}</Text>
                 )}
@@ -170,7 +180,9 @@ function FullHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
           {weeks.map((week, wi) => (
             <View key={wi} style={{ flexDirection: "column", gap: GAP }}>
               {/* Pad first week for alignment */}
-              {wi === 0 && week[0] && week[0].dayOfWeek > 0 &&
+              {wi === 0 &&
+                week[0] &&
+                week[0].dayOfWeek > 0 &&
                 Array.from({ length: week[0].dayOfWeek }).map((_, i) => (
                   <View key={`pad-${i}`} style={{ width: CELL, height: CELL }} />
                 ))}
@@ -284,9 +296,7 @@ function TrendChart({ data }: { data: TrendPoint[] }) {
                 ]}
               />
             </View>
-            {showLabel(idx) && (
-              <Text style={s.trendLabel}>{formatDate(item.date)}</Text>
-            )}
+            {showLabel(idx) && <Text style={s.trendLabel}>{formatDate(item.date)}</Text>}
           </View>
         ))}
       </ScrollView>
@@ -303,9 +313,7 @@ function PeriodBookList({ books }: { books: PeriodBookStats[] }) {
 
   if (books.length === 0) {
     return (
-      <Text style={s.periodBooksEmpty}>
-        {t("stats.noBooksInPeriod", "本期间暂无阅读书籍")}
-      </Text>
+      <Text style={s.periodBooksEmpty}>{t("stats.noBooksInPeriod", "本期间暂无阅读书籍")}</Text>
     );
   }
 
@@ -329,15 +337,10 @@ function PeriodBookList({ books }: { books: PeriodBookStats[] }) {
             <View style={s.progressRow}>
               <View style={s.progressTrack}>
                 <View
-                  style={[
-                    s.progressFill,
-                    { width: `${Math.min(book.progress * 100, 100)}%` },
-                  ]}
+                  style={[s.progressFill, { width: `${Math.min(book.progress * 100, 100)}%` }]}
                 />
               </View>
-              <Text style={s.progressPercent}>
-                {Math.round(book.progress * 100)}%
-              </Text>
+              <Text style={s.progressPercent}>{Math.round(book.progress * 100)}%</Text>
             </View>
           </View>
         </View>
@@ -535,9 +538,7 @@ export default function StatsScreen() {
         <View style={s.section}>
           <View style={s.sectionCard}>
             <View style={s.chartHeaderRow}>
-              <Text style={s.chartHeaderLabel}>
-                {t("profile.readingActivity", "阅读活动")}
-              </Text>
+              <Text style={s.chartHeaderLabel}>{t("profile.readingActivity", "阅读活动")}</Text>
               <View style={s.toggleRow}>
                 <TouchableOpacity
                   style={[s.toggleBtn, chartView === "heatmap" && s.toggleBtnActive]}
@@ -597,11 +598,14 @@ export default function StatsScreen() {
                 <FullHeatmap dailyStats={heatmapData} />
                 <View style={s.heatmapLegend}>
                   <Text style={s.legendText}>{t("common.less", "少")}</Text>
-                  {[colors.muted, withOpacity(colors.emerald, 0.3), withOpacity(colors.emerald, 0.5), withOpacity(colors.emerald, 0.7), withOpacity(colors.emerald, 0.9)].map((c, i) => (
-                    <View
-                      key={i}
-                      style={[s.legendCell, { backgroundColor: c }]}
-                    />
+                  {[
+                    colors.muted,
+                    withOpacity(colors.emerald, 0.3),
+                    withOpacity(colors.emerald, 0.5),
+                    withOpacity(colors.emerald, 0.7),
+                    withOpacity(colors.emerald, 0.9),
+                  ].map((c, i) => (
+                    <View key={i} style={[s.legendCell, { backgroundColor: c }]} />
                   ))}
                   <Text style={s.legendText}>{t("common.more", "多")}</Text>
                 </View>
@@ -615,9 +619,7 @@ export default function StatsScreen() {
         {/* Trend Chart */}
         <View style={s.section}>
           <View style={s.sectionCard}>
-            <Text style={s.sectionCardTitle}>
-              {t("stats.trendTitle", "30天阅读趋势")}
-            </Text>
+            <Text style={s.sectionCardTitle}>{t("stats.trendTitle", "30天阅读趋势")}</Text>
             <TrendChart data={trendData} />
           </View>
         </View>
@@ -625,9 +627,7 @@ export default function StatsScreen() {
         {/* Period Book List */}
         <View style={s.section}>
           <View style={s.sectionCard}>
-            <Text style={s.sectionCardTitle}>
-              {t("stats.periodBooks", "期间阅读书籍")}
-            </Text>
+            <Text style={s.sectionCardTitle}>{t("stats.periodBooks", "期间阅读书籍")}</Text>
             <PeriodBookList books={periodBooks} />
           </View>
         </View>
@@ -658,190 +658,217 @@ export default function StatsScreen() {
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: 0.5,
-    borderBottomColor: colors.border,
-  },
-  backBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerTitle: { fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.foreground },
-  scrollContent: { padding: 16 },
+const makeStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderBottomWidth: 0.5,
+      borderBottomColor: colors.border,
+    },
+    backBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: radius.full,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    headerTitle: {
+      fontSize: fontSize.lg,
+      fontWeight: fontWeight.semibold,
+      color: colors.foreground,
+    },
+    scrollContent: { padding: 16 },
 
-  // Stats grid
-  statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 12 },
-  statCard: {
-    width: "47%",
-    backgroundColor: colors.card,
-    borderRadius: radius.xl,
-    borderWidth: 0.5,
-    borderColor: colors.border,
-    padding: 14,
-  },
-  statCardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 6,
-  },
-  statCardTitle: { fontSize: fontSize.xs, color: colors.mutedForeground },
-  statCardBody: { flexDirection: "row", alignItems: "baseline", gap: 4 },
-  statCardValue: { fontSize: fontSize["2xl"], fontWeight: fontWeight.bold, color: colors.foreground },
-  statCardUnit: { fontSize: fontSize.sm, color: colors.mutedForeground },
+    // Stats grid
+    statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 12 },
+    statCard: {
+      width: "47%",
+      backgroundColor: colors.card,
+      borderRadius: radius.xl,
+      borderWidth: 0.5,
+      borderColor: colors.border,
+      padding: 14,
+    },
+    statCardHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 6,
+    },
+    statCardTitle: { fontSize: fontSize.xs, color: colors.mutedForeground },
+    statCardBody: { flexDirection: "row", alignItems: "baseline", gap: 4 },
+    statCardValue: {
+      fontSize: fontSize["2xl"],
+      fontWeight: fontWeight.bold,
+      color: colors.foreground,
+    },
+    statCardUnit: { fontSize: fontSize.sm, color: colors.mutedForeground },
 
-  // Section
-  section: { marginBottom: 12 },
-  sectionCard: {
-    backgroundColor: colors.card,
-    borderRadius: radius.xl,
-    borderWidth: 0.5,
-    borderColor: colors.border,
-    padding: 14,
-  },
-  sectionCardTitle: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.mutedForeground,
-    marginBottom: 12,
-  },
+    // Section
+    section: { marginBottom: 12 },
+    sectionCard: {
+      backgroundColor: colors.card,
+      borderRadius: radius.xl,
+      borderWidth: 0.5,
+      borderColor: colors.border,
+      padding: 14,
+    },
+    sectionCardTitle: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.mutedForeground,
+      marginBottom: 12,
+    },
 
-  // Chart header with toggle
-  chartHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 12,
-  },
-  chartHeaderLabel: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.mutedForeground },
-  toggleRow: {
-    flexDirection: "row",
-    borderRadius: radius.md,
-    borderWidth: 0.5,
-    borderColor: colors.border,
-    backgroundColor: colors.muted,
-    padding: 2,
-  },
-  toggleBtn: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.sm },
-  toggleBtnActive: { backgroundColor: colors.background },
-  toggleBtnText: { fontSize: 10, fontWeight: fontWeight.medium, color: colors.mutedForeground },
-  toggleBtnTextActive: { color: colors.foreground },
+    // Chart header with toggle
+    chartHeaderRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 12,
+    },
+    chartHeaderLabel: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.mutedForeground,
+    },
+    toggleRow: {
+      flexDirection: "row",
+      borderRadius: radius.md,
+      borderWidth: 0.5,
+      borderColor: colors.border,
+      backgroundColor: colors.muted,
+      padding: 2,
+    },
+    toggleBtn: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.sm },
+    toggleBtnActive: { backgroundColor: colors.background },
+    toggleBtnText: { fontSize: 10, fontWeight: fontWeight.medium, color: colors.mutedForeground },
+    toggleBtnTextActive: { color: colors.foreground },
 
-  // Bar controls
-  barControlsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 12,
-  },
-  periodNav: { flexDirection: "row", alignItems: "center", gap: 2 },
-  periodNavBtn: { padding: 4, borderRadius: radius.sm },
-  periodLabel: {
-    fontSize: 10,
-    fontWeight: fontWeight.medium,
-    color: colors.mutedForeground,
-    minWidth: 80,
-    textAlign: "center",
-  },
+    // Bar controls
+    barControlsRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 12,
+    },
+    periodNav: { flexDirection: "row", alignItems: "center", gap: 2 },
+    periodNavBtn: { padding: 4, borderRadius: radius.sm },
+    periodLabel: {
+      fontSize: 10,
+      fontWeight: fontWeight.medium,
+      color: colors.mutedForeground,
+      minWidth: 80,
+      textAlign: "center",
+    },
 
-  // Heatmap legend
-  heatmapLegend: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 4,
-    marginTop: 10,
-  },
-  legendText: { fontSize: 9, color: colors.mutedForeground },
-  legendCell: { width: 10, height: 10, borderRadius: 2 },
+    // Heatmap legend
+    heatmapLegend: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "flex-end",
+      gap: 4,
+      marginTop: 10,
+    },
+    legendText: { fontSize: 9, color: colors.mutedForeground },
+    legendCell: { width: 10, height: 10, borderRadius: 2 },
 
-  // Bar chart
-  barChartWrap: { height: 180 },
-  barChartContent: { alignItems: "flex-end", gap: 4, paddingBottom: 4 },
-  barCol: { alignItems: "center", width: 28 },
-  barTrack: { justifyContent: "flex-end", width: 16 },
-  barFill: { width: 16, borderRadius: 4 },
-  barLabel: { fontSize: 8, color: colors.mutedForeground, marginTop: 4 },
-  barChartEmpty: { height: 120, alignItems: "center", justifyContent: "center" },
-  barChartEmptyText: { fontSize: fontSize.xs, color: colors.mutedForeground },
+    // Bar chart
+    barChartWrap: { height: 180 },
+    barChartContent: { alignItems: "flex-end", gap: 4, paddingBottom: 4 },
+    barCol: { alignItems: "center", width: 28 },
+    barTrack: { justifyContent: "flex-end", width: 16 },
+    barFill: { width: 16, borderRadius: 4 },
+    barLabel: { fontSize: 8, color: colors.mutedForeground, marginTop: 4 },
+    barChartEmpty: { height: 120, alignItems: "center", justifyContent: "center" },
+    barChartEmptyText: { fontSize: fontSize.xs, color: colors.mutedForeground },
 
-  // Trend chart
-  trendContent: { alignItems: "flex-end", gap: 1 },
-  trendCol: { alignItems: "center", width: 10 },
-  trendTrack: { justifyContent: "flex-end", width: 6 },
-  trendBar: { width: 6, borderTopLeftRadius: 2, borderTopRightRadius: 2 },
-  trendLabel: { fontSize: 7, color: colors.mutedForeground, marginTop: 2 },
+    // Trend chart
+    trendContent: { alignItems: "flex-end", gap: 1 },
+    trendCol: { alignItems: "center", width: 10 },
+    trendTrack: { justifyContent: "flex-end", width: 6 },
+    trendBar: { width: 6, borderTopLeftRadius: 2, borderTopRightRadius: 2 },
+    trendLabel: { fontSize: 7, color: colors.mutedForeground, marginTop: 2 },
 
-  // Period books
-  periodBooksEmpty: {
-    fontSize: fontSize.xs,
-    color: colors.mutedForeground,
-    textAlign: "center",
-    paddingVertical: 16,
-  },
-  bookRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 6,
-    paddingHorizontal: 6,
-    borderRadius: radius.lg,
-  },
-  bookCoverPlaceholder: {
-    width: 28,
-    height: 40,
-    borderRadius: radius.sm,
-    backgroundColor: colors.muted,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  bookCoverLetter: { fontSize: 10, color: colors.mutedForeground },
-  bookInfo: { flex: 1, gap: 4 },
-  bookTitleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 4 },
-  bookTitle: { fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.foreground, flex: 1 },
-  bookTime: { fontSize: 10, color: colors.mutedForeground },
-  progressRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  progressTrack: {
-    flex: 1,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.muted,
-    overflow: "hidden",
-  },
-  progressFill: { height: "100%", borderRadius: 2, backgroundColor: colors.emerald },
-  progressPercent: { fontSize: 9, color: colors.mutedForeground },
+    // Period books
+    periodBooksEmpty: {
+      fontSize: fontSize.xs,
+      color: colors.mutedForeground,
+      textAlign: "center",
+      paddingVertical: 16,
+    },
+    bookRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingVertical: 6,
+      paddingHorizontal: 6,
+      borderRadius: radius.lg,
+    },
+    bookCoverPlaceholder: {
+      width: 28,
+      height: 40,
+      borderRadius: radius.sm,
+      backgroundColor: colors.muted,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    bookCoverLetter: { fontSize: 10, color: colors.mutedForeground },
+    bookInfo: { flex: 1, gap: 4 },
+    bookTitleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 4,
+    },
+    bookTitle: {
+      fontSize: fontSize.xs,
+      fontWeight: fontWeight.medium,
+      color: colors.foreground,
+      flex: 1,
+    },
+    bookTime: { fontSize: 10, color: colors.mutedForeground },
+    progressRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+    progressTrack: {
+      flex: 1,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: colors.muted,
+      overflow: "hidden",
+    },
+    progressFill: { height: "100%", borderRadius: 2, backgroundColor: colors.emerald },
+    progressPercent: { fontSize: 9, color: colors.mutedForeground },
 
-  // Streak
-  streakCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: colors.card,
-    borderRadius: radius.xl,
-    borderWidth: 0.5,
-    borderColor: colors.border,
-    padding: 12,
-  },
-  streakIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.lg,
-    backgroundColor: withOpacity(colors.amber, 0.1),
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  streakInfo: { gap: 2 },
-  streakLabel: { fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: colors.foreground },
-  streakDesc: { fontSize: 10, color: colors.mutedForeground },
-});
+    // Streak
+    streakCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      backgroundColor: colors.card,
+      borderRadius: radius.xl,
+      borderWidth: 0.5,
+      borderColor: colors.border,
+      padding: 12,
+    },
+    streakIconWrap: {
+      width: 32,
+      height: 32,
+      borderRadius: radius.lg,
+      backgroundColor: withOpacity(colors.amber, 0.1),
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    streakInfo: { gap: 2 },
+    streakLabel: {
+      fontSize: fontSize.xs,
+      fontWeight: fontWeight.semibold,
+      color: colors.foreground,
+    },
+    streakDesc: { fontSize: 10, color: colors.mutedForeground },
+  });

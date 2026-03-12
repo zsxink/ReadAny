@@ -14,7 +14,9 @@ export interface SettingsState {
 
   updateReadSettings: (updates: Partial<ReadSettings>) => void;
   updateTranslationConfig: (updates: Partial<TranslationConfig>) => void;
-  updateAIConfig: (updates: Partial<Pick<AIConfig, "temperature" | "maxTokens" | "slidingWindowSize">>) => void;
+  updateAIConfig: (
+    updates: Partial<Pick<AIConfig, "temperature" | "maxTokens" | "slidingWindowSize">>,
+  ) => void;
   addEndpoint: (endpoint: AIEndpoint) => void;
   updateEndpoint: (id: string, updates: Partial<AIEndpoint>) => void;
   removeEndpoint: (id: string) => void;

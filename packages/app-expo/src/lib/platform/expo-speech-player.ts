@@ -1,8 +1,8 @@
+import type { ITTSPlayer, TTSConfig } from "@readany/core/tts";
 /**
  * ExpoSpeechTTSPlayer — ITTSPlayer backed by expo-speech (native OS TTS).
  */
 import * as Speech from "expo-speech";
-import type { ITTSPlayer, TTSConfig } from "@readany/core/tts";
 
 export class ExpoSpeechTTSPlayer implements ITTSPlayer {
   onStateChange?: (state: "playing" | "paused" | "stopped") => void;

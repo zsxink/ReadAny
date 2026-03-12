@@ -1,11 +1,11 @@
+import { BrainIcon } from "@/components/ui/Icon";
+import { fontSize as fs, fontWeight as fw, radius, useColors } from "@/styles/theme";
+import { useTranslation } from "react-i18next";
 /**
  * StreamingIndicator — displays thinking/tool_calling/responding status
  * with stop button.
  */
-import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
-import { useTranslation } from "react-i18next";
-import { useColors, fontSize as fs, radius, fontWeight as fw } from "@/styles/theme";
-import { BrainIcon } from "@/components/ui/Icon";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 interface StreamingIndicatorProps {
   step: "thinking" | "tool_calling" | "responding";
@@ -38,9 +38,7 @@ export function StreamingIndicator({ step }: StreamingIndicatorProps) {
   return (
     <View style={[styles.container, { backgroundColor: colors.muted }]}>
       {getIcon()}
-      <Text style={[styles.text, { color: colors.mutedForeground }]}>
-        {getLabel()}
-      </Text>
+      <Text style={[styles.text, { color: colors.mutedForeground }]}>{getLabel()}</Text>
     </View>
   );
 }

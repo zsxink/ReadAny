@@ -1,35 +1,35 @@
+import {
+  CopyIcon,
+  HighlighterIcon,
+  LanguagesIcon,
+  NotebookPenIcon,
+  SparklesIcon,
+  Trash2Icon,
+  Volume2Icon,
+  XIcon,
+} from "@/components/ui/Icon";
+import type { SelectionEvent } from "@/hooks/use-reader-bridge";
+import { radius, spacing, useColors } from "@/styles/theme";
+import type { ThemeColors } from "@/styles/theme";
+import * as Clipboard from "expo-clipboard";
+import * as Speech from "expo-speech";
 /**
  * SelectionPopover — floating action bar shown when text is selected in the reader.
  * Provides highlight (5 colors), note, copy, translate, AI chat, TTS, and delete actions.
  * Matches app-mobile styling with icon buttons and expandable color picker.
  */
 import { useCallback, useMemo, useState } from "react";
-import {
-  View,
-  TouchableOpacity,
-  StyleSheet,
-  Dimensions,
-  Modal,
-  TextInput,
-  KeyboardAvoidingView,
-  Platform,
-} from "react-native";
-import * as Clipboard from "expo-clipboard";
-import * as Speech from "expo-speech";
 import { useTranslation } from "react-i18next";
-import type { SelectionEvent } from "@/hooks/use-reader-bridge";
-import { useColors, radius, spacing } from "@/styles/theme";
-import type { ThemeColors } from "@/styles/theme";
 import {
-  CopyIcon,
-  NotebookPenIcon,
-  LanguagesIcon,
-  SparklesIcon,
-  Volume2Icon,
-  Trash2Icon,
-  HighlighterIcon,
-  XIcon,
-} from "@/components/ui/Icon";
+  Dimensions,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 const HIGHLIGHT_COLORS = [
   { key: "yellow", hex: "#facc15" },
@@ -77,10 +77,14 @@ export function SelectionPopover({
   const [noteText, setNoteText] = useState(existingHighlight?.note || "");
   const [showColors, setShowColors] = useState(!!existingHighlight);
 
-  const buttonCount = 5 + (onNote ? 1 : 0) + (onTranslate ? 1 : 0) + (existingHighlight && onRemoveHighlight ? 1 : 0);
+  const buttonCount =
+    5 + (onNote ? 1 : 0) + (onTranslate ? 1 : 0) + (existingHighlight && onRemoveHighlight ? 1 : 0);
   const colorRowHeight = showColors ? 40 : 0;
   const popoverHeight = 44 + colorRowHeight + POPOVER_PADDING * 2 + GAP;
-  const popoverWidth = Math.min(buttonCount * (BUTTON_SIZE + GAP) + POPOVER_PADDING * 2, SCREEN_WIDTH - POPOVER_MARGIN * 2);
+  const popoverWidth = Math.min(
+    buttonCount * (BUTTON_SIZE + GAP) + POPOVER_PADDING * 2,
+    SCREEN_WIDTH - POPOVER_MARGIN * 2,
+  );
 
   const position = useMemo(() => {
     const selTop = selection.position.selectionTop;
@@ -89,8 +93,11 @@ export function SelectionPopover({
     const safeTop = 48;
     const safeBottom = 48;
 
-    let x = Math.max(POPOVER_MARGIN, Math.min(selCenterX - popoverWidth / 2, SCREEN_WIDTH - popoverWidth - POPOVER_MARGIN));
-    
+    const x = Math.max(
+      POPOVER_MARGIN,
+      Math.min(selCenterX - popoverWidth / 2, SCREEN_WIDTH - popoverWidth - POPOVER_MARGIN),
+    );
+
     let y: number;
     const yAbove = selTop - popoverHeight - GAP;
     const yBelow = selBottom + GAP;
@@ -150,11 +157,7 @@ export function SelectionPopover({
 
   return (
     <View style={[s.overlay]} pointerEvents="box-none">
-      <TouchableOpacity
-        style={StyleSheet.absoluteFill}
-        activeOpacity={1}
-        onPress={onDismiss}
-      />
+      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onDismiss} />
       <View style={[s.popover, { left: position.x, top: position.y }]}>
         {showColors && (
           <View style={s.colorRow}>
@@ -173,7 +176,10 @@ export function SelectionPopover({
         )}
 
         <View style={s.actionRow}>
-          <TouchableOpacity style={[s.iconBtn, showColors && s.iconBtnActive]} onPress={toggleColors}>
+          <TouchableOpacity
+            style={[s.iconBtn, showColors && s.iconBtnActive]}
+            onPress={toggleColors}
+          >
             <HighlighterIcon size={18} color={showColors ? colors.primary : colors.foreground} />
           </TouchableOpacity>
 
@@ -209,12 +215,20 @@ export function SelectionPopover({
         </View>
       </View>
 
-      <Modal visible={showNoteModal} transparent animationType="slide" onRequestClose={() => setShowNoteModal(false)}>
+      <Modal
+        visible={showNoteModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowNoteModal(false)}
+      >
         <KeyboardAvoidingView
           style={s.modalOverlay}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
-          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowNoteModal(false)} />
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            onPress={() => setShowNoteModal(false)}
+          />
           <View style={s.noteModal}>
             <View style={s.noteModalHeader}>
               <Text style={s.noteModalTitle}>{t("reader.addNote", "添加笔记")}</Text>
@@ -222,7 +236,9 @@ export function SelectionPopover({
                 <XIcon size={20} color={colors.mutedForeground} />
               </TouchableOpacity>
             </View>
-            <Text style={s.noteModalPreview} numberOfLines={3}>{selection.text}</Text>
+            <Text style={s.noteModalPreview} numberOfLines={3}>
+              {selection.text}
+            </Text>
             <TextInput
               style={s.noteInput}
               placeholder={t("reader.notePlaceholder", "写下你的想法...")}
@@ -247,8 +263,8 @@ export function SelectionPopover({
   );
 }
 
-import { Text } from "react-native";
 import { fontSize as fs, fontWeight as fw } from "@/styles/theme";
+import { Text } from "react-native";
 
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({

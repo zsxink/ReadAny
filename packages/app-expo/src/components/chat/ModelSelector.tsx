@@ -1,22 +1,22 @@
+import { CheckIcon, ChevronDownIcon } from "@/components/ui/Icon";
+import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from "@/styles/theme";
+import type { ThemeColors } from "@/styles/theme";
+import { useSettingsStore } from "@readany/core/stores/settings-store";
 /**
  * ModelSelector — compact pill trigger with popover dropdown.
  * Matches app-mobile MobileModelSelector style.
  */
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
-  View,
-  Text,
-  TouchableOpacity,
   Modal,
   Pressable,
   ScrollView,
   StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { useTranslation } from "react-i18next";
-import { useSettingsStore } from "@readany/core/stores/settings-store";
-import { useColors, fontSize as fs, radius, fontWeight as fw, withOpacity } from "@/styles/theme";
-import type { ThemeColors } from "@/styles/theme";
-import { ChevronDownIcon, CheckIcon } from "@/components/ui/Icon";
 
 interface ModelSelectorProps {
   onNavigateToSettings?: () => void;
@@ -32,13 +32,8 @@ export function ModelSelector({ onNavigateToSettings }: ModelSelectorProps) {
   const setActiveEndpoint = useSettingsStore((st) => st.setActiveEndpoint);
   const setActiveModel = useSettingsStore((st) => st.setActiveModel);
 
-  const endpointsWithModels = aiConfig.endpoints.filter(
-    (ep) => ep.models.length > 0,
-  );
-  const totalModels = endpointsWithModels.reduce(
-    (sum, ep) => sum + ep.models.length,
-    0,
-  );
+  const endpointsWithModels = aiConfig.endpoints.filter((ep) => ep.models.length > 0);
+  const totalModels = endpointsWithModels.reduce((sum, ep) => sum + ep.models.length, 0);
   const canSwitch = totalModels > 1;
 
   // 如果有模型列表但 activeModel 为空，自动选中第一个
@@ -71,11 +66,7 @@ export function ModelSelector({ onNavigateToSettings }: ModelSelectorProps) {
 
   if (aiConfig.endpoints.length === 0) {
     return (
-      <TouchableOpacity
-        style={s.trigger}
-        onPress={onNavigateToSettings}
-        activeOpacity={0.7}
-      >
+      <TouchableOpacity style={s.trigger} onPress={onNavigateToSettings} activeOpacity={0.7}>
         <Text style={[s.triggerText, { color: colors.amber }]}>
           {t("chat.configureAI", "配置 AI")}
         </Text>
@@ -93,9 +84,7 @@ export function ModelSelector({ onNavigateToSettings }: ModelSelectorProps) {
         <Text style={s.triggerText} numberOfLines={1}>
           {displayName}
         </Text>
-        {canSwitch && (
-          <ChevronDownIcon size={10} color={colors.mutedForeground} />
-        )}
+        {canSwitch && <ChevronDownIcon size={10} color={colors.mutedForeground} />}
       </TouchableOpacity>
 
       <Modal
@@ -106,21 +95,15 @@ export function ModelSelector({ onNavigateToSettings }: ModelSelectorProps) {
       >
         <Pressable style={s.backdrop} onPress={() => setVisible(false)}>
           <View style={s.popover}>
-            <ScrollView
-              style={s.popoverScroll}
-              showsVerticalScrollIndicator={false}
-            >
+            <ScrollView style={s.popoverScroll} showsVerticalScrollIndicator={false}>
               {endpointsWithModels.map((ep) => (
                 <View key={ep.id}>
                   {endpointsWithModels.length > 1 && (
-                    <Text style={s.epName}>
-                      {ep.name || ep.baseUrl}
-                    </Text>
+                    <Text style={s.epName}>{ep.name || ep.baseUrl}</Text>
                   )}
                   {ep.models.map((model) => {
                     const isActive =
-                      ep.id === aiConfig.activeEndpointId &&
-                      model === aiConfig.activeModel;
+                      ep.id === aiConfig.activeEndpointId && model === aiConfig.activeModel;
                     return (
                       <TouchableOpacity
                         key={`${ep.id}-${model}`}
@@ -134,9 +117,7 @@ export function ModelSelector({ onNavigateToSettings }: ModelSelectorProps) {
                         >
                           {model}
                         </Text>
-                        {isActive && (
-                          <CheckIcon size={12} color={colors.indigo} />
-                        )}
+                        {isActive && <CheckIcon size={12} color={colors.indigo} />}
                       </TouchableOpacity>
                     );
                   })}

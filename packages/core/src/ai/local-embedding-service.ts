@@ -13,9 +13,21 @@ let requestCounter = 0;
 
 function getWorker(): Worker {
   if (!worker) {
-    worker = new Worker(new URL("./embedding-worker.ts", import.meta.url), { type: "module" });
+    // React Native's Hermes engine throws a syntax error on import.meta.
+    // However, local embedding workers via standard Web Workers aren't fully supported in RN anyway.
+    // For web/desktop backgrounds, we can use a workaround to evaluate it without strict syntax parsing,
+    // or just let a bundler replace it. But the safest cross-platform way to write this without 
+    // crashing Hermes on parse is to trick the parser.
+    const isRN = typeof navigator !== 'undefined' && navigator.product === 'ReactNative';
+    if (isRN) {
+      throw new Error("Local embedding web workers are not supported in React Native.");
+    } else {
+      // Use Function constructor to hide import.meta from Hermes parser
+      const getWorkerUrl = new Function('return new Worker(new URL("./embedding-worker.ts", import.meta.url), { type: "module" });');
+      worker = getWorkerUrl();
+    }
   }
-  return worker;
+  return worker!;
 }
 
 /**

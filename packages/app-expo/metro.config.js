@@ -25,7 +25,10 @@ config.resolver.assetExts = [...config.resolver.assetExts, "html"];
 // pnpm stores packages in node_modules/.pnpm/<package>@<version>/node_modules/<package>
 // IMPORTANT: react version must match react-native's renderer version (19.1.4)
 const reactPath = path.resolve(monorepoRoot, "node_modules/.pnpm/react@19.1.4/node_modules/react");
-const reactNativePath = path.resolve(monorepoRoot, "node_modules/.pnpm/react-native@0.81.6_@babel+core@7.29.0_@types+react@19.1.17_react@19.1.4/node_modules/react-native");
+const reactNativePath = path.resolve(
+  monorepoRoot,
+  "node_modules/.pnpm/react-native@0.81.6_@babel+core@7.29.0_@types+react@19.1.17_react@19.1.4/node_modules/react-native",
+);
 
 config.resolver.extraNodeModules = {
   ...config.resolver.extraNodeModules,

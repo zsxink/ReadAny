@@ -150,10 +150,7 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
           ...state.tabs,
           [tabId]: {
             ...tab,
-            navigationHistory: [
-              ...tab.navigationHistory,
-              { ...item, timestamp: Date.now() },
-            ],
+            navigationHistory: [...tab.navigationHistory, { ...item, timestamp: Date.now() }],
           },
         },
       };

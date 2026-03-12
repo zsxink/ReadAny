@@ -1,23 +1,16 @@
+import { ChevronDownIcon } from "@/components/ui/Icon";
+import { fontSize as fs, radius, useColors, withOpacity } from "@/styles/theme";
+import type { ThemeColors } from "@/styles/theme";
+import type { MessageV2, QuotePart, TextPart } from "@readany/core/types/message";
 /**
  * MessageList — FlatList message renderer matching app-mobile MessageList.
  * Scroll-to-bottom button, streaming gap indicator.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  View,
-  Text,
-  FlatList,
-  StyleSheet,
-  TouchableOpacity,
-  Keyboard,
-} from "react-native";
 import { useTranslation } from "react-i18next";
-import type { MessageV2, QuotePart, TextPart } from "@readany/core/types/message";
-import { useColors, fontSize as fs, radius, fontWeight as fw, withOpacity } from "@/styles/theme";
-import type { ThemeColors } from "@/styles/theme";
+import { FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { PartRenderer } from "./PartRenderer";
 import { StreamingIndicator } from "./StreamingIndicator";
-import { ChevronDownIcon } from "@/components/ui/Icon";
 
 interface MessageListProps {
   messages: MessageV2[];
@@ -27,11 +20,7 @@ interface MessageListProps {
 
 const BOTTOM_THRESHOLD = 80;
 
-export function MessageList({
-  messages,
-  isStreaming,
-  currentStep,
-}: MessageListProps) {
+export function MessageList({ messages, isStreaming, currentStep }: MessageListProps) {
   const { t } = useTranslation();
   const colors = useColors();
   const s = makeStyles(colors);
@@ -66,8 +55,7 @@ export function MessageList({
   const handleScroll = useCallback((e: any) => {
     const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
     const nearBottom =
-      contentSize.height - contentOffset.y - layoutMeasurement.height <
-      BOTTOM_THRESHOLD;
+      contentSize.height - contentOffset.y - layoutMeasurement.height < BOTTOM_THRESHOLD;
     isAtBottomRef.current = nearBottom;
     setShowScrollDown(!nearBottom);
   }, []);
@@ -117,9 +105,7 @@ export function MessageList({
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         ListFooterComponent={
-          showStreamingIndicator ? (
-            <StreamingIndicator step={currentStep!} />
-          ) : null
+          showStreamingIndicator ? <StreamingIndicator step={currentStep!} /> : null
         }
       />
 
@@ -132,9 +118,7 @@ export function MessageList({
             activeOpacity={0.8}
           >
             <ChevronDownIcon size={14} color={colors.mutedForeground} />
-            <Text style={s.scrollDownText}>
-              {t("streaming.scrollToBottom", "滚动到底部")}
-            </Text>
+            <Text style={s.scrollDownText}>{t("streaming.scrollToBottom", "滚动到底部")}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -149,9 +133,7 @@ function UserQuoteBlock({ part, colors }: { part: QuotePart; colors: ThemeColors
         <Text style={quoteStyles(colors).quoteText} numberOfLines={4}>
           {part.text.length > 200 ? `${part.text.slice(0, 200)}...` : part.text}
         </Text>
-        {part.source && (
-          <Text style={quoteStyles(colors).quoteSource}>— {part.source}</Text>
-        )}
+        {part.source && <Text style={quoteStyles(colors).quoteSource}>— {part.source}</Text>}
       </View>
     </View>
   );
@@ -228,7 +210,8 @@ function MessageBubble({ message, colors, isStreaming, currentStep }: MessageBub
   const isLastPartActiveToolCall =
     lastPart?.type === "tool_call" &&
     (lastPart.status === "pending" || lastPart.status === "running");
-  const isLastPartRunningReasoning = lastPart?.type === "reasoning" && lastPart.status === "running";
+  const isLastPartRunningReasoning =
+    lastPart?.type === "reasoning" && lastPart.status === "running";
   const showGapIndicator =
     isStreaming &&
     currentStep !== "idle" &&

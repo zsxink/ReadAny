@@ -18,7 +18,15 @@ export interface Tab {
 
 export type SidebarTab = "chat" | "notes" | "toc" | "highlights" | "stats";
 
-export type SettingsTab = "general" | "reading" | "ai" | "vectorModel" | "tts" | "translation" | "sync" | "about";
+export type SettingsTab =
+  | "general"
+  | "reading"
+  | "ai"
+  | "vectorModel"
+  | "tts"
+  | "translation"
+  | "sync"
+  | "about";
 
 export interface AppState {
   tabs: Tab[];
@@ -53,7 +61,11 @@ export const useAppStore = create<AppState>((set) => ({
         const existingTab = state.tabs[existingIndex];
         if (tab.initialCfi && existingTab) {
           const updatedTabs = [...state.tabs];
-          updatedTabs[existingIndex] = { ...existingTab, initialCfi: tab.initialCfi, lastActiveAt: now };
+          updatedTabs[existingIndex] = {
+            ...existingTab,
+            initialCfi: tab.initialCfi,
+            lastActiveAt: now,
+          };
           return { tabs: updatedTabs, activeTabId: tab.id };
         }
         const updatedTabs = [...state.tabs];
@@ -79,9 +91,7 @@ export const useAppStore = create<AppState>((set) => ({
   setActiveTab: (tabId) =>
     set((state) => {
       const now = Date.now();
-      const updatedTabs = state.tabs.map((t) =>
-        t.id === tabId ? { ...t, lastActiveAt: now } : t,
-      );
+      const updatedTabs = state.tabs.map((t) => (t.id === tabId ? { ...t, lastActiveAt: now } : t));
       return { tabs: updatedTabs, activeTabId: tabId };
     }),
 

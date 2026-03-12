@@ -1,56 +1,59 @@
+import { SelectionPopover } from "@/components/reader/SelectionPopover";
+import { TTSControls } from "@/components/reader/TTSControls";
+import { TranslationPanel } from "@/components/reader/TranslationPanel";
+import {
+  ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  MessageSquareIcon,
+  NotebookPenIcon,
+  SearchIcon,
+  Undo2Icon,
+  Volume2Icon,
+  XIcon,
+} from "@/components/ui/Icon";
+import { useReaderBridge } from "@/hooks/use-reader-bridge";
+import type { RelocateEvent, SelectionEvent } from "@/hooks/use-reader-bridge";
+import type { RootStackParamList } from "@/navigation/RootNavigator";
+import {
+  useAnnotationStore,
+  useLibraryStore,
+  useReadingSessionStore,
+  useSettingsStore,
+  useTTSStore,
+} from "@/stores";
+import { useTheme } from "@/styles/ThemeContext";
+import { type ThemeColors, fontSize, fontWeight, radius, useColors } from "@/styles/theme";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { readingContextService } from "@readany/core/ai/reading-context-service";
+import { getPlatformService } from "@readany/core/services";
+import type { TOCItem } from "@readany/core/types";
+import { Asset } from "expo-asset";
+import * as FileSystem from "expo-file-system/legacy";
 /**
  * ReaderScreen — WebView-based reader with foliate-js engine.
  * Features: toolbar with back/notebook/chat/TTS/TOC/search/settings,
  * footer with prev/next + slider + progress, TOC panel, settings panel,
  * search bar, selection popover for highlights/notes.
  */
-import { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Dimensions,
   ActivityIndicator,
   Animated,
-  TextInput,
-  ScrollView,
+  Dimensions,
   Modal,
   Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { useTranslation } from "react-i18next";
-import { WebView } from "react-native-webview";
-import * as FileSystem from "expo-file-system/legacy";
-import { Asset } from "expo-asset";
-import { LinearGradient } from "expo-linear-gradient";
-import { getPlatformService } from "@readany/core/services";
-import { readingContextService } from "@readany/core/ai/reading-context-service";
-import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import type { RootStackParamList } from "@/navigation/RootNavigator";
-import { useLibraryStore, useAnnotationStore, useReadingSessionStore, useTTSStore, useSettingsStore } from "@/stores";
-import { useReaderBridge } from "@/hooks/use-reader-bridge";
-import type { RelocateEvent, SelectionEvent } from "@/hooks/use-reader-bridge";
-import { SelectionPopover } from "@/components/reader/SelectionPopover";
-import { TTSControls } from "@/components/reader/TTSControls";
-import { TranslationPanel } from "@/components/reader/TranslationPanel";
-import type { TOCItem } from "@readany/core/types";
-import { type ThemeColors, radius, fontSize, fontWeight, useColors } from "@/styles/theme";
-import { useTheme } from "@/styles/ThemeContext";
-import {
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  ChevronDownIcon,
-  SearchIcon,
-  NotebookPenIcon,
-  BookOpenIcon,
-  XIcon,
-  Volume2Icon,
-  MessageSquareIcon,
-  HighlighterIcon,
-  Undo2Icon,
-} from "@/components/ui/Icon";
 import Svg, { Path } from "react-native-svg";
+import { WebView } from "react-native-webview";
 
 const READER_HTML_ASSET = Asset.fromModule(require("../../assets/reader/reader.html"));
 
@@ -71,7 +74,16 @@ const FONT_THEMES = [
 // ──────────────────────────── Settings Icon (Gear) ────────────────────────────
 function SettingsIcon({ size = 24, color = "#e8e8ed" }: { size?: number; color?: string }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <Path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
       <Path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" />
     </Svg>
@@ -80,7 +92,16 @@ function SettingsIcon({ size = 24, color = "#e8e8ed" }: { size?: number; color?:
 
 function ListIcon({ size = 24, color = "#e8e8ed" }: { size?: number; color?: string }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <Path d="M3 12h18M3 6h18M3 18h18" />
     </Svg>
   );
@@ -88,9 +109,15 @@ function ListIcon({ size = 24, color = "#e8e8ed" }: { size?: number; color?: str
 
 // ──────────────────────────── TOC Tree Item ────────────────────────────
 function TOCTreeItem({
-  item, level, currentChapter, onSelect,
+  item,
+  level,
+  currentChapter,
+  onSelect,
 }: {
-  item: TOCItem; level: number; currentChapter: string; onSelect: (href: string) => void;
+  item: TOCItem;
+  level: number;
+  currentChapter: string;
+  onSelect: (href: string) => void;
 }) {
   const colors = useColors();
   const tocS = makeTocStyles(colors);
@@ -114,18 +141,34 @@ function TOCTreeItem({
         activeOpacity={0.7}
       >
         {hasChildren ? (
-          <TouchableOpacity style={tocS.expandBtn} onPress={() => setExpanded(!expanded)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            {expanded ? <ChevronDownIcon size={14} color={colors.mutedForeground} /> : <ChevronRightIcon size={14} color={colors.mutedForeground} />}
+          <TouchableOpacity
+            style={tocS.expandBtn}
+            onPress={() => setExpanded(!expanded)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            {expanded ? (
+              <ChevronDownIcon size={14} color={colors.mutedForeground} />
+            ) : (
+              <ChevronRightIcon size={14} color={colors.mutedForeground} />
+            )}
           </TouchableOpacity>
         ) : (
           <View style={tocS.expandPlaceholder} />
         )}
-        <Text style={[tocS.itemText, isCurrent && tocS.itemTextActive]} numberOfLines={1}>{item.title}</Text>
+        <Text style={[tocS.itemText, isCurrent && tocS.itemTextActive]} numberOfLines={1}>
+          {item.title}
+        </Text>
       </TouchableOpacity>
       {expanded && hasChildren && (
         <View>
           {item.subitems!.map((child) => (
-            <TOCTreeItem key={child.id || child.href} item={child} level={level + 1} currentChapter={currentChapter} onSelect={onSelect} />
+            <TOCTreeItem
+              key={child.id || child.href}
+              item={child}
+              level={level + 1}
+              currentChapter={currentChapter}
+              onSelect={onSelect}
+            />
           ))}
         </View>
       )}
@@ -133,14 +176,22 @@ function TOCTreeItem({
   );
 }
 
-const makeTocStyles = (colors: ThemeColors) => StyleSheet.create({
-  item: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 10, paddingRight: 12, borderRadius: radius.lg },
-  itemActive: { backgroundColor: "rgba(99,102,241,0.1)" },
-  expandBtn: { width: 20, height: 20, alignItems: "center", justifyContent: "center" },
-  expandPlaceholder: { width: 20 },
-  itemText: { fontSize: fontSize.sm, color: colors.foreground, flex: 1 },
-  itemTextActive: { color: colors.indigo, fontWeight: fontWeight.medium },
-});
+const makeTocStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    item: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingVertical: 10,
+      paddingRight: 12,
+      borderRadius: radius.lg,
+    },
+    itemActive: { backgroundColor: "rgba(99,102,241,0.1)" },
+    expandBtn: { width: 20, height: 20, alignItems: "center", justifyContent: "center" },
+    expandPlaceholder: { width: 20 },
+    itemText: { fontSize: fontSize.sm, color: colors.foreground, flex: 1 },
+    itemTextActive: { color: colors.indigo, fontWeight: fontWeight.medium },
+  });
 
 // ──────────────────────────── ReaderScreen ────────────────────────────
 export function ReaderScreen({ route, navigation }: Props) {
@@ -210,7 +261,7 @@ export function ReaderScreen({ route, navigation }: Props) {
   useEffect(() => {
     if (assetLoadedRef.current) return;
     assetLoadedRef.current = true;
-    
+
     const loadAsset = async () => {
       try {
         console.log("[ReaderScreen] Loading reader.html asset...");
@@ -318,8 +369,11 @@ export function ReaderScreen({ route, navigation }: Props) {
         setLoading(false);
       }
     },
-    onShowAnnotation: (detail: { value: string; position: { x: number; y: number; selectionTop: number; selectionBottom: number } }) => {
-      const highlight = highlights.find(h => h.cfi === detail.value);
+    onShowAnnotation: (detail: {
+      value: string;
+      position: { x: number; y: number; selectionTop: number; selectionBottom: number };
+    }) => {
+      const highlight = highlights.find((h) => h.cfi === detail.value);
       if (!highlight) return;
       setSelection({
         text: highlight.text,
@@ -350,7 +404,10 @@ export function ReaderScreen({ route, navigation }: Props) {
   // When WebView is ready and book is available, send the open command
   useEffect(() => {
     if (!webViewReady || !book?.filePath) {
-      console.log("[ReaderScreen] Waiting for WebView ready and book...", { webViewReady, bookPath: book?.filePath });
+      console.log("[ReaderScreen] Waiting for WebView ready and book...", {
+        webViewReady,
+        bookPath: book?.filePath,
+      });
       return;
     }
 
@@ -362,7 +419,7 @@ export function ReaderScreen({ route, navigation }: Props) {
         const appData = await platform.getAppDataDir();
         const absPath = await platform.joinPath(appData, book.filePath);
         console.log("[ReaderScreen] Absolute path:", absPath);
-        
+
         // Read the book file and send as base64 for reliability
         console.log("[ReaderScreen] Reading file as base64...");
         const base64 = await FileSystem.readAsStringAsync(absPath, {
@@ -421,14 +478,18 @@ export function ReaderScreen({ route, navigation }: Props) {
   // Navigate to CFI when book is loaded (from NotesPage navigation)
   useEffect(() => {
     if (!webViewReady || loading || !cfi || cfi === lastNavigatedCfiRef.current) return;
-    console.log('[ReaderScreen] Navigating to CFI:', cfi);
+    console.log("[ReaderScreen] Navigating to CFI:", cfi);
     bridge.goToCFI(cfi);
     lastNavigatedCfiRef.current = cfi;
   }, [webViewReady, loading, cfi, bridge]);
 
   // Lock navigation when selection is active
   useEffect(() => {
-    console.log("[ReaderScreen] selection changed:", !!selection, selection?.text?.substring(0, 20));
+    console.log(
+      "[ReaderScreen] selection changed:",
+      !!selection,
+      selection?.text?.substring(0, 20),
+    );
     if (!webViewReady) return;
     bridge.setNavigationLocked(!!selection);
   }, [webViewReady, selection]);
@@ -438,8 +499,18 @@ export function ReaderScreen({ route, navigation }: Props) {
     const willShow = !showControls;
     setShowControls(willShow);
     Animated.parallel([
-      Animated.spring(toolbarAnim, { toValue: willShow ? 0 : TOOLBAR_HIDE_OFFSET, useNativeDriver: true, friction: 20, tension: 100 }),
-      Animated.spring(footerAnim, { toValue: willShow ? 0 : FOOTER_HIDE_OFFSET, useNativeDriver: true, friction: 20, tension: 100 }),
+      Animated.spring(toolbarAnim, {
+        toValue: willShow ? 0 : TOOLBAR_HIDE_OFFSET,
+        useNativeDriver: true,
+        friction: 20,
+        tension: 100,
+      }),
+      Animated.spring(footerAnim, {
+        toValue: willShow ? 0 : FOOTER_HIDE_OFFSET,
+        useNativeDriver: true,
+        friction: 20,
+        tension: 100,
+      }),
     ]).start();
 
     if (willShow) {
@@ -447,20 +518,33 @@ export function ReaderScreen({ route, navigation }: Props) {
       controlsTimer.current = setTimeout(() => {
         setShowControls(false);
         Animated.parallel([
-          Animated.spring(toolbarAnim, { toValue: TOOLBAR_HIDE_OFFSET, useNativeDriver: true, friction: 20, tension: 100 }),
-          Animated.spring(footerAnim, { toValue: FOOTER_HIDE_OFFSET, useNativeDriver: true, friction: 20, tension: 100 }),
+          Animated.spring(toolbarAnim, {
+            toValue: TOOLBAR_HIDE_OFFSET,
+            useNativeDriver: true,
+            friction: 20,
+            tension: 100,
+          }),
+          Animated.spring(footerAnim, {
+            toValue: FOOTER_HIDE_OFFSET,
+            useNativeDriver: true,
+            friction: 20,
+            tension: 100,
+          }),
         ]).start();
       }, CONTROLS_TIMEOUT);
     }
   }, [showControls, toolbarAnim, footerAnim]);
 
-  const goToTocItem = useCallback((href: string) => {
-    if (lastCfiRef.current) {
-      locationHistoryRef.current.push(lastCfiRef.current);
-    }
-    bridge.goToHref(href);
-    setShowTOC(false);
-  }, [bridge]);
+  const goToTocItem = useCallback(
+    (href: string) => {
+      if (lastCfiRef.current) {
+        locationHistoryRef.current.push(lastCfiRef.current);
+      }
+      bridge.goToHref(href);
+      setShowTOC(false);
+    },
+    [bridge],
+  );
 
   const goBackToPreviousLocation = useCallback(() => {
     if (locationHistoryRef.current.length === 0) return;
@@ -472,55 +556,68 @@ export function ReaderScreen({ route, navigation }: Props) {
 
   const canGoBack = locationHistoryRef.current.length > 0;
 
-  const handleSearchInput = useCallback((query: string) => {
-    setSearchQuery(query);
-    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-    searchDebounceRef.current = setTimeout(() => {
-      const trimmed = query.trim();
-      if (trimmed) {
-        setIsSearching(true);
-        bridge.search(trimmed);
-      } else {
-        setSearchResultCount(0);
-        setSearchIndex(0);
-        bridge.clearSearch();
-      }
-    }, 300);
-  }, [bridge]);
+  const handleSearchInput = useCallback(
+    (query: string) => {
+      setSearchQuery(query);
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+      searchDebounceRef.current = setTimeout(() => {
+        const trimmed = query.trim();
+        if (trimmed) {
+          setIsSearching(true);
+          bridge.search(trimmed);
+        } else {
+          setSearchResultCount(0);
+          setSearchIndex(0);
+          bridge.clearSearch();
+        }
+      }, 300);
+    },
+    [bridge],
+  );
 
-  const navigateSearch = useCallback((direction: "prev" | "next") => {
-    if (searchResultCount === 0) return;
-    const newIdx = direction === "next"
-      ? (searchIndex + 1) % searchResultCount
-      : (searchIndex - 1 + searchResultCount) % searchResultCount;
-    setSearchIndex(newIdx);
-    bridge.navigateSearch(newIdx);
-  }, [searchIndex, searchResultCount, bridge]);
+  const navigateSearch = useCallback(
+    (direction: "prev" | "next") => {
+      if (searchResultCount === 0) return;
+      const newIdx =
+        direction === "next"
+          ? (searchIndex + 1) % searchResultCount
+          : (searchIndex - 1 + searchResultCount) % searchResultCount;
+      setSearchIndex(newIdx);
+      bridge.navigateSearch(newIdx);
+    },
+    [searchIndex, searchResultCount, bridge],
+  );
 
-  const updateSetting = useCallback((key: string, value: number | string) => {
-    const updates: Record<string, number | string> = {};
-    updates[key] = value;
-    updateReadSettings(updates);
-    bridge.applySettings(updates);
-  }, [bridge, updateReadSettings]);
+  const updateSetting = useCallback(
+    (key: string, value: number | string) => {
+      const updates: Record<string, number | string> = {};
+      updates[key] = value;
+      updateReadSettings(updates);
+      bridge.applySettings(updates);
+    },
+    [bridge, updateReadSettings],
+  );
 
   // Selection popover handlers
-  const handleHighlight = useCallback((color: string) => {
-    if (!selection) return;
-    const highlight = {
-      id: `hl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      bookId,
-      cfi: selection.cfi,
-      text: selection.text,
-      color: color as any,
-      chapterTitle: currentChapter,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    addHighlight(highlight);
-    bridge.addAnnotation({ value: selection.cfi, color });
-    setSelection(null);
-  }, [selection, bookId, currentChapter, addHighlight, bridge]);
+  const handleHighlight = useCallback(
+    (color: string) => {
+      if (!selection) return;
+      const highlight = {
+        id: `hl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        bookId,
+        cfi: selection.cfi,
+        text: selection.text,
+        color: color as any,
+        chapterTitle: currentChapter,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      addHighlight(highlight);
+      bridge.addAnnotation({ value: selection.cfi, color });
+      setSelection(null);
+    },
+    [selection, bookId, currentChapter, addHighlight, bridge],
+  );
 
   const handleDismissSelection = useCallback(() => {
     setSelection(null);
@@ -588,8 +685,9 @@ export function ReaderScreen({ route, navigation }: Props) {
 
   console.log("[ReaderScreen] Rendering WebView with URI:", readerHtmlUri);
 
-  const isPanelOpen = showTOC || showSettings || showSearch || showNotebook || showTranslation || showTTS;
-  
+  const isPanelOpen =
+    showTOC || showSettings || showSearch || showNotebook || showTranslation || showTTS;
+
   return (
     <View style={[s.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       {/* WebView with foliate-js */}
@@ -668,13 +766,17 @@ export function ReaderScreen({ route, navigation }: Props) {
             setShowTranslation(true);
             setTranslationText(text);
           }}
-          existingHighlight={highlights.find(h => h.cfi === selection.cfi) ? {
-            id: highlights.find(h => h.cfi === selection.cfi)!.id,
-            color: highlights.find(h => h.cfi === selection.cfi)!.color,
-            note: highlights.find(h => h.cfi === selection.cfi)!.note,
-          } : null}
+          existingHighlight={
+            highlights.find((h) => h.cfi === selection.cfi)
+              ? {
+                  id: highlights.find((h) => h.cfi === selection.cfi)!.id,
+                  color: highlights.find((h) => h.cfi === selection.cfi)!.color,
+                  note: highlights.find((h) => h.cfi === selection.cfi)!.note,
+                }
+              : null
+          }
           onRemoveHighlight={() => {
-            const existing = highlights.find(h => h.cfi === selection.cfi);
+            const existing = highlights.find((h) => h.cfi === selection.cfi);
             if (existing) {
               removeHighlight(existing.id);
               bridge.removeAnnotation({ value: existing.cfi });
@@ -691,33 +793,62 @@ export function ReaderScreen({ route, navigation }: Props) {
               <TouchableOpacity style={s.toolbarBtn} onPress={() => navigation.goBack()}>
                 <ChevronLeftIcon size={20} color="#fff" />
               </TouchableOpacity>
-              <TouchableOpacity style={[s.toolbarBtn, !canGoBack && s.toolbarBtnDisabled]} onPress={goBackToPreviousLocation} disabled={!canGoBack}>
+              <TouchableOpacity
+                style={[s.toolbarBtn, !canGoBack && s.toolbarBtnDisabled]}
+                onPress={goBackToPreviousLocation}
+                disabled={!canGoBack}
+              >
                 <Undo2Icon size={18} color={canGoBack ? "#fff" : "rgba(255,255,255,0.3)"} />
               </TouchableOpacity>
               <View style={s.toolbarCenter}>
-                <Text style={s.toolbarTitle} numberOfLines={1}>{bookTitle}</Text>
-                {currentChapter ? <Text style={s.toolbarChapter} numberOfLines={1}>{currentChapter}</Text> : null}
+                <Text style={s.toolbarTitle} numberOfLines={1}>
+                  {bookTitle}
+                </Text>
+                {currentChapter ? (
+                  <Text style={s.toolbarChapter} numberOfLines={1}>
+                    {currentChapter}
+                  </Text>
+                ) : null}
               </View>
               <TouchableOpacity style={s.toolbarBtn} onPress={() => setShowNotebook(true)}>
                 <NotebookPenIcon size={18} color="#fff" />
               </TouchableOpacity>
-              <TouchableOpacity style={s.toolbarBtn} onPress={() => navigation.navigate("BookChat", { bookId })}>
+              <TouchableOpacity
+                style={s.toolbarBtn}
+                onPress={() => navigation.navigate("BookChat", { bookId })}
+              >
                 <MessageSquareIcon size={18} color="#fff" />
               </TouchableOpacity>
               <TouchableOpacity style={s.toolbarBtn} onPress={() => setShowTOC(true)}>
                 <ListIcon size={18} color="#fff" />
               </TouchableOpacity>
-              <TouchableOpacity style={s.toolbarBtn} onPress={() => {
-                setShowSearch(true);
-                setShowControls(false);
-                Animated.parallel([
-                  Animated.spring(toolbarAnim, { toValue: TOOLBAR_HIDE_OFFSET, useNativeDriver: true, friction: 20, tension: 100 }),
-                  Animated.spring(footerAnim, { toValue: FOOTER_HIDE_OFFSET, useNativeDriver: true, friction: 20, tension: 100 }),
-                ]).start();
-              }}>
+              <TouchableOpacity
+                style={s.toolbarBtn}
+                onPress={() => {
+                  setShowSearch(true);
+                  setShowControls(false);
+                  Animated.parallel([
+                    Animated.spring(toolbarAnim, {
+                      toValue: TOOLBAR_HIDE_OFFSET,
+                      useNativeDriver: true,
+                      friction: 20,
+                      tension: 100,
+                    }),
+                    Animated.spring(footerAnim, {
+                      toValue: FOOTER_HIDE_OFFSET,
+                      useNativeDriver: true,
+                      friction: 20,
+                      tension: 100,
+                    }),
+                  ]).start();
+                }}
+              >
                 <SearchIcon size={18} color="#fff" />
               </TouchableOpacity>
-              <TouchableOpacity style={[s.toolbarBtn, showTTS && s.toolbarBtnActive]} onPress={handleToggleTTS}>
+              <TouchableOpacity
+                style={[s.toolbarBtn, showTTS && s.toolbarBtnActive]}
+                onPress={handleToggleTTS}
+              >
                 <Volume2Icon size={18} color={showTTS ? colors.indigo : "#fff"} />
               </TouchableOpacity>
               <TouchableOpacity style={s.toolbarBtn} onPress={() => setShowSettings(true)}>
@@ -780,29 +911,58 @@ export function ReaderScreen({ route, navigation }: Props) {
               {isSearching ? (
                 <ActivityIndicator size="small" color={colors.mutedForeground} />
               ) : searchQuery && searchResultCount > 0 ? (
-                <Text style={s.searchCount}>{searchIndex + 1} / {searchResultCount}</Text>
+                <Text style={s.searchCount}>
+                  {searchIndex + 1} / {searchResultCount}
+                </Text>
               ) : searchQuery && !isSearching ? (
                 <Text style={s.searchCount}>0</Text>
               ) : null}
             </View>
-            <TouchableOpacity style={s.searchNavBtn} onPress={() => navigateSearch("prev")} disabled={searchResultCount === 0}>
-              <ChevronLeftIcon size={16} color={searchResultCount > 0 ? colors.foreground : colors.mutedForeground} />
+            <TouchableOpacity
+              style={s.searchNavBtn}
+              onPress={() => navigateSearch("prev")}
+              disabled={searchResultCount === 0}
+            >
+              <ChevronLeftIcon
+                size={16}
+                color={searchResultCount > 0 ? colors.foreground : colors.mutedForeground}
+              />
             </TouchableOpacity>
-            <TouchableOpacity style={s.searchNavBtn} onPress={() => navigateSearch("next")} disabled={searchResultCount === 0}>
-              <ChevronRightIcon size={16} color={searchResultCount > 0 ? colors.foreground : colors.mutedForeground} />
+            <TouchableOpacity
+              style={s.searchNavBtn}
+              onPress={() => navigateSearch("next")}
+              disabled={searchResultCount === 0}
+            >
+              <ChevronRightIcon
+                size={16}
+                color={searchResultCount > 0 ? colors.foreground : colors.mutedForeground}
+              />
             </TouchableOpacity>
-            <TouchableOpacity style={s.searchNavBtn} onPress={() => { 
-              setShowSearch(false); 
-              setSearchQuery(""); 
-              setSearchResultCount(0); 
-              setSearchIndex(0); 
-              bridge.clearSearch(); 
-              setShowControls(true);
-              Animated.parallel([
-                Animated.spring(toolbarAnim, { toValue: 0, useNativeDriver: true, friction: 20, tension: 100 }),
-                Animated.spring(footerAnim, { toValue: 0, useNativeDriver: true, friction: 20, tension: 100 }),
-              ]).start();
-            }}>
+            <TouchableOpacity
+              style={s.searchNavBtn}
+              onPress={() => {
+                setShowSearch(false);
+                setSearchQuery("");
+                setSearchResultCount(0);
+                setSearchIndex(0);
+                bridge.clearSearch();
+                setShowControls(true);
+                Animated.parallel([
+                  Animated.spring(toolbarAnim, {
+                    toValue: 0,
+                    useNativeDriver: true,
+                    friction: 20,
+                    tension: 100,
+                  }),
+                  Animated.spring(footerAnim, {
+                    toValue: 0,
+                    useNativeDriver: true,
+                    friction: 20,
+                    tension: 100,
+                  }),
+                ]).start();
+              }}
+            >
               <XIcon size={16} color={colors.mutedForeground} />
             </TouchableOpacity>
           </View>
@@ -810,9 +970,19 @@ export function ReaderScreen({ route, navigation }: Props) {
       )}
 
       {/* ─── TOC Panel ─── */}
-      <Modal visible={showTOC} transparent animationType="slide" onRequestClose={() => setShowTOC(false)}>
+      <Modal
+        visible={showTOC}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowTOC(false)}
+      >
         <Pressable style={s.modalBackdrop} onPress={() => setShowTOC(false)} />
-        <View style={[s.bottomSheet, { maxHeight: SCREEN_HEIGHT * 0.7, paddingBottom: insets.bottom || 16 }]}>
+        <View
+          style={[
+            s.bottomSheet,
+            { maxHeight: SCREEN_HEIGHT * 0.7, paddingBottom: insets.bottom || 16 },
+          ]}
+        >
           <View style={s.sheetHeader}>
             <Text style={s.sheetTitle}>{t("reader.toc", "目录")}</Text>
             <TouchableOpacity onPress={() => setShowTOC(false)}>
@@ -822,7 +992,13 @@ export function ReaderScreen({ route, navigation }: Props) {
           <ScrollView showsVerticalScrollIndicator={false} style={s.sheetScroll}>
             {toc.length > 0 ? (
               toc.map((item) => (
-                <TOCTreeItem key={item.id || item.href} item={item} level={0} currentChapter={currentChapter} onSelect={goToTocItem} />
+                <TOCTreeItem
+                  key={item.id || item.href}
+                  item={item}
+                  level={0}
+                  currentChapter={currentChapter}
+                  onSelect={goToTocItem}
+                />
               ))
             ) : (
               <Text style={s.sheetEmpty}>{t("reader.noToc", "暂无目录信息")}</Text>
@@ -832,7 +1008,12 @@ export function ReaderScreen({ route, navigation }: Props) {
       </Modal>
 
       {/* ─── Settings Panel ─── */}
-      <Modal visible={showSettings} transparent animationType="slide" onRequestClose={() => setShowSettings(false)}>
+      <Modal
+        visible={showSettings}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowSettings(false)}
+      >
         <Pressable style={s.modalBackdrop} onPress={() => setShowSettings(false)} />
         <View style={[s.bottomSheet, { paddingBottom: insets.bottom || 16 }]}>
           <View style={s.sheetHeader}>
@@ -846,11 +1027,17 @@ export function ReaderScreen({ route, navigation }: Props) {
             <View style={s.settingRow}>
               <Text style={s.settingLabel}>{t("reader.fontSize", "字号")}</Text>
               <View style={s.settingControl}>
-                <TouchableOpacity style={s.stepBtn} onPress={() => updateSetting("fontSize", Math.max(12, settingFontSize - 1))}>
+                <TouchableOpacity
+                  style={s.stepBtn}
+                  onPress={() => updateSetting("fontSize", Math.max(12, settingFontSize - 1))}
+                >
                   <Text style={s.stepBtnText}>A-</Text>
                 </TouchableOpacity>
                 <Text style={s.settingValue}>{settingFontSize}</Text>
-                <TouchableOpacity style={s.stepBtn} onPress={() => updateSetting("fontSize", Math.min(32, settingFontSize + 1))}>
+                <TouchableOpacity
+                  style={s.stepBtn}
+                  onPress={() => updateSetting("fontSize", Math.min(32, settingFontSize + 1))}
+                >
                   <Text style={s.stepBtnText}>A+</Text>
                 </TouchableOpacity>
               </View>
@@ -859,11 +1046,27 @@ export function ReaderScreen({ route, navigation }: Props) {
             <View style={s.settingRow}>
               <Text style={s.settingLabel}>{t("reader.lineHeight", "行高")}</Text>
               <View style={s.settingControl}>
-                <TouchableOpacity style={s.stepBtn} onPress={() => updateSetting("lineHeight", Math.round(Math.max(1.2, settingLineHeight - 0.1) * 10) / 10)}>
+                <TouchableOpacity
+                  style={s.stepBtn}
+                  onPress={() =>
+                    updateSetting(
+                      "lineHeight",
+                      Math.round(Math.max(1.2, settingLineHeight - 0.1) * 10) / 10,
+                    )
+                  }
+                >
                   <Text style={s.stepBtnText}>-</Text>
                 </TouchableOpacity>
                 <Text style={s.settingValue}>{settingLineHeight.toFixed(1)}</Text>
-                <TouchableOpacity style={s.stepBtn} onPress={() => updateSetting("lineHeight", Math.round(Math.min(2.5, settingLineHeight + 0.1) * 10) / 10)}>
+                <TouchableOpacity
+                  style={s.stepBtn}
+                  onPress={() =>
+                    updateSetting(
+                      "lineHeight",
+                      Math.round(Math.min(2.5, settingLineHeight + 0.1) * 10) / 10,
+                    )
+                  }
+                >
                   <Text style={s.stepBtnText}>+</Text>
                 </TouchableOpacity>
               </View>
@@ -872,11 +1075,21 @@ export function ReaderScreen({ route, navigation }: Props) {
             <View style={s.settingRow}>
               <Text style={s.settingLabel}>{t("reader.paragraphSpacing", "段间距")}</Text>
               <View style={s.settingControl}>
-                <TouchableOpacity style={s.stepBtn} onPress={() => updateSetting("paragraphSpacing", Math.max(0, settingParagraphSpacing - 2))}>
+                <TouchableOpacity
+                  style={s.stepBtn}
+                  onPress={() =>
+                    updateSetting("paragraphSpacing", Math.max(0, settingParagraphSpacing - 2))
+                  }
+                >
                   <Text style={s.stepBtnText}>-</Text>
                 </TouchableOpacity>
                 <Text style={s.settingValue}>{settingParagraphSpacing}</Text>
-                <TouchableOpacity style={s.stepBtn} onPress={() => updateSetting("paragraphSpacing", Math.min(24, settingParagraphSpacing + 2))}>
+                <TouchableOpacity
+                  style={s.stepBtn}
+                  onPress={() =>
+                    updateSetting("paragraphSpacing", Math.min(24, settingParagraphSpacing + 2))
+                  }
+                >
                   <Text style={s.stepBtnText}>+</Text>
                 </TouchableOpacity>
               </View>
@@ -885,11 +1098,17 @@ export function ReaderScreen({ route, navigation }: Props) {
             <View style={s.settingRow}>
               <Text style={s.settingLabel}>{t("reader.pageMargin", "页边距")}</Text>
               <View style={s.settingControl}>
-                <TouchableOpacity style={s.stepBtn} onPress={() => updateSetting("pageMargin", Math.max(0, settingPageMargin - 4))}>
+                <TouchableOpacity
+                  style={s.stepBtn}
+                  onPress={() => updateSetting("pageMargin", Math.max(0, settingPageMargin - 4))}
+                >
                   <Text style={s.stepBtnText}>-</Text>
                 </TouchableOpacity>
                 <Text style={s.settingValue}>{settingPageMargin}</Text>
-                <TouchableOpacity style={s.stepBtn} onPress={() => updateSetting("pageMargin", Math.min(48, settingPageMargin + 4))}>
+                <TouchableOpacity
+                  style={s.stepBtn}
+                  onPress={() => updateSetting("pageMargin", Math.min(48, settingPageMargin + 4))}
+                >
                   <Text style={s.stepBtnText}>+</Text>
                 </TouchableOpacity>
               </View>
@@ -900,8 +1119,19 @@ export function ReaderScreen({ route, navigation }: Props) {
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.themeScroll}>
                 <View style={s.themeRow}>
                   {FONT_THEMES.map((theme) => (
-                    <TouchableOpacity key={theme.id} style={[s.themeBtn, settingFontTheme === theme.id && s.themeBtnActive]} onPress={() => updateSetting("fontTheme", theme.id)}>
-                      <Text style={[s.themeBtnText, settingFontTheme === theme.id && s.themeBtnTextActive]}>{t(theme.labelKey, theme.fallback)}</Text>
+                    <TouchableOpacity
+                      key={theme.id}
+                      style={[s.themeBtn, settingFontTheme === theme.id && s.themeBtnActive]}
+                      onPress={() => updateSetting("fontTheme", theme.id)}
+                    >
+                      <Text
+                        style={[
+                          s.themeBtnText,
+                          settingFontTheme === theme.id && s.themeBtnTextActive,
+                        ]}
+                      >
+                        {t(theme.labelKey, theme.fallback)}
+                      </Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -911,11 +1141,31 @@ export function ReaderScreen({ route, navigation }: Props) {
             <View style={s.settingRow}>
               <Text style={s.settingLabel}>{t("reader.viewMode", "阅读模式")}</Text>
               <View style={s.viewModeRow}>
-                <TouchableOpacity style={[s.viewModeBtn, settingViewMode === "paginated" && s.viewModeBtnActive]} onPress={() => updateSetting("viewMode", "paginated")}>
-                  <Text style={[s.viewModeBtnText, settingViewMode === "paginated" && s.viewModeBtnTextActive]}>{t("reader.paginated", "翻页")}</Text>
+                <TouchableOpacity
+                  style={[s.viewModeBtn, settingViewMode === "paginated" && s.viewModeBtnActive]}
+                  onPress={() => updateSetting("viewMode", "paginated")}
+                >
+                  <Text
+                    style={[
+                      s.viewModeBtnText,
+                      settingViewMode === "paginated" && s.viewModeBtnTextActive,
+                    ]}
+                  >
+                    {t("reader.paginated", "翻页")}
+                  </Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[s.viewModeBtn, settingViewMode === "scroll" && s.viewModeBtnActive]} onPress={() => updateSetting("viewMode", "scroll")}>
-                  <Text style={[s.viewModeBtnText, settingViewMode === "scroll" && s.viewModeBtnTextActive]}>{t("reader.scrollMode", "滚动")}</Text>
+                <TouchableOpacity
+                  style={[s.viewModeBtn, settingViewMode === "scroll" && s.viewModeBtnActive]}
+                  onPress={() => updateSetting("viewMode", "scroll")}
+                >
+                  <Text
+                    style={[
+                      s.viewModeBtnText,
+                      settingViewMode === "scroll" && s.viewModeBtnTextActive,
+                    ]}
+                  >
+                    {t("reader.scrollMode", "滚动")}
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -924,9 +1174,19 @@ export function ReaderScreen({ route, navigation }: Props) {
       </Modal>
 
       {/* ─── Notebook Panel ─── */}
-      <Modal visible={showNotebook} transparent animationType="slide" onRequestClose={() => setShowNotebook(false)}>
+      <Modal
+        visible={showNotebook}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowNotebook(false)}
+      >
         <Pressable style={s.modalBackdrop} onPress={() => setShowNotebook(false)} />
-        <View style={[s.bottomSheet, { maxHeight: SCREEN_HEIGHT * 0.7, paddingBottom: insets.bottom || 16 }]}>
+        <View
+          style={[
+            s.bottomSheet,
+            { maxHeight: SCREEN_HEIGHT * 0.7, paddingBottom: insets.bottom || 16 },
+          ]}
+        >
           <View style={s.sheetHeader}>
             <Text style={s.sheetTitle}>{t("reader.notebook", "笔记本")}</Text>
             <TouchableOpacity onPress={() => setShowNotebook(false)}>
@@ -937,9 +1197,29 @@ export function ReaderScreen({ route, navigation }: Props) {
             <ScrollView showsVerticalScrollIndicator={false} style={s.sheetScroll}>
               {highlights.map((h) => (
                 <View key={h.id} style={s.highlightItem}>
-                  <View style={[s.highlightColorDot, { backgroundColor: h.color === "yellow" ? "#facc15" : h.color === "green" ? "#4ade80" : h.color === "blue" ? "#60a5fa" : h.color === "pink" ? "#ec4899" : h.color === "red" ? "#f87171" : "#a78bfa" }]} />
+                  <View
+                    style={[
+                      s.highlightColorDot,
+                      {
+                        backgroundColor:
+                          h.color === "yellow"
+                            ? "#facc15"
+                            : h.color === "green"
+                              ? "#4ade80"
+                              : h.color === "blue"
+                                ? "#60a5fa"
+                                : h.color === "pink"
+                                  ? "#ec4899"
+                                  : h.color === "red"
+                                    ? "#f87171"
+                                    : "#a78bfa",
+                      },
+                    ]}
+                  />
                   <View style={s.highlightContent}>
-                    <Text style={s.highlightText} numberOfLines={3}>{h.text}</Text>
+                    <Text style={s.highlightText} numberOfLines={3}>
+                      {h.text}
+                    </Text>
                     {h.note && <Text style={s.highlightNote}>{h.note}</Text>}
                   </View>
                 </View>
@@ -948,7 +1228,9 @@ export function ReaderScreen({ route, navigation }: Props) {
           ) : (
             <View style={s.notebookPlaceholder}>
               <NotebookPenIcon size={40} color={colors.mutedForeground} />
-              <Text style={s.notebookPlaceholderText}>{t("reader.notebookHint", "在阅读时选中文字来创建笔记和高亮")}</Text>
+              <Text style={s.notebookPlaceholderText}>
+                {t("reader.notebookHint", "在阅读时选中文字来创建笔记和高亮")}
+              </Text>
             </View>
           )}
         </View>
@@ -967,111 +1249,277 @@ export function ReaderScreen({ route, navigation }: Props) {
 
       {/* ─── TTS Controls ─── */}
       {showTTS && (
-        <TTSControls onClose={() => {
-          ttsStop();
-          setShowTTS(false);
-        }} />
+        <TTSControls
+          onClose={() => {
+            ttsStop();
+            setShowTTS(false);
+          }}
+        />
       )}
     </View>
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  webview: { flex: 1 },
-  loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
-  loadingText: { fontSize: fontSize.sm, color: colors.mutedForeground },
-  errorText: { fontSize: fontSize.base, color: colors.destructive, textAlign: "center", paddingHorizontal: 24 },
-  backButton: { marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, borderRadius: radius.lg, backgroundColor: colors.primary },
-  backButtonText: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.primaryForeground },
-  loadingOverlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center", backgroundColor: colors.background, zIndex: 20 },
+const makeStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    webview: { flex: 1 },
+    loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
+    loadingText: { fontSize: fontSize.sm, color: colors.mutedForeground },
+    errorText: {
+      fontSize: fontSize.base,
+      color: colors.destructive,
+      textAlign: "center",
+      paddingHorizontal: 24,
+    },
+    backButton: {
+      marginTop: 16,
+      paddingHorizontal: 24,
+      paddingVertical: 10,
+      borderRadius: radius.lg,
+      backgroundColor: colors.primary,
+    },
+    backButtonText: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.primaryForeground,
+    },
+    loadingOverlay: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.background,
+      zIndex: 20,
+    },
 
-  toolbar: { position: "absolute", top: 0, left: 12, right: 12, zIndex: 30 },
-  toolbarGlass: {
-    backgroundColor: "rgba(28, 28, 30, 0.85)",
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 12,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-  },
-  toolbarRow: { flexDirection: "row", alignItems: "center", gap: 2 },
-  toolbarBtn: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
-  toolbarBtnActive: { backgroundColor: "rgba(99,102,241,0.3)" },
-  toolbarBtnDisabled: { opacity: 0.4 },
-  toolbarCenter: { flex: 1, paddingHorizontal: 8, alignItems: "center" },
-  toolbarTitle: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: "#fff", letterSpacing: 0.3 },
-  toolbarChapter: { fontSize: fontSize.xs, color: "rgba(255,255,255,0.5)", marginTop: 1 },
+    toolbar: { position: "absolute", top: 0, left: 12, right: 12, zIndex: 30 },
+    toolbarGlass: {
+      backgroundColor: "rgba(28, 28, 30, 0.85)",
+      borderRadius: 20,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 16,
+      elevation: 12,
+      borderWidth: 1,
+      borderColor: "rgba(255,255,255,0.1)",
+    },
+    toolbarRow: { flexDirection: "row", alignItems: "center", gap: 2 },
+    toolbarBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    toolbarBtnActive: { backgroundColor: "rgba(99,102,241,0.3)" },
+    toolbarBtnDisabled: { opacity: 0.4 },
+    toolbarCenter: { flex: 1, paddingHorizontal: 8, alignItems: "center" },
+    toolbarTitle: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.semibold,
+      color: "#fff",
+      letterSpacing: 0.3,
+    },
+    toolbarChapter: { fontSize: fontSize.xs, color: "rgba(255,255,255,0.5)", marginTop: 1 },
 
-  footer: { position: "absolute", bottom: 0, left: 12, right: 12, zIndex: 30 },
-  footerGlass: {
-    backgroundColor: "rgba(28, 28, 30, 0.85)",
-    borderRadius: 20,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 12,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-  },
-  footerPageRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 6 },
-  footerPageText: { fontSize: fontSize.xs, color: "rgba(255,255,255,0.5)", fontWeight: fontWeight.medium },
-  footerSliderRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  footerNavBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.1)" },
-  sliderWrap: { flex: 1, justifyContent: "center", paddingVertical: 4 },
-  sliderTrack: { height: 3, backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 1.5, overflow: "hidden" },
-  sliderFill: { height: "100%", backgroundColor: colors.indigo, borderRadius: 1.5 },
+    footer: { position: "absolute", bottom: 0, left: 12, right: 12, zIndex: 30 },
+    footerGlass: {
+      backgroundColor: "rgba(28, 28, 30, 0.85)",
+      borderRadius: 20,
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: -4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 16,
+      elevation: 12,
+      borderWidth: 1,
+      borderColor: "rgba(255,255,255,0.1)",
+    },
+    footerPageRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 6 },
+    footerPageText: {
+      fontSize: fontSize.xs,
+      color: "rgba(255,255,255,0.5)",
+      fontWeight: fontWeight.medium,
+    },
+    footerSliderRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    footerNavBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "rgba(255,255,255,0.1)",
+    },
+    sliderWrap: { flex: 1, justifyContent: "center", paddingVertical: 4 },
+    sliderTrack: {
+      height: 3,
+      backgroundColor: "rgba(255,255,255,0.15)",
+      borderRadius: 1.5,
+      overflow: "hidden",
+    },
+    sliderFill: { height: "100%", backgroundColor: colors.indigo, borderRadius: 1.5 },
 
-  thinProgressWrap: { position: "absolute", left: 0, right: 0, height: 2, backgroundColor: "rgba(255,255,255,0.05)", zIndex: 40 },
-  thinProgressFill: { height: "100%", backgroundColor: colors.indigo, opacity: 0.8 },
+    thinProgressWrap: {
+      position: "absolute",
+      left: 0,
+      right: 0,
+      height: 2,
+      backgroundColor: "rgba(255,255,255,0.05)",
+      zIndex: 40,
+    },
+    thinProgressFill: { height: "100%", backgroundColor: colors.indigo, opacity: 0.8 },
 
-  searchBarWrap: { position: "absolute", top: 0, left: 0, right: 0, backgroundColor: colors.background, borderBottomWidth: 0.5, borderBottomColor: colors.border, zIndex: 40 },
-  searchBarRow: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 12, paddingVertical: 8 },
-  searchInputWrap: { flex: 1, flexDirection: "row", alignItems: "center", backgroundColor: colors.muted, borderRadius: radius.lg, paddingHorizontal: 10, height: 36, gap: 6 },
-  searchInput: { flex: 1, fontSize: fontSize.sm, color: colors.foreground, padding: 0 },
-  searchMetaRow: { flexDirection: "row", alignItems: "center" },
-  searchCount: { fontSize: fontSize.xs, color: colors.mutedForeground },
-  searchNavBtn: { width: 32, height: 32, borderRadius: radius.lg, alignItems: "center", justifyContent: "center" },
+    searchBarWrap: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      backgroundColor: colors.background,
+      borderBottomWidth: 0.5,
+      borderBottomColor: colors.border,
+      zIndex: 40,
+    },
+    searchBarRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    searchInputWrap: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: colors.muted,
+      borderRadius: radius.lg,
+      paddingHorizontal: 10,
+      height: 36,
+      gap: 6,
+    },
+    searchInput: { flex: 1, fontSize: fontSize.sm, color: colors.foreground, padding: 0 },
+    searchMetaRow: { flexDirection: "row", alignItems: "center" },
+    searchCount: { fontSize: fontSize.xs, color: colors.mutedForeground },
+    searchNavBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: radius.lg,
+      alignItems: "center",
+      justifyContent: "center",
+    },
 
-  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)" },
-  bottomSheet: { backgroundColor: colors.card, borderTopLeftRadius: radius.xxl, borderTopRightRadius: radius.xxl, padding: 16 },
-  sheetHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
-  sheetTitle: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.foreground },
-  sheetScroll: { maxHeight: SCREEN_HEIGHT * 0.5 },
-  sheetEmpty: { fontSize: fontSize.sm, color: colors.mutedForeground, textAlign: "center", paddingVertical: 32 },
+    modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)" },
+    bottomSheet: {
+      backgroundColor: colors.card,
+      borderTopLeftRadius: radius.xxl,
+      borderTopRightRadius: radius.xxl,
+      padding: 16,
+    },
+    sheetHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 12,
+    },
+    sheetTitle: {
+      fontSize: fontSize.md,
+      fontWeight: fontWeight.semibold,
+      color: colors.foreground,
+    },
+    sheetScroll: { maxHeight: SCREEN_HEIGHT * 0.5 },
+    sheetEmpty: {
+      fontSize: fontSize.sm,
+      color: colors.mutedForeground,
+      textAlign: "center",
+      paddingVertical: 32,
+    },
 
-  settingRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: colors.border },
-  settingLabel: { fontSize: fontSize.sm, color: colors.mutedForeground },
-  settingControl: { flexDirection: "row", alignItems: "center", gap: 12 },
-  stepBtn: { width: 32, height: 32, borderRadius: radius.lg, backgroundColor: colors.muted, alignItems: "center", justifyContent: "center" },
-  stepBtnText: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.foreground },
-  settingValue: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.foreground, minWidth: 32, textAlign: "center" },
-  themeScroll: { maxWidth: 220 },
-  themeRow: { flexDirection: "row", gap: 6 },
-  themeBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.lg, backgroundColor: colors.muted },
-  themeBtnActive: { backgroundColor: colors.primary },
-  themeBtnText: { fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.mutedForeground },
-  themeBtnTextActive: { color: colors.primaryForeground },
-  viewModeRow: { flexDirection: "row", gap: 8 },
-  viewModeBtn: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: radius.lg, backgroundColor: colors.muted },
-  viewModeBtnActive: { backgroundColor: colors.primary },
-  viewModeBtnText: { fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.mutedForeground },
-  viewModeBtnTextActive: { color: colors.primaryForeground },
+    settingRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingVertical: 12,
+      borderBottomWidth: 0.5,
+      borderBottomColor: colors.border,
+    },
+    settingLabel: { fontSize: fontSize.sm, color: colors.mutedForeground },
+    settingControl: { flexDirection: "row", alignItems: "center", gap: 12 },
+    stepBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: radius.lg,
+      backgroundColor: colors.muted,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    stepBtnText: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.foreground },
+    settingValue: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.foreground,
+      minWidth: 32,
+      textAlign: "center",
+    },
+    themeScroll: { maxWidth: 220 },
+    themeRow: { flexDirection: "row", gap: 6 },
+    themeBtn: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: radius.lg,
+      backgroundColor: colors.muted,
+    },
+    themeBtnActive: { backgroundColor: colors.primary },
+    themeBtnText: {
+      fontSize: fontSize.xs,
+      fontWeight: fontWeight.medium,
+      color: colors.mutedForeground,
+    },
+    themeBtnTextActive: { color: colors.primaryForeground },
+    viewModeRow: { flexDirection: "row", gap: 8 },
+    viewModeBtn: {
+      paddingHorizontal: 16,
+      paddingVertical: 6,
+      borderRadius: radius.lg,
+      backgroundColor: colors.muted,
+    },
+    viewModeBtnActive: { backgroundColor: colors.primary },
+    viewModeBtnText: {
+      fontSize: fontSize.xs,
+      fontWeight: fontWeight.medium,
+      color: colors.mutedForeground,
+    },
+    viewModeBtnTextActive: { color: colors.primaryForeground },
 
-  notebookPlaceholder: { alignItems: "center", justifyContent: "center", paddingVertical: 48, gap: 12 },
-  notebookPlaceholderText: { fontSize: fontSize.sm, color: colors.mutedForeground, textAlign: "center", paddingHorizontal: 32 },
+    notebookPlaceholder: {
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 48,
+      gap: 12,
+    },
+    notebookPlaceholderText: {
+      fontSize: fontSize.sm,
+      color: colors.mutedForeground,
+      textAlign: "center",
+      paddingHorizontal: 32,
+    },
 
-  highlightItem: { flexDirection: "row", alignItems: "flex-start", gap: 8, paddingVertical: 8, borderBottomWidth: 0.5, borderBottomColor: colors.border },
-  highlightColorDot: { width: 8, height: 8, borderRadius: 4, marginTop: 4 },
-  highlightContent: { flex: 1 },
-  highlightText: { fontSize: fontSize.sm, color: colors.foreground, lineHeight: 18 },
-  highlightNote: { fontSize: fontSize.xs, color: colors.mutedForeground, marginTop: 4 },
-});
+    highlightItem: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 8,
+      paddingVertical: 8,
+      borderBottomWidth: 0.5,
+      borderBottomColor: colors.border,
+    },
+    highlightColorDot: { width: 8, height: 8, borderRadius: 4, marginTop: 4 },
+    highlightContent: { flex: 1 },
+    highlightText: { fontSize: fontSize.sm, color: colors.foreground, lineHeight: 18 },
+    highlightNote: { fontSize: fontSize.xs, color: colors.mutedForeground, marginTop: 4 },
+  });

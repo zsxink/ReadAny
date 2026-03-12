@@ -10,17 +10,17 @@
  * - expo-constants for app version
  */
 import type {
-  IPlatformService,
-  IDatabase,
-  IWebSocket,
   FilePickerOptions,
+  IDatabase,
+  IPlatformService,
+  IWebSocket,
   WebSocketOptions,
 } from "@readany/core/services";
-import { File, Directory, Paths } from "expo-file-system";
-import * as SecureStore from "expo-secure-store";
 import * as Clipboard from "expo-clipboard";
-import * as Sharing from "expo-sharing";
 import Constants from "expo-constants";
+import { Directory, File, Paths } from "expo-file-system";
+import * as SecureStore from "expo-secure-store";
+import * as Sharing from "expo-sharing";
 
 import * as DocumentPicker from "expo-document-picker";
 
@@ -139,10 +139,10 @@ export class ExpoPlatformService implements IPlatformService {
 
     return {
       async execute(sql: string, params?: unknown[]): Promise<void> {
-        await db.runAsync(sql, ...(params as (string | number | null)[] ?? []));
+        await db.runAsync(sql, ...((params as (string | number | null)[]) ?? []));
       },
       async select<T>(sql: string, params?: unknown[]): Promise<T[]> {
-        const rows = await db.getAllAsync(sql, ...(params as (string | number | null)[] ?? []));
+        const rows = await db.getAllAsync(sql, ...((params as (string | number | null)[]) ?? []));
         return rows as T[];
       },
       async close(): Promise<void> {
@@ -158,10 +158,7 @@ export class ExpoPlatformService implements IPlatformService {
     return globalThis.fetch(url, options);
   }
 
-  async createWebSocket(
-    url: string,
-    _options?: WebSocketOptions,
-  ): Promise<IWebSocket> {
+  async createWebSocket(url: string, _options?: WebSocketOptions): Promise<IWebSocket> {
     // RN has built-in WebSocket (note: custom headers not supported like Tauri)
     const ws = new WebSocket(url);
 
@@ -254,11 +251,7 @@ export class ExpoPlatformService implements IPlatformService {
 
   // ---- File sharing / download ----
 
-  async shareOrDownloadFile(
-    content: string,
-    filename: string,
-    mimeType: string,
-  ): Promise<void> {
+  async shareOrDownloadFile(content: string, filename: string, mimeType: string): Promise<void> {
     const cacheDir = Paths.cache;
     const file = new File(cacheDir, filename);
     file.write(content);

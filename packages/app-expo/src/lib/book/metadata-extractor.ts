@@ -17,12 +17,14 @@ export interface ExtractedMeta {
 
 // ─── EPUB extraction ────────────────────────────────────────────────
 
-export async function extractEpubMetadata(
-  fileBytes: Uint8Array,
-): Promise<ExtractedMeta> {
-  console.log(`[extractEpubMetadata] Input bytes length: ${fileBytes.length}, type: ${fileBytes.constructor?.name}`);
+export async function extractEpubMetadata(fileBytes: Uint8Array): Promise<ExtractedMeta> {
+  console.log(
+    `[extractEpubMetadata] Input bytes length: ${fileBytes.length}, type: ${fileBytes.constructor?.name}`,
+  );
   const entries = await unzipRaw(fileBytes);
-  console.log(`[extractEpubMetadata] Unzipped ${entries.length} entries: ${entries.map(e => e.filename).join(", ")}`);
+  console.log(
+    `[extractEpubMetadata] Unzipped ${entries.length} entries: ${entries.map((e) => e.filename).join(", ")}`,
+  );
 
   // 1. Read container.xml to find OPF path
   const containerXml = readTextEntry(entries, "META-INF/container.xml");
@@ -33,9 +35,7 @@ export async function extractEpubMetadata(
 
   const opfPath = parseAttribute(containerXml, "rootfile", "full-path") || "content.opf";
   console.log(`[extractEpubMetadata] OPF path: ${opfPath}`);
-  const opfDir = opfPath.includes("/")
-    ? opfPath.substring(0, opfPath.lastIndexOf("/") + 1)
-    : "";
+  const opfDir = opfPath.includes("/") ? opfPath.substring(0, opfPath.lastIndexOf("/") + 1) : "";
 
   // 2. Read OPF and extract title / author
   const opfXml = readTextEntry(entries, opfPath);
@@ -59,12 +59,7 @@ export async function extractEpubMetadata(
     if (coverHref) {
       const decoded = decodeURIComponent(coverHref);
       // Try multiple path variations (relative to OPF dir, absolute, etc.)
-      const candidates = [
-        opfDir + decoded,
-        opfDir + coverHref,
-        decoded,
-        coverHref,
-      ];
+      const candidates = [opfDir + decoded, opfDir + coverHref, decoded, coverHref];
       for (const candidate of candidates) {
         const entry = findEntry(entries, candidate);
         if (entry) {
@@ -191,10 +186,7 @@ function extractTagContent(xml: string, tagName: string): string {
   // Match <tagName ...>content</tagName> (case-insensitive, handles namespaces)
   const escapedTag = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   // Match both <dc:title> and <title> patterns
-  const regex = new RegExp(
-    `<${escapedTag}[^>]*>([^<]*)</${escapedTag}>`,
-    "i",
-  );
+  const regex = new RegExp(`<${escapedTag}[^>]*>([^<]*)</${escapedTag}>`, "i");
   const match = xml.match(regex);
   return match ? match[1].trim() : "";
 }
@@ -258,10 +250,7 @@ function findCoverHref(opfXml: string): string | null {
   // Method 3: image item with "cover" in id or href
   for (const item of items) {
     if (item.mediaType.startsWith("image/")) {
-      if (
-        item.id.toLowerCase().includes("cover") ||
-        item.href.toLowerCase().includes("cover")
-      ) {
+      if (item.id.toLowerCase().includes("cover") || item.href.toLowerCase().includes("cover")) {
         return item.href;
       }
     }

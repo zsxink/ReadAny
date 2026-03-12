@@ -1,9 +1,9 @@
+import type { SessionEventSource } from "@readany/core/hooks";
 /**
  * React Native SessionEventSource — uses AppState for visibility
  * and PanResponder touch events for activity detection.
  */
 import { AppState } from "react-native";
-import type { SessionEventSource } from "@readany/core/hooks";
 
 export const rnSessionEventSource: SessionEventSource = {
   subscribeActivity(callback) {

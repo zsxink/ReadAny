@@ -23,12 +23,7 @@
       },
       "package": "com.readany.app"
     },
-    "plugins": [
-      "expo-font",
-      "expo-secure-store",
-      "expo-sqlite",
-      "expo-asset"
-    ],
+    "plugins": ["expo-font", "expo-secure-store", "expo-sqlite", "expo-asset"],
     "scheme": "readany"
   }
 }

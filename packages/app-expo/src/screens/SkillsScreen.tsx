@@ -1,29 +1,29 @@
+import { ChevronLeftIcon, EditIcon, PlusIcon, PuzzleIcon, Trash2Icon } from "@/components/ui/Icon";
+import { type ThemeColors, fontSize, fontWeight, radius, useColors } from "@/styles/theme";
+import { useNavigation } from "@react-navigation/native";
+import { builtinSkills } from "@readany/core/ai/skills/builtin-skills";
+import { deleteSkill, getSkills, insertSkill, updateSkill } from "@readany/core/db";
+import type { Skill } from "@readany/core/types";
 /**
  * SkillsScreen — matching Tauri mobile SkillsPage exactly.
  * Built-in skills with toggle, custom skills with edit/delete, create new skill.
  */
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Switch,
   ActivityIndicator,
-  TextInput,
+  Alert,
   Modal,
   Pressable,
-  Alert,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useNavigation } from "@react-navigation/native";
-import { useTranslation } from "react-i18next";
-import { builtinSkills } from "@readany/core/ai/skills/builtin-skills";
-import { getSkills, updateSkill, deleteSkill, insertSkill } from "@readany/core/db";
-import type { Skill } from "@readany/core/types";
-import { type ThemeColors, radius, fontSize, fontWeight, useColors } from "@/styles/theme";
-import { ChevronLeftIcon, PlusIcon, EditIcon, Trash2Icon, PuzzleIcon } from "@/components/ui/Icon";
 
 const SKILL_ICONS: Record<string, string> = {
   summarizer: "📝",
@@ -74,9 +74,7 @@ export default function SkillsScreen() {
   const handleToggle = useCallback(async (skillId: string, enabled: boolean) => {
     try {
       await updateSkill(skillId, { enabled });
-      setSkills((prev) =>
-        prev.map((s) => (s.id === skillId ? { ...s, enabled } : s)),
-      );
+      setSkills((prev) => prev.map((s) => (s.id === skillId ? { ...s, enabled } : s)));
     } catch (err) {
       console.error("Failed to toggle skill:", err);
     }
@@ -98,22 +96,26 @@ export default function SkillsScreen() {
     setEditorOpen(true);
   }, []);
 
-  const handleDeleteSkill = useCallback(async (skillId: string) => {
-    Alert.alert(t("common.confirm", "确认"), t("skills.deleteConfirm", "确定删除此技能？"), [
-      { text: t("common.cancel", "取消"), style: "cancel" },
-      {
-        text: t("common.delete", "删除"), style: "destructive",
-        onPress: async () => {
-          try {
-            await deleteSkill(skillId);
-            setSkills((prev) => prev.filter((s) => s.id !== skillId));
-          } catch (err) {
-            console.error("Failed to delete skill:", err);
-          }
+  const handleDeleteSkill = useCallback(
+    async (skillId: string) => {
+      Alert.alert(t("common.confirm", "确认"), t("skills.deleteConfirm", "确定删除此技能？"), [
+        { text: t("common.cancel", "取消"), style: "cancel" },
+        {
+          text: t("common.delete", "删除"),
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteSkill(skillId);
+              setSkills((prev) => prev.filter((s) => s.id !== skillId));
+            } catch (err) {
+              console.error("Failed to delete skill:", err);
+            }
+          },
         },
-      },
-    ]);
-  }, [t]);
+      ]);
+    },
+    [t],
+  );
 
   const handleSaveSkill = useCallback(async () => {
     if (!formName.trim()) return;
@@ -127,7 +129,12 @@ export default function SkillsScreen() {
         setSkills((prev) =>
           prev.map((s) =>
             s.id === editingSkill.id
-              ? { ...s, name: formName.trim(), description: formDescription.trim(), prompt: formPrompt.trim() }
+              ? {
+                  ...s,
+                  name: formName.trim(),
+                  description: formDescription.trim(),
+                  prompt: formPrompt.trim(),
+                }
               : s,
           ),
         );
@@ -195,7 +202,9 @@ export default function SkillsScreen() {
               <Text style={s.skillEmoji}>{SKILL_ICONS[skill.id] || "🔧"}</Text>
               <View style={s.skillInfo}>
                 <Text style={s.skillName}>{skill.name}</Text>
-                <Text style={s.skillDesc} numberOfLines={1}>{skill.description}</Text>
+                <Text style={s.skillDesc} numberOfLines={1}>
+                  {skill.description}
+                </Text>
               </View>
               <Switch
                 value={skill.enabled}
@@ -225,12 +234,11 @@ export default function SkillsScreen() {
             customList.map((skill) => (
               <View key={skill.id} style={s.skillCard}>
                 <Text style={s.skillEmoji}>{SKILL_ICONS[skill.id] || "🔧"}</Text>
-                <TouchableOpacity
-                  style={s.skillInfo}
-                  onPress={() => handleEditSkill(skill)}
-                >
+                <TouchableOpacity style={s.skillInfo} onPress={() => handleEditSkill(skill)}>
                   <Text style={s.skillName}>{skill.name}</Text>
-                  <Text style={s.skillDesc} numberOfLines={1}>{skill.description}</Text>
+                  <Text style={s.skillDesc} numberOfLines={1}>
+                    {skill.description}
+                  </Text>
                 </TouchableOpacity>
                 <View style={s.customActions}>
                   <TouchableOpacity style={s.iconBtn} onPress={() => handleEditSkill(skill)}>
@@ -254,7 +262,12 @@ export default function SkillsScreen() {
       </ScrollView>
 
       {/* Skill Editor Modal */}
-      <Modal visible={editorOpen} transparent animationType="slide" onRequestClose={() => setEditorOpen(false)}>
+      <Modal
+        visible={editorOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setEditorOpen(false)}
+      >
         <Pressable style={s.editorOverlay} onPress={() => setEditorOpen(false)} />
         <View style={s.editorSheet}>
           <View style={s.editorHandle} />
@@ -311,43 +324,151 @@ export default function SkillsScreen() {
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: colors.border },
-  headerLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
-  backBtn: { padding: 4 },
-  headerTitle: { fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.foreground },
-  addBtn: { flexDirection: "row", alignItems: "center", gap: 4, borderWidth: 0.5, borderColor: colors.border, borderRadius: radius.lg, paddingHorizontal: 10, paddingVertical: 6 },
-  addBtnText: { fontSize: fontSize.xs, color: colors.foreground },
-  scrollView: { flex: 1 },
-  section: { paddingHorizontal: 16, paddingTop: 16 },
-  sectionTitle: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.mutedForeground, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 12 },
-  skillCard: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: colors.card, borderRadius: radius.xl, borderWidth: 0.5, borderColor: colors.border, padding: 16, marginBottom: 8 },
-  skillEmoji: { fontSize: 24 },
-  skillInfo: { flex: 1, minWidth: 0 },
-  skillName: { fontSize: fontSize.md, fontWeight: fontWeight.medium, color: colors.foreground },
-  skillDesc: { fontSize: fontSize.sm, color: colors.mutedForeground, marginTop: 2 },
-  customActions: { flexDirection: "row", alignItems: "center", gap: 6 },
-  iconBtn: { padding: 6 },
-  customEmpty: { alignItems: "center", paddingVertical: 32 },
-  customEmptyIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.muted, alignItems: "center", justifyContent: "center", marginBottom: 12 },
-  customEmptyText: { fontSize: fontSize.sm, color: colors.mutedForeground, marginBottom: 12 },
-  customEmptyBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.primary, borderRadius: radius.lg, paddingHorizontal: 16, paddingVertical: 8 },
-  customEmptyBtnText: { fontSize: fontSize.sm, color: colors.primaryForeground },
-  // Editor
-  editorOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)" },
-  editorSheet: { backgroundColor: colors.background, borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: "80%", paddingBottom: 34 },
-  editorHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.muted, alignSelf: "center", marginTop: 12, marginBottom: 8 },
-  editorTitle: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.foreground, paddingHorizontal: 20, marginBottom: 16 },
-  editorContent: { paddingHorizontal: 20 },
-  fieldLabel: { fontSize: fontSize.xs, color: colors.mutedForeground, marginBottom: 4, marginTop: 12 },
-  fieldInput: { height: 36, backgroundColor: colors.muted, borderRadius: radius.lg, paddingHorizontal: 12, fontSize: fontSize.sm, color: colors.foreground },
-  fieldTextarea: { height: 120, paddingVertical: 8, textAlignVertical: "top" },
-  editorActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8, paddingHorizontal: 20, paddingTop: 16 },
-  editorCancelBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: radius.lg, borderWidth: 0.5, borderColor: colors.border },
-  editorCancelText: { fontSize: fontSize.sm, color: colors.foreground },
-  editorSaveBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: radius.lg, backgroundColor: colors.primary },
-  editorSaveBtnDisabled: { opacity: 0.5 },
-  editorSaveText: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.primaryForeground },
-});
+const makeStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      borderBottomWidth: 0.5,
+      borderBottomColor: colors.border,
+    },
+    headerLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
+    backBtn: { padding: 4 },
+    headerTitle: {
+      fontSize: fontSize.lg,
+      fontWeight: fontWeight.semibold,
+      color: colors.foreground,
+    },
+    addBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      borderWidth: 0.5,
+      borderColor: colors.border,
+      borderRadius: radius.lg,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    addBtnText: { fontSize: fontSize.xs, color: colors.foreground },
+    scrollView: { flex: 1 },
+    section: { paddingHorizontal: 16, paddingTop: 16 },
+    sectionTitle: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.mutedForeground,
+      textTransform: "uppercase",
+      letterSpacing: 0.8,
+      marginBottom: 12,
+    },
+    skillCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      backgroundColor: colors.card,
+      borderRadius: radius.xl,
+      borderWidth: 0.5,
+      borderColor: colors.border,
+      padding: 16,
+      marginBottom: 8,
+    },
+    skillEmoji: { fontSize: 24 },
+    skillInfo: { flex: 1, minWidth: 0 },
+    skillName: { fontSize: fontSize.md, fontWeight: fontWeight.medium, color: colors.foreground },
+    skillDesc: { fontSize: fontSize.sm, color: colors.mutedForeground, marginTop: 2 },
+    customActions: { flexDirection: "row", alignItems: "center", gap: 6 },
+    iconBtn: { padding: 6 },
+    customEmpty: { alignItems: "center", paddingVertical: 32 },
+    customEmptyIcon: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      backgroundColor: colors.muted,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: 12,
+    },
+    customEmptyText: { fontSize: fontSize.sm, color: colors.mutedForeground, marginBottom: 12 },
+    customEmptyBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      backgroundColor: colors.primary,
+      borderRadius: radius.lg,
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+    },
+    customEmptyBtnText: { fontSize: fontSize.sm, color: colors.primaryForeground },
+    // Editor
+    editorOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)" },
+    editorSheet: {
+      backgroundColor: colors.background,
+      borderTopLeftRadius: 16,
+      borderTopRightRadius: 16,
+      maxHeight: "80%",
+      paddingBottom: 34,
+    },
+    editorHandle: {
+      width: 40,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: colors.muted,
+      alignSelf: "center",
+      marginTop: 12,
+      marginBottom: 8,
+    },
+    editorTitle: {
+      fontSize: fontSize.md,
+      fontWeight: fontWeight.semibold,
+      color: colors.foreground,
+      paddingHorizontal: 20,
+      marginBottom: 16,
+    },
+    editorContent: { paddingHorizontal: 20 },
+    fieldLabel: {
+      fontSize: fontSize.xs,
+      color: colors.mutedForeground,
+      marginBottom: 4,
+      marginTop: 12,
+    },
+    fieldInput: {
+      height: 36,
+      backgroundColor: colors.muted,
+      borderRadius: radius.lg,
+      paddingHorizontal: 12,
+      fontSize: fontSize.sm,
+      color: colors.foreground,
+    },
+    fieldTextarea: { height: 120, paddingVertical: 8, textAlignVertical: "top" },
+    editorActions: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      gap: 8,
+      paddingHorizontal: 20,
+      paddingTop: 16,
+    },
+    editorCancelBtn: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: radius.lg,
+      borderWidth: 0.5,
+      borderColor: colors.border,
+    },
+    editorCancelText: { fontSize: fontSize.sm, color: colors.foreground },
+    editorSaveBtn: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: radius.lg,
+      backgroundColor: colors.primary,
+    },
+    editorSaveBtnDisabled: { opacity: 0.5 },
+    editorSaveText: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.primaryForeground,
+    },
+  });

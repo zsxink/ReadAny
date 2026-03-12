@@ -1,47 +1,46 @@
+import type { RootStackParamList } from "@/navigation/RootNavigator";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 /**
  * BookChatScreen — book-scoped AI chat, opened from reader AI button.
  * Features: thread sidebar, empty state with suggestions, new thread button.
  */
-import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
+  Alert,
   Animated,
   Dimensions,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
-  Alert,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { useTranslation } from "react-i18next";
-import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import type { RootStackParamList } from "@/navigation/RootNavigator";
 
-import { useStreamingChat } from "@readany/core/hooks";
-import { useChatStore } from "@/stores/chat-store";
 import { useLibraryStore } from "@/stores";
+import { useChatStore } from "@/stores/chat-store";
 import { useSettingsStore } from "@/stores/settings-store";
-import { convertToMessageV2, mergeMessagesWithStreaming } from "@readany/core/utils/chat-utils";
-import type { MessageV2 } from "@readany/core/types/message";
+import { useStreamingChat } from "@readany/core/hooks";
 import type { AttachedQuote } from "@readany/core/types";
+import type { MessageV2 } from "@readany/core/types/message";
+import { convertToMessageV2, mergeMessagesWithStreaming } from "@readany/core/utils/chat-utils";
 
-import { useColors, fontSize as fs, radius, fontWeight as fw, withOpacity } from "@/styles/theme";
-import type { ThemeColors } from "@/styles/theme";
-import { MessageList } from "@/components/chat/MessageList";
 import { ChatInput } from "@/components/chat/ChatInput";
+import { MessageList } from "@/components/chat/MessageList";
 import { ModelSelector } from "@/components/chat/ModelSelector";
 import {
   ChevronLeftIcon,
   HistoryIcon,
   MessageCirclePlusIcon,
   Trash2Icon,
-  BrainIcon,
   XIcon,
 } from "@/components/ui/Icon";
+import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from "@/styles/theme";
+import type { ThemeColors } from "@/styles/theme";
 
 const THINK_PNG = require("../../assets/think.png");
 
@@ -123,14 +122,8 @@ export function BookChatScreen({ route, navigation }: Props) {
   }, [sidebarAnim, backdropAnim]);
 
   // Streaming chat
-  const {
-    isStreaming,
-    currentMessage,
-    currentStep,
-    error,
-    sendMessage,
-    stopStream,
-  } = useStreamingChat({ book, bookId });
+  const { isStreaming, currentMessage, currentStep, error, sendMessage, stopStream } =
+    useStreamingChat({ book, bookId });
 
   const messagesV2: MessageV2[] = useMemo(() => {
     if (!activeThread) return [];
@@ -215,11 +208,7 @@ export function BookChatScreen({ route, navigation }: Props) {
           >
             <ChevronLeftIcon size={20} color={colors.foreground} />
           </TouchableOpacity>
-          <TouchableOpacity
-            style={s.iconBtn}
-            onPress={openSidebar}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity style={s.iconBtn} onPress={openSidebar} activeOpacity={0.7}>
             <HistoryIcon size={16} color={colors.foreground} />
             {bookThreads.length > 1 && (
               <View style={s.badge}>
@@ -234,14 +223,8 @@ export function BookChatScreen({ route, navigation }: Props) {
         </Text>
 
         <View style={s.headerRight}>
-          <ModelSelector
-            onNavigateToSettings={() => navigation.navigate("AISettings")}
-          />
-          <TouchableOpacity
-            style={s.iconBtn}
-            onPress={handleNewThread}
-            activeOpacity={0.7}
-          >
+          <ModelSelector onNavigateToSettings={() => navigation.navigate("AISettings")} />
+          <TouchableOpacity style={s.iconBtn} onPress={handleNewThread} activeOpacity={0.7}>
             <MessageCirclePlusIcon size={16} color={colors.foreground} />
           </TouchableOpacity>
         </View>
@@ -264,9 +247,7 @@ export function BookChatScreen({ route, navigation }: Props) {
             <View style={s.emptyContainer}>
               <View style={s.emptyInner}>
                 <Image source={THINK_PNG} style={{ width: 120, height: 120 }} />
-                <Text style={s.emptyTitle}>
-                  {t("chat.aiAssistant", "AI 阅读助手")}
-                </Text>
+                <Text style={s.emptyTitle}>{t("chat.aiAssistant", "AI 阅读助手")}</Text>
                 <Text style={s.emptySubtitle}>
                   {t("chat.aiAssistantDesc", "分析内容、回答问题...")}
                 </Text>
@@ -297,13 +278,8 @@ export function BookChatScreen({ route, navigation }: Props) {
       {/* Thread sidebar overlay */}
       {showSidebar && (
         <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-          <Animated.View
-            style={[s.sidebarBackdrop, { opacity: backdropAnim }]}
-          >
-            <Pressable
-              style={StyleSheet.absoluteFill}
-              onPress={closeSidebar}
-            />
+          <Animated.View style={[s.sidebarBackdrop, { opacity: backdropAnim }]}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={closeSidebar} />
           </Animated.View>
           <Animated.View
             style={[
@@ -312,26 +288,20 @@ export function BookChatScreen({ route, navigation }: Props) {
             ]}
           >
             <View style={s.sidebarHeader}>
-              <Text style={s.sidebarTitle}>
-                {t("chat.history", "历史记录")}
-              </Text>
+              <Text style={s.sidebarTitle}>{t("chat.history", "历史记录")}</Text>
               <TouchableOpacity style={s.iconBtn} onPress={closeSidebar}>
                 <XIcon size={16} color={colors.foreground} />
               </TouchableOpacity>
             </View>
             {bookThreads.length === 0 ? (
               <View style={s.sidebarEmpty}>
-                <Text style={s.sidebarEmptyText}>
-                  {t("chat.noConversations", "暂无对话")}
-                </Text>
+                <Text style={s.sidebarEmptyText}>{t("chat.noConversations", "暂无对话")}</Text>
               </View>
             ) : (
               bookThreads.map((thread) => {
                 const isActive = thread.id === activeThreadId;
                 const lastMsg =
-                  thread.messages.length > 0
-                    ? thread.messages[thread.messages.length - 1]
-                    : null;
+                  thread.messages.length > 0 ? thread.messages[thread.messages.length - 1] : null;
                 const preview = lastMsg?.content?.slice(0, 60) || "";
                 return (
                   <TouchableOpacity
@@ -343,17 +313,12 @@ export function BookChatScreen({ route, navigation }: Props) {
                     <View style={s.threadContent}>
                       <View style={s.threadTitleRow}>
                         <Text
-                          style={[
-                            s.threadTitle,
-                            isActive && s.threadTitleActive,
-                          ]}
+                          style={[s.threadTitle, isActive && s.threadTitleActive]}
                           numberOfLines={1}
                         >
                           {thread.title || t("chat.newChat", "新对话")}
                         </Text>
-                        <Text style={s.threadTime}>
-                          {formatTime(thread.updatedAt)}
-                        </Text>
+                        <Text style={s.threadTime}>{formatTime(thread.updatedAt)}</Text>
                       </View>
                       {preview ? (
                         <Text style={s.threadPreview} numberOfLines={1}>

@@ -1,29 +1,36 @@
+import {
+  CheckIcon,
+  ChevronLeftIcon,
+  EditIcon,
+  PlusIcon,
+  Trash2Icon,
+  XIcon,
+} from "@/components/ui/Icon";
+import { useVectorModelStore } from "@/stores/vector-model-store";
+import { type ThemeColors, fontSize, fontWeight, radius, useColors } from "@/styles/theme";
+import { useNavigation } from "@react-navigation/native";
+import { BUILTIN_EMBEDDING_MODELS } from "@readany/core/ai/builtin-embedding-models";
+import type { VectorModelConfig } from "@readany/core/types";
 /**
  * VectorModelSettingsScreen — matching Tauri mobile VectorModelSettingsPage exactly.
  * Enable/disable vector models, mode toggle (builtin/remote), model management.
  */
 import { useCallback, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Switch,
   ActivityIndicator,
-  TextInput,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useNavigation } from "@react-navigation/native";
-import { useTranslation } from "react-i18next";
-import { BUILTIN_EMBEDDING_MODELS } from "@readany/core/ai/builtin-embedding-models";
-import { useVectorModelStore } from "@/stores/vector-model-store";
-import type { VectorModelConfig } from "@readany/core/types";
-import { type ThemeColors, radius, fontSize, fontWeight, useColors } from "@/styles/theme";
 import { PasswordInput } from "../../components/ui/PasswordInput";
-import { ChevronLeftIcon, PlusIcon, EditIcon, Trash2Icon, CheckIcon, XIcon } from "@/components/ui/Icon";
 
 export default function VectorModelSettingsScreen() {
   const colors = useColors();
@@ -67,55 +74,55 @@ export default function VectorModelSettingsScreen() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
-        {/* Enable switch */}
-        <View style={s.section}>
-          <View style={s.enableCard}>
-            <View style={s.enableInfo}>
-              <Text style={s.enableTitle}>{t("settings.vm_title", "向量模型")}</Text>
-              <Text style={s.enableDesc}>{t("settings.vm_desc", "启用向量搜索和知识检索")}</Text>
-            </View>
-            <Switch
-              value={vectorModelEnabled}
-              onValueChange={setVectorModelEnabled}
-              trackColor={{ false: colors.muted, true: colors.primary }}
-              thumbColor={colors.card}
-            />
-          </View>
-        </View>
-
-        {vectorModelEnabled && (
-          <>
-            {/* Mode toggle */}
-            <View style={s.section}>
-              <Text style={s.modeTitle}>{t("settings.vm_modeTitle", "模型来源")}</Text>
-              <View style={s.modeRow}>
-                <TouchableOpacity
-                  style={[s.modeCard, vectorModelMode === "builtin" && s.modeCardActive]}
-                  onPress={() => setVectorModelMode("builtin")}
-                >
-                  <Text style={s.modeCardTitle}>{t("settings.vm_modeBuiltin", "内置模型")}</Text>
-                  <Text style={s.modeCardDesc}>{t("settings.vm_modeBuiltinDesc", "设备端运行，无需联网")}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.modeCard, vectorModelMode === "remote" && s.modeCardActive]}
-                  onPress={() => setVectorModelMode("remote")}
-                >
-                  <Text style={s.modeCardTitle}>{t("settings.vm_modeRemote", "远程模型")}</Text>
-                  <Text style={s.modeCardDesc}>{t("settings.vm_modeRemoteDesc", "通过 API 调用")}</Text>
-                </TouchableOpacity>
+          {/* Enable switch */}
+          <View style={s.section}>
+            <View style={s.enableCard}>
+              <View style={s.enableInfo}>
+                <Text style={s.enableTitle}>{t("settings.vm_title", "向量模型")}</Text>
+                <Text style={s.enableDesc}>{t("settings.vm_desc", "启用向量搜索和知识检索")}</Text>
               </View>
+              <Switch
+                value={vectorModelEnabled}
+                onValueChange={setVectorModelEnabled}
+                trackColor={{ false: colors.muted, true: colors.primary }}
+                thumbColor={colors.card}
+              />
             </View>
+          </View>
 
-            {vectorModelMode === "builtin" ? (
-              <BuiltinModelsSection />
-            ) : (
-              <RemoteModelsSection />
-            )}
-          </>
-        )}
+          {vectorModelEnabled && (
+            <>
+              {/* Mode toggle */}
+              <View style={s.section}>
+                <Text style={s.modeTitle}>{t("settings.vm_modeTitle", "模型来源")}</Text>
+                <View style={s.modeRow}>
+                  <TouchableOpacity
+                    style={[s.modeCard, vectorModelMode === "builtin" && s.modeCardActive]}
+                    onPress={() => setVectorModelMode("builtin")}
+                  >
+                    <Text style={s.modeCardTitle}>{t("settings.vm_modeBuiltin", "内置模型")}</Text>
+                    <Text style={s.modeCardDesc}>
+                      {t("settings.vm_modeBuiltinDesc", "设备端运行，无需联网")}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[s.modeCard, vectorModelMode === "remote" && s.modeCardActive]}
+                    onPress={() => setVectorModelMode("remote")}
+                  >
+                    <Text style={s.modeCardTitle}>{t("settings.vm_modeRemote", "远程模型")}</Text>
+                    <Text style={s.modeCardDesc}>
+                      {t("settings.vm_modeRemoteDesc", "通过 API 调用")}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
 
-        <View style={{ height: 24 }} />
-      </ScrollView>
+              {vectorModelMode === "builtin" ? <BuiltinModelsSection /> : <RemoteModelsSection />}
+            </>
+          )}
+
+          <View style={{ height: 24 }} />
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -160,7 +167,9 @@ function BuiltinModelsSection() {
                 <View style={s.modelNameRow}>
                   <Text style={s.modelName}>{model.name}</Text>
                   <Text style={s.modelSize}>{model.size}</Text>
-                  <Text style={s.modelSize}>{t("settings.vm_dimension", { dim: model.dimension })}</Text>
+                  <Text style={s.modelSize}>
+                    {t("settings.vm_dimension", { dim: model.dimension })}
+                  </Text>
                 </View>
                 <View style={s.modelBadges}>
                   {model.recommended && (
@@ -265,17 +274,34 @@ function RemoteModelsSection() {
       description: formDesc.trim(),
     });
     resetForm();
-  }, [editingId, formName, formUrl, formModelId, formApiKey, formDesc, updateVectorModel, resetForm]);
+  }, [
+    editingId,
+    formName,
+    formUrl,
+    formModelId,
+    formApiKey,
+    formDesc,
+    updateVectorModel,
+    resetForm,
+  ]);
 
   return (
     <View style={s.section}>
       <View style={s.remoteTitleRow}>
         <View>
           <Text style={s.sectionTitle}>{t("settings.vm_remoteModels", "远程模型")}</Text>
-          <Text style={s.sectionDesc}>{t("settings.vm_remoteDesc", "通过 API 调用的嵌入模型")}</Text>
+          <Text style={s.sectionDesc}>
+            {t("settings.vm_remoteDesc", "通过 API 调用的嵌入模型")}
+          </Text>
         </View>
         {!showAddForm && !editingId && (
-          <TouchableOpacity style={s.addModelBtn} onPress={() => { setShowAddForm(true); setEditingId(null); }}>
+          <TouchableOpacity
+            style={s.addModelBtn}
+            onPress={() => {
+              setShowAddForm(true);
+              setEditingId(null);
+            }}
+          >
             <PlusIcon size={12} color={colors.foreground} />
             <Text style={s.addModelText}>{t("settings.vm_addModel", "添加模型")}</Text>
           </TouchableOpacity>
@@ -287,7 +313,10 @@ function RemoteModelsSection() {
       )}
 
       {vectorModels.map((model) => (
-        <View key={model.id} style={[s.modelCard, selectedVectorModelId === model.id && s.modelCardActive]}>
+        <View
+          key={model.id}
+          style={[s.modelCard, selectedVectorModelId === model.id && s.modelCardActive]}
+        >
           <View style={s.modelCardTop}>
             <View style={s.modelInfo}>
               <Text style={s.modelName}>{model.name}</Text>
@@ -300,7 +329,11 @@ function RemoteModelsSection() {
               thumbColor={colors.card}
             />
           </View>
-          {model.url ? <Text style={s.modelDesc} numberOfLines={1}>{model.url}</Text> : null}
+          {model.url ? (
+            <Text style={s.modelDesc} numberOfLines={1}>
+              {model.url}
+            </Text>
+          ) : null}
           <View style={s.remoteActions}>
             <TouchableOpacity style={s.iconBtn} onPress={() => startEdit(model)}>
               <EditIcon size={14} color={colors.mutedForeground} />
@@ -317,7 +350,9 @@ function RemoteModelsSection() {
         <View style={s.formCard}>
           <View style={s.formHeader}>
             <Text style={s.formTitle}>
-              {editingId ? t("settings.vm_editModel", "编辑模型") : t("settings.vm_addModelTitle", "添加模型")}
+              {editingId
+                ? t("settings.vm_editModel", "编辑模型")
+                : t("settings.vm_addModelTitle", "添加模型")}
             </Text>
             <TouchableOpacity onPress={resetForm}>
               <XIcon size={16} color={colors.foreground} />
@@ -325,26 +360,59 @@ function RemoteModelsSection() {
           </View>
 
           <Text style={s.fieldLabel}>{t("settings.vm_name", "名称")} *</Text>
-          <TextInput style={s.fieldInput} value={formName} onChangeText={setFormName} placeholder="OpenAI Embedding" placeholderTextColor={colors.mutedForeground} />
+          <TextInput
+            style={s.fieldInput}
+            value={formName}
+            onChangeText={setFormName}
+            placeholder="OpenAI Embedding"
+            placeholderTextColor={colors.mutedForeground}
+          />
 
           <Text style={s.fieldLabel}>{t("settings.vm_modelId", "模型 ID")} *</Text>
-          <TextInput style={s.fieldInput} value={formModelId} onChangeText={setFormModelId} placeholder="text-embedding-3-small" placeholderTextColor={colors.mutedForeground} />
+          <TextInput
+            style={s.fieldInput}
+            value={formModelId}
+            onChangeText={setFormModelId}
+            placeholder="text-embedding-3-small"
+            placeholderTextColor={colors.mutedForeground}
+          />
 
           <Text style={s.fieldLabel}>{t("settings.vm_url", "URL")} *</Text>
-          <TextInput style={s.fieldInput} value={formUrl} onChangeText={setFormUrl} placeholder="https://api.openai.com/v1/embeddings" placeholderTextColor={colors.mutedForeground} />
+          <TextInput
+            style={s.fieldInput}
+            value={formUrl}
+            onChangeText={setFormUrl}
+            placeholder="https://api.openai.com/v1/embeddings"
+            placeholderTextColor={colors.mutedForeground}
+          />
 
           <Text style={s.fieldLabel}>{t("settings.vm_apiKey", "API Key")}</Text>
-          <PasswordInput style={s.fieldInput} value={formApiKey} onChangeText={setFormApiKey} placeholder="sk-..." placeholderTextColor={colors.mutedForeground} />
+          <PasswordInput
+            style={s.fieldInput}
+            value={formApiKey}
+            onChangeText={setFormApiKey}
+            placeholder="sk-..."
+            placeholderTextColor={colors.mutedForeground}
+          />
 
           <Text style={s.fieldLabel}>{t("settings.vm_description", "描述")}</Text>
-          <TextInput style={s.fieldInput} value={formDesc} onChangeText={setFormDesc} placeholderTextColor={colors.mutedForeground} />
+          <TextInput
+            style={s.fieldInput}
+            value={formDesc}
+            onChangeText={setFormDesc}
+            placeholderTextColor={colors.mutedForeground}
+          />
 
           <View style={s.formActions}>
             <TouchableOpacity style={s.formCancelBtn} onPress={resetForm}>
               <Text style={s.formCancelText}>{t("common.cancel", "取消")}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[s.formSaveBtn, (!formName.trim() || !formUrl.trim() || !formModelId.trim()) && s.formSaveBtnDisabled]}
+              style={[
+                s.formSaveBtn,
+                (!formName.trim() || !formUrl.trim() || !formModelId.trim()) &&
+                  s.formSaveBtnDisabled,
+              ]}
               onPress={editingId ? handleEdit : handleAdd}
               disabled={!formName.trim() || !formUrl.trim() || !formModelId.trim()}
             >
@@ -359,61 +427,178 @@ function RemoteModelsSection() {
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  keyboardView: { flex: 1 },
-  header: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: colors.border },
-  backBtn: { padding: 4 },
-  headerTitle: { fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.foreground },
-  scrollView: { flex: 1 },
-  section: { paddingHorizontal: 16, paddingTop: 16 },
-  sectionTitle: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.foreground },
-  sectionDesc: { fontSize: fontSize.xs, color: colors.mutedForeground, marginTop: 2, marginBottom: 12 },
-  // Enable card
-  enableCard: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: colors.card, borderRadius: radius.xl, borderWidth: 0.5, borderColor: colors.border, padding: 16 },
-  enableInfo: { flex: 1, marginRight: 12 },
-  enableTitle: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.foreground },
-  enableDesc: { fontSize: fontSize.xs, color: colors.mutedForeground, marginTop: 2 },
-  // Mode
-  modeTitle: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.foreground, marginBottom: 8 },
-  modeRow: { flexDirection: "row", gap: 8 },
-  modeCard: { flex: 1, borderWidth: 0.5, borderColor: colors.border, borderRadius: radius.xl, backgroundColor: colors.card, padding: 12 },
-  modeCardActive: { borderColor: colors.primary, backgroundColor: colors.accent },
-  modeCardTitle: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.foreground },
-  modeCardDesc: { fontSize: 11, color: colors.mutedForeground, marginTop: 2 },
-  // Model card
-  modelCard: { backgroundColor: colors.card, borderRadius: radius.xl, borderWidth: 0.5, borderColor: colors.border, padding: 14, marginBottom: 8 },
-  modelCardActive: { borderColor: colors.primary, backgroundColor: colors.accent },
-  modelCardTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  modelInfo: { flex: 1, minWidth: 0 },
-  modelNameRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
-  modelName: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.foreground },
-  modelSize: { fontSize: 11, color: colors.mutedForeground },
-  modelBadges: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
-  recommendBadge: { backgroundColor: colors.muted, borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 2 },
-  recommendText: { fontSize: 10, fontWeight: fontWeight.medium, color: colors.primary },
-  readyBadge: { flexDirection: "row", alignItems: "center", gap: 2 },
-  readyText: { fontSize: 10, color: colors.emerald },
-  modelDesc: { fontSize: fontSize.xs, color: colors.mutedForeground, marginTop: 6 },
-  downloadingRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  downloadingText: { fontSize: fontSize.xs, color: colors.mutedForeground },
-  // Remote
-  remoteTitleRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 4 },
-  addModelBtn: { flexDirection: "row", alignItems: "center", gap: 4, borderWidth: 0.5, borderColor: colors.border, borderRadius: radius.lg, paddingHorizontal: 10, paddingVertical: 6 },
-  addModelText: { fontSize: fontSize.xs, color: colors.foreground },
-  noModels: { textAlign: "center", fontSize: fontSize.xs, color: colors.mutedForeground, paddingVertical: 24 },
-  remoteActions: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 8 },
-  iconBtn: { padding: 4 },
-  // Form
-  formCard: { backgroundColor: colors.card, borderRadius: radius.xl, borderWidth: 0.5, borderColor: colors.border, padding: 16, marginTop: 12 },
-  formHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
-  formTitle: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.foreground },
-  fieldLabel: { fontSize: fontSize.xs, color: colors.mutedForeground, marginBottom: 4, marginTop: 12 },
-  fieldInput: { height: 36, backgroundColor: colors.muted, borderRadius: radius.lg, paddingHorizontal: 12, fontSize: fontSize.sm, color: colors.foreground },
-  formActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8, marginTop: 16 },
-  formCancelBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.lg, borderWidth: 0.5, borderColor: colors.border },
-  formCancelText: { fontSize: fontSize.xs, color: colors.foreground },
-  formSaveBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.lg, backgroundColor: colors.primary },
-  formSaveBtnDisabled: { opacity: 0.5 },
-  formSaveText: { fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.primaryForeground },
-});
+const makeStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    keyboardView: { flex: 1 },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      borderBottomWidth: 0.5,
+      borderBottomColor: colors.border,
+    },
+    backBtn: { padding: 4 },
+    headerTitle: {
+      fontSize: fontSize.lg,
+      fontWeight: fontWeight.semibold,
+      color: colors.foreground,
+    },
+    scrollView: { flex: 1 },
+    section: { paddingHorizontal: 16, paddingTop: 16 },
+    sectionTitle: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.foreground,
+    },
+    sectionDesc: {
+      fontSize: fontSize.xs,
+      color: colors.mutedForeground,
+      marginTop: 2,
+      marginBottom: 12,
+    },
+    // Enable card
+    enableCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      backgroundColor: colors.card,
+      borderRadius: radius.xl,
+      borderWidth: 0.5,
+      borderColor: colors.border,
+      padding: 16,
+    },
+    enableInfo: { flex: 1, marginRight: 12 },
+    enableTitle: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.foreground },
+    enableDesc: { fontSize: fontSize.xs, color: colors.mutedForeground, marginTop: 2 },
+    // Mode
+    modeTitle: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.foreground,
+      marginBottom: 8,
+    },
+    modeRow: { flexDirection: "row", gap: 8 },
+    modeCard: {
+      flex: 1,
+      borderWidth: 0.5,
+      borderColor: colors.border,
+      borderRadius: radius.xl,
+      backgroundColor: colors.card,
+      padding: 12,
+    },
+    modeCardActive: { borderColor: colors.primary, backgroundColor: colors.accent },
+    modeCardTitle: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.foreground,
+    },
+    modeCardDesc: { fontSize: 11, color: colors.mutedForeground, marginTop: 2 },
+    // Model card
+    modelCard: {
+      backgroundColor: colors.card,
+      borderRadius: radius.xl,
+      borderWidth: 0.5,
+      borderColor: colors.border,
+      padding: 14,
+      marginBottom: 8,
+    },
+    modelCardActive: { borderColor: colors.primary, backgroundColor: colors.accent },
+    modelCardTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+    modelInfo: { flex: 1, minWidth: 0 },
+    modelNameRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
+    modelName: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.foreground },
+    modelSize: { fontSize: 11, color: colors.mutedForeground },
+    modelBadges: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
+    recommendBadge: {
+      backgroundColor: colors.muted,
+      borderRadius: radius.sm,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+    },
+    recommendText: { fontSize: 10, fontWeight: fontWeight.medium, color: colors.primary },
+    readyBadge: { flexDirection: "row", alignItems: "center", gap: 2 },
+    readyText: { fontSize: 10, color: colors.emerald },
+    modelDesc: { fontSize: fontSize.xs, color: colors.mutedForeground, marginTop: 6 },
+    downloadingRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+    downloadingText: { fontSize: fontSize.xs, color: colors.mutedForeground },
+    // Remote
+    remoteTitleRow: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+      marginBottom: 4,
+    },
+    addModelBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      borderWidth: 0.5,
+      borderColor: colors.border,
+      borderRadius: radius.lg,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    addModelText: { fontSize: fontSize.xs, color: colors.foreground },
+    noModels: {
+      textAlign: "center",
+      fontSize: fontSize.xs,
+      color: colors.mutedForeground,
+      paddingVertical: 24,
+    },
+    remoteActions: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 8 },
+    iconBtn: { padding: 4 },
+    // Form
+    formCard: {
+      backgroundColor: colors.card,
+      borderRadius: radius.xl,
+      borderWidth: 0.5,
+      borderColor: colors.border,
+      padding: 16,
+      marginTop: 12,
+    },
+    formHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 12,
+    },
+    formTitle: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.foreground },
+    fieldLabel: {
+      fontSize: fontSize.xs,
+      color: colors.mutedForeground,
+      marginBottom: 4,
+      marginTop: 12,
+    },
+    fieldInput: {
+      height: 36,
+      backgroundColor: colors.muted,
+      borderRadius: radius.lg,
+      paddingHorizontal: 12,
+      fontSize: fontSize.sm,
+      color: colors.foreground,
+    },
+    formActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8, marginTop: 16 },
+    formCancelBtn: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: radius.lg,
+      borderWidth: 0.5,
+      borderColor: colors.border,
+    },
+    formCancelText: { fontSize: fontSize.xs, color: colors.foreground },
+    formSaveBtn: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: radius.lg,
+      backgroundColor: colors.primary,
+    },
+    formSaveBtnDisabled: { opacity: 0.5 },
+    formSaveText: {
+      fontSize: fontSize.xs,
+      fontWeight: fontWeight.medium,
+      color: colors.primaryForeground,
+    },
+  });

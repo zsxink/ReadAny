@@ -1,5 +1,5 @@
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { useNavigation } from "@react-navigation/native";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { ChevronLeftIcon } from "../../components/ui/Icon";
 import { fontSize, fontWeight, spacing, useColors } from "../../styles/theme";
 
@@ -13,7 +13,12 @@ export function SettingsHeader({ title, right }: Props) {
   const colors = useColors();
 
   return (
-    <View style={[styles.header, { borderBottomColor: colors.border, backgroundColor: colors.background }]}>
+    <View
+      style={[
+        styles.header,
+        { borderBottomColor: colors.border, backgroundColor: colors.background },
+      ]}
+    >
       <TouchableOpacity
         onPress={() => nav.goBack()}
         style={styles.backBtn}

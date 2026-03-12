@@ -100,13 +100,9 @@ export const SortAscIcon = icon(() => (
   </>
 ));
 
-export const ChevronRightIcon = icon(() => (
-  <Path d="m9 18 6-6-6-6" />
-));
+export const ChevronRightIcon = icon(() => <Path d="m9 18 6-6-6-6" />);
 
-export const ChevronLeftIcon = icon(() => (
-  <Path d="m15 18-6-6 6-6" />
-));
+export const ChevronLeftIcon = icon(() => <Path d="m15 18-6-6 6-6" />);
 
 export const BrainIcon = icon(() => (
   <>
@@ -295,6 +291,10 @@ export const LoaderIcon = icon(() => (
   <Path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
 ));
 
+export const Loader2Icon = icon(() => (
+  <Path d="M21 12a9 9 0 1 1-6.219-8.56" />
+));
+
 // Additional icons for features
 export const HashIcon = icon(() => (
   <>
@@ -339,17 +339,11 @@ export const StopCircleIcon = icon(() => (
   </>
 ));
 
-export const ChevronDownIcon = icon(() => (
-  <Path d="m6 9 6 6 6-6" />
-));
+export const ChevronDownIcon = icon(() => <Path d="m6 9 6 6 6-6" />);
 
-export const ChevronUpIcon = icon(() => (
-  <Path d="m18 15-6-6-6 6" />
-));
+export const ChevronUpIcon = icon(() => <Path d="m18 15-6-6-6 6" />);
 
-export const CheckIcon = icon(() => (
-  <Path d="M20 6 9 17l-5-5" />
-));
+export const CheckIcon = icon(() => <Path d="M20 6 9 17l-5-5" />);
 
 export const EditIcon = icon(() => (
   <>
@@ -365,9 +359,7 @@ export const ShareIcon = icon(() => (
   </>
 ));
 
-export const FilterIcon = icon(() => (
-  <Path d="M22 3H2l8 9.46V19l4 2v-8.54z" />
-));
+export const FilterIcon = icon(() => <Path d="M22 3H2l8 9.46V19l4 2v-8.54z" />);
 
 export const CalendarIcon = icon(() => (
   <>
@@ -401,9 +393,7 @@ export const SunIcon = icon(() => (
   </>
 ));
 
-export const MoonIcon = icon(() => (
-  <Path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
-));
+export const MoonIcon = icon(() => <Path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />);
 
 export const Undo2Icon = icon(() => (
   <>

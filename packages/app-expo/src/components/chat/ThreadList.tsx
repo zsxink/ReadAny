@@ -1,24 +1,13 @@
+import { HistoryIcon, MessageCirclePlusIcon, Trash2Icon } from "@/components/ui/Icon";
+import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from "@/styles/theme";
+import type { ThemeColors } from "@/styles/theme";
+import type { Thread } from "@readany/core/types";
 /**
  * ThreadList — conversation thread list with create/delete/switch.
  */
 import { useCallback } from "react";
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  FlatList,
-  StyleSheet,
-  Alert,
-} from "react-native";
 import { useTranslation } from "react-i18next";
-import type { Thread } from "@readany/core/types";
-import { useColors, fontSize as fs, radius, fontWeight as fw, withOpacity } from "@/styles/theme";
-import type { ThemeColors } from "@/styles/theme";
-import {
-  MessageCirclePlusIcon,
-  Trash2Icon,
-  HistoryIcon,
-} from "@/components/ui/Icon";
+import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 interface ThreadListProps {
   threads: Thread[];
@@ -57,21 +46,27 @@ export function ThreadList({
     [t, onDelete],
   );
 
-  const formatTime = useCallback((ts: number) => {
-    const date = new Date(ts);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    if (diff < 60000) return t("chat.justNow", "刚刚");
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}m`;
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h`;
-    return date.toLocaleDateString();
-  }, [t]);
+  const formatTime = useCallback(
+    (ts: number) => {
+      const date = new Date(ts);
+      const now = new Date();
+      const diff = now.getTime() - date.getTime();
+      if (diff < 60000) return t("chat.justNow", "刚刚");
+      if (diff < 3600000) return `${Math.floor(diff / 60000)}m`;
+      if (diff < 86400000) return `${Math.floor(diff / 3600000)}h`;
+      return date.toLocaleDateString();
+    },
+    [t],
+  );
 
-  const getPreview = useCallback((thread: Thread) => {
-    const lastMsg = thread.messages[thread.messages.length - 1];
-    if (!lastMsg) return t("chat.noMessages", "暂无消息");
-    return lastMsg.content?.slice(0, 60) || t("chat.noContent", "...");
-  }, [t]);
+  const getPreview = useCallback(
+    (thread: Thread) => {
+      const lastMsg = thread.messages[thread.messages.length - 1];
+      if (!lastMsg) return t("chat.noMessages", "暂无消息");
+      return lastMsg.content?.slice(0, 60) || t("chat.noContent", "...");
+    },
+    [t],
+  );
 
   const renderItem = useCallback(
     ({ item }: { item: Thread }) => {
@@ -84,10 +79,7 @@ export function ThreadList({
         >
           <View style={s.itemContent}>
             <View style={s.itemHeader}>
-              <Text
-                style={[s.itemTitle, isActive && s.itemTitleActive]}
-                numberOfLines={1}
-              >
+              <Text style={[s.itemTitle, isActive && s.itemTitleActive]} numberOfLines={1}>
                 {item.title || t("chat.untitled", "新对话")}
               </Text>
               <Text style={s.itemTime}>{formatTime(item.updatedAt)}</Text>
@@ -114,24 +106,16 @@ export function ThreadList({
       <View style={s.header}>
         <View style={s.headerLeft}>
           <HistoryIcon size={16} color={colors.foreground} />
-          <Text style={s.headerTitle}>
-            {t("chat.threads", "对话列表")}
-          </Text>
+          <Text style={s.headerTitle}>{t("chat.threads", "对话列表")}</Text>
         </View>
-        <TouchableOpacity
-          style={s.newBtn}
-          onPress={onCreate}
-          activeOpacity={0.7}
-        >
+        <TouchableOpacity style={s.newBtn} onPress={onCreate} activeOpacity={0.7}>
           <MessageCirclePlusIcon size={16} color={colors.indigo} />
           <Text style={s.newBtnText}>{t("chat.newThread", "新对话")}</Text>
         </TouchableOpacity>
       </View>
       {threads.length === 0 ? (
         <View style={s.emptyWrap}>
-          <Text style={s.emptyText}>
-            {t("chat.noThreads", "还没有对话，点击上方创建")}
-          </Text>
+          <Text style={s.emptyText}>{t("chat.noThreads", "还没有对话，点击上方创建")}</Text>
         </View>
       ) : (
         <FlatList

@@ -53,9 +53,7 @@ export const useVectorModelStore = create<VectorModelState>()(
     updateVectorModel: (id, updates) => {
       const { vectorModels } = get();
       set({
-        vectorModels: vectorModels.map((m) =>
-          m.id === id ? { ...m, ...updates } : m,
-        ),
+        vectorModels: vectorModels.map((m) => (m.id === id ? { ...m, ...updates } : m)),
       });
     },
 
@@ -66,16 +64,14 @@ export const useVectorModelStore = create<VectorModelState>()(
       set({ vectorModels: newModels, selectedVectorModelId: newSelected });
     },
 
-    setSelectedVectorModelId: (selectedVectorModelId) =>
-      set({ selectedVectorModelId }),
+    setSelectedVectorModelId: (selectedVectorModelId) => set({ selectedVectorModelId }),
 
     getSelectedVectorModel: () => {
       const { vectorModels, selectedVectorModelId } = get();
       return vectorModels.find((m) => m.id === selectedVectorModelId) || null;
     },
 
-    setSelectedBuiltinModelId: (selectedBuiltinModelId) =>
-      set({ selectedBuiltinModelId }),
+    setSelectedBuiltinModelId: (selectedBuiltinModelId) => set({ selectedBuiltinModelId }),
 
     updateBuiltinModelState: (id, state) =>
       set((s) => ({

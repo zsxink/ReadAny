@@ -1,3 +1,4 @@
+import * as SecureStore from "expo-secure-store";
 /**
  * ThemeContext — provides light / dark / sepia theme support matching Tauri mobile.
  *
@@ -5,7 +6,6 @@
  */
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import * as SecureStore from "expo-secure-store";
 
 export type ThemeMode = "light" | "dark" | "sepia";
 

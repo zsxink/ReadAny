@@ -1,34 +1,22 @@
+import { BrainIcon, CheckIcon, ChevronDownIcon, XIcon } from "@/components/ui/Icon";
+import { useThrottledValue } from "@/hooks";
+import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from "@/styles/theme";
+import type { ThemeColors } from "@/styles/theme";
+import type {
+  MindmapPart,
+  Part,
+  ReasoningPart,
+  TextPart,
+  ToolCallPart,
+} from "@readany/core/types/message";
 /**
  * PartRenderer — renders individual message parts (text, reasoning, tool calls, citations, mindmaps).
  * React Native version adapted from app-mobile PartRenderer.
  */
-import { useState, useEffect } from "react";
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
-} from "react-native";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useThrottledValue } from "@/hooks";
-import { useColors, fontSize as fs, radius, fontWeight as fw, withOpacity } from "@/styles/theme";
-import type { ThemeColors } from "@/styles/theme";
-import type {
-  Part,
-  TextPart,
-  ReasoningPart,
-  ToolCallPart,
-  MindmapPart,
-} from "@readany/core/types/message";
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { MarkdownRenderer } from "./MarkdownRenderer";
-import {
-  BrainIcon,
-  ChevronDownIcon,
-  CheckIcon,
-  XIcon,
-  LoaderIcon,
-} from "@/components/ui/Icon";
 
 interface PartProps {
   part: Part;
@@ -93,11 +81,7 @@ function ReasoningPartView({ part }: { part: ReasoningPart }) {
 
   return (
     <View style={s.container}>
-      <TouchableOpacity
-        style={s.header}
-        onPress={() => setIsOpen(!isOpen)}
-        activeOpacity={0.7}
-      >
+      <TouchableOpacity style={s.header} onPress={() => setIsOpen(!isOpen)} activeOpacity={0.7}>
         <View style={s.headerLeft}>
           {part.status === "running" ? (
             <View style={s.pulsingDot} />
@@ -167,18 +151,12 @@ function ToolCallPartView({ part }: { part: ToolCallPart }) {
     }
   };
 
-  const label = TOOL_LABEL_KEYS[part.name]
-    ? t(TOOL_LABEL_KEYS[part.name])
-    : part.name;
+  const label = TOOL_LABEL_KEYS[part.name] ? t(TOOL_LABEL_KEYS[part.name]) : part.name;
   const queryText = part.args.query ? String(part.args.query) : "";
 
   return (
     <View style={s.container}>
-      <TouchableOpacity
-        style={s.header}
-        onPress={() => setIsOpen(!isOpen)}
-        activeOpacity={0.7}
-      >
+      <TouchableOpacity style={s.header} onPress={() => setIsOpen(!isOpen)} activeOpacity={0.7}>
         <View style={s.headerLeft}>
           {getStatusIcon()}
           <Text style={s.headerText} numberOfLines={1}>
@@ -198,9 +176,7 @@ function ToolCallPartView({ part }: { part: ToolCallPart }) {
         <View style={s.body}>
           {Object.keys(part.args).length > 0 && (
             <View style={s.section}>
-              <Text style={s.sectionTitle}>
-                {t("common.params", "参数")}
-              </Text>
+              <Text style={s.sectionTitle}>{t("common.params", "参数")}</Text>
               <View style={s.codeBlock}>
                 {Object.entries(part.args).map(([key, value]) => (
                   <Text key={key} style={s.codeText}>
@@ -215,9 +191,7 @@ function ToolCallPartView({ part }: { part: ToolCallPart }) {
           )}
           {part.result !== undefined && (
             <View style={s.section}>
-              <Text style={s.sectionTitle}>
-                {t("common.result", "结果")}
-              </Text>
+              <Text style={s.sectionTitle}>{t("common.result", "结果")}</Text>
               <View style={s.codeBlock}>
                 <Text style={s.codeText} numberOfLines={10}>
                   {typeof part.result === "string" && part.result.length > 300

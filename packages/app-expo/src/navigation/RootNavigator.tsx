@@ -1,19 +1,19 @@
+import { BookChatScreen } from "@/screens/BookChatScreen";
+import { ReaderScreen } from "@/screens/ReaderScreen";
+import SkillsScreen from "@/screens/SkillsScreen";
+import StatsScreen from "@/screens/StatsScreen";
+import AISettingsScreen from "@/screens/settings/AISettingsScreen";
+import AboutScreen from "@/screens/settings/AboutScreen";
+import AppearanceSettingsScreen from "@/screens/settings/AppearanceSettingsScreen";
+import SyncSettingsScreen from "@/screens/settings/SyncSettingsScreen";
+import TTSSettingsScreen from "@/screens/settings/TTSSettingsScreen";
+import TranslationSettingsScreen from "@/screens/settings/TranslationSettingsScreen";
+import VectorModelSettingsScreen from "@/screens/settings/VectorModelSettingsScreen";
 /**
  * RootNavigator — top-level stack matching Tauri mobile App.tsx routes exactly.
  */
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { TabNavigator } from "./TabNavigator";
-import { ReaderScreen } from "@/screens/ReaderScreen";
-import { BookChatScreen } from "@/screens/BookChatScreen";
-import StatsScreen from "@/screens/StatsScreen";
-import SkillsScreen from "@/screens/SkillsScreen";
-import VectorModelSettingsScreen from "@/screens/settings/VectorModelSettingsScreen";
-import AppearanceSettingsScreen from "@/screens/settings/AppearanceSettingsScreen";
-import AISettingsScreen from "@/screens/settings/AISettingsScreen";
-import TTSSettingsScreen from "@/screens/settings/TTSSettingsScreen";
-import TranslationSettingsScreen from "@/screens/settings/TranslationSettingsScreen";
-import SyncSettingsScreen from "@/screens/settings/SyncSettingsScreen";
-import AboutScreen from "@/screens/settings/AboutScreen";
 
 export type RootStackParamList = {
   Tabs: undefined;

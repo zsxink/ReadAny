@@ -1,12 +1,24 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
   <title>ReadAny Reader</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; overflow: hidden; }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
       -webkit-text-size-adjust: none;
@@ -15,11 +27,13 @@
       background: var(--bg, #1c1c1e);
       color: var(--fg, #e8e8ed);
     }
+
     #reader-container {
       width: 100%;
       height: 100%;
       position: relative;
     }
+
     #loading {
       position: absolute;
       inset: 0;
@@ -30,23 +44,49 @@
       gap: 12px;
       z-index: 100;
     }
-    #loading.hidden { display: none; }
+
+    #loading.hidden {
+      display: none;
+    }
+
     .spinner {
-      width: 32px; height: 32px;
-      border: 3px solid rgba(99,102,241,0.2);
+      width: 32px;
+      height: 32px;
+      border: 3px solid rgba(99, 102, 241, 0.2);
       border-top-color: #6366f1;
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    #loading-text { font-size: 14px; color: var(--muted, #7c7c82); }
-    .error-text { font-size: 14px; color: #e53935; text-align: center; padding: 20px; }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    #loading-text {
+      font-size: 14px;
+      color: var(--muted, #7c7c82);
+    }
+
+    .error-text {
+      font-size: 14px;
+      color: #e53935;
+      text-align: center;
+      padding: 20px;
+    }
 
     /* Suppress iOS selection callout */
-    * { -webkit-touch-callout: none !important; }
-    ::selection { background: rgba(250, 204, 21, 0.4) !important; }
+    * {
+      -webkit-touch-callout: none !important;
+    }
+
+    ::selection {
+      background: rgba(250, 204, 21, 0.4) !important;
+    }
   </style>
 </head>
+
 <body>
   <div id="reader-container">
     <div id="loading">
@@ -141,6 +181,9 @@
           break;
         case 'setThemeColors':
           if (msg.colors) setThemeColors(msg.colors);
+          break;
+        case 'extractChapters':
+          await handleExtractChapters();
           break;
       }
     }
@@ -418,69 +461,12 @@
 
       const LONG_HOLD_MS = 500;
       let holdTimer = null;
-      let isSelecting = false;
-      let hasSelection = false;
 
-      // Track selection state
-      doc.addEventListener('selectionchange', () => {
-        const sel = doc.getSelection();
-        hasSelection = sel && !sel.isCollapsed && sel.toString().trim().length > 0;
-      });
-
-      doc.addEventListener('touchstart', (e) => {
-        // Check if touching selection handles or selected text
-        const sel = doc.getSelection();
-        if (sel && !sel.isCollapsed && sel.rangeCount > 0) {
-          const range = sel.getRangeAt(0);
-          const rects = range.getClientRects();
-          const touch = e.touches[0];
-          
-          // Check if touch is within or near the selection
-          for (let i = 0; i < rects.length; i++) {
-            const rect = rects[i];
-            const margin = 20; // Extra margin for selection handles
-            if (touch.clientX >= rect.left - margin && 
-                touch.clientX <= rect.right + margin &&
-                touch.clientY >= rect.top - margin && 
-                touch.clientY <= rect.bottom + margin) {
-              isSelecting = true;
-              break;
-            }
-          }
-        }
-        
-        if (!isSelecting) {
-          holdTimer = setTimeout(() => { holdTimer = null; }, LONG_HOLD_MS);
-        }
-      }, { passive: true });
-
-      doc.addEventListener('touchmove', (e) => {
-        // If we're selecting, clear the hold timer to prevent tap
-        if (isSelecting) {
-          if (holdTimer) {
-            clearTimeout(holdTimer);
-            holdTimer = null;
-          }
-        }
-      }, { passive: true });
-
-      doc.addEventListener('touchend', (e) => {
-        // Reset selection flag after a short delay
-        if (isSelecting) {
-          setTimeout(() => {
-            isSelecting = false;
-          }, 100);
-        }
+      doc.addEventListener('touchstart', () => {
+        holdTimer = setTimeout(() => { holdTimer = null; }, LONG_HOLD_MS);
       }, { passive: true });
 
       doc.addEventListener('click', (e) => {
-        // Prevent tap if we're selecting or have a selection
-        if (isSelecting || hasSelection) {
-          e.preventDefault();
-          e.stopPropagation();
-          return;
-        }
-        
         if (!holdTimer) return;
         clearTimeout(holdTimer);
         holdTimer = null;
@@ -581,7 +567,7 @@
     function convertTOC(toc, level) {
       if (!toc) return [];
       level = level || 0;
-      return toc.map(function(item, i) {
+      return toc.map(function (item, i) {
         return {
           id: String(item.id != null ? item.id : 'toc-' + level + '-' + i),
           title: item.label || 'Chapter ' + (i + 1),
@@ -600,22 +586,22 @@
     }
 
     // ─── Expose global functions for injectJavaScript ───
-    window.goNext = function() { if (view) view.next(); };
-    window.goPrev = function() { if (view) view.prev(); };
-    window.goToHref = function(href) { if (view) view.goTo(href); };
-    window.goToProgress = function(p) { if (view) view.goToFraction(p); };
-    window.search = function(q) { handleSearch(q); };
-    window.navigateSearch = function(idx) { navigateToSearchResult(idx); };
-    window.clearSearch = function() { if (view) view.clearSearch(); searchResults = []; };
-    window.setFontSize = function(s) { applySettings({ fontSize: s }); };
-    window.setLineHeight = function(lh) { applySettings({ lineHeight: lh }); };
-    window.setParagraphSpacing = function(s) { applySettings({ paragraphSpacing: s }); };
-    window.setPageMargin = function(m) { applySettings({ pageMargin: m }); };
-    window.setFontTheme = function(t) { applySettings({ fontTheme: t }); };
-    window.setViewMode = function(m) { applySettings({ viewMode: m }); };
-    window.addAnnotation = function(a) { if (view) view.addAnnotation(a); };
-    window.removeAnnotation = function(a) { if (view) view.deleteAnnotation(a); };
-    window.setNavigationLocked = function(locked) { 
+    window.goNext = function () { if (view) view.next(); };
+    window.goPrev = function () { if (view) view.prev(); };
+    window.goToHref = function (href) { if (view) view.goTo(href); };
+    window.goToProgress = function (p) { if (view) view.goToFraction(p); };
+    window.search = function (q) { handleSearch(q); };
+    window.navigateSearch = function (idx) { navigateToSearchResult(idx); };
+    window.clearSearch = function () { if (view) view.clearSearch(); searchResults = []; };
+    window.setFontSize = function (s) { applySettings({ fontSize: s }); };
+    window.setLineHeight = function (lh) { applySettings({ lineHeight: lh }); };
+    window.setParagraphSpacing = function (s) { applySettings({ paragraphSpacing: s }); };
+    window.setPageMargin = function (m) { applySettings({ pageMargin: m }); };
+    window.setFontTheme = function (t) { applySettings({ fontTheme: t }); };
+    window.setViewMode = function (m) { applySettings({ viewMode: m }); };
+    window.addAnnotation = function (a) { if (view) view.addAnnotation(a); };
+    window.removeAnnotation = function (a) { if (view) view.deleteAnnotation(a); };
+    window.setNavigationLocked = function (locked) {
       console.log('[WebView] setNavigationLocked called:', locked, 'view:', !!view, 'renderer:', !!view?.renderer);
       if (view && view.renderer && 'navigationLocked' in view.renderer) {
         view.renderer.navigationLocked = locked;
@@ -626,18 +612,191 @@
     };
 
     // ─── Polyfills ───
-    Object.groupBy ??= function(iterable, fn) {
+    Object.groupBy ??= function (iterable, fn) {
       const obj = Object.create(null);
       let i = 0;
       for (const v of iterable) { const k = fn(v, i++); if (k in obj) obj[k].push(v); else obj[k] = [v]; }
       return obj;
     };
-    Map.groupBy ??= function(iterable, fn) {
+    Map.groupBy ??= function (iterable, fn) {
       const map = new Map();
       let i = 0;
       for (const v of iterable) { const k = fn(v, i++); const l = map.get(k); if (l) l.push(v); else map.set(k, [v]); }
       return map;
     };
+
+    // ─── Chapter Extraction for Vectorization ───
+    async function handleExtractChapters() {
+      console.log('[WebView] handleExtractChapters called');
+      if (!currentBook) {
+        postToRN('chaptersExtracted', { error: 'No book loaded' });
+        return;
+      }
+
+      try {
+        const sections = currentBook.sections || [];
+        const toc = currentBook.toc || [];
+
+        // Build map of href to title mapping
+        const tocMap = new Map();
+        function walkToc(items) {
+          for (const item of items) {
+            if (item.label) {
+              tocMap.set(item.index, item.label);
+              if (item.href) {
+                const base = item.href.split("#")[0];
+                tocMap.set(base, item.label);
+                tocMap.set(item.href, item.label);
+              }
+            }
+            if (item.subitems && item.subitems.length) {
+              walkToc(item.subitems);
+            }
+          }
+        }
+        walkToc(toc);
+
+        const chapters = [];
+
+        for (let i = 0; i < sections.length; i++) {
+          const section = sections[i];
+          if (!section.createDocument) continue;
+
+          try {
+            const doc = await section.createDocument();
+            if (!doc.body) continue;
+
+            const title = tocMap.get(i) || tocMap.get(section.href || "") || `Section ${i + 1}`;
+            const CFI = window.CFI || (window.EpubCFI && window.EpubCFI.fake ? window.EpubCFI : null);
+            let baseCfi = section.cfi;
+
+            // If CFI generation is available but no base cfi, try to fake it
+            if (!baseCfi && typeof CFI?.fake?.fromIndex === 'function') {
+              baseCfi = CFI.fake.fromIndex(i);
+            } else if (!baseCfi) {
+              baseCfi = `epubcfi(/6/${(i + 1) * 2}!)`; // Fallback approximate
+            }
+
+            const segments = extractSegmentsWithCfi(doc, baseCfi, CFI);
+            if (segments.length === 0) continue;
+
+            const content = segments.map(s => s.text).join("\\n\\n");
+            chapters.push({ index: i, title, content, segments });
+
+            // Reclaim memory
+            doc.documentElement.innerHTML = "";
+          } catch (err) {
+            console.warn(`[WebView] Failed to extract section ${i}:`, err);
+          }
+        }
+
+        console.log(`[WebView] Extracted ${chapters.length} chapters`);
+        // We will send this over postMessage, RN bridge handles data limits so we might need to batch or just rely on RN
+        postToRN('chaptersExtracted', { chapters });
+      } catch (err) {
+        console.error('[WebView] Error extracting chapters:', err);
+        postToRN('chaptersExtracted', { error: String(err) });
+      }
+    }
+
+    function extractSegmentsWithCfi(doc, baseCfi, CFI) {
+      const segments = [];
+      const body = doc.body;
+      if (!body) return segments;
+
+      const blockSelector = "p, h1, h2, h3, h4, h5, h6, li, blockquote, dd, dt, figcaption, pre, td, th";
+      const blocks = body.querySelectorAll(blockSelector);
+
+      if (blocks.length === 0) {
+        const text = body.textContent?.trim();
+        if (text) {
+          segments.push({ text, cfi: baseCfi });
+        }
+        return segments;
+      }
+
+      for (let i = 0; i < blocks.length; i++) {
+        const block = blocks[i];
+        const text = extractBlockText(block);
+        if (!text || text.length < 2) continue;
+
+        try {
+          if (!CFI) {
+            segments.push({ text, cfi: baseCfi });
+            continue;
+          }
+
+          const textNodes = getTextNodes(block);
+          if (textNodes.length === 0) {
+            segments.push({ text, cfi: baseCfi });
+            continue;
+          }
+
+          const range = doc.createRange();
+          const firstNode = textNodes[0];
+          const lastNode = textNodes[textNodes.length - 1];
+
+          range.setStart(firstNode, 0);
+          range.setEnd(lastNode, lastNode.length);
+
+          let rangeCfi = '';
+          if (typeof CFI.fromRange === 'function') {
+            rangeCfi = CFI.fromRange(range);
+          } else if (CFI.Generator && typeof CFI.Generator.generateRangeComponent === 'function') {
+            rangeCfi = CFI.Generator.generateRangeComponent(
+              range.startContainer, range.startOffset,
+              range.endContainer, range.endOffset
+            );
+          }
+
+          let fullCfi = baseCfi;
+          if (rangeCfi) {
+            if (typeof CFI.joinIndir === 'function') {
+              fullCfi = CFI.joinIndir(baseCfi, rangeCfi);
+            } else {
+              // naive join epubcfi(/a!) and epubcfi(/b) -> epubcfi(/a!/b)
+              fullCfi = baseCfi.replace('!)', '!' + rangeCfi.replace('epubcfi(', ''));
+            }
+          }
+
+          segments.push({ text, cfi: fullCfi });
+        } catch (e) {
+          segments.push({ text, cfi: baseCfi });
+        }
+      }
+      return segments;
+    }
+
+    function getTextNodes(element) {
+      const walker = element.ownerDocument.createTreeWalker(
+        element,
+        NodeFilter.SHOW_TEXT,
+        null
+      );
+      const nodes = [];
+      let node;
+      while ((node = walker.nextNode())) {
+        if (node.textContent && node.textContent.trim()) {
+          nodes.push(node);
+        }
+      }
+      return nodes;
+    }
+
+    function extractBlockText(block) {
+      const walker = block.ownerDocument.createTreeWalker(
+        block,
+        NodeFilter.SHOW_TEXT,
+        null
+      );
+      const texts = [];
+      let node;
+      while ((node = walker.nextNode())) {
+        const text = node.textContent?.trim();
+        if (text) texts.push(text);
+      }
+      return texts.join(" ");
+    }
   </script>
 
   <script>
@@ -936,4 +1095,5 @@ ${Qx}
     postToRN('ready', {});
   </script>
 </body>
+
 </html>

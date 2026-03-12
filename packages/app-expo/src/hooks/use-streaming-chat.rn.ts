@@ -1,3 +1,5 @@
+import type { AttachedQuote, Book, SemanticContext } from "@readany/core/types";
+import type { MessageV2 } from "@readany/core/types/message";
 /**
  * React Native stub for useStreamingChat.
  *
@@ -7,8 +9,6 @@
  * a RN-compatible AI backend is wired up.
  */
 import { useCallback, useState } from "react";
-import type { MessageV2 } from "@readany/core/types/message";
-import type { AttachedQuote, Book, SemanticContext } from "@readany/core/types";
 
 export interface StreamingChatOptions {
   book?: Book | null;
@@ -37,9 +37,7 @@ export function useStreamingChat(_options?: StreamingChatOptions) {
       _deepThinking?: boolean,
       _quotes?: AttachedQuote[],
     ) => {
-      console.warn(
-        "[useStreamingChat.rn] AI streaming is not yet available on React Native.",
-      );
+      console.warn("[useStreamingChat.rn] AI streaming is not yet available on React Native.");
     },
     [],
   );

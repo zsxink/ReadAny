@@ -1,44 +1,49 @@
+import {
+  BarChart3Icon,
+  BookOpenIcon,
+  ChevronRightIcon,
+  ClockIcon,
+  CloudIcon,
+  CpuIcon,
+  DatabaseIcon,
+  FlameIcon,
+  InfoIcon,
+  LanguagesIcon,
+  PaletteIcon,
+  PuzzleIcon,
+  TrendingUpIcon,
+  Volume2Icon,
+} from "@/components/ui/Icon";
+import type { RootStackParamList } from "@/navigation/RootNavigator";
+import { useReadingSessionStore } from "@/stores";
+import {
+  type ThemeColors,
+  fontSize,
+  fontWeight,
+  radius,
+  useColors,
+  withOpacity,
+} from "@/styles/theme";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { readingStatsService } from "@readany/core/stats";
+import type { DailyStats, OverallStats } from "@readany/core/stats";
 /**
  * ProfileScreen — matching Tauri mobile ProfilePage exactly.
  * Features: reading stats cards, heatmap, settings menu (general/skills/about),
  * complete menu items including Skills and VectorModel.
  */
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Dimensions,
   ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useTranslation } from "react-i18next";
-import { useNavigation } from "@react-navigation/native";
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import type { RootStackParamList } from "@/navigation/RootNavigator";
-import { readingStatsService } from "@readany/core/stats";
-import type { OverallStats, DailyStats } from "@readany/core/stats";
-import { useReadingSessionStore } from "@/stores";
-import { type ThemeColors, radius, fontSize, fontWeight, useColors, withOpacity } from "@/styles/theme";
-import {
-  BookOpenIcon,
-  ClockIcon,
-  FlameIcon,
-  TrendingUpIcon,
-  PaletteIcon,
-  CloudIcon,
-  DatabaseIcon,
-  Volume2Icon,
-  LanguagesIcon,
-  PuzzleIcon,
-  CpuIcon,
-  InfoIcon,
-  ChevronRightIcon,
-  BarChart3Icon,
-  LoaderIcon,
-} from "@/components/ui/Icon";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -193,31 +198,48 @@ export function ProfileScreen() {
   }, [saveCurrentSession]);
 
   // Settings menu — matching Tauri ProfilePage exactly
-  const menuSections = useMemo(() => [
-    {
-      title: t("settings.general", "通用"),
-      items: [
-        { icon: PaletteIcon, label: t("settings.appearance", "外观"), route: "AppearanceSettings" as const },
-        { icon: CloudIcon, label: t("settings.sync", "同步"), route: "SyncSettings" as const },
-      ],
-    },
-    {
-      title: t("settings.skills", "能力"),
-      items: [
-        { icon: DatabaseIcon, label: t("settings.ai_title", "AI 模型"), route: "AISettings" as const },
-        { icon: Volume2Icon, label: t("tts.title", "语音朗读"), route: "TTSSettings" as const },
-        { icon: LanguagesIcon, label: t("settings.translationTab", "翻译"), route: "TranslationSettings" as const },
-        { icon: PuzzleIcon, label: t("skills.title", "技能"), route: "Skills" as const },
-        { icon: CpuIcon, label: t("settings.vm_title", "向量模型"), route: "VectorModelSettings" as const },
-      ],
-    },
-    {
-      title: t("settings.about", "关于"),
-      items: [
-        { icon: InfoIcon, label: t("settings.about", "关于"), route: "About" as const },
-      ],
-    },
-  ], [t]);
+  const menuSections = useMemo(
+    () => [
+      {
+        title: t("settings.general", "通用"),
+        items: [
+          {
+            icon: PaletteIcon,
+            label: t("settings.appearance", "外观"),
+            route: "AppearanceSettings" as const,
+          },
+          { icon: CloudIcon, label: t("settings.sync", "同步"), route: "SyncSettings" as const },
+        ],
+      },
+      {
+        title: t("settings.skills", "能力"),
+        items: [
+          {
+            icon: DatabaseIcon,
+            label: t("settings.ai_title", "AI 模型"),
+            route: "AISettings" as const,
+          },
+          { icon: Volume2Icon, label: t("tts.title", "语音朗读"), route: "TTSSettings" as const },
+          {
+            icon: LanguagesIcon,
+            label: t("settings.translationTab", "翻译"),
+            route: "TranslationSettings" as const,
+          },
+          { icon: PuzzleIcon, label: t("skills.title", "技能"), route: "Skills" as const },
+          {
+            icon: CpuIcon,
+            label: t("settings.vm_title", "向量模型"),
+            route: "VectorModelSettings" as const,
+          },
+        ],
+      },
+      {
+        title: t("settings.about", "关于"),
+        items: [{ icon: InfoIcon, label: t("settings.about", "关于"), route: "About" as const }],
+      },
+    ],
+    [t],
+  );
 
   const booksRead = overall?.totalBooks ?? 0;
   const totalTime = overall ? formatTime(overall.totalReadingTime) : "0m";
@@ -269,10 +291,7 @@ export function ProfileScreen() {
         <View style={s.heatmapSection}>
           <View style={s.heatmapHeader}>
             <Text style={s.heatmapTitle}>{t("profile.readingActivity", "阅读活动")}</Text>
-            <TouchableOpacity
-              style={s.heatmapDetailBtn}
-              onPress={() => nav.navigate("Stats")}
-            >
+            <TouchableOpacity style={s.heatmapDetailBtn} onPress={() => nav.navigate("Stats")}>
               <BarChart3Icon size={14} color={colors.indigo} />
               <Text style={s.heatmapDetailText}>{t("profile.viewDetails", "查看详情")}</Text>
             </TouchableOpacity>
@@ -311,38 +330,113 @@ export function ProfileScreen() {
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, borderBottomWidth: 0.5, borderBottomColor: colors.border },
-  headerTitle: { fontSize: fontSize["2xl"], fontWeight: fontWeight.bold, color: colors.foreground },
-  scrollView: { flex: 1 },
-  // Stats
-  statsSection: { paddingHorizontal: 16, paddingTop: 16 },
-  statsLoading: { alignItems: "center", justifyContent: "center", paddingVertical: 32 },
-  statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
-  statCard: { width: "47%", backgroundColor: colors.card, borderRadius: radius.xl, borderWidth: 0.5, borderColor: colors.border, padding: 14 },
-  statCardHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 },
-  statCardTitle: { fontSize: fontSize.xs, color: colors.mutedForeground },
-  statCardBody: { flexDirection: "row", alignItems: "baseline", gap: 4 },
-  statCardValue: { fontSize: fontSize["2xl"], fontWeight: fontWeight.bold, color: colors.foreground },
-  statCardUnit: { fontSize: fontSize.sm, color: colors.mutedForeground },
-  // Heatmap
-  heatmapSection: { marginHorizontal: 16, marginTop: 16, backgroundColor: colors.card, borderRadius: radius.xl, borderWidth: 0.5, borderColor: colors.border, padding: 16 },
-  heatmapHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
-  heatmapTitle: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.mutedForeground },
-  heatmapDetailBtn: { flexDirection: "row", alignItems: "center", gap: 4 },
-  heatmapDetailText: { fontSize: fontSize.xs, color: colors.indigo },
-  heatmapContainer: { width: "100%" },
-  heatmapGrid: { alignSelf: "center" },
-  heatmapLegend: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4, marginTop: 8 },
-  heatmapLegendText: { fontSize: 9, color: colors.mutedForeground },
-  heatmapLegendCell: { width: 8, height: 8, borderRadius: 2 },
-  // Menu
-  menuSection: { paddingHorizontal: 16, marginTop: 16 },
-  menuSectionTitle: { fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.mutedForeground, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 },
-  menuCard: { backgroundColor: colors.card, borderRadius: radius.xl, borderWidth: 0.5, borderColor: colors.border, overflow: "hidden" },
-  menuItem: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 14 },
-  menuItemBorder: { borderBottomWidth: 0.5, borderBottomColor: colors.border },
-  menuItemLabel: { flex: 1, fontSize: fontSize.md, color: colors.foreground },
-  version: { textAlign: "center", fontSize: fontSize.xs, color: colors.mutedForeground, marginTop: 32, marginBottom: 24 },
-});
+const makeStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    header: {
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      paddingBottom: 12,
+      borderBottomWidth: 0.5,
+      borderBottomColor: colors.border,
+    },
+    headerTitle: {
+      fontSize: fontSize["2xl"],
+      fontWeight: fontWeight.bold,
+      color: colors.foreground,
+    },
+    scrollView: { flex: 1 },
+    // Stats
+    statsSection: { paddingHorizontal: 16, paddingTop: 16 },
+    statsLoading: { alignItems: "center", justifyContent: "center", paddingVertical: 32 },
+    statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+    statCard: {
+      width: "47%",
+      backgroundColor: colors.card,
+      borderRadius: radius.xl,
+      borderWidth: 0.5,
+      borderColor: colors.border,
+      padding: 14,
+    },
+    statCardHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 6,
+    },
+    statCardTitle: { fontSize: fontSize.xs, color: colors.mutedForeground },
+    statCardBody: { flexDirection: "row", alignItems: "baseline", gap: 4 },
+    statCardValue: {
+      fontSize: fontSize["2xl"],
+      fontWeight: fontWeight.bold,
+      color: colors.foreground,
+    },
+    statCardUnit: { fontSize: fontSize.sm, color: colors.mutedForeground },
+    // Heatmap
+    heatmapSection: {
+      marginHorizontal: 16,
+      marginTop: 16,
+      backgroundColor: colors.card,
+      borderRadius: radius.xl,
+      borderWidth: 0.5,
+      borderColor: colors.border,
+      padding: 16,
+    },
+    heatmapHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 12,
+    },
+    heatmapTitle: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.mutedForeground,
+    },
+    heatmapDetailBtn: { flexDirection: "row", alignItems: "center", gap: 4 },
+    heatmapDetailText: { fontSize: fontSize.xs, color: colors.indigo },
+    heatmapContainer: { width: "100%" },
+    heatmapGrid: { alignSelf: "center" },
+    heatmapLegend: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "flex-end",
+      gap: 4,
+      marginTop: 8,
+    },
+    heatmapLegendText: { fontSize: 9, color: colors.mutedForeground },
+    heatmapLegendCell: { width: 8, height: 8, borderRadius: 2 },
+    // Menu
+    menuSection: { paddingHorizontal: 16, marginTop: 16 },
+    menuSectionTitle: {
+      fontSize: fontSize.xs,
+      fontWeight: fontWeight.medium,
+      color: colors.mutedForeground,
+      textTransform: "uppercase",
+      letterSpacing: 0.8,
+      marginBottom: 8,
+    },
+    menuCard: {
+      backgroundColor: colors.card,
+      borderRadius: radius.xl,
+      borderWidth: 0.5,
+      borderColor: colors.border,
+      overflow: "hidden",
+    },
+    menuItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+    },
+    menuItemBorder: { borderBottomWidth: 0.5, borderBottomColor: colors.border },
+    menuItemLabel: { flex: 1, fontSize: fontSize.md, color: colors.foreground },
+    version: {
+      textAlign: "center",
+      fontSize: fontSize.xs,
+      color: colors.mutedForeground,
+      marginTop: 32,
+      marginBottom: 24,
+    },
+  });

@@ -1,10 +1,10 @@
+import type { TTSConfig } from "@readany/core/types";
+import * as Speech from "expo-speech";
 /**
  * TTS Store for React Native
  * Uses expo-speech for text-to-speech
  */
 import { create } from "zustand";
-import * as Speech from "expo-speech";
-import type { TTSConfig } from "@readany/core/types";
 import { withPersist } from "./persist";
 
 export type TTSPlayState = "stopped" | "playing" | "paused" | "loading";
@@ -92,8 +92,7 @@ export const useTTSStore = create<TTSState>()(
       }
     },
 
-    updateConfig: (updates) =>
-      set((s) => ({ config: { ...s.config, ...updates } })),
+    updateConfig: (updates) => set((s) => ({ config: { ...s.config, ...updates } })),
 
     setPlayState: (playState) => set({ playState }),
 
