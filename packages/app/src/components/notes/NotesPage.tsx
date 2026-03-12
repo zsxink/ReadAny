@@ -7,7 +7,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
-  NotebookPen,
   Highlighter,
   BookOpen,
   Trash2,
