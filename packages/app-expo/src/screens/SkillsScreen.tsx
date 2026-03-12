@@ -201,7 +201,7 @@ export default function SkillsScreen() {
                 value={skill.enabled}
                 onValueChange={(v) => handleToggle(skill.id, v)}
                 trackColor={{ false: colors.muted, true: colors.primary }}
-                thumbColor="#fff"
+                thumbColor={colors.card}
               />
             </TouchableOpacity>
           ))}
@@ -243,7 +243,7 @@ export default function SkillsScreen() {
                     value={skill.enabled}
                     onValueChange={(v) => handleToggle(skill.id, v)}
                     trackColor={{ false: colors.muted, true: colors.primary }}
-                    thumbColor="#fff"
+                    thumbColor={colors.card}
                   />
                 </View>
               </View>

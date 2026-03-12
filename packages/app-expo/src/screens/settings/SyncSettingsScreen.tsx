@@ -15,7 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { SettingsHeader } from "./SettingsHeader";
 import { PasswordInput } from "../../components/ui/PasswordInput";
-import { type ThemeColors, fontSize, fontWeight, spacing, radius, useColors } from "../../styles/theme";
+import { type ThemeColors, fontSize, fontWeight, spacing, radius, useColors, withOpacity } from "../../styles/theme";
 
 export default function SyncSettingsScreen() {
   const colors = useColors();
@@ -483,7 +483,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: "#fff",
+    backgroundColor: colors.card,
   },
   toggleThumbActive: { alignSelf: "flex-end" },
   advancedHeader: {
@@ -503,7 +503,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   resetBtn: {
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: "rgba(229,57,53,0.3)",
+    borderColor: withOpacity(colors.destructive, 0.3),
     paddingVertical: 8,
     alignItems: "center",
   },

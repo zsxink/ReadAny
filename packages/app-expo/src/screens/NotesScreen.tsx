@@ -25,7 +25,7 @@ import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useAnnotationStore, useLibraryStore } from "@/stores";
 import type { HighlightWithBook } from "@readany/core/db/database";
 import { HIGHLIGHT_COLOR_HEX } from "@readany/core/types";
-import { type ThemeColors, radius, fontSize, fontWeight, useColors } from "@/styles/theme";
+import { type ThemeColors, radius, fontSize, fontWeight, useColors, withOpacity } from "@/styles/theme";
 import { getPlatformService } from "@readany/core/services";
 import {
   NotebookPenIcon,
@@ -673,7 +673,7 @@ function HighlightCard({
 const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
-  spinner: { width: 32, height: 32, borderRadius: 16, borderWidth: 2, borderColor: "rgba(224,224,230,0.3)", borderTopColor: colors.primary },
+  spinner: { width: 32, height: 32, borderRadius: 16, borderWidth: 2, borderColor: withOpacity(colors.primary, 0.3), borderTopColor: colors.primary },
   loadingText: { fontSize: fontSize.sm, color: colors.mutedForeground },
   // Header
   header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, borderBottomWidth: 0.5, borderBottomColor: colors.border },

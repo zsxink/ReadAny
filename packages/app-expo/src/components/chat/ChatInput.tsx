@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { useTranslation } from "react-i18next";
 import type { AttachedQuote } from "@readany/core/types";
-import { useColors, fontSize as fs, radius, fontWeight as fw } from "@/styles/theme";
+import { useColors, fontSize as fs, radius, fontWeight as fw, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
 import { SendIcon, BrainIcon, XIcon, StopCircleIcon } from "@/components/ui/Icon";
 
@@ -113,7 +113,7 @@ export function ChatInput({
           >
             <BrainIcon
               size={13}
-              color={deepThinking ? "#7c3aed" : colors.mutedForeground}
+              color={deepThinking ? colors.violet : colors.mutedForeground}
             />
             <Text
               style={[s.deepThinkText, deepThinking && s.deepThinkTextActive]}
@@ -215,15 +215,15 @@ const makeStyles = (colors: ThemeColors) =>
       paddingVertical: 4,
     },
     deepThinkBtnActive: {
-      borderColor: "rgba(139,92,246,0.3)",
-      backgroundColor: "rgba(139,92,246,0.06)",
+      borderColor: withOpacity(colors.violet, 0.3),
+      backgroundColor: withOpacity(colors.violet, 0.06),
     },
     deepThinkText: {
       fontSize: fs.xs,
       color: colors.mutedForeground,
     },
     deepThinkTextActive: {
-      color: "#7c3aed",
+      color: colors.violet,
     },
     sendBtn: {
       width: 28,

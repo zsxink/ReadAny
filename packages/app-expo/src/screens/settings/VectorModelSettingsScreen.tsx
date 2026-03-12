@@ -78,7 +78,7 @@ export default function VectorModelSettingsScreen() {
               value={vectorModelEnabled}
               onValueChange={setVectorModelEnabled}
               trackColor={{ false: colors.muted, true: colors.primary }}
-              thumbColor="#fff"
+              thumbColor={colors.card}
             />
           </View>
         </View>
@@ -170,7 +170,7 @@ function BuiltinModelsSection() {
                   )}
                   {isReady && (
                     <View style={s.readyBadge}>
-                      <CheckIcon size={12} color="#16a34a" />
+                      <CheckIcon size={12} color={colors.emerald} />
                       <Text style={s.readyText}>{t("settings.vm_loaded", "已加载")}</Text>
                     </View>
                   )}
@@ -186,7 +186,7 @@ function BuiltinModelsSection() {
                   value={isSelected}
                   onValueChange={(v) => handleSelect(model.id, v)}
                   trackColor={{ false: colors.muted, true: colors.primary }}
-                  thumbColor="#fff"
+                  thumbColor={colors.card}
                 />
               )}
             </View>
@@ -297,7 +297,7 @@ function RemoteModelsSection() {
               value={selectedVectorModelId === model.id}
               onValueChange={(v) => setSelectedVectorModelId(v ? model.id : null)}
               trackColor={{ false: colors.muted, true: colors.primary }}
-              thumbColor="#fff"
+              thumbColor={colors.card}
             />
           </View>
           {model.url ? <Text style={s.modelDesc} numberOfLines={1}>{model.url}</Text> : null}
@@ -393,7 +393,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   recommendBadge: { backgroundColor: colors.muted, borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 2 },
   recommendText: { fontSize: 10, fontWeight: fontWeight.medium, color: colors.primary },
   readyBadge: { flexDirection: "row", alignItems: "center", gap: 2 },
-  readyText: { fontSize: 10, color: "#16a34a" },
+  readyText: { fontSize: 10, color: colors.emerald },
   modelDesc: { fontSize: fontSize.xs, color: colors.mutedForeground, marginTop: 6 },
   downloadingRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   downloadingText: { fontSize: fontSize.xs, color: colors.mutedForeground },

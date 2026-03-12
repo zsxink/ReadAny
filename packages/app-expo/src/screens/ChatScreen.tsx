@@ -30,7 +30,7 @@ import type { MessageV2 } from "@readany/core/types/message";
 import type { AttachedQuote, Thread } from "@readany/core/types";
 import { Alert } from "react-native";
 
-import { useColors, fontSize as fs, radius, fontWeight as fw } from "@/styles/theme";
+import { useColors, fontSize as fs, radius, fontWeight as fw, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
 import { MessageList } from "@/components/chat/MessageList";
 import { ChatInput } from "@/components/chat/ChatInput";
@@ -484,13 +484,13 @@ const makeStyles = (colors: ThemeColors) =>
       bottom: 80,
       left: 16,
       right: 16,
-      backgroundColor: "rgba(229,57,53,0.9)",
+      backgroundColor: withOpacity(colors.destructive, 0.9),
       borderRadius: radius.lg,
       padding: 12,
     },
     errorText: {
       fontSize: fs.sm,
-      color: "#fff",
+      color: colors.primaryForeground,
     },
 
     // Sidebar
@@ -543,7 +543,7 @@ const makeStyles = (colors: ThemeColors) =>
       paddingVertical: 10,
     },
     threadItemActive: {
-      backgroundColor: "rgba(99,102,241,0.08)",
+      backgroundColor: withOpacity(colors.indigo, 0.08),
     },
     threadContent: {
       flex: 1,

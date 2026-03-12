@@ -16,7 +16,7 @@ import type { AIEndpoint, AIProviderType } from "@readany/core/types";
 import { SettingsHeader } from "./SettingsHeader";
 import { PlusIcon, Trash2Icon, XIcon, LoaderIcon } from "../../components/ui/Icon";
 import { PasswordInput } from "../../components/ui/PasswordInput";
-import { type ThemeColors, fontSize, fontWeight, spacing, radius, useColors } from "../../styles/theme";
+import { type ThemeColors, fontSize, fontWeight, spacing, radius, useColors, withOpacity } from "../../styles/theme";
 
 const PROVIDERS: { id: AIProviderType; label: string }[] = [
   { id: "openai", label: "OpenAI" },
@@ -543,8 +543,8 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     overflow: "hidden",
   },
   endpointCardActive: {
-    borderColor: "rgba(224,224,230,0.5)",
-    backgroundColor: "rgba(224,224,230,0.05)",
+    borderColor: withOpacity(colors.primary, 0.5),
+    backgroundColor: withOpacity(colors.primary, 0.05),
   },
   endpointHeader: {
     flexDirection: "row",
@@ -561,7 +561,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.foreground,
   },
   currentBadge: {
-    backgroundColor: "rgba(224,224,230,0.1)",
+    backgroundColor: withOpacity(colors.primary, 0.1),
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: radius.full,
@@ -606,7 +606,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: "#fff",
+    backgroundColor: colors.card,
   },
   toggleThumbActive: { alignSelf: "flex-end" },
   fieldGroup: { gap: 6 },
@@ -641,7 +641,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   providerBtnActive: {
     borderColor: colors.primary,
-    backgroundColor: "rgba(224,224,230,0.1)",
+    backgroundColor: withOpacity(colors.primary, 0.1),
   },
   providerBtnText: {
     fontSize: fontSize.sm,
@@ -683,7 +683,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   modelTagActive: {
     borderColor: colors.primary,
-    backgroundColor: "rgba(224,224,230,0.1)",
+    backgroundColor: withOpacity(colors.primary, 0.1),
   },
   modelTagText: {
     fontSize: fontSize.xs,
@@ -714,7 +714,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     gap: 8,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: "rgba(229,57,53,0.3)",
+    borderColor: withOpacity(colors.destructive, 0.3),
     paddingVertical: 10,
   },
   deleteBtnText: {

@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { useTranslation } from "react-i18next";
 import type { MessageV2, QuotePart, TextPart } from "@readany/core/types/message";
-import { useColors, fontSize as fs, radius, fontWeight as fw } from "@/styles/theme";
+import { useColors, fontSize as fs, radius, fontWeight as fw, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
 import { PartRenderer } from "./PartRenderer";
 import { StreamingIndicator } from "./StreamingIndicator";
@@ -158,9 +158,9 @@ const quoteStyles = (colors: ThemeColors) =>
       flexDirection: "row",
       gap: 6,
       borderRadius: radius.md,
-      backgroundColor: "rgba(99,102,241,0.05)",
+      backgroundColor: withOpacity(colors.indigo, 0.05),
       borderWidth: 0.5,
-      borderColor: "rgba(99,102,241,0.15)",
+      borderColor: withOpacity(colors.indigo, 0.15),
       paddingHorizontal: 8,
       paddingVertical: 6,
     },

@@ -12,7 +12,7 @@ interface IconProps {
 
 const defaultProps: Required<IconProps> = {
   size: 24,
-  color: "#e8e8ed",
+  color: "#8e8e93",
   strokeWidth: 2,
 };
 

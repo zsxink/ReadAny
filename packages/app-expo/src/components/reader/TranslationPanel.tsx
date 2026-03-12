@@ -296,7 +296,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   retryBtnText: {
     fontSize: fontSize.sm,
-    color: "#fff",
+    color: colors.primaryForeground,
   },
   translationText: {
     fontSize: fontSize.base,

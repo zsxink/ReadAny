@@ -19,7 +19,7 @@ import { useNavigation } from "@react-navigation/native";
 import { readingStatsService } from "@readany/core/stats";
 import type { OverallStats, DailyStats, PeriodBookStats, TrendPoint } from "@readany/core/stats";
 import { useReadingSessionStore } from "@/stores";
-import { type ThemeColors, radius, fontSize, fontWeight, useColors } from "@/styles/theme";
+import { type ThemeColors, radius, fontSize, fontWeight, useColors, withOpacity } from "@/styles/theme";
 import {
   BookOpenIcon,
   ClockIcon,
@@ -140,10 +140,10 @@ function FullHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
   // Fixed threshold color mapping matching Tauri's getHeatColor
   const getColor = (minutes: number) => {
     if (minutes <= 0) return colors.muted;
-    if (minutes < 15) return "rgba(16,185,129,0.3)";
-    if (minutes < 30) return "rgba(16,185,129,0.5)";
-    if (minutes < 60) return "rgba(16,185,129,0.7)";
-    return "rgba(16,185,129,0.9)";
+    if (minutes < 15) return withOpacity(colors.emerald, 0.3);
+    if (minutes < 30) return withOpacity(colors.emerald, 0.5);
+    if (minutes < 60) return withOpacity(colors.emerald, 0.7);
+    return withOpacity(colors.emerald, 0.9);
   };
 
   return (
@@ -279,7 +279,7 @@ function TrendChart({ data }: { data: TrendPoint[] }) {
                   {
                     height: Math.max(1, (item.dailyTime / maxVal) * BAR_HEIGHT),
                     backgroundColor:
-                      item.dailyTime > 0 ? "rgba(16,185,129,0.5)" : "transparent",
+                      item.dailyTime > 0 ? withOpacity(colors.emerald, 0.5) : "transparent",
                   },
                 ]}
               />
@@ -597,7 +597,7 @@ export default function StatsScreen() {
                 <FullHeatmap dailyStats={heatmapData} />
                 <View style={s.heatmapLegend}>
                   <Text style={s.legendText}>{t("common.less", "少")}</Text>
-                  {[colors.muted, "rgba(16,185,129,0.3)", "rgba(16,185,129,0.5)", "rgba(16,185,129,0.7)", "rgba(16,185,129,0.9)"].map((c, i) => (
+                  {[colors.muted, withOpacity(colors.emerald, 0.3), withOpacity(colors.emerald, 0.5), withOpacity(colors.emerald, 0.7), withOpacity(colors.emerald, 0.9)].map((c, i) => (
                     <View
                       key={i}
                       style={[s.legendCell, { backgroundColor: c }]}
@@ -837,7 +837,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: radius.lg,
-    backgroundColor: "rgba(245,158,11,0.1)",
+    backgroundColor: withOpacity(colors.amber, 0.1),
     alignItems: "center",
     justifyContent: "center",
   },

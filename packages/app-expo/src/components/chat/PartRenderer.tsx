@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useThrottledValue } from "@/hooks";
-import { useColors, fontSize as fs, radius, fontWeight as fw } from "@/styles/theme";
+import { useColors, fontSize as fs, radius, fontWeight as fw, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
 import type {
   Part,
@@ -102,7 +102,7 @@ function ReasoningPartView({ part }: { part: ReasoningPart }) {
           {part.status === "running" ? (
             <View style={s.pulsingDot} />
           ) : (
-            <BrainIcon size={14} color="#7c3aed" />
+            <BrainIcon size={14} color={colors.violet} />
           )}
           <Text style={s.headerText}>
             {part.status === "running"
@@ -111,7 +111,7 @@ function ReasoningPartView({ part }: { part: ReasoningPart }) {
           </Text>
         </View>
         <View style={[s.chevron, isOpen && s.chevronOpen]}>
-          <ChevronDownIcon size={14} color="#a78bfa" />
+          <ChevronDownIcon size={14} color={colors.violet} />
         </View>
       </TouchableOpacity>
       {isOpen && (
@@ -270,8 +270,8 @@ const makeReasoningStyles = (colors: ThemeColors) =>
       marginVertical: 4,
       borderRadius: radius.md,
       borderWidth: 1,
-      borderColor: "#e9d5ff",
-      backgroundColor: "rgba(139,92,246,0.05)",
+      borderColor: withOpacity(colors.violet, 0.3),
+      backgroundColor: withOpacity(colors.violet, 0.05),
       overflow: "hidden",
     },
     header: {
@@ -291,20 +291,20 @@ const makeReasoningStyles = (colors: ThemeColors) =>
       width: 10,
       height: 10,
       borderRadius: 5,
-      backgroundColor: "#a78bfa",
+      backgroundColor: colors.violet,
       opacity: 0.8,
     },
     headerText: {
       fontSize: fs.sm,
       fontWeight: fw.medium,
-      color: "#7c3aed",
+      color: colors.violet,
     },
     chevron: {},
     chevronOpen: { transform: [{ rotate: "180deg" }] },
     body: {
       borderTopWidth: 0.5,
-      borderTopColor: "rgba(139,92,246,0.2)",
-      backgroundColor: "rgba(255,255,255,0.3)",
+      borderTopColor: withOpacity(colors.violet, 0.2),
+      backgroundColor: withOpacity(colors.card, 0.3),
       paddingHorizontal: 10,
       paddingVertical: 8,
       maxHeight: 200,
@@ -312,7 +312,7 @@ const makeReasoningStyles = (colors: ThemeColors) =>
     bodyText: {
       fontSize: fs.sm,
       lineHeight: 18,
-      color: "#581c87",
+      color: colors.violet,
     },
   });
 
@@ -382,7 +382,7 @@ const makeToolStyles = (colors: ThemeColors) =>
     errorBlock: {
       borderWidth: 0.5,
       borderColor: colors.destructive,
-      backgroundColor: "rgba(229,57,53,0.05)",
+      backgroundColor: withOpacity(colors.destructive, 0.05),
       borderRadius: radius.sm,
       padding: 8,
     },

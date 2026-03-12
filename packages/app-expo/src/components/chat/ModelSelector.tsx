@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useSettingsStore } from "@readany/core/stores/settings-store";
-import { useColors, fontSize as fs, radius, fontWeight as fw } from "@/styles/theme";
+import { useColors, fontSize as fs, radius, fontWeight as fw, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
 import { ChevronDownIcon, CheckIcon } from "@/components/ui/Icon";
 
@@ -210,7 +210,7 @@ const makeStyles = (colors: ThemeColors) =>
       borderRadius: radius.md,
     },
     modelItemActive: {
-      backgroundColor: "rgba(99,102,241,0.08)",
+      backgroundColor: withOpacity(colors.indigo, 0.08),
     },
     modelText: {
       fontSize: fs.xs,

@@ -21,7 +21,7 @@ import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { readingStatsService } from "@readany/core/stats";
 import type { OverallStats, DailyStats } from "@readany/core/stats";
 import { useReadingSessionStore } from "@/stores";
-import { type ThemeColors, radius, fontSize, fontWeight, useColors } from "@/styles/theme";
+import { type ThemeColors, radius, fontSize, fontWeight, useColors, withOpacity } from "@/styles/theme";
 import {
   BookOpenIcon,
   ClockIcon,
@@ -117,10 +117,10 @@ function MiniHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
 
   const getColor = (intensity: number) => {
     if (intensity <= 0) return themeColors.muted;
-    if (intensity < 0.25) return "rgba(16,185,129,0.3)";
-    if (intensity < 0.5) return "rgba(16,185,129,0.5)";
-    if (intensity < 0.75) return "rgba(16,185,129,0.7)";
-    return "rgba(16,185,129,0.9)";
+    if (intensity < 0.25) return withOpacity(themeColors.emerald, 0.3);
+    if (intensity < 0.5) return withOpacity(themeColors.emerald, 0.5);
+    if (intensity < 0.75) return withOpacity(themeColors.emerald, 0.7);
+    return withOpacity(themeColors.emerald, 0.9);
   };
 
   return (

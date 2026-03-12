@@ -28,6 +28,7 @@ export interface ThemeColors {
   emerald: string;
   amber: string;
   blue: string;
+  violet: string;
   // Highlight colors
   highlightYellow: string;
   highlightGreen: string;
@@ -61,6 +62,7 @@ const lightColors: ThemeColors = {
   emerald: "#10b981",
   amber: "#f59e0b",
   blue: "#3b82f6",
+  violet: "#7c3aed",
   highlightYellow: "#fef08a",
   highlightGreen: "#bbf7d0",
   highlightBlue: "#bfdbfe",
@@ -92,6 +94,7 @@ const darkColors: ThemeColors = {
   emerald: "#10b981",
   amber: "#f59e0b",
   blue: "#3b82f6",
+  violet: "#a78bfa",
   highlightYellow: "#854d0e",
   highlightGreen: "#166534",
   highlightBlue: "#1e40af",
@@ -123,6 +126,7 @@ const sepiaColors: ThemeColors = {
   emerald: "#10b981",
   amber: "#f59e0b",
   blue: "#3b82f6",
+  violet: "#7c3aed",
   highlightYellow: "#fef08a",
   highlightGreen: "#bbf7d0",
   highlightBlue: "#bfdbfe",

@@ -27,7 +27,7 @@ import type { RootStackParamList } from "@/navigation/RootNavigator";
 import type { Book, SortField } from "@readany/core/types";
 import { useLibraryStore } from "@/stores/library-store";
 import { useVectorModelStore } from "@/stores/vector-model-store";
-import { type ThemeColors, radius, fontSize, fontWeight, useColors } from "@/styles/theme";
+import { type ThemeColors, radius, fontSize, fontWeight, useColors, withOpacity } from "@/styles/theme";
 import {
   PlusIcon,
   SearchIcon,
@@ -482,7 +482,7 @@ export function LibraryScreen() {
 
         {isLoaded && hasBooks && isEmpty && (
           <View style={s.noResultsWrap}>
-            <SearchIcon size={40} color="rgba(124,124,130,0.3)" />
+            <SearchIcon size={40} color={withOpacity(colors.mutedForeground, 0.3)} />
             <Text style={s.noResultsText}>{t("library.noResults", "没有找到匹配的书籍")}</Text>
           </View>
         )}
@@ -533,7 +533,7 @@ export function LibraryScreen() {
                     }}
                   >
                     <View style={[s.tagCheckbox, hasTag && s.tagCheckboxActive]}>
-                      {hasTag && <CheckIcon size={12} color="#fff" />}
+                      {hasTag && <CheckIcon size={12} color={colors.primaryForeground} />}
                     </View>
                     <Text style={s.tagSheetItemText}>{tag}</Text>
                   </TouchableOpacity>
@@ -638,7 +638,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   tagSheetTitle: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.foreground, paddingHorizontal: 20, marginBottom: 8 },
   tagSheetList: { paddingHorizontal: 8 },
   tagSheetItem: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 12, paddingVertical: 10, borderRadius: radius.lg },
-  tagCheckbox: { width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: "rgba(124,124,130,0.4)", alignItems: "center", justifyContent: "center" },
+  tagCheckbox: { width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: withOpacity(colors.mutedForeground, 0.4), alignItems: "center", justifyContent: "center" },
   tagCheckboxActive: { borderColor: colors.primary, backgroundColor: colors.primary },
   tagSheetItemText: { fontSize: fontSize.sm, color: colors.foreground },
   tagSheetEmpty: { textAlign: "center", paddingVertical: 16, fontSize: fontSize.sm, color: colors.mutedForeground },

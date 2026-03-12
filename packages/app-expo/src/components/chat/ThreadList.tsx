@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { useTranslation } from "react-i18next";
 import type { Thread } from "@readany/core/types";
-import { useColors, fontSize as fs, radius, fontWeight as fw } from "@/styles/theme";
+import { useColors, fontSize as fs, radius, fontWeight as fw, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
 import {
   MessageCirclePlusIcon,
@@ -175,7 +175,7 @@ const makeStyles = (colors: ThemeColors) =>
       paddingHorizontal: 10,
       paddingVertical: 6,
       borderRadius: radius.lg,
-      backgroundColor: "rgba(99,102,241,0.1)",
+      backgroundColor: withOpacity(colors.indigo, 0.1),
     },
     newBtnText: {
       fontSize: fs.xs,
@@ -191,7 +191,7 @@ const makeStyles = (colors: ThemeColors) =>
       marginHorizontal: 8,
     },
     itemActive: {
-      backgroundColor: "rgba(99,102,241,0.08)",
+      backgroundColor: withOpacity(colors.indigo, 0.08),
     },
     itemContent: { flex: 1, gap: 2 },
     itemHeader: {
