@@ -243,6 +243,12 @@ export function ReaderScreen({ route, navigation }: Props) {
   } | null>(null);
   const [noteViewEditing, setNoteViewEditing] = useState(false);
   const [noteViewContent, setNoteViewContent] = useState("");
+  const [noteTooltip, setNoteTooltip] = useState<{
+    note: string;
+    cfi: string;
+    position: { x: number; y: number; selectionTop: number; selectionBottom: number };
+  } | null>(null);
+  const noteTooltipTimer = useRef<NodeJS.Timeout | null>(null);
   const assetLoadedRef = useRef(false);
 
   const readSettings = useSettingsStore((s) => s.readSettings);
@@ -410,6 +416,22 @@ export function ReaderScreen({ route, navigation }: Props) {
           position: detail.position,
         });
       }
+    },
+    onNoteTooltip: (detail) => {
+      // Dismiss any existing tooltip
+      if (noteTooltipTimer.current) {
+        clearTimeout(noteTooltipTimer.current);
+      }
+      setNoteTooltip({
+        note: detail.note,
+        cfi: detail.cfi,
+        position: detail.position,
+      });
+      // Auto-hide after 4 seconds
+      noteTooltipTimer.current = setTimeout(() => {
+        setNoteTooltip(null);
+        noteTooltipTimer.current = null;
+      }, 4000);
     },
   });
 
@@ -811,6 +833,44 @@ export function ReaderScreen({ route, navigation }: Props) {
             }
           }}
         />
+      )}
+
+      {/* Note Tooltip (long-press on wavy underline) */}
+      {noteTooltip && (
+        <TouchableOpacity
+          style={StyleSheet.absoluteFill}
+          activeOpacity={1}
+          onPress={() => {
+            if (noteTooltipTimer.current) {
+              clearTimeout(noteTooltipTimer.current);
+              noteTooltipTimer.current = null;
+            }
+            setNoteTooltip(null);
+          }}
+        >
+          <View
+            style={[
+              s.noteTooltip,
+              {
+                left: Math.max(
+                  12,
+                  Math.min(noteTooltip.position.x - 150, SCREEN_WIDTH - 312),
+                ),
+                ...(noteTooltip.position.selectionTop > 220
+                  ? { bottom: SCREEN_HEIGHT - noteTooltip.position.selectionTop + 8 }
+                  : { top: noteTooltip.position.selectionBottom + 12 }),
+              },
+            ]}
+            onStartShouldSetResponder={() => true}
+          >
+            <View style={s.noteTooltipContent}>
+              <MarkdownRenderer
+                content={noteTooltip.note}
+                styleOverrides={noteTooltipMdStyles}
+              />
+            </View>
+          </View>
+        </TouchableOpacity>
       )}
 
       {/* ─── Toolbar ─── */}
@@ -1402,6 +1462,26 @@ export function ReaderScreen({ route, navigation }: Props) {
   );
 }
 
+const TOOLTIP_FG = "#f1f5f9";
+const TOOLTIP_MUTED = "rgba(148, 163, 184, 0.5)";
+const noteTooltipMdStyles = {
+  body: { color: TOOLTIP_FG, fontSize: 13, lineHeight: 19 },
+  paragraph: { color: TOOLTIP_FG, fontSize: 13, lineHeight: 19, marginBottom: 4, marginTop: 0 },
+  heading1: { color: "#fff", fontSize: 15, fontWeight: "600" as const, marginBottom: 4, marginTop: 4 },
+  heading2: { color: "#fff", fontSize: 14, fontWeight: "600" as const, marginBottom: 3, marginTop: 3 },
+  heading3: { color: "#fff", fontSize: 13, fontWeight: "600" as const, marginBottom: 2, marginTop: 2 },
+  strong: { fontWeight: "700" as const, color: "#fff" },
+  em: { fontStyle: "italic" as const, color: "#e2e8f0" },
+  link: { color: "#60a5fa" },
+  code_inline: { backgroundColor: "rgba(255,255,255,0.1)", color: TOOLTIP_FG, fontSize: 12, fontFamily: "Menlo" },
+  code_block: { backgroundColor: "rgba(0,0,0,0.3)", color: TOOLTIP_FG, fontSize: 12, fontFamily: "Menlo", padding: 8 },
+  fence: { backgroundColor: "rgba(0,0,0,0.3)", color: TOOLTIP_FG, fontSize: 12, fontFamily: "Menlo", padding: 8 },
+  blockquote: { borderLeftWidth: 2, borderLeftColor: TOOLTIP_MUTED, paddingLeft: 10, backgroundColor: "transparent" },
+  bullet_list: { marginVertical: 2 },
+  ordered_list: { marginVertical: 2 },
+  list_item: { marginBottom: 2, flexDirection: "row" as const },
+};
+
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
@@ -1765,5 +1845,26 @@ const makeStyles = (colors: ThemeColors) =>
       fontSize: fontSize.sm,
       fontWeight: fontWeight.medium,
       color: colors.primaryForeground,
+    },
+
+    noteTooltip: {
+      position: "absolute",
+      width: 300,
+      maxHeight: 200,
+      backgroundColor: "rgba(15, 23, 42, 0.95)",
+      borderRadius: radius.lg,
+      padding: 12,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.3,
+      shadowRadius: 16,
+      elevation: 12,
+      borderWidth: 1,
+      borderColor: "rgba(100, 116, 139, 0.3)",
+      zIndex: 90,
+    },
+    noteTooltipContent: {
+      maxHeight: 140,
+      overflow: "hidden",
     },
   });

@@ -42,6 +42,11 @@ export interface ReaderBridgeCallbacks {
     range: Range;
     position: { x: number; y: number; selectionTop: number; selectionBottom: number };
   }) => void;
+  onNoteTooltip?: (detail: {
+    cfi: string;
+    note: string;
+    position: { x: number; y: number; selectionTop: number; selectionBottom: number };
+  }) => void;
 }
 
 export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
@@ -222,6 +227,16 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
             cb.onShowAnnotation?.({
               value: msg.value,
               range: msg.range,
+              position: msg.position,
+            });
+          }
+          break;
+        case "note-tooltip":
+          console.log("[ReaderBridge] Note tooltip:", msg.cfi);
+          if (msg.cfi && msg.note && msg.position) {
+            cb.onNoteTooltip?.({
+              cfi: msg.cfi,
+              note: msg.note,
               position: msg.position,
             });
           }

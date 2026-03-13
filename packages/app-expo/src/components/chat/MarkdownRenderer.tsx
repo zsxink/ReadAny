@@ -12,11 +12,13 @@ import Markdown from "react-native-markdown-display";
 interface MarkdownRendererProps {
   content: string;
   isStreaming?: boolean;
+  styleOverrides?: Record<string, any>;
 }
 
-export function MarkdownRenderer({ content, isStreaming }: MarkdownRendererProps) {
+export function MarkdownRenderer({ content, isStreaming, styleOverrides }: MarkdownRendererProps) {
   const colors = useColors();
-  const styles = makeMarkdownStyles(colors);
+  const baseStyles = makeMarkdownStyles(colors);
+  const styles = styleOverrides ? { ...baseStyles, ...styleOverrides } : baseStyles;
 
   const handleCopyCode = useCallback((text: string) => {
     Clipboard.setStringAsync(text);

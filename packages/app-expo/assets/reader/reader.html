@@ -114,6 +114,95 @@
     let searchResults = [];
     let searchIndex = 0;
 
+    // Note tooltip registry: per-doc WeakMap of cfi -> { range, note }
+    const docNoteRegistries = new WeakMap();
+
+    function registerNoteRange(doc, cfi, range, note) {
+      let registry = docNoteRegistries.get(doc);
+      if (!registry) {
+        registry = new Map();
+        docNoteRegistries.set(doc, registry);
+      }
+      registry.set(cfi, { range, note });
+    }
+
+    function unregisterNoteRange(doc, cfi) {
+      const registry = docNoteRegistries.get(doc);
+      if (registry) registry.delete(cfi);
+    }
+
+    function isPointInNoteRange(doc, x, y) {
+      const registry = docNoteRegistries.get(doc);
+      if (!registry || registry.size === 0) return null;
+      const pad = 6;
+      for (const [cfi, entry] of registry) {
+        for (const rect of entry.range.getClientRects()) {
+          if (x >= rect.left - pad && x <= rect.right + pad &&
+              y >= rect.top - pad && y <= rect.bottom + pad + 4) {
+            return { cfi, note: entry.note, range: entry.range };
+          }
+        }
+      }
+      return null;
+    }
+
+    // Attach long-press note tooltip detection to each doc
+    function attachNoteLongPress(doc) {
+      if (doc.__readany_noteLongPress) return;
+      doc.__readany_noteLongPress = true;
+
+      const LONG_PRESS_MS = 400;
+      let timer = null;
+      let startX = 0, startY = 0;
+
+      doc.addEventListener('touchstart', (e) => {
+        if (e.touches.length !== 1) return;
+        const touch = e.touches[0];
+        startX = touch.clientX;
+        startY = touch.clientY;
+
+        timer = setTimeout(() => {
+          timer = null;
+          const hit = isPointInNoteRange(doc, startX, startY);
+          if (!hit) return;
+
+          // Prevent subsequent click / show-annotation
+          e.preventDefault && e.preventDefault();
+
+          const rect = hit.range.getBoundingClientRect();
+          const iframe = doc.defaultView && doc.defaultView.frameElement;
+          const iframeRect = iframe ? iframe.getBoundingClientRect() : { left: 0, top: 0 };
+          postToRN('note-tooltip', {
+            cfi: hit.cfi,
+            note: hit.note,
+            position: {
+              x: iframeRect.left + rect.left + rect.width / 2,
+              y: iframeRect.top + rect.top - 8,
+              selectionTop: iframeRect.top + rect.top,
+              selectionBottom: iframeRect.top + rect.bottom,
+            },
+          });
+        }, LONG_PRESS_MS);
+      }, { passive: false });
+
+      doc.addEventListener('touchmove', (e) => {
+        if (!timer) return;
+        const touch = e.touches[0];
+        if (Math.abs(touch.clientX - startX) > 10 || Math.abs(touch.clientY - startY) > 10) {
+          clearTimeout(timer);
+          timer = null;
+        }
+      }, { passive: true });
+
+      doc.addEventListener('touchend', () => {
+        if (timer) { clearTimeout(timer); timer = null; }
+      }, { passive: true });
+
+      doc.addEventListener('touchcancel', () => {
+        if (timer) { clearTimeout(timer); timer = null; }
+      }, { passive: true });
+    }
+
     // ─── Message handler from React Native ───
     window.addEventListener('message', async (e) => {
       try {
@@ -244,6 +333,8 @@
           attachTapListener(doc);
           // Attach selection listener
           attachSelectionListener(doc);
+          // Attach long-press note tooltip
+          attachNoteLongPress(doc);
           postToRN('loaded', {});
         });
 
@@ -273,8 +364,16 @@
           };
           if (annotation.note) {
             draw(Overlayer.squiggly, { color: '#000000', width: 1.5 });
+            // Register for long-press tooltip
+            if (doc && range && annotation.value) {
+              registerNoteRange(doc, annotation.value, range, annotation.note);
+            }
           } else {
             draw(Overlayer.highlight, { color: colorMap[color] || colorMap.yellow });
+            // Remove stale tooltip registration if note was removed
+            if (doc && annotation.value) {
+              unregisterNoteRange(doc, annotation.value);
+            }
           }
         });
 

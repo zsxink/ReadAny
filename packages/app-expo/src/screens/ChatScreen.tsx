@@ -29,6 +29,7 @@ import { convertToMessageV2, mergeMessagesWithStreaming } from "@readany/core/ut
 import { Alert } from "react-native";
 
 import { ChatInput } from "@/components/chat/ChatInput";
+import { ContextPopover } from "@/components/chat/ContextPopover";
 import { MessageList } from "@/components/chat/MessageList";
 import { ModelSelector } from "@/components/chat/ModelSelector";
 import {
@@ -202,6 +203,7 @@ export function ChatScreen() {
         </View>
         <View style={s.headerRight}>
           <ModelSelector onNavigateToSettings={() => navigation.navigate("AISettings")} />
+          <ContextPopover />
           <TouchableOpacity style={s.iconBtn} onPress={handleNewThread} activeOpacity={0.7}>
             <MessageCirclePlusIcon size={16} color={colors.foreground} />
           </TouchableOpacity>

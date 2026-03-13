@@ -27,6 +27,8 @@ import type { TabParamList } from "@/navigation/TabNavigator";
 import type { HighlightWithBook } from "@readany/core/db/database";
 import { getPlatformService } from "@readany/core/services";
 import { HIGHLIGHT_COLOR_HEX } from "@readany/core/types";
+import { AnnotationExporter, type ExportFormat } from "@readany/core/export";
+import type { Highlight } from "@readany/core/types";
 /**
  * NotesScreen — matching Tauri mobile NotesPage exactly.
  * Features: stats header, book notebooks list with covers, detail view with
@@ -296,6 +298,45 @@ export function NotesView({ initialBookId, showBackButton, edges = ["top"] }: { 
     setEditNote("");
   }, []);
 
+  const handleExport = useCallback(
+    async (format: ExportFormat) => {
+      setShowExportMenu(false);
+      if (!selectedBook) return;
+
+      const book = books.find((b) => b.id === selectedBook.bookId);
+      if (!book) return;
+
+      const exporter = new AnnotationExporter();
+      const content = exporter.export(
+        selectedBook.highlights as Highlight[],
+        [],
+        book,
+        { format },
+      );
+
+      try {
+        if (format === "notion") {
+          await exporter.copyToClipboard(content);
+          Alert.alert(
+            t("common.success", "成功"),
+            t("notes.copiedToClipboard", "已复制到剪贴板"),
+          );
+        } else {
+          const ext = format === "json" ? "json" : "md";
+          await exporter.downloadAsFile(
+            content,
+            `${selectedBook.title}-${format}.${ext}`,
+            format,
+          );
+        }
+      } catch (err) {
+        console.error("Export failed:", err);
+        Alert.alert(t("common.error", "错误"), t("notes.exportFailed", "导出失败"));
+      }
+    },
+    [selectedBook, books, t],
+  );
+
   const totalHighlights = stats?.totalHighlights ?? 0;
   const totalNotes = stats?.highlightsWithNotes ?? 0;
   const totalBooks = stats?.totalBooks ?? 0;
@@ -487,9 +528,7 @@ export function NotesView({ initialBookId, showBackButton, edges = ["top"] }: { 
               <TouchableOpacity
                 key={fmt}
                 style={s.exportItem}
-                onPress={() => {
-                  setShowExportMenu(false);
-                }}
+                onPress={() => handleExport(fmt)}
               >
                 <Text style={s.exportItemText}>
                   {fmt === "markdown"

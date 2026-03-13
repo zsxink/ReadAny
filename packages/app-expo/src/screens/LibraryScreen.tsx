@@ -6,9 +6,11 @@ import {
   CheckIcon,
   ClockIcon,
   DatabaseIcon,
+  EditIcon,
   PlusIcon,
   SearchIcon,
   SortAscIcon,
+  Trash2Icon,
   XIcon,
 } from "@/components/ui/Icon";
 import { triggerVectorizeBook } from "@/lib/rag/vectorize-trigger";
@@ -86,6 +88,8 @@ export function LibraryScreen() {
   const [tagSheetOpen, setTagSheetOpen] = useState(false);
   const [tagSheetBook, setTagSheetBook] = useState<Book | null>(null);
   const [newTagInput, setNewTagInput] = useState("");
+  const [editingTag, setEditingTag] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
 
   // Vectorization state
   const [vectorizingBookId, setVectorizingBookId] = useState<string | null>(null);
@@ -113,6 +117,8 @@ export function LibraryScreen() {
     addTag,
     addTagToBook,
     removeTagFromBook,
+    removeTag,
+    renameTag,
   } = useLibraryStore();
 
   const openSearch = useCallback(() => {
@@ -591,21 +597,75 @@ export function LibraryScreen() {
             {allTags.length > 0 ? (
               allTags.map((tag) => {
                 const hasTag = tagSheetBook?.tags.includes(tag) ?? false;
+                const isEditing = editingTag === tag;
                 return (
-                  <TouchableOpacity
-                    key={tag}
-                    style={s.tagSheetItem}
-                    onPress={() => {
-                      if (!tagSheetBook) return;
-                      if (hasTag) removeTagFromBook(tagSheetBook.id, tag);
-                      else addTagToBook(tagSheetBook.id, tag);
-                    }}
-                  >
-                    <View style={[s.tagCheckbox, hasTag && s.tagCheckboxActive]}>
-                      {hasTag && <CheckIcon size={12} color={colors.primaryForeground} />}
+                  <View key={tag} style={s.tagSheetItem}>
+                    <TouchableOpacity
+                      style={s.tagCheckboxRow}
+                      onPress={() => {
+                        if (!tagSheetBook) return;
+                        if (hasTag) removeTagFromBook(tagSheetBook.id, tag);
+                        else addTagToBook(tagSheetBook.id, tag);
+                      }}
+                    >
+                      <View style={[s.tagCheckbox, hasTag && s.tagCheckboxActive]}>
+                        {hasTag && <CheckIcon size={12} color={colors.primaryForeground} />}
+                      </View>
+                      {isEditing ? (
+                        <TextInput
+                          style={s.tagEditInput}
+                          value={editingName}
+                          onChangeText={setEditingName}
+                          autoFocus
+                          onSubmitEditing={() => {
+                            const trimmed = editingName.trim();
+                            if (trimmed && trimmed !== tag) {
+                              renameTag(tag, trimmed);
+                            }
+                            setEditingTag(null);
+                            setEditingName("");
+                          }}
+                          onBlur={() => {
+                            setEditingTag(null);
+                            setEditingName("");
+                          }}
+                          returnKeyType="done"
+                        />
+                      ) : (
+                        <Text style={s.tagSheetItemText}>{tag}</Text>
+                      )}
+                    </TouchableOpacity>
+                    <View style={s.tagActionRow}>
+                      <TouchableOpacity
+                        style={s.tagActionBtn}
+                        onPress={() => {
+                          setEditingTag(tag);
+                          setEditingName(tag);
+                        }}
+                      >
+                        <EditIcon size={14} color={colors.mutedForeground} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={s.tagActionBtn}
+                        onPress={() => {
+                          Alert.alert(
+                            t("common.confirm", "确认"),
+                            t("library.deleteTagConfirm", `确定删除标签"${tag}"？`),
+                            [
+                              { text: t("common.cancel", "取消"), style: "cancel" },
+                              {
+                                text: t("common.delete", "删除"),
+                                style: "destructive",
+                                onPress: () => removeTag(tag),
+                              },
+                            ],
+                          );
+                        }}
+                      >
+                        <Trash2Icon size={14} color={colors.mutedForeground} />
+                      </TouchableOpacity>
                     </View>
-                    <Text style={s.tagSheetItemText}>{tag}</Text>
-                  </TouchableOpacity>
+                  </View>
                 );
               })
             ) : (
@@ -853,10 +913,17 @@ const makeStyles = (colors: ThemeColors) =>
     tagSheetItem: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 12,
+      justifyContent: "space-between",
       paddingHorizontal: 12,
       paddingVertical: 10,
       borderRadius: radius.lg,
+    },
+    tagCheckboxRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      flex: 1,
+      minWidth: 0,
     },
     tagCheckbox: {
       width: 20,
@@ -869,6 +936,23 @@ const makeStyles = (colors: ThemeColors) =>
     },
     tagCheckboxActive: { borderColor: colors.primary, backgroundColor: colors.primary },
     tagSheetItemText: { fontSize: fontSize.sm, color: colors.foreground },
+    tagEditInput: {
+      flex: 1,
+      fontSize: fontSize.sm,
+      color: colors.foreground,
+      padding: 0,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.primary,
+    },
+    tagActionRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+    },
+    tagActionBtn: {
+      padding: 6,
+      borderRadius: radius.sm,
+    },
     tagSheetEmpty: {
       textAlign: "center",
       paddingVertical: 16,
