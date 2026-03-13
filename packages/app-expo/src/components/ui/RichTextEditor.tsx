@@ -240,6 +240,7 @@ export function RichTextEditor({
             autoFocus={autoFocus}
             multiline
             textAlignVertical="top"
+            contextMenuHidden
             style={[styles.editor, { color: colors.foreground }]}
           />
         </View>
