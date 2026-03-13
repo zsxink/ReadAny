@@ -35,6 +35,7 @@ import { ModelSelector } from "@/components/chat/ModelSelector";
 import {
   BookOpenIcon,
   HistoryIcon,
+  LibraryIcon,
   LightbulbIcon,
   MessageCirclePlusIcon,
   ScrollTextIcon,
@@ -329,7 +330,7 @@ function EmptyState({
         text: t("chat.suggestions.analyzeArguments", "分析文中论点"),
       },
       {
-        icon: <SearchIcon size={18} color={colors.mutedForeground} />,
+        icon: <LibraryIcon size={18} color={colors.mutedForeground} />,
         text: t("chat.suggestions.findConcepts", "查找关键概念"),
       },
       {

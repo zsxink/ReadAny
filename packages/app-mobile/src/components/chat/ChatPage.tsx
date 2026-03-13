@@ -10,6 +10,7 @@ import {
   BookOpen,
   Brain,
   History,
+  Library,
   Lightbulb,
   MessageCirclePlus,
   ScrollText,
@@ -139,7 +140,7 @@ function EmptyState({ onSuggestionClick }: { onSuggestionClick: (text: string) =
   const SUGGESTIONS = [
     { key: "chat.suggestions.summarizeReading", icon: ScrollText },
     { key: "chat.suggestions.analyzeArguments", icon: Lightbulb },
-    { key: "chat.suggestions.findConcepts", icon: Search },
+    { key: "chat.suggestions.findConcepts", icon: Library },
     { key: "chat.suggestions.generateNotes", icon: BookOpen },
   ] as const;
 

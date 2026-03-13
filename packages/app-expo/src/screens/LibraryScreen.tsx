@@ -150,7 +150,7 @@ export function LibraryScreen() {
 
   // Refresh library when AI tools modify books/tags
   useEffect(() => {
-    return onLibraryChanged(() => loadBooks());
+    return onLibraryChanged((deletedTags) => loadBooks(deletedTags));
   }, [loadBooks]);
 
   // Filter & sort books

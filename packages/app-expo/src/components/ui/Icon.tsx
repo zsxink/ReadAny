@@ -538,3 +538,12 @@ export const Heading3Icon = icon(() => (
     <Path d="M17 17.5c2 1.5 4 .3 4-1.5a2 2 0 0 0-2-2" />
   </>
 ));
+
+export const LibraryIcon = icon(() => (
+  <>
+    <Path d="m16 6 4 14" />
+    <Path d="M12 6v14" />
+    <Path d="M8 8v12" />
+    <Path d="M4 4v16" />
+  </>
+));

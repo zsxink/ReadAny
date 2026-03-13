@@ -21,7 +21,7 @@ export interface LibraryState {
   allTags: string[];
   activeTag: string;
 
-  loadBooks: () => Promise<void>;
+  loadBooks: (deletedTags?: string[]) => Promise<void>;
   setBooks: (books: Book[]) => void;
   addBook: (book: Book) => Promise<void>;
   removeBook: (bookId: string) => Promise<void>;
@@ -95,7 +95,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   allTags: [],
   activeTag: "",
 
-  loadBooks: async () => {
+  loadBooks: async (deletedTags?: string[]) => {
     const computeTags = (books: Book[]) => {
       const tagSet = new Set<string>();
       for (const b of books) for (const t of b.tags) tagSet.add(t);
@@ -114,7 +114,24 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     try {
       await db.initDatabase();
       const books = await db.getBooks();
-      const allTags = computeTags(books);
+      const dbTags = computeTags(books);
+
+      // Load saved tags from FS (may include empty tags not assigned to any book)
+      let savedTags: string[] = [];
+      try {
+        const loaded = await loadFromFS<string[]>("library-tags");
+        if (loaded) savedTags = loaded;
+      } catch { /* no saved tags */ }
+
+      // Remove deleted tags from savedTags
+      const deletedSet = new Set(deletedTags || []);
+      savedTags = savedTags.filter((t) => !deletedSet.has(t));
+
+      // Merge: dbTags (from books) + empty tags from FS (not in dbTags and not deleted)
+      const dbTagSet = new Set(dbTags);
+      const emptyTags = savedTags.filter((t) => !dbTagSet.has(t) && !deletedSet.has(t));
+      const allTags = [...dbTags, ...emptyTags].sort();
+
       set({ books, isLoaded: true, allTags });
       debouncedSave("library-books", books);
       debouncedSave("library-tags", allTags);

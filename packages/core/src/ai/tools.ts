@@ -1093,7 +1093,7 @@ function createManageBookTagsTool(): ToolDefinition {
   return {
     name: "manageBookTags",
     description:
-      "Manage book tags: rename a tag across all books, delete a tag from all books, remove specific tags from a book, or replace all tags of a book. Use when the user asks to modify, rename, or delete tags.",
+      "Manage book tags: rename a tag across all books, delete one or more tags from all books, remove specific tags from a book, or replace all tags of a book. Use when the user asks to modify, rename, or delete tags. For delete action, you can delete multiple tags at once by passing a JSON array.",
     parameters: {
       reasoning: {
         type: "string",
@@ -1108,7 +1108,7 @@ function createManageBookTagsTool(): ToolDefinition {
       },
       tag: {
         type: "string",
-        description: "The tag to rename/delete (for rename/delete actions)",
+        description: "The tag to rename (for rename action). For delete action, use 'tags' parameter instead to support batch deletion.",
       },
       newTag: {
         type: "string",
@@ -1121,7 +1121,7 @@ function createManageBookTagsTool(): ToolDefinition {
       tags: {
         type: "string",
         description:
-          "JSON array of tags (for removeFromBook/setBookTags). Example: [\"科幻\",\"小说\"]",
+          'JSON array of tags. For delete action: tags to delete. For removeFromBook/setBookTags: tags to remove/set. Example: ["科幻","小说"]',
       },
     },
     execute: async (args) => {
@@ -1148,20 +1148,28 @@ function createManageBookTagsTool(): ToolDefinition {
       }
 
       if (action === "delete") {
-        const tag = args.tag as string;
-        if (!tag) {
-          return { success: false, error: "tag is required for delete" };
+        // Support both single tag (via 'tag' param) and multiple tags (via 'tags' param)
+        let tagsToDelete: string[] = [];
+        if (args.tags) {
+          tagsToDelete = JSON.parse(args.tags as string);
+        } else if (args.tag) {
+          tagsToDelete = [args.tag as string];
+        }
+        if (tagsToDelete.length === 0) {
+          return { success: false, error: "tag or tags is required for delete" };
         }
         const books = await getBooks();
         let affectedCount = 0;
         for (const book of books) {
-          if (book.tags.includes(tag)) {
-            await updateBook(book.id, { tags: book.tags.filter((t) => t !== tag) });
+          const hasAnyTag = tagsToDelete.some((tag) => book.tags.includes(tag));
+          if (hasAnyTag) {
+            const updated = book.tags.filter((t) => !tagsToDelete.includes(t));
+            await updateBook(book.id, { tags: updated });
             affectedCount++;
           }
         }
-        emitLibraryChanged();
-        return { success: true, action: "delete", tag, affectedBooks: affectedCount };
+        emitLibraryChanged(tagsToDelete);
+        return { success: true, action: "delete", deletedTags: tagsToDelete, affectedBooks: affectedCount };
       }
 
       if (action === "removeFromBook") {

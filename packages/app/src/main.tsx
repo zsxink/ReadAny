@@ -41,7 +41,7 @@ i18nReady.then(() => {
   useLibraryStore.getState().loadBooks();
 
   // Refresh library store when AI tools modify books/tags
-  onLibraryChanged(() => useLibraryStore.getState().loadBooks());
+  onLibraryChanged((deletedTags) => useLibraryStore.getState().loadBooks(deletedTags));
 
   // Fire-and-forget: preload foliate-js core modules so they're cached for later use
   import("foliate-js/view.js").catch(() => {});
