@@ -1,6 +1,7 @@
 {
   "name": "readany",
   "private": true,
+  "license": "GPL-3.0-or-later",
   "scripts": {
     "dev": "pnpm --filter app dev",
     "build": "pnpm --filter app build",

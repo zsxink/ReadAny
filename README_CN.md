@@ -26,7 +26,7 @@
   <a href="https://github.com/codedogQBY/ReadAny/blob/main/LICENSE">
     <img src="https://img.shields.io/github/license/codedogQBY/ReadAny?color=green" alt="License">
   </a>
-  <img src="https://img.shields.io/badge/平台-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey" alt="Platform">
+  <img src="https://img.shields.io/badge/平台-macOS%20%7C%20Windows%20%7C%20Linux%20%7C%20iOS%20%7C%20Android-blue" alt="Platform">
   <a href="README.md">
     <img src="https://img.shields.io/badge/lang-English-blue" alt="English">
   </a>
@@ -34,16 +34,7 @@
 
 ---
 
-> 🚀 **v2.0 更新**: 移动端版本（iOS/Android）正在开发中！查看 [`packages/app-mobile/`](packages/app-mobile/)。
-
-<!-- TODO: 添加你的 Hero 截图或 GIF -->
-<!--
-<p align="center">
-  <img src="docs/screenshots/hero.gif" alt="ReadAny Demo" width="100%">
-</p>
--->
-
-> 📸 **应用截图**: 即将推出！正在录制演示 GIF。
+> 🚀 **v2.0 更新**: 移动端应用（iOS/Android）现已上线！详见下方 [移动端](#移动端应用) 章节。
 
 ## 为什么选择 ReadAny？
 
@@ -62,6 +53,10 @@
 | AI 对话 | ✅ | ❌ | ❌ | ❌ |
 | 语义搜索 (RAG) | ✅ | ❌ | ❌ | ❌ |
 | 本地向量库 | ✅ | - | - | ❌ |
+| TTS 语音朗读 | ✅ | ❌ | 有限 | 有限 |
+| 阅读统计 | ✅ | ❌ | ❌ | 有限 |
+| WebDAV 同步 | ✅ | ❌ | ❌ | ❌ |
+| 技能系统 | ✅ | ❌ | ❌ | ❌ |
 | 多格式支持 | 8+ | 15+ | 10+ | 2 |
 | 笔记导出 | 5 种格式 | 有限 | 有限 | 有限 |
 | 开源免费 | ✅ | ✅ | ✅ | ❌ |
@@ -94,12 +89,33 @@
 - **语义搜索** - 超越关键词，向量检索 + BM25 混合搜索
 - **即时翻译** - AI 翻译或 DeepL，支持 19 种语言
 - **多模型支持** - OpenAI、Claude、Gemini、Ollama、DeepSeek
+- **技能系统** - 内置技能（摘要、概念解释、角色追踪等）+ 自定义技能
 
 ### 📝 标注与知识管理
 
 - **5 色高亮** - 黄/绿/蓝/粉/紫，悬停预览笔记
-- **Markdown 笔记** - TipTap 编辑器，所见即所得
+- **Markdown 笔记** - 富文本编辑器，工具栏操作，所见即所得
 - **多格式导出** - Markdown、HTML、JSON、Obsidian、Notion
+
+### 🔊 语音朗读 (TTS)
+
+- **多引擎支持** - Edge TTS、浏览器 TTS、通义千问
+- **丰富音色** - 100+ 种语音，多语言支持
+- **语速调节** - 可调节播放速度
+- **后台播放** - 边听边做其他事情
+
+### 📊 阅读统计
+
+- **阅读热力图** - 类似 GitHub 贡献图，可视化阅读习惯
+- **趋势图表** - 追踪每日/每周/每月阅读时长
+- **连续天数** - 记录最长连续阅读天数
+- **书籍统计** - 每本书的阅读时长、完成度
+
+### ☁️ 跨设备同步
+
+- **WebDAV 支持** - 跨设备同步书库、高亮、笔记
+- **自动同步** - 后台自动同步
+- **冲突解决** - 智能合并并发编辑
 
 ### 📚 多格式支持
 
@@ -125,6 +141,8 @@
 | macOS (Intel) | [下载 .dmg](https://github.com/codedogQBY/ReadAny/releases/latest) |
 | Windows | [下载 .msi](https://github.com/codedogQBY/ReadAny/releases/latest) |
 | Linux | [下载 .AppImage](https://github.com/codedogQBY/ReadAny/releases/latest) |
+| iOS | App Store（即将上线） |
+| Android | Google Play（即将上线） |
 
 ### 3 步上手
 
@@ -132,19 +150,30 @@
 2. **开始阅读** - 双击打开，沉浸体验
 3. **配置 AI**（可选）- 设置 → AI → 填入 API Key
 
-### 移动端版本（Beta）
+### 移动端应用
 
-我们正在使用 Tauri 2 积极开发 iOS 和 Android 版本：
+ReadAny 现已支持移动设备！
 
+**Expo (React Native) 版本：**
 ```bash
 # 克隆并设置
 git clone https://github.com/codedogQBY/ReadAny.git
 cd ReadAny
 pnpm install
 
-# 运行移动端开发
+# 运行 iOS
+pnpm expo:ios
+
+# 运行 Android
+pnpm expo:android
+```
+
+**Tauri Mobile 版本（实验性）：**
+```bash
+# 运行 iOS
 pnpm --filter @readany/app-mobile tauri ios dev
-# 或
+
+# 运行 Android
 pnpm --filter @readany/app-mobile tauri android dev
 ```
 
@@ -166,6 +195,7 @@ pnpm --filter @readany/app-mobile tauri android dev
 | 层级 | 技术 |
 |------|------|
 | 桌面框架 | [Tauri 2](https://tauri.app/) (Rust) |
+| 移动端 | [Expo](https://expo.dev/) (React Native) + Tauri Mobile |
 | 前端 | [React 19](https://react.dev/) + TypeScript |
 | 构建 | [Vite 7](https://vite.dev/) |
 | 样式 | [Tailwind CSS 4](https://tailwindcss.com/) + [Radix UI](https://www.radix-ui.com/) |
@@ -187,25 +217,31 @@ cd ReadAny
 # 安装依赖
 pnpm install
 
-# 开发模式
+# 开发模式（桌面端）
 pnpm tauri dev
+
+# 开发模式（移动端 - Expo）
+pnpm expo:start
 
 # 构建
 pnpm tauri build
 ```
 
-**环境要求：** Node.js ≥18, pnpm ≥9, Rust
+**环境要求：** Node.js ≥18, pnpm ≥9, Rust（Tauri 需要）
 
 ---
 
 ## 开发路线
 
-- [x] **移动端支持** — 架构已重构，iOS/Android 开发中
+- [x] **移动端应用** — iOS 和 Android 版本已上线
+- [x] **TTS 语音朗读** — Edge TTS，多音色
+- [x] **阅读统计** — 热力图、趋势、连续天数
+- [x] **技能系统** — 内置 + 自定义 AI 技能
+- [x] **WebDAV 同步** — 跨设备同步
 - [ ] 更多 AI 模型（Qwen、GLM、Llama）
 - [ ] PDF 重排/重渲染
-- [ ] 云同步
 - [ ] 插件系统
-- [ ] 有声书（TTS）
+- [ ] 官方云同步服务
 
 ---
 
@@ -221,7 +257,11 @@ pnpm tauri build
 
 ## 开源协议
 
-[MIT](LICENSE) © 2024 ReadAny Team
+[GPL-3.0](LICENSE) © 2024 ReadAny Team
+
+本项目采用 GNU General Public License v3.0 开源协议。你可以自由使用、修改和分发代码，但任何衍生作品必须以相同协议开源。
+
+**说明：** 源代码完全开源免费，但官方应用商店版本可能会收取一定费用，用于支持持续开发和覆盖证书成本。你始终可以免费自行编译使用。
 
 ---
 
@@ -229,6 +269,7 @@ pnpm tauri build
 
 - [foliate-js](https://github.com/johnfactotum/foliate-js) - 电子书渲染引擎
 - [Tauri](https://tauri.app/) - 跨平台桌面框架
+- [Expo](https://expo.dev/) - React Native 开发平台
 - [LangChain.js](https://js.langchain.com/) - AI 编排框架
 - [Radix UI](https://www.radix-ui.com/) - 无障碍 UI 组件
 - [Lucide](https://lucide.dev/) - 图标库

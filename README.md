@@ -26,7 +26,7 @@
   <a href="https://github.com/codedogQBY/ReadAny/blob/main/LICENSE">
     <img src="https://img.shields.io/github/license/codedogQBY/ReadAny?color=green" alt="License">
   </a>
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey" alt="Platform">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux%20%7C%20iOS%20%7C%20Android-blue" alt="Platform">
   <a href="README_CN.md">
     <img src="https://img.shields.io/badge/lang-中文-red" alt="Chinese">
   </a>
@@ -34,16 +34,7 @@
 
 ---
 
-> 🚀 **v2.0 Update**: Mobile version (iOS/Android) is now in development! Check [`packages/app-mobile/`](packages/app-mobile/).
-
-<!-- TODO: Add your hero screenshot or GIF here -->
-<!--
-<p align="center">
-  <img src="docs/screenshots/hero.gif" alt="ReadAny Demo" width="100%">
-</p>
--->
-
-> 📸 **Screenshots**: Coming soon! Currently working on capturing demo GIFs.
+> 🚀 **v2.0 Update**: Mobile apps (iOS/Android) now available! See [Mobile](#mobile-apps) section below.
 
 ## Why ReadAny?
 
@@ -62,6 +53,10 @@
 | AI Chat | ✅ | ❌ | ❌ | ❌ |
 | Semantic Search (RAG) | ✅ | ❌ | ❌ | ❌ |
 | Local Vector Store | ✅ | - | - | ❌ |
+| TTS (Text-to-Speech) | ✅ | ❌ | Limited | Limited |
+| Reading Stats | ✅ | ❌ | ❌ | Limited |
+| WebDAV Sync | ✅ | ❌ | ❌ | ❌ |
+| Skills System | ✅ | ❌ | ❌ | ❌ |
 | Format Support | 8+ | 15+ | 10+ | 2 |
 | Note Export | 5 formats | Limited | Limited | Limited |
 | Open Source | ✅ | ✅ | ✅ | ❌ |
@@ -94,12 +89,33 @@
 - **Semantic Search** - Beyond keywords, vector retrieval + BM25 hybrid search
 - **Instant Translation** - AI translation or DeepL, 19 languages supported
 - **Multiple AI Providers** - OpenAI, Claude, Gemini, Ollama, DeepSeek
+- **Skills System** - Built-in skills (summarizer, concept explainer, character tracker, etc.) + create custom skills
 
 ### 📝 Annotation & Knowledge Management
 
 - **5-Color Highlights** - Yellow/Green/Blue/Pink/Purple, hover to preview notes
-- **Markdown Notes** - TipTap editor, WYSIWYG
+- **Markdown Notes** - Rich text editor with toolbar, WYSIWYG
 - **Multi-format Export** - Markdown, HTML, JSON, Obsidian, Notion
+
+### 🔊 Text-to-Speech (TTS)
+
+- **Multiple Engines** - Edge TTS, Browser TTS, DashScope (通义千问)
+- **Voice Selection** - 100+ voices in multiple languages
+- **Speed Control** - Adjustable playback speed
+- **Background Playback** - Listen while doing other things
+
+### 📊 Reading Statistics
+
+- **Reading Heatmap** - Visualize your reading habits like GitHub contributions
+- **Trend Charts** - Track daily/weekly/monthly reading time
+- **Streak Tracking** - Longest consecutive reading days
+- **Book Statistics** - Time spent per book, completion rate
+
+### ☁️ Cross-Device Sync
+
+- **WebDAV Support** - Sync your library, highlights, and notes across devices
+- **Auto Sync** - Automatic background synchronization
+- **Conflict Resolution** - Smart merge for concurrent edits
 
 ### 📚 Multi-Format Support
 
@@ -125,6 +141,8 @@
 | macOS (Intel) | [Download .dmg](https://github.com/codedogQBY/ReadAny/releases/latest) |
 | Windows | [Download .msi](https://github.com/codedogQBY/ReadAny/releases/latest) |
 | Linux | [Download .AppImage](https://github.com/codedogQBY/ReadAny/releases/latest) |
+| iOS | App Store (Coming Soon) |
+| Android | Google Play (Coming Soon) |
 
 ### 3 Steps to Get Started
 
@@ -132,19 +150,30 @@
 2. **Start Reading** - Double-click to open, immersive experience
 3. **Configure AI** (Optional) - Settings → AI → Enter API Key
 
-### Mobile Version (Beta)
+### Mobile Apps
 
-We're actively developing iOS and Android versions using Tauri 2:
+ReadAny is now available on mobile devices!
 
+**Expo (React Native) Version:**
 ```bash
 # Clone and setup
 git clone https://github.com/codedogQBY/ReadAny.git
 cd ReadAny
 pnpm install
 
-# Run mobile dev
+# Run iOS
+pnpm expo:ios
+
+# Run Android
+pnpm expo:android
+```
+
+**Tauri Mobile Version (Experimental):**
+```bash
+# Run iOS
 pnpm --filter @readany/app-mobile tauri ios dev
-# or
+
+# Run Android
 pnpm --filter @readany/app-mobile tauri android dev
 ```
 
@@ -166,6 +195,7 @@ See [`MOBILE_UI_DESIGN.md`](packages/app-mobile/MOBILE_UI_DESIGN.md) for design 
 | Layer | Technology |
 |-------|------------|
 | Desktop | [Tauri 2](https://tauri.app/) (Rust) |
+| Mobile | [Expo](https://expo.dev/) (React Native) + Tauri Mobile |
 | Frontend | [React 19](https://react.dev/) + TypeScript |
 | Build | [Vite 7](https://vite.dev/) |
 | Styling | [Tailwind CSS 4](https://tailwindcss.com/) + [Radix UI](https://www.radix-ui.com/) |
@@ -187,25 +217,31 @@ cd ReadAny
 # Install
 pnpm install
 
-# Dev
+# Dev (Desktop)
 pnpm tauri dev
+
+# Dev (Mobile - Expo)
+pnpm expo:start
 
 # Build
 pnpm tauri build
 ```
 
-**Requirements:** Node.js ≥18, pnpm ≥9, Rust
+**Requirements:** Node.js ≥18, pnpm ≥9, Rust (for Tauri)
 
 ---
 
 ## Roadmap
 
-- [x] **Mobile support** — Architecture refactored, iOS/Android development in progress
+- [x] **Mobile apps** — iOS and Android versions available
+- [x] **TTS (Text-to-Speech)** — Edge TTS, multiple voices
+- [x] **Reading Statistics** — Heatmap, trends, streaks
+- [x] **Skills System** — Built-in + custom AI skills
+- [x] **WebDAV Sync** — Cross-device synchronization
 - [ ] More AI models (Qwen, GLM, Llama)
 - [ ] PDF reflow/re-render
-- [ ] Cloud sync
 - [ ] Plugin system
-- [ ] Audio ebook (TTS)
+- [ ] Cloud sync (official service)
 
 ---
 
@@ -221,7 +257,11 @@ Please run `pnpm lint` before submitting to ensure code style consistency.
 
 ## License
 
-[MIT](LICENSE) © 2024 ReadAny Team
+[GPL-3.0](LICENSE) © 2024 ReadAny Team
+
+This project is open source under the GNU General Public License v3.0. You are free to use, modify, and distribute the code, but any derivative works must also be open source under the same license.
+
+**Note:** While the source code is freely available, the official app store versions may be offered for a fee to support ongoing development and cover certificate costs. You can always build the app yourself at no cost.
 
 ---
 
@@ -229,6 +269,7 @@ Please run `pnpm lint` before submitting to ensure code style consistency.
 
 - [foliate-js](https://github.com/johnfactotum/foliate-js) - E-book rendering engine
 - [Tauri](https://tauri.app/) - Cross-platform desktop framework
+- [Expo](https://expo.dev/) - React Native development platform
 - [LangChain.js](https://js.langchain.com/) - AI orchestration framework
 - [Radix UI](https://www.radix-ui.com/) - Accessible UI components
 - [Lucide](https://lucide.dev/) - Icon library
