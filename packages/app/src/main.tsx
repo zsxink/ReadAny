@@ -11,6 +11,7 @@ import { useLibraryStore } from "./stores/library-store";
 import { flushAllWrites } from "./stores/persist";
 import { setPlatformService } from "@readany/core/services";
 import { TauriPlatformService } from "./lib/platform/tauri-platform-service";
+import { onLibraryChanged } from "@readany/core/events/library-events";
 
 // Register platform service before any database/core operations
 const tauriPlatform = new TauriPlatformService();
@@ -38,6 +39,9 @@ i18nReady.then(() => {
 
   // Initialize database and load books
   useLibraryStore.getState().loadBooks();
+
+  // Refresh library store when AI tools modify books/tags
+  onLibraryChanged(() => useLibraryStore.getState().loadBooks());
 
   // Fire-and-forget: preload foliate-js core modules so they're cached for later use
   import("foliate-js/view.js").catch(() => {});

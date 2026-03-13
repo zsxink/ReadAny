@@ -3,6 +3,7 @@
  */
 import type { Book, SortField } from "@readany/core/types";
 import { getPlatformService } from "@readany/core/services";
+import { onLibraryChanged } from "@readany/core/events/library-events";
 import {
   ArrowDownAZ,
   ArrowUpAZ,
@@ -69,6 +70,11 @@ export function LibraryPage() {
   // Load books on mount
   useEffect(() => {
     loadBooks();
+  }, [loadBooks]);
+
+  // Refresh library when AI tools modify books/tags
+  useEffect(() => {
+    return onLibraryChanged(() => loadBooks());
   }, [loadBooks]);
 
   // Focus search input when opened

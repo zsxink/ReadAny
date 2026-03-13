@@ -36,7 +36,9 @@
     "tagPlaceholder": "标签名称",
     "renameTag": "重命名",
     "deleteTag": "删除标签",
-    "noTags": "还没有标签"
+    "noTags": "还没有标签",
+    "expandTags": "展开更多 ({{count}})",
+    "collapseTags": "收起"
   },
   "tabs": {
     "library": "书库",

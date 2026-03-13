@@ -1,4 +1,5 @@
-import { getChunks, getHighlights, getNotes, getBooks, getAllHighlights, getAllNotes, getReadingSessionsByDateRange, getSkills as getDbSkills } from "../db/database";
+import { getChunks, getHighlights, getNotes, getBooks, getBook, updateBook, getAllHighlights, getAllNotes, getReadingSessionsByDateRange, getSkills as getDbSkills } from "../db/database";
+import { emitLibraryChanged } from "../events/library-events";
 import { getBuiltinSkills } from "./skills/builtin-skills";
 import { search } from "../rag/search";
 import { getContextTools } from "./context-tools";
@@ -930,6 +931,289 @@ function createReadingStatsTool(): ToolDefinition {
   };
 }
 
+/** Get books info and existing tags for AI classification */
+function createClassifyBooksTool(): ToolDefinition {
+  return {
+    name: "classifyBooks",
+    description:
+      "Get book metadata, table of contents, and content samples for classification. MUST be called BEFORE tagBooks to get book IDs and enough context. Without bookId: returns all uncategorized books with their TOC and content samples. With bookId: returns that specific book's full info. Use when the user asks to classify/categorize/tag books. IMPORTANT: Each book should have at most 2 tags — pick the most representative ones.",
+    parameters: {
+      reasoning: {
+        type: "string",
+        description: "Brief explanation of why you are calling this tool",
+        required: true,
+      },
+      bookId: {
+        type: "string",
+        description: "Optional. If provided, return info for this specific book instead of all uncategorized books.",
+      },
+    },
+    execute: async (args) => {
+      const books = await getBooks();
+      const allTags = [...new Set(books.flatMap((b) => b.tags))];
+      const targetBookId = args.bookId as string | undefined;
+
+      /** Extract TOC and content samples from chunks for a given book */
+      const getBookContentInfo = async (bookId: string) => {
+        try {
+          const chunks = await getChunks(bookId);
+          if (chunks.length === 0) return { toc: [], contentSample: "" };
+
+          // Extract TOC
+          const chapters = new Map<number, string>();
+          for (const chunk of chunks) {
+            if (!chapters.has(chunk.chapterIndex)) {
+              chapters.set(chunk.chapterIndex, chunk.chapterTitle);
+            }
+          }
+          const toc = Array.from(chapters.entries())
+            .sort((a, b) => a[0] - b[0])
+            .map(([, title]) => title);
+
+          // Sample first few chunks as content preview (up to ~1500 chars)
+          let contentSample = "";
+          for (const chunk of chunks.slice(0, 5)) {
+            contentSample += chunk.content + "\n";
+            if (contentSample.length > 1500) break;
+          }
+          contentSample = contentSample.slice(0, 1500);
+
+          return { toc, contentSample };
+        } catch {
+          return { toc: [], contentSample: "" };
+        }
+      };
+
+      if (targetBookId) {
+        const book = await getBook(targetBookId);
+        if (!book) {
+          return { success: false, error: "Book not found" };
+        }
+        const contentInfo = await getBookContentInfo(book.id);
+        return {
+          existingTags: allTags,
+          book: {
+            id: book.id,
+            title: book.meta.title,
+            author: book.meta.author,
+            description: book.meta.description,
+            subjects: book.meta.subjects,
+            language: book.meta.language,
+            currentTags: book.tags,
+            toc: contentInfo.toc,
+            contentSample: contentInfo.contentSample,
+          },
+          totalBooks: books.length,
+        };
+      }
+
+      const uncategorized = books.filter((b) => b.tags.length === 0);
+      const uncategorizedWithContent = await Promise.all(
+        uncategorized.map(async (b) => {
+          const contentInfo = await getBookContentInfo(b.id);
+          return {
+            id: b.id,
+            title: b.meta.title,
+            author: b.meta.author,
+            description: b.meta.description,
+            subjects: b.meta.subjects,
+            language: b.meta.language,
+            toc: contentInfo.toc,
+            contentSample: contentInfo.contentSample,
+          };
+        }),
+      );
+      return {
+        existingTags: allTags,
+        uncategorizedBooks: uncategorizedWithContent,
+        totalBooks: books.length,
+        uncategorizedCount: uncategorized.length,
+      };
+    },
+  };
+}
+
+/** Batch-apply tags to books */
+function createTagBooksTool(): ToolDefinition {
+  return {
+    name: "tagBooks",
+    description:
+      "Apply tags to books. Can tag multiple books at once. IMPORTANT: You MUST call classifyBooks first to get book IDs and metadata — never guess tags based on title alone. Use the description, subjects, and language from classifyBooks results to suggest accurate tags. RULE: Each book should have at most 2 tags — pick the 1-2 most representative categories. Prefer reusing existing tags over creating new ones.",
+    parameters: {
+      reasoning: {
+        type: "string",
+        description: "Brief explanation of why you are calling this tool",
+        required: true,
+      },
+      assignments: {
+        type: "string",
+        description:
+          'JSON array of {bookId, tags: string[]}. Example: [{"bookId":"abc","tags":["科幻","小说"]}]',
+        required: true,
+      },
+    },
+    execute: async (args) => {
+      const assignments: { bookId: string; tags: string[] }[] = JSON.parse(
+        args.assignments as string,
+      );
+      const results: {
+        bookId: string;
+        title?: string;
+        tags?: string[];
+        success: boolean;
+        error?: string;
+      }[] = [];
+      for (const { bookId, tags } of assignments) {
+        const book = await getBook(bookId);
+        if (!book) {
+          results.push({ bookId, success: false, error: "Book not found" });
+          continue;
+        }
+        const merged = [...new Set([...book.tags, ...tags])];
+        await updateBook(bookId, { tags: merged });
+        results.push({
+          bookId,
+          title: book.meta.title,
+          tags: merged,
+          success: true,
+        });
+      }
+      const result = {
+        results,
+        taggedCount: results.filter((r) => r.success).length,
+      };
+      if (result.taggedCount > 0) emitLibraryChanged();
+      return result;
+    },
+  };
+}
+
+/** Manage book tags: rename, delete, remove from book, set book tags */
+function createManageBookTagsTool(): ToolDefinition {
+  return {
+    name: "manageBookTags",
+    description:
+      "Manage book tags: rename a tag across all books, delete a tag from all books, remove specific tags from a book, or replace all tags of a book. Use when the user asks to modify, rename, or delete tags.",
+    parameters: {
+      reasoning: {
+        type: "string",
+        description: "Brief explanation of why you are calling this tool",
+        required: true,
+      },
+      action: {
+        type: "string",
+        description:
+          '"rename" | "delete" | "removeFromBook" | "setBookTags"',
+        required: true,
+      },
+      tag: {
+        type: "string",
+        description: "The tag to rename/delete (for rename/delete actions)",
+      },
+      newTag: {
+        type: "string",
+        description: "New tag name (for rename action)",
+      },
+      bookId: {
+        type: "string",
+        description: "Book ID (for removeFromBook/setBookTags)",
+      },
+      tags: {
+        type: "string",
+        description:
+          "JSON array of tags (for removeFromBook/setBookTags). Example: [\"科幻\",\"小说\"]",
+      },
+    },
+    execute: async (args) => {
+      const action = args.action as string;
+
+      if (action === "rename") {
+        const oldTag = args.tag as string;
+        const newTag = args.newTag as string;
+        if (!oldTag || !newTag) {
+          return { success: false, error: "Both tag and newTag are required for rename" };
+        }
+        const books = await getBooks();
+        let affectedCount = 0;
+        for (const book of books) {
+          if (book.tags.includes(oldTag)) {
+            const updated = book.tags.map((t) => (t === oldTag ? newTag : t));
+            const deduped = [...new Set(updated)];
+            await updateBook(book.id, { tags: deduped });
+            affectedCount++;
+          }
+        }
+        if (affectedCount > 0) emitLibraryChanged();
+        return { success: true, action: "rename", oldTag, newTag, affectedBooks: affectedCount };
+      }
+
+      if (action === "delete") {
+        const tag = args.tag as string;
+        if (!tag) {
+          return { success: false, error: "tag is required for delete" };
+        }
+        const books = await getBooks();
+        let affectedCount = 0;
+        for (const book of books) {
+          if (book.tags.includes(tag)) {
+            await updateBook(book.id, { tags: book.tags.filter((t) => t !== tag) });
+            affectedCount++;
+          }
+        }
+        if (affectedCount > 0) emitLibraryChanged();
+        return { success: true, action: "delete", tag, affectedBooks: affectedCount };
+      }
+
+      if (action === "removeFromBook") {
+        const bookId = args.bookId as string;
+        const tagsToRemove: string[] = JSON.parse(args.tags as string);
+        if (!bookId || !tagsToRemove) {
+          return { success: false, error: "bookId and tags are required for removeFromBook" };
+        }
+        const book = await getBook(bookId);
+        if (!book) {
+          return { success: false, error: "Book not found" };
+        }
+        const updated = book.tags.filter((t) => !tagsToRemove.includes(t));
+        await updateBook(bookId, { tags: updated });
+        emitLibraryChanged();
+        return {
+          success: true,
+          action: "removeFromBook",
+          bookId,
+          title: book.meta.title,
+          removedTags: tagsToRemove,
+          remainingTags: updated,
+        };
+      }
+
+      if (action === "setBookTags") {
+        const bookId = args.bookId as string;
+        const newTags: string[] = JSON.parse(args.tags as string);
+        if (!bookId || !newTags) {
+          return { success: false, error: "bookId and tags are required for setBookTags" };
+        }
+        const book = await getBook(bookId);
+        if (!book) {
+          return { success: false, error: "Book not found" };
+        }
+        const deduped = [...new Set(newTags)];
+        await updateBook(bookId, { tags: deduped });
+        emitLibraryChanged();
+        return {
+          success: true,
+          action: "setBookTags",
+          bookId,
+          title: book.meta.title,
+          tags: deduped,
+        };
+      }
+
+      return { success: false, error: `Unknown action: ${action}` };
+    },
+  };
+}
+
 /** Get general (non-book-specific) tools */
 function getGeneralTools(): ToolDefinition[] {
   return [
@@ -939,6 +1223,9 @@ function getGeneralTools(): ToolDefinition[] {
     createReadingStatsTool(),
     createGetSkillsTool(),
     createMindmapTool(),
+    createClassifyBooksTool(),
+    createTagBooksTool(),
+    createManageBookTagsTool(),
   ];
 }
 

@@ -28,6 +28,7 @@ import {
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { getPlatformService } from "@readany/core/services";
+import { onLibraryChanged } from "@readany/core/events/library-events";
 import type { Book, SortField } from "@readany/core/types";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
@@ -145,6 +146,11 @@ export function LibraryScreen() {
 
   useEffect(() => {
     loadBooks();
+  }, [loadBooks]);
+
+  // Refresh library when AI tools modify books/tags
+  useEffect(() => {
+    return onLibraryChanged(() => loadBooks());
   }, [loadBooks]);
 
   // Filter & sort books

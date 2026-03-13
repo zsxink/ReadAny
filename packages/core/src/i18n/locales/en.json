@@ -36,7 +36,9 @@
     "tagPlaceholder": "Tag name",
     "renameTag": "Rename",
     "deleteTag": "Delete Tag",
-    "noTags": "No tags yet"
+    "noTags": "No tags yet",
+    "expandTags": "Show more ({{count}})",
+    "collapseTags": "Show less"
   },
   "tabs": {
     "library": "Library",

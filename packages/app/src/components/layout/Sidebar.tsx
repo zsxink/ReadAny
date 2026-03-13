@@ -1,6 +1,6 @@
 import { useAppStore } from "@/stores/app-store";
 import { useLibraryStore } from "@/stores/library-store";
-import { BarChart3, BookOpen, ChevronDown, ChevronRight, Hash, MessageSquare, MoreHorizontal, NotebookPen, Pencil, Plus, Puzzle, Search, Settings, Trash2, X } from "lucide-react";
+import { BarChart3, BookOpen, ChevronDown, ChevronRight, ChevronsUpDown, Hash, MessageSquare, MoreHorizontal, NotebookPen, Pencil, Plus, Puzzle, Search, Settings, Trash2, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -30,6 +30,7 @@ export function HomeSidebar() {
   const [editingTag, setEditingTag] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const [tagMenuOpen, setTagMenuOpen] = useState<string | null>(null);
+  const [isTagsExpanded, setIsTagsExpanded] = useState(false);
   const newTagInputRef = useRef<HTMLInputElement>(null);
 
   // Determine which home sub-view is active
@@ -115,7 +116,23 @@ export function HomeSidebar() {
                   </button>
 
                   {/* Tag list */}
-                  {allTags.map((tag) => (
+                  {(() => {
+                    const MAX_VISIBLE = 3;
+                    const needsCollapse = allTags.length > MAX_VISIBLE;
+                    const visibleTags = needsCollapse && !isTagsExpanded
+                      ? (() => {
+                          // Always include active tag in visible set
+                          const first = allTags.slice(0, MAX_VISIBLE);
+                          if (activeTag && !first.includes(activeTag) && allTags.includes(activeTag)) {
+                            first[MAX_VISIBLE - 1] = activeTag;
+                          }
+                          return first;
+                        })()
+                      : allTags;
+                    return (
+                      <>
+                        <div className={needsCollapse && isTagsExpanded ? "max-h-40 overflow-y-auto" : ""}>
+                        {visibleTags.map((tag) => (
                     <div key={tag} className="group/tag relative flex items-center">
                       {editingTag === tag ? (
                         <input
@@ -194,6 +211,21 @@ export function HomeSidebar() {
                       )}
                     </div>
                   ))}
+                  </div>
+
+                  {needsCollapse && (
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
+                      onClick={() => setIsTagsExpanded(!isTagsExpanded)}
+                    >
+                      <ChevronsUpDown size={11} className="shrink-0" />
+                      <span>{isTagsExpanded ? t("sidebar.collapseTags") : t("sidebar.expandTags", { count: allTags.length - MAX_VISIBLE })}</span>
+                    </button>
+                  )}
+                      </>
+                    );
+                  })()}
 
                   {/* Uncategorized */}
                   <button
