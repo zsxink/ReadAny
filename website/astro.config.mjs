@@ -30,6 +30,11 @@ export default defineConfig({
       ],
       sidebar: [
         {
+          label: 'Support Center',
+          translations: { 'zh-CN': '帮助中心' },
+          autogenerate: { directory: 'support' },
+        },
+        {
           label: 'Getting Started',
           translations: { 'zh-CN': '快速开始' },
           items: [

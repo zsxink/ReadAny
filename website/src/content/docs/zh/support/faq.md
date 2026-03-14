@@ -8,7 +8,7 @@ description: ReadAny 常见问题解答。
 
 ### ReadAny 免费吗？
 
-是的。ReadAny 基于 MIT 许可证开源，完全免费使用。
+是的。ReadAny 基于 GPL-3.0 许可证开源，完全免费使用。
 
 ### ReadAny 会把数据上传到云端吗？
 

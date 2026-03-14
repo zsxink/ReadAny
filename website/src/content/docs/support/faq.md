@@ -8,7 +8,7 @@ description: Frequently asked questions about ReadAny.
 
 ### Is ReadAny free?
 
-Yes. ReadAny is open source under the MIT license and completely free to use.
+Yes. ReadAny is open source under the GPL-3.0 license and completely free to use.
 
 ### Does ReadAny send my data to the cloud?
 

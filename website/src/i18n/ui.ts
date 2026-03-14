@@ -56,7 +56,7 @@ export const ui = {
     'community.wechat': 'WeChat',
     'community.coming': 'Coming soon',
     'footer.github': 'Star on GitHub',
-    'footer.copyright': '© 2025 ReadAny. MIT License.',
+    'footer.copyright': '© 2025 ReadAny. GPL-3.0 License.',
   },
   zh: {
     'nav.home': '首页',
@@ -108,7 +108,7 @@ export const ui = {
     'community.wechat': '微信群',
     'community.coming': '即将上线',
     'footer.github': 'Star on GitHub',
-    'footer.copyright': '© 2025 ReadAny. MIT 许可证。',
+    'footer.copyright': '© 2025 ReadAny. GPL-3.0 许可证。',
   },
 } as const
 
