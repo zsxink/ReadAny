@@ -6,7 +6,7 @@
  */
 import { renderMermaidSVG } from "beautiful-mermaid";
 import { Check, Copy, ArrowUpRight, Download, Maximize2, Minimize2, ZoomIn, ZoomOut } from "lucide-react";
-import React, { useMemo, useState, useRef, useCallback, memo } from "react";
+import React, { useMemo, useState, useRef, useCallback, memo, useEffect } from "react";
 import Markdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
@@ -21,6 +21,23 @@ const MermaidBlock = memo(function MermaidBlock({ code }: { code: string }) {
   const [scale, setScale] = useState(1);
   const svgRef = useRef<HTMLDivElement>(null);
   const fullscreenSvgRef = useRef<HTMLDivElement>(null);
+  const instanceId = useRef(Math.random().toString(36).slice(2, 8));
+  
+  // Debug: track mount/unmount and state changes
+  useEffect(() => {
+    console.log(`[MermaidBlock ${instanceId.current}] mounted, code length:`, code?.length);
+    return () => {
+      console.log(`[MermaidBlock ${instanceId.current}] unmounted`);
+    };
+  }, []);
+  
+  useEffect(() => {
+    console.log(`[MermaidBlock ${instanceId.current}] code changed, length:`, code?.length);
+  }, [code]);
+  
+  useEffect(() => {
+    console.log(`[MermaidBlock ${instanceId.current}] scale changed:`, scale);
+  }, [scale]);
   
   // Memoize SVG rendering - only re-render when code changes
   const svg = useMemo(() => {
@@ -377,45 +394,57 @@ function createMdComponents(
       }
     : StaticCode;
 
-  const wrapWithCitations = (Component: React.ComponentType<any>) => {
-    return function Wrapped(props: any) {
-      return (
-        <Component {...props}>
-          {processCitationText(props.children, citations, onCitationClick)}
-        </Component>
-      );
-    };
-  };
-
   return {
     code: CodeComponent,
     a: StaticLink,
     table: StaticTable,
-    th: wrapWithCitations(function Th({ children, ...props }: React.ComponentProps<"th">) {
+    th: function Th({ children, ...props }: React.ComponentProps<"th">) {
       return (
         <th className="bg-muted/50 px-3 py-2 text-left text-xs font-semibold" {...props}>
-          {children}
+          {processCitationText(children, citations, onCitationClick)}
         </th>
       );
-    }),
-    td: wrapWithCitations(function Td({ children, ...props }: React.ComponentProps<"td">) {
+    },
+    td: function Td({ children, ...props }: React.ComponentProps<"td">) {
       return (
         <td className="border-t px-3 py-2 text-sm" {...props}>
-          {children}
+          {processCitationText(children, citations, onCitationClick)}
         </td>
       );
-    }),
-    p: wrapWithCitations("p"),
-    li: wrapWithCitations("li"),
-    strong: wrapWithCitations("strong"),
-    em: wrapWithCitations("em"),
-    blockquote: wrapWithCitations("blockquote"),
-    h1: wrapWithCitations("h1"),
-    h2: wrapWithCitations("h2"),
-    h3: wrapWithCitations("h3"),
-    h4: wrapWithCitations("h4"),
-    h5: wrapWithCitations("h5"),
-    h6: wrapWithCitations("h6"),
+    },
+    p: function P({ children, ...props }: React.ComponentProps<"p">) {
+      return <p {...props}>{processCitationText(children, citations, onCitationClick)}</p>;
+    },
+    li: function Li({ children, ...props }: React.ComponentProps<"li">) {
+      return <li {...props}>{processCitationText(children, citations, onCitationClick)}</li>;
+    },
+    strong: function Strong({ children, ...props }: React.ComponentProps<"strong">) {
+      return <strong {...props}>{processCitationText(children, citations, onCitationClick)}</strong>;
+    },
+    em: function Em({ children, ...props }: React.ComponentProps<"em">) {
+      return <em {...props}>{processCitationText(children, citations, onCitationClick)}</em>;
+    },
+    blockquote: function Blockquote({ children, ...props }: React.ComponentProps<"blockquote">) {
+      return <blockquote {...props}>{processCitationText(children, citations, onCitationClick)}</blockquote>;
+    },
+    h1: function H1({ children, ...props }: React.ComponentProps<"h1">) {
+      return <h1 {...props}>{processCitationText(children, citations, onCitationClick)}</h1>;
+    },
+    h2: function H2({ children, ...props }: React.ComponentProps<"h2">) {
+      return <h2 {...props}>{processCitationText(children, citations, onCitationClick)}</h2>;
+    },
+    h3: function H3({ children, ...props }: React.ComponentProps<"h3">) {
+      return <h3 {...props}>{processCitationText(children, citations, onCitationClick)}</h3>;
+    },
+    h4: function H4({ children, ...props }: React.ComponentProps<"h4">) {
+      return <h4 {...props}>{processCitationText(children, citations, onCitationClick)}</h4>;
+    },
+    h5: function H5({ children, ...props }: React.ComponentProps<"h5">) {
+      return <h5 {...props}>{processCitationText(children, citations, onCitationClick)}</h5>;
+    },
+    h6: function H6({ children, ...props }: React.ComponentProps<"h6">) {
+      return <h6 {...props}>{processCitationText(children, citations, onCitationClick)}</h6>;
+    },
   };
 }
 
