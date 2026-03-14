@@ -409,6 +409,7 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
               <svg
                 ref={fullscreenSvgRef}
                 className="w-full h-full"
+                onDoubleClick={(e) => e.stopPropagation()}
               />
             </div>
           </div>
@@ -476,6 +477,7 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
           <svg
             ref={svgRef}
             className="w-full h-full"
+            onDoubleClick={(e) => e.stopPropagation()}
           />
         </div>
       </div>
