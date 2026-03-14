@@ -82,28 +82,58 @@ const MermaidBlock = memo(function MermaidBlock({ code }: { code: string }) {
     // Clone the SVG to modify it
     const clonedSvg = svgElement.cloneNode(true) as SVGSVGElement;
     
-    // Get SVG dimensions
-    const bbox = svgElement.getBoundingClientRect();
-    const width = bbox.width;
-    const height = bbox.height;
+    // Get all elements to calculate full content bounds
+    const allElements = clonedSvg.querySelectorAll('*');
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     
-    // Add background rectangle
+    allElements.forEach((el) => {
+      if (el instanceof SVGGraphicsElement) {
+        try {
+          const bbox = el.getBBox();
+          if (bbox.width > 0 && bbox.height > 0) {
+            minX = Math.min(minX, bbox.x);
+            minY = Math.min(minY, bbox.y);
+            maxX = Math.max(maxX, bbox.x + bbox.width);
+            maxY = Math.max(maxY, bbox.y + bbox.height);
+          }
+        } catch (e) {
+          // Ignore elements that don't support getBBox
+        }
+      }
+    });
+    
+    // Add padding
+    const padding = 20;
+    const contentX = minX === Infinity ? 0 : minX - padding;
+    const contentY = minY === Infinity ? 0 : minY - padding;
+    const contentWidth = minX === Infinity ? 800 : maxX - minX + padding * 2;
+    const contentHeight = minY === Infinity ? 600 : maxY - minY + padding * 2;
+    
+    // Set viewBox to include all content
+    clonedSvg.setAttribute('viewBox', `${contentX} ${contentY} ${contentWidth} ${contentHeight}`);
+    clonedSvg.setAttribute('width', String(contentWidth));
+    clonedSvg.setAttribute('height', String(contentHeight));
+    
+    // Get computed styles and replace CSS variables with actual values
+    const computedStyle = window.getComputedStyle(svgElement);
+    const bgColor = computedStyle.getPropertyValue('--background') || 'white';
+    const fgColor = computedStyle.getPropertyValue('--foreground') || '#333';
+    
+    // Add background rectangle with computed color
     const bgRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    bgRect.setAttribute("width", "100%");
-    bgRect.setAttribute("height", "100%");
-    bgRect.setAttribute("fill", "white");
+    bgRect.setAttribute("x", String(contentX));
+    bgRect.setAttribute("y", String(contentY));
+    bgRect.setAttribute("width", String(contentWidth));
+    bgRect.setAttribute("height", String(contentHeight));
+    bgRect.setAttribute("fill", bgColor.trim() || 'white');
     clonedSvg.insertBefore(bgRect, clonedSvg.firstChild);
     
-    // Add font styles
-    const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
-    style.textContent = `
-      text, .label, .nodeLabel, .edgeLabel, .cluster-label {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
-      }
-    `;
-    clonedSvg.insertBefore(style, clonedSvg.firstChild);
+    // Replace CSS variables in the SVG with actual values
+    let svgData = new XMLSerializer().serializeToString(clonedSvg);
+    svgData = svgData.replace(/var\(--background\)/g, bgColor.trim() || 'white');
+    svgData = svgData.replace(/var\(--foreground\)/g, fgColor.trim() || '#333');
+    svgData = svgData.replace(/var\(--muted\)/g, '#888');
 
-    const svgData = new XMLSerializer().serializeToString(clonedSvg);
     const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
     const svgUrl = URL.createObjectURL(svgBlob);
 
