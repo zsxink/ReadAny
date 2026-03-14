@@ -11,12 +11,14 @@ import {
   Animated,
   Dimensions,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -264,37 +266,39 @@ export function BookChatScreen({ route, navigation }: Props) {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={0}
       >
-        <View style={s.content}>
-          {allMessages.length > 0 ? (
-            <MessageList
-              messages={allMessages}
-              isStreaming={isStreaming}
-              currentStep={currentStep}
-            />
-          ) : (
-            <View style={s.emptyContainer}>
-              <View style={s.emptyInner}>
-                <Image source={THINK_PNG} style={{ width: 120, height: 120 }} />
-                <Text style={s.emptyTitle}>{t("chat.aiAssistant", "AI 阅读助手")}</Text>
-                <Text style={s.emptySubtitle}>
-                  {t("chat.aiAssistantDesc", "分析内容、回答问题...")}
-                </Text>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={s.content}>
+            {allMessages.length > 0 ? (
+              <MessageList
+                messages={allMessages}
+                isStreaming={isStreaming}
+                currentStep={currentStep}
+              />
+            ) : (
+              <View style={s.emptyContainer}>
+                <View style={s.emptyInner}>
+                  <Image source={THINK_PNG} style={{ width: 120, height: 120 }} />
+                  <Text style={s.emptyTitle}>{t("chat.aiAssistant", "AI 阅读助手")}</Text>
+                  <Text style={s.emptySubtitle}>
+                    {t("chat.aiAssistantDesc", "分析内容、回答问题...")}
+                  </Text>
+                </View>
+                <View style={s.suggestionsContainer}>
+                  {SUGGESTIONS.map((text) => (
+                    <TouchableOpacity
+                      key={text}
+                      style={s.suggestionCard}
+                      onPress={() => handleSend(text, false)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={s.suggestionText}>{text}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
-              <View style={s.suggestionsContainer}>
-                {SUGGESTIONS.map((text) => (
-                  <TouchableOpacity
-                    key={text}
-                    style={s.suggestionCard}
-                    onPress={() => handleSend(text, false)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={s.suggestionText}>{text}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          )}
-        </View>
+            )}
+          </View>
+        </TouchableWithoutFeedback>
         <ChatInput
           onSend={handleSend}
           onStop={stopStream}
@@ -391,6 +395,8 @@ const makeStyles = (colors: ThemeColors) =>
       paddingHorizontal: 8,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.border,
+      backgroundColor: colors.background,
+      zIndex: 10,
     },
     headerLeft: {
       flexDirection: "row",

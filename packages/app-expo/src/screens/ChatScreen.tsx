@@ -11,12 +11,14 @@ import {
   Animated,
   Dimensions,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -236,17 +238,19 @@ export function ChatScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={0}
       >
-        <View style={s.content}>
-          {allMessages.length > 0 ? (
-            <MessageList
-              messages={allMessages}
-              isStreaming={isStreaming}
-              currentStep={currentStep}
-            />
-          ) : (
-            <EmptyState colors={colors} onSuggestionPress={handleSend} />
-          )}
-        </View>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={s.content}>
+            {allMessages.length > 0 ? (
+              <MessageList
+                messages={allMessages}
+                isStreaming={isStreaming}
+                currentStep={currentStep}
+              />
+            ) : (
+              <EmptyState colors={colors} onSuggestionPress={handleSend} />
+            )}
+          </View>
+        </TouchableWithoutFeedback>
         <ChatInput onSend={handleSend} onStop={stopStream} isStreaming={isStreaming} />
       </KeyboardAvoidingView>
 
@@ -405,6 +409,8 @@ const makeStyles = (colors: ThemeColors) =>
       paddingHorizontal: 12,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.border,
+      backgroundColor: colors.background,
+      zIndex: 10,
     },
     headerLeft: {
       flexDirection: "row",
