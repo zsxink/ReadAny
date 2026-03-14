@@ -12,6 +12,7 @@ import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import type { CitationPart } from "@readany/core/types/message";
 import { useTranslation } from "react-i18next";
+import { createPortal } from "react-dom";
 
 /** Mermaid code block — renders synchronously, zero-flash */
 function MermaidBlock({ code }: { code: string }) {
@@ -68,120 +69,123 @@ function MermaidBlock({ code }: { code: string }) {
     );
   }
 
-  const content = (
-    <div
-      ref={svgRef}
-      className="my-3 flex justify-center overflow-auto rounded-lg border bg-muted/30 p-4"
-      style={{ maxHeight: 400 }}
-    >
-      <div
-        style={{
-          transform: `scale(${scale})`,
-          transformOrigin: "top left",
-          minWidth: scale < 1 ? "100%" : undefined,
-        }}
-        dangerouslySetInnerHTML={{ __html: svg! }}
-      />
-    </div>
-  );
-
-  if (expanded) {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-        <div className="relative max-h-[90vh] max-w-[90vw] overflow-auto rounded-lg border bg-background p-4 shadow-lg">
-          <div className="absolute right-2 top-2 flex gap-1">
-            <button
-              type="button"
-              onClick={handleZoomOut}
-              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              title={t("common.zoomOut", "缩小")}
-            >
-              <ZoomOut className="size-4" />
-            </button>
-            <span className="flex items-center text-xs text-muted-foreground min-w-[3rem] justify-center">
-              {Math.round(scale * 100)}%
-            </span>
-            <button
-              type="button"
-              onClick={handleZoomIn}
-              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              title={t("common.zoomIn", "放大")}
-            >
-              <ZoomIn className="size-4" />
-            </button>
-            <div className="w-px h-4 bg-border mx-1 self-center" />
-            <button
-              type="button"
-              onClick={handleDownload}
-              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              title={t("mindmap.download", "下载")}
-            >
-              <Download className="size-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setExpanded(false)}
-              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              title={t("common.collapse", "收起")}
-            >
-              <Minimize2 className="size-4" />
-            </button>
-          </div>
+  const fullscreenOverlay = expanded
+    ? createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center">
           <div
-            ref={svgRef}
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setExpanded(false)}
+          />
+          <div className="relative z-10 m-4 max-h-[90vh] max-w-[90vw] overflow-auto rounded-lg border bg-background p-4 shadow-lg">
+            <div className="absolute right-2 top-2 flex gap-1 bg-background/80 rounded-md p-1">
+              <button
+                type="button"
+                onClick={handleZoomOut}
+                className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                title={t("common.zoomOut", "缩小")}
+              >
+                <ZoomOut className="size-4" />
+              </button>
+              <span className="flex items-center text-xs text-muted-foreground min-w-[3rem] justify-center">
+                {Math.round(scale * 100)}%
+              </span>
+              <button
+                type="button"
+                onClick={handleZoomIn}
+                className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                title={t("common.zoomIn", "放大")}
+              >
+                <ZoomIn className="size-4" />
+              </button>
+              <div className="w-px h-4 bg-border mx-1 self-center" />
+              <button
+                type="button"
+                onClick={handleDownload}
+                className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                title={t("mindmap.download", "下载")}
+              >
+                <Download className="size-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setExpanded(false)}
+                className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                title={t("common.collapse", "收起")}
+              >
+                <Minimize2 className="size-4" />
+              </button>
+            </div>
+            <div
+              style={{
+                transform: `scale(${scale})`,
+                transformOrigin: "top left",
+              }}
+              dangerouslySetInnerHTML={{ __html: svg! }}
+            />
+          </div>
+        </div>,
+        document.body
+      )
+    : null;
+
+  return (
+    <>
+      <div className="group relative">
+        <div
+          ref={svgRef}
+          className="my-3 flex justify-center overflow-auto rounded-lg border bg-muted/30 p-4"
+          style={{ maxHeight: 400 }}
+        >
+          <div
             style={{
               transform: `scale(${scale})`,
               transformOrigin: "top left",
+              minWidth: scale < 1 ? "100%" : undefined,
             }}
             dangerouslySetInnerHTML={{ __html: svg! }}
           />
         </div>
+        <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+          <button
+            type="button"
+            onClick={handleZoomOut}
+            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            title={t("common.zoomOut", "缩小")}
+          >
+            <ZoomOut className="size-4" />
+          </button>
+          <span className="flex items-center text-xs text-muted-foreground min-w-[3rem] justify-center">
+            {Math.round(scale * 100)}%
+          </span>
+          <button
+            type="button"
+            onClick={handleZoomIn}
+            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            title={t("common.zoomIn", "放大")}
+          >
+            <ZoomIn className="size-4" />
+          </button>
+          <div className="w-px h-4 bg-border mx-1 self-center" />
+          <button
+            type="button"
+            onClick={handleDownload}
+            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            title={t("mindmap.download", "下载")}
+          >
+            <Download className="size-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            title={t("common.expand", "放大")}
+          >
+            <Maximize2 className="size-4" />
+          </button>
+        </div>
       </div>
-    );
-  }
-
-  return (
-    <div className="group relative">
-      {content}
-      <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-        <button
-          type="button"
-          onClick={handleZoomOut}
-          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          title={t("common.zoomOut", "缩小")}
-        >
-          <ZoomOut className="size-4" />
-        </button>
-        <span className="flex items-center text-xs text-muted-foreground min-w-[3rem] justify-center">
-          {Math.round(scale * 100)}%
-        </span>
-        <button
-          type="button"
-          onClick={handleZoomIn}
-          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          title={t("common.zoomIn", "放大")}
-        >
-          <ZoomIn className="size-4" />
-        </button>
-        <div className="w-px h-4 bg-border mx-1 self-center" />
-        <button
-          type="button"
-          onClick={handleDownload}
-          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          title={t("mindmap.download", "下载")}
-        >
-          <Download className="size-4" />
-        </button>
-        <button
-          type="button"
-          onClick={() => setExpanded(true)}
-          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          title={t("common.expand", "放大")}
-        >
-          <Maximize2 className="size-4" />
-        </button>
-      </div>
-    </div>
+      {fullscreenOverlay}
+    </>
   );
 }
 
