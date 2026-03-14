@@ -72,7 +72,8 @@
     "uiFramework": "UI 框架",
     "ebookRenderer": "电子书渲染",
     "localDatabase": "本地数据库",
-    "feedback": "问题反馈"
+    "feedback": "问题反馈",
+    "supportCenter": "帮助中心"
   },
   "streaming": {
     "thinking": "正在思考...",
@@ -341,6 +342,7 @@
     "translationTab": "翻译",
     "tts": "语音朗读",
     "about": "关于",
+    "other": "更多",
     "aboutDesc": "阅读无界，理解无限",
     "version": "版本",
     "techStack": "技术栈",
@@ -349,6 +351,7 @@
     "techStackTypeScript": "类型安全",
     "techStackFoliate": "电子书渲染引擎",
     "feedback": "反馈问题",
+    "supportCenter": "帮助中心",
     "license": "基于 MIT 许可证开源",
     "checkUpdate": "检查更新",
     "updateChecking": "检查中...",

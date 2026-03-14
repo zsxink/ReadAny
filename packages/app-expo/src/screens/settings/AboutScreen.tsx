@@ -75,7 +75,7 @@ export default function AboutScreen() {
                 onPress={() => Linking.openURL(link.url)}
                 activeOpacity={0.7}
               >
-                <Text style={styles.linkText}>{link.label}</Text>
+                <Text style={styles.linkText}>{link.labelKey ? t(link.labelKey, link.label) : link.label}</Text>
                 <Text style={styles.linkArrow}>→</Text>
               </TouchableOpacity>
             ))}

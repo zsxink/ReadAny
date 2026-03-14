@@ -1,6 +1,6 @@
 import { useAppStore } from "@/stores/app-store";
 import { useLibraryStore } from "@/stores/library-store";
-import { BarChart3, BookOpen, ChevronDown, ChevronRight, ChevronsUpDown, Hash, MessageSquare, MoreHorizontal, NotebookPen, Pencil, Plus, Puzzle, Search, Settings, Trash2, X } from "lucide-react";
+import { BarChart3, BookOpen, ChevronDown, ChevronRight, ChevronsUpDown, Hash, HelpCircle, MessageSquare, MoreHorizontal, NotebookPen, Pencil, Plus, Puzzle, Search, Settings, Trash2, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -283,6 +283,10 @@ export function HomeSidebar() {
           <BarChart3 size={16} className="shrink-0" />
           <span className="text-sm">{t("stats.title")}</span>
         </button>
+        <a href="https://codedogqby.github.io/ReadAny/support/" target="_blank" rel="noopener noreferrer" className="flex w-full items-center gap-2 rounded-md p-1 py-1 text-left text-muted-foreground text-sm hover:bg-muted hover:text-foreground">
+          <HelpCircle size={16} className="shrink-0" />
+          <span className="text-sm">{t("settings.supportCenter")}</span>
+        </a>
         <button type="button" className="flex w-full items-center gap-2 rounded-md p-1 py-1 text-left text-muted-foreground text-sm hover:bg-muted hover:text-foreground" onClick={() => setShowSettings(true)}>
           <Settings size={16} className="shrink-0" />
           <span className="text-sm">{t("common.settings")}</span>

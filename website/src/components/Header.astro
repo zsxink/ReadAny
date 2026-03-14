@@ -10,10 +10,15 @@ const { lang = defaultLang, t } = Astro.props
 const basePath = Astro.site?.pathname || '/'
 const homeHref = lang === 'en' ? basePath : `${basePath}${lang}/`
 
+const supportHref = lang === 'en'
+  ? '/ReadAny/support/'
+  : `/ReadAny/${lang}/support/`
+
 const navItems = [
   { href: '#features', label: t('nav.features') },
   { href: '#download', label: t('nav.download') },
   { href: '#community', label: t('nav.community') },
+  { href: supportHref, label: t('nav.support') },
 ]
 ---
 

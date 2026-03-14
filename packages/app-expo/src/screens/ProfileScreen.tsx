@@ -7,6 +7,7 @@ import {
   CpuIcon,
   DatabaseIcon,
   FlameIcon,
+  HelpCircleIcon,
   InfoIcon,
   LanguagesIcon,
   PaletteIcon,
@@ -37,6 +38,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
@@ -307,8 +309,15 @@ export function ProfileScreen() {
         ],
       },
       {
-        title: t("settings.about", "关于"),
-        items: [{ icon: InfoIcon, label: t("settings.about", "关于"), route: "About" as const }],
+        title: t("settings.other", "更多"),
+        items: [
+          {
+            icon: HelpCircleIcon,
+            label: t("about.supportCenter", "帮助中心"),
+            url: "https://codedogqby.github.io/ReadAny/support/",
+          },
+          { icon: InfoIcon, label: t("settings.about", "关于"), route: "About" as const },
+        ],
       },
     ],
     [t],
@@ -381,9 +390,9 @@ export function ProfileScreen() {
                 const Icon = item.icon;
                 return (
                   <TouchableOpacity
-                    key={item.route}
+                    key={item.route ?? item.url}
                     style={[s.menuItem, idx < section.items.length - 1 && s.menuItemBorder]}
-                    onPress={() => nav.navigate(item.route as any)}
+                    onPress={() => item.url ? Linking.openURL(item.url) : nav.navigate(item.route as any)}
                     activeOpacity={0.7}
                   >
                     <Icon size={20} color={colors.mutedForeground} />

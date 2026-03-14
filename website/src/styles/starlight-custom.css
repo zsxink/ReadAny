@@ -1,0 +1,7 @@
+/* Starlight custom styles - align with ReadAny branding */
+
+:root {
+  --sl-color-accent-low: oklch(0.35 0.15 250);
+  --sl-color-accent: oklch(0.55 0.2 250);
+  --sl-color-accent-high: oklch(0.85 0.1 250);
+}

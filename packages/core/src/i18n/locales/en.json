@@ -74,6 +74,7 @@
     "ebookRenderer": "eBook Renderer",
     "localDatabase": "Local Database",
     "feedback": "Feedback",
+    "supportCenter": "Support Center",
     "madeBy": "Made with ❤️ by NicePkg"
   },
   "streaming": {
@@ -343,6 +344,7 @@
     "translationTab": "Translation",
     "tts": "TTS",
     "about": "About",
+    "other": "More",
     "aboutDesc": "Read Any, Understand More",
     "version": "Version",
     "techStack": "Tech Stack",
@@ -351,6 +353,7 @@
     "techStackTypeScript": "Type safety",
     "techStackFoliate": "eBook rendering engine",
     "feedback": "Feedback",
+    "supportCenter": "Support Center",
     "license": "Open source under MIT license",
     "checkUpdate": "Check for Updates",
     "updateChecking": "Checking...",
