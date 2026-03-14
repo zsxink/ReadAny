@@ -301,12 +301,14 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
                 </button>
               </div>
             </div>
-            <div className="flex-1 overflow-auto">
+            <div className="flex-1 overflow-auto flex items-center justify-center">
               <svg
                 ref={fullscreenSvgRef}
                 style={{
                   transform: `scale(${scale})`,
                   transformOrigin: "center center",
+                  minWidth: "100%",
+                  minHeight: "100%",
                 }}
                 className="w-full h-full"
               />
@@ -372,12 +374,14 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
           </div>
         </div>
 
-        <div className="overflow-auto" style={{ height: 400 }}>
+        <div className="overflow-auto flex items-center justify-center" style={{ height: 400 }}>
           <svg
             ref={svgRef}
             style={{
               transform: `scale(${scale})`,
               transformOrigin: "center center",
+              minWidth: "100%",
+              minHeight: "100%",
             }}
             className="w-full h-full"
           />
