@@ -133,8 +133,8 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
     // Clone the SVG to modify it
     const clonedSvg = svgElement.cloneNode(true) as SVGSVGElement;
     
-    // Get all markmap-node elements to calculate full content bounds
-    const nodeElements = clonedSvg.querySelectorAll('.markmap-node');
+    // Get all markmap-node and markmap-foreign elements to calculate full content bounds
+    const nodeElements = clonedSvg.querySelectorAll('.markmap-node, .markmap-foreign');
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     
     nodeElements.forEach((el) => {
@@ -157,6 +157,24 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
           minY = Math.min(minY, y);
           maxX = Math.max(maxX, x + bbox.width);
           maxY = Math.max(maxY, y + bbox.height);
+        } catch (e) {
+          // Ignore
+        }
+      }
+    });
+    
+    // Also check all path elements (for links between nodes)
+    const pathElements = clonedSvg.querySelectorAll('path');
+    pathElements.forEach((el) => {
+      if (el instanceof SVGGraphicsElement) {
+        try {
+          const bbox = el.getBBox();
+          if (bbox.width > 0 && bbox.height > 0) {
+            minX = Math.min(minX, bbox.x);
+            minY = Math.min(minY, bbox.y);
+            maxX = Math.max(maxX, bbox.x + bbox.width);
+            maxY = Math.max(maxY, bbox.y + bbox.height);
+          }
         } catch (e) {
           // Ignore
         }
