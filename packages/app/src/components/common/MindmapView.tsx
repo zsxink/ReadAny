@@ -133,42 +133,74 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
     // Clone the SVG to modify it
     const clonedSvg = svgElement.cloneNode(true) as SVGSVGElement;
     
-    // Try to get the main g element which contains all content
-    const gElement = clonedSvg.querySelector('g');
-    let contentX = 0, contentY = 0, contentWidth = 800, contentHeight = 600;
+    // Get all markmap-node elements to calculate full content bounds
+    const nodeElements = clonedSvg.querySelectorAll('.markmap-node');
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     
-    if (gElement) {
-      try {
-        // Get bbox of the main content group
-        const bbox = gElement.getBBox();
-        if (bbox.width > 0 && bbox.height > 0) {
-          const padding = 20;
-          contentX = bbox.x - padding;
-          contentY = bbox.y - padding;
-          contentWidth = bbox.width + padding * 2;
-          contentHeight = bbox.height + padding * 2;
-        }
-      } catch (e) {
-        // If getBBox fails, try to parse from transform
-        const transform = gElement.getAttribute('transform');
-        if (transform) {
-          const translateMatch = transform.match(/translate\(([^,]+),\s*([^)]+)\)/);
-          const scaleMatch = transform.match(/scale\(([^)]+)\)/);
-          if (translateMatch) {
-            const translateX = parseFloat(translateMatch[1]);
-            const translateY = parseFloat(translateMatch[2]);
-            const scale = scaleMatch ? parseFloat(scaleMatch[1]) : 1;
-            // Estimate content bounds
-            contentX = -translateX / scale - 100;
-            contentY = -translateY / scale - 100;
-            contentWidth = 2000;
-            contentHeight = 1500;
+    nodeElements.forEach((el) => {
+      if (el instanceof SVGGraphicsElement) {
+        try {
+          const bbox = el.getBBox();
+          const transform = el.getAttribute('transform');
+          let x = bbox.x, y = bbox.y;
+          
+          // Parse transform to get actual position
+          if (transform) {
+            const translateMatch = transform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+            if (translateMatch) {
+              x += parseFloat(translateMatch[1]);
+              y += parseFloat(translateMatch[2]);
+            }
           }
+          
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y);
+          maxX = Math.max(maxX, x + bbox.width);
+          maxY = Math.max(maxY, y + bbox.height);
+        } catch (e) {
+          // Ignore
         }
+      }
+    });
+    
+    // Fallback to g element bbox if no nodes found
+    if (minX === Infinity) {
+      const gElement = clonedSvg.querySelector('g');
+      if (gElement) {
+        try {
+          const bbox = gElement.getBBox();
+          minX = bbox.x;
+          minY = bbox.y;
+          maxX = bbox.x + bbox.width;
+          maxY = bbox.y + bbox.height;
+        } catch (e) {
+          minX = -500;
+          minY = -500;
+          maxX = 1500;
+          maxY = 1000;
+        }
+      } else {
+        minX = -500;
+        minY = -500;
+        maxX = 1500;
+        maxY = 1000;
       }
     }
     
-    // Set viewBox to fit content
+    // Add padding
+    const padding = 30;
+    const contentX = minX - padding;
+    const contentY = minY - padding;
+    const contentWidth = maxX - minX + padding * 2;
+    const contentHeight = maxY - minY + padding * 2;
+    
+    // Reset transform on g element to show all content at original scale
+    const gElement = clonedSvg.querySelector('g');
+    if (gElement) {
+      gElement.setAttribute('transform', 'translate(0,0) scale(1)');
+    }
+    
+    // Set viewBox to fit all content
     clonedSvg.setAttribute('viewBox', `${contentX} ${contentY} ${contentWidth} ${contentHeight}`);
     clonedSvg.setAttribute('width', String(contentWidth));
     clonedSvg.setAttribute('height', String(contentHeight));
@@ -226,12 +258,60 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
   }, [expanded, title, t]);
 
   const handleZoomIn = useCallback(() => {
-    setScale((prev) => Math.min(prev + 0.2, 3));
-  }, []);
+    const newScale = Math.min(scale + 0.2, 3);
+    setScale(newScale);
+    // Apply zoom using markmap's transform
+    if (markmapRef.current) {
+      const svg = markmapRef.current.svg;
+      const g = svg.select('g');
+      const currentTransform = g.attr('transform') || '';
+      const translateMatch = currentTransform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+      if (translateMatch) {
+        const x = parseFloat(translateMatch[1]);
+        const y = parseFloat(translateMatch[2]);
+        g.attr('transform', `translate(${x},${y}) scale(${newScale})`);
+      }
+    }
+    if (fullscreenMarkmapRef.current) {
+      const svg = fullscreenMarkmapRef.current.svg;
+      const g = svg.select('g');
+      const currentTransform = g.attr('transform') || '';
+      const translateMatch = currentTransform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+      if (translateMatch) {
+        const x = parseFloat(translateMatch[1]);
+        const y = parseFloat(translateMatch[2]);
+        g.attr('transform', `translate(${x},${y}) scale(${newScale})`);
+      }
+    }
+  }, [scale]);
 
   const handleZoomOut = useCallback(() => {
-    setScale((prev) => Math.max(prev - 0.2, 0.3));
-  }, []);
+    const newScale = Math.max(scale - 0.2, 0.3);
+    setScale(newScale);
+    // Apply zoom using markmap's transform
+    if (markmapRef.current) {
+      const svg = markmapRef.current.svg;
+      const g = svg.select('g');
+      const currentTransform = g.attr('transform') || '';
+      const translateMatch = currentTransform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+      if (translateMatch) {
+        const x = parseFloat(translateMatch[1]);
+        const y = parseFloat(translateMatch[2]);
+        g.attr('transform', `translate(${x},${y}) scale(${newScale})`);
+      }
+    }
+    if (fullscreenMarkmapRef.current) {
+      const svg = fullscreenMarkmapRef.current.svg;
+      const g = svg.select('g');
+      const currentTransform = g.attr('transform') || '';
+      const translateMatch = currentTransform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+      if (translateMatch) {
+        const x = parseFloat(translateMatch[1]);
+        const y = parseFloat(translateMatch[2]);
+        g.attr('transform', `translate(${x},${y}) scale(${newScale})`);
+      }
+    }
+  }, [scale]);
 
   const handleResetZoom = useCallback(() => {
     setScale(1);
@@ -301,15 +381,9 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
                 </button>
               </div>
             </div>
-            <div className="flex-1 overflow-auto flex items-center justify-center">
+            <div className="flex-1 overflow-auto">
               <svg
                 ref={fullscreenSvgRef}
-                style={{
-                  transform: `scale(${scale})`,
-                  transformOrigin: "center center",
-                  minWidth: "100%",
-                  minHeight: "100%",
-                }}
                 className="w-full h-full"
               />
             </div>
@@ -374,15 +448,9 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
           </div>
         </div>
 
-        <div className="overflow-auto flex items-center justify-center" style={{ height: 400 }}>
+        <div className="overflow-auto" style={{ height: 400 }}>
           <svg
             ref={svgRef}
-            style={{
-              transform: `scale(${scale})`,
-              transformOrigin: "center center",
-              minWidth: "100%",
-              minHeight: "100%",
-            }}
             className="w-full h-full"
           />
         </div>
