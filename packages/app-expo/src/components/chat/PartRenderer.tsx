@@ -4,6 +4,7 @@ import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from
 import type { ThemeColors } from "@/styles/theme";
 import type {
   AbortedPart,
+  CitationPart,
   MermaidPart,
   MindmapPart,
   Part,
@@ -21,12 +22,14 @@ import { MermaidView } from "@/components/common/MermaidView";
 
 interface PartProps {
   part: Part;
+  citations?: CitationPart[];
+  onCitationClick?: (citation: CitationPart) => void;
 }
 
-export function PartRenderer({ part }: PartProps) {
+export function PartRenderer({ part, citations, onCitationClick }: PartProps) {
   switch (part.type) {
     case "text":
-      return <TextPartView part={part} />;
+      return <TextPartView part={part} citations={citations} onCitationClick={onCitationClick} />;
     case "reasoning":
       return <ReasoningPartView part={part} />;
     case "tool_call":
@@ -52,16 +55,15 @@ function MermaidPartView({ part }: { part: MermaidPart }) {
   return <MermaidView chart={part.chart} title={part.title} />;
 }
 
-function TextPartView({ part }: { part: TextPart }) {
+function TextPartView({ part, citations, onCitationClick }: { part: TextPart; citations?: CitationPart[]; onCitationClick?: (citation: CitationPart) => void }) {
   const throttledText = useThrottledValue(part.text, 100);
   const isStreaming = part.status === "running";
 
-  // 不显示光标，直接返回 null 或渲染内容
   if (!throttledText.trim()) {
     return null;
   }
 
-  return <MarkdownRenderer content={throttledText} isStreaming={isStreaming} />;
+  return <MarkdownRenderer content={throttledText} isStreaming={isStreaming} citations={citations} onCitationClick={onCitationClick} />;
 }
 
 function ReasoningPartView({ part }: { part: ReasoningPart }) {
@@ -75,7 +77,6 @@ function ReasoningPartView({ part }: { part: ReasoningPart }) {
     if (part.status === "running") setIsOpen(true);
   }, [part.status]);
 
-  // Use original part.text for empty check, throttledText for display
   if (!part.text?.trim()) return null;
 
   return (
@@ -115,7 +116,7 @@ function ReasoningPartView({ part }: { part: ReasoningPart }) {
 
 const TOOL_LABEL_KEYS: Record<string, string> = {
   ragSearch: "toolLabels.ragSearch",
-  ragToc: "toolLabels.ragToc",
+  ragToc: "toolToc",
   ragContext: "toolLabels.ragContext",
   summarize: "toolLabels.summarize",
   extractEntities: "toolLabels.extractEntities",

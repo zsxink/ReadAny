@@ -265,7 +265,7 @@ export function ChatScreen() {
 
       {/* Thread sidebar overlay */}
       {showSidebar && (
-        <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+        <View style={[StyleSheet.absoluteFill, { zIndex: 20 }]} pointerEvents="box-none">
           <Animated.View style={[s.sidebarBackdrop, { opacity: backdropAnim }]}>
             <Pressable style={StyleSheet.absoluteFill} onPress={closeSidebar} />
           </Animated.View>

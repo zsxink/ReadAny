@@ -6,7 +6,7 @@ import { useSettingsStore } from "@/stores/settings-store";
  * ModelSelector — compact pill trigger with popover dropdown.
  * Matches app-mobile MobileModelSelector style.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Modal,
@@ -34,18 +34,7 @@ export function ModelSelector({ onNavigateToSettings }: ModelSelectorProps) {
 
   const endpointsWithModels = aiConfig.endpoints.filter((ep) => ep.models.length > 0);
   const totalModels = endpointsWithModels.reduce((sum, ep) => sum + ep.models.length, 0);
-  const canSwitch = totalModels > 1;
-
-  // 如果有模型列表但 activeModel 为空，自动选中第一个
-  useEffect(() => {
-    if (!aiConfig.activeModel) {
-      const firstWithModels = aiConfig.endpoints.find((ep) => ep.models.length > 0);
-      if (firstWithModels) {
-        setActiveEndpoint(firstWithModels.id);
-        setActiveModel(firstWithModels.models[0]);
-      }
-    }
-  }, [aiConfig.activeModel, aiConfig.endpoints, setActiveEndpoint, setActiveModel]);
+  const canSwitch = totalModels >= 1;
 
   const displayName = aiConfig.activeModel
     ? aiConfig.activeModel.length > 16
@@ -55,13 +44,11 @@ export function ModelSelector({ onNavigateToSettings }: ModelSelectorProps) {
 
   const handleSelect = useCallback(
     (endpointId: string, model: string) => {
-      if (endpointId !== aiConfig.activeEndpointId) {
-        setActiveEndpoint(endpointId);
-      }
+      setActiveEndpoint(endpointId);
       setActiveModel(model);
       setVisible(false);
     },
-    [aiConfig.activeEndpointId, setActiveEndpoint, setActiveModel],
+    [setActiveEndpoint, setActiveModel],
   );
 
   if (aiConfig.endpoints.length === 0) {

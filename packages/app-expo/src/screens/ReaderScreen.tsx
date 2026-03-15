@@ -287,11 +287,9 @@ export function ReaderScreen({ route, navigation }: Props) {
 
     const loadAsset = async () => {
       try {
-        console.log("[ReaderScreen] Loading reader.html asset...");
         const asset = READER_HTML_ASSET;
         await asset.downloadAsync();
         const uri = asset.localUri || asset.uri;
-        console.log("[ReaderScreen] Reader HTML asset loaded:", uri);
         setReaderHtmlUri(uri);
       } catch (err) {
         console.error("[ReaderScreen] Failed to load reader.html asset:", err);
@@ -353,7 +351,6 @@ export function ReaderScreen({ route, navigation }: Props) {
       setToc(items);
     },
     onSelection: (detail: SelectionEvent) => {
-      console.log("[ReaderScreen] onSelection callback called:", detail.text);
       setSelection(detail);
       // Sync selection for AI tools
       if (detail.cfi) {
@@ -366,7 +363,6 @@ export function ReaderScreen({ route, navigation }: Props) {
       }
     },
     onSelectionCleared: () => {
-      console.log("[ReaderScreen] onSelectionCleared callback called");
       setSelection(null);
       readingContextService.clearSelection();
     },
@@ -454,30 +450,21 @@ export function ReaderScreen({ route, navigation }: Props) {
   // When WebView is ready and book is available, send the open command
   useEffect(() => {
     if (!webViewReady || !book?.filePath) {
-      console.log("[ReaderScreen] Waiting for WebView ready and book...", {
-        webViewReady,
-        bookPath: book?.filePath,
-      });
       return;
     }
 
     const loadBook = async () => {
-      console.log("[ReaderScreen] Starting to load book:", book.filePath);
       try {
         // Resolve absolute path from relative path
         const platform = getPlatformService();
         const appData = await platform.getAppDataDir();
         const absPath = await platform.joinPath(appData, book.filePath);
-        console.log("[ReaderScreen] Absolute path:", absPath);
 
         // Read the book file and send as base64 for reliability
-        console.log("[ReaderScreen] Reading file as base64...");
         const base64 = await FileSystem.readAsStringAsync(absPath, {
           encoding: FileSystem.EncodingType.Base64,
         });
-        console.log("[ReaderScreen] File read complete, base64 length:", base64.length);
 
-        console.log("[ReaderScreen] Sending openBook command to WebView...");
         bridge.openBook({
           base64,
           fileName: book.filePath.split("/").pop() || "book.epub",
@@ -491,7 +478,6 @@ export function ReaderScreen({ route, navigation }: Props) {
           foreground: colors.foreground,
           muted: colors.mutedForeground,
         });
-        console.log("[ReaderScreen] openBook command sent, waiting for response...");
       } catch (err: any) {
         console.error("[ReaderScreen] Failed to load book:", err);
         setError(err.message || "Failed to load book file");
@@ -528,18 +514,34 @@ export function ReaderScreen({ route, navigation }: Props) {
   // Navigate to CFI when book is loaded (from NotesPage navigation)
   useEffect(() => {
     if (!webViewReady || loading || !cfi || cfi === lastNavigatedCfiRef.current) return;
-    console.log("[ReaderScreen] Navigating to CFI:", cfi);
     bridge.goToCFI(cfi);
     lastNavigatedCfiRef.current = cfi;
+
+    // Flash highlight 3 times like desktop
+    let flashCount = 0;
+    const maxFlashes = 3;
+    const flashInterval = 500;
+
+    const doFlash = () => {
+      if (flashCount >= maxFlashes) return;
+
+      bridge.addAnnotation({ value: cfi, color: "orange" });
+
+      setTimeout(() => {
+        bridge.removeAnnotation({ value: cfi });
+        flashCount++;
+
+        if (flashCount < maxFlashes) {
+          setTimeout(doFlash, flashInterval);
+        }
+      }, flashInterval);
+    };
+
+    setTimeout(doFlash, 100);
   }, [webViewReady, loading, cfi, bridge]);
 
   // Lock navigation when selection is active
   useEffect(() => {
-    console.log(
-      "[ReaderScreen] selection changed:",
-      !!selection,
-      selection?.text?.substring(0, 20),
-    );
     if (!webViewReady) return;
     bridge.setNavigationLocked(!!selection);
   }, [webViewReady, selection]);
@@ -733,8 +735,6 @@ export function ReaderScreen({ route, navigation }: Props) {
 
   const percent = Math.round(progress * 100);
 
-  console.log("[ReaderScreen] Rendering WebView with URI:", readerHtmlUri);
-
   const isPanelOpen =
     showTOC || showSettings || showSearch || showNotebook || showTranslation || showTTS;
 
@@ -752,15 +752,6 @@ export function ReaderScreen({ route, navigation }: Props) {
         }}
         onHttpError={(e) => {
           console.error("[ReaderScreen] WebView HTTP error:", e.nativeEvent);
-        }}
-        onLoadStart={() => {
-          console.log("[ReaderScreen] WebView load start");
-        }}
-        onLoadEnd={() => {
-          console.log("[ReaderScreen] WebView load end");
-        }}
-        onLoadProgress={(e) => {
-          console.log("[ReaderScreen] WebView load progress:", e.nativeEvent.progress);
         }}
         onContentProcessDidTerminate={() => {
           console.warn("[ReaderScreen] WebView content process terminated");

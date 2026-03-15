@@ -1,12 +1,12 @@
 import { ChevronDownIcon } from "@/components/ui/Icon";
 import { fontSize as fs, radius, useColors, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
-import type { MessageV2, QuotePart, TextPart } from "@readany/core/types/message";
+import type { CitationPart, MessageV2, QuotePart, TextPart } from "@readany/core/types/message";
 /**
  * MessageList — FlatList message renderer matching app-mobile MessageList.
  * Scroll-to-bottom button, streaming gap indicator.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { PartRenderer } from "./PartRenderer";
@@ -16,11 +16,12 @@ interface MessageListProps {
   messages: MessageV2[];
   isStreaming?: boolean;
   currentStep?: "thinking" | "tool_calling" | "responding" | "idle";
+  onCitationClick?: (citation: CitationPart) => void;
 }
 
 const BOTTOM_THRESHOLD = 80;
 
-export function MessageList({ messages, isStreaming, currentStep }: MessageListProps) {
+export function MessageList({ messages, isStreaming, currentStep, onCitationClick }: MessageListProps) {
   const { t } = useTranslation();
   const colors = useColors();
   const s = makeStyles(colors);
@@ -78,10 +79,11 @@ export function MessageList({ messages, isStreaming, currentStep }: MessageListP
           colors={colors}
           isStreaming={isLastMsgStreaming}
           currentStep={currentStep}
+          onCitationClick={onCitationClick}
         />
       );
     },
-    [colors, messages.length, isStreaming, currentStep],
+    [colors, messages.length, isStreaming, currentStep, onCitationClick],
   );
 
   // Show indicator when streaming but no assistant content yet
@@ -169,10 +171,16 @@ interface MessageBubbleProps {
   colors: ThemeColors;
   isStreaming?: boolean;
   currentStep?: "thinking" | "tool_calling" | "responding" | "idle";
+  onCitationClick?: (citation: CitationPart) => void;
 }
 
-function MessageBubble({ message, colors, isStreaming, currentStep }: MessageBubbleProps) {
+function MessageBubble({ message, colors, isStreaming, currentStep, onCitationClick }: MessageBubbleProps) {
   const s = makeStyles(colors);
+
+  // Extract citations from message parts
+  const citations = useMemo(() => {
+    return message.parts.filter((p): p is CitationPart => p.type === "citation");
+  }, [message.parts]);
 
   if (message.role === "user") {
     const quoteParts = message.parts.filter((p) => p.type === "quote") as QuotePart[];
@@ -223,7 +231,12 @@ function MessageBubble({ message, colors, isStreaming, currentStep }: MessageBub
   return (
     <View style={s.assistantRow}>
       {message.parts.map((part) => (
-        <PartRenderer key={part.id} part={part} />
+        <PartRenderer 
+          key={part.id} 
+          part={part} 
+          citations={citations}
+          onCitationClick={onCitationClick}
+        />
       ))}
       {showGapIndicator && <StreamingIndicator step="thinking" />}
     </View>

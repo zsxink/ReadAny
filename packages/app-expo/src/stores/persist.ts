@@ -83,6 +83,8 @@ export function withPersist<T extends object>(
   creator: StateCreator<T>,
 ): StateCreator<T> {
   return (set, get, api) => {
+    let persistLoaded = false;
+    
     const wrappedSet = ((partial: unknown, replace?: boolean) => {
       if (replace) {
         (set as (state: T, replace: true) => void)(partial as T, true);
@@ -91,12 +93,28 @@ export function withPersist<T extends object>(
           partial as T | Partial<T> | ((state: T) => T | Partial<T>),
         );
       }
-      debouncedSave(key, (api as StoreApi<T>).getState());
+      // Only save to persist after initial load is complete
+      if (persistLoaded) {
+        debouncedSave(key, (api as StoreApi<T>).getState());
+      }
     }) as typeof set;
     const state = creator(wrappedSet, get, api);
+    
+    // Load persisted data and notify when done
     loadFromFS<T>(key).then((persisted) => {
-      if (persisted) set(persisted);
+      if (persisted) {
+        // Merge persisted data with current state (don't replace methods)
+        const currentState = get();
+        const mergedState = { ...currentState, ...persisted };
+        (set as (state: T, replace: true) => void)(mergedState as T, true);
+      }
+      persistLoaded = true;
+      // Dispatch event to notify that persist is loaded
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('persist:loaded', { detail: { key } }));
+      }
     });
+    
     return state;
   };
 }

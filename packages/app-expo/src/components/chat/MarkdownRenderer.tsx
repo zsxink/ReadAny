@@ -1,15 +1,18 @@
 import { fontSize as fs, radius, useColors } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
 import * as Clipboard from "expo-clipboard";
-import { useCallback, useMemo, ReactNode } from "react";
+import { useCallback, useMemo, ReactNode, Fragment } from "react";
 import { StyleSheet, View, Text, TouchableOpacity } from "react-native";
 import Markdown, { RenderRules, ASTNode } from "react-native-markdown-display";
 import { MermaidView } from "@/components/common/MermaidView";
+import type { CitationPart } from "@readany/core/types/message";
 
 interface MarkdownRendererProps {
   content: string;
   isStreaming?: boolean;
   styleOverrides?: Record<string, any>;
+  citations?: CitationPart[];
+  onCitationClick?: (citation: CitationPart) => void;
 }
 
 function CodeBlockWithCopy({ code, style, colors }: { code: string; style: any; colors: ThemeColors }) {
@@ -34,19 +37,15 @@ function CodeBlockWithCopy({ code, style, colors }: { code: string; style: any; 
   );
 }
 
-// 获取代码块的语言
 function getCodeLanguage(node: ASTNode): string {
-  // 尝试从 sourceInfo 获取 (markdown-it 的 token.info)
   if ((node as any).sourceInfo) {
     return String((node as any).sourceInfo).toLowerCase().trim();
   }
   
-  // 尝试从 attributes.lang 获取
   if (node.attributes?.lang) {
     return String(node.attributes.lang).toLowerCase().trim();
   }
   
-  // 尝试从 attributes.className 获取
   if (node.attributes?.className) {
     const className = node.attributes.className;
     if (Array.isArray(className)) {
@@ -62,7 +61,97 @@ function getCodeLanguage(node: ASTNode): string {
   return '';
 }
 
-export function MarkdownRenderer({ content, isStreaming, styleOverrides }: MarkdownRendererProps) {
+function CitationLink({
+  num,
+  citation,
+  onCitationClick,
+  colors,
+}: {
+  num: number;
+  citation: CitationPart;
+  onCitationClick?: (citation: CitationPart) => void;
+  colors: ThemeColors;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={() => onCitationClick?.(citation)}
+      activeOpacity={0.7}
+      style={{
+        flexDirection: "row",
+        alignItems: "baseline",
+        marginHorizontal: 1,
+      }}
+    >
+      <Text
+        style={{
+          color: colors.primary,
+          fontSize: fs.xs,
+          fontWeight: "600",
+          lineHeight: fs.sm * 1.4,
+        }}
+      >
+        [{num}]
+      </Text>
+      <Text
+        style={{
+          color: colors.primary,
+          fontSize: 8,
+          marginLeft: 1,
+          lineHeight: fs.sm * 1.4,
+        }}
+      >
+        ↗
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+function renderTextWithCitations(
+  text: string,
+  citations: CitationPart[] | undefined,
+  onCitationClick: ((citation: CitationPart) => void) | undefined,
+  colors: ThemeColors
+): React.ReactNode[] {
+  if (!citations || citations.length === 0) {
+    return [<Fragment key="0">{text}</Fragment>];
+  }
+
+  const parts = text.split(/(\[\d+\])/g);
+  const result: React.ReactNode[] = [];
+
+  parts.forEach((part, i) => {
+    const match = part.match(/\[(\d+)\]/);
+    if (match) {
+      const num = parseInt(match[1]);
+      const citation = citations.find(c => c.citationIndex === num) ?? citations[num - 1];
+      if (citation) {
+        result.push(
+          <CitationLink
+            key={`citation-${i}`}
+            num={num}
+            citation={citation}
+            onCitationClick={onCitationClick}
+            colors={colors}
+          />
+        );
+        return;
+      }
+    }
+    if (part) {
+      result.push(<Fragment key={`text-${i}`}>{part}</Fragment>);
+    }
+  });
+
+  return result;
+}
+
+export function MarkdownRenderer({ 
+  content, 
+  isStreaming, 
+  styleOverrides,
+  citations,
+  onCitationClick 
+}: MarkdownRendererProps) {
   const colors = useColors();
   const baseStyles = makeMarkdownStyles(colors);
   const styles = styleOverrides ? { ...baseStyles, ...styleOverrides } : baseStyles;
@@ -71,8 +160,6 @@ export function MarkdownRenderer({ content, isStreaming, styleOverrides }: Markd
     fence: (node: ASTNode, children: ReactNode[], parentNodes: ASTNode[], style: any) => {
       const code = node.content || '';
       const lang = getCodeLanguage(node);
-      
-      console.log('Fence - lang:', lang, 'content:', code.substring(0, 30));
       
       if (lang === 'mermaid') {
         return (
@@ -93,8 +180,6 @@ export function MarkdownRenderer({ content, isStreaming, styleOverrides }: Markd
       const code = node.content || '';
       const lang = getCodeLanguage(node);
       
-      console.log('Code_block - lang:', lang, 'content:', code.substring(0, 30));
-      
       if (lang === 'mermaid') {
         return (
           <MermaidView key={node.key} chart={code} />
@@ -110,7 +195,18 @@ export function MarkdownRenderer({ content, isStreaming, styleOverrides }: Markd
         />
       );
     },
-  }), [colors]);
+    text: (node: ASTNode, children: ReactNode[], parentNodes: ASTNode[], style: any) => {
+      const text = node.content || '';
+      if (citations && citations.length > 0 && /\[\d+\]/.test(text)) {
+        return (
+          <Text key={node.key} style={style}>
+            {renderTextWithCitations(text, citations, onCitationClick, colors)}
+          </Text>
+        );
+      }
+      return <Text key={node.key} style={style}>{text}</Text>;
+    },
+  }), [colors, citations, onCitationClick]);
 
   return (
     <View>

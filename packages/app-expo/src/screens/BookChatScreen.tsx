@@ -28,7 +28,7 @@ import { useChatStore } from "@/stores/chat-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useStreamingChat } from "@readany/core/hooks";
 import type { AttachedQuote } from "@readany/core/types";
-import type { MessageV2 } from "@readany/core/types/message";
+import type { CitationPart, MessageV2 } from "@readany/core/types/message";
 import { convertToMessageV2, mergeMessagesWithStreaming, groupThreadsByTime, getMonthLabel, formatRelativeTimeShort } from "@readany/core/utils";
 
 import { ChatInput } from "@/components/chat/ChatInput";
@@ -184,6 +184,17 @@ export function BookChatScreen({ route, navigation }: Props) {
     await createThread(bookId);
   }, [bookId, activeThread, createThread]);
 
+  const handleCitationClick = useCallback(
+    (citation: CitationPart) => {
+      if (citation.bookId === bookId && citation.cfi) {
+        navigation.navigate("Reader", { bookId, cfi: citation.cfi });
+      } else if (citation.bookId) {
+        navigation.navigate("Reader", { bookId: citation.bookId, cfi: citation.cfi });
+      }
+    },
+    [bookId, navigation],
+  );
+
   const handleSelectThread = useCallback(
     (threadId: string) => {
       setBookActiveThread(bookId, threadId);
@@ -266,15 +277,16 @@ export function BookChatScreen({ route, navigation }: Props) {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={0}
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={s.content}>
-            {allMessages.length > 0 ? (
-              <MessageList
-                messages={allMessages}
-                isStreaming={isStreaming}
-                currentStep={currentStep}
-              />
-            ) : (
+        <View style={s.content}>
+          {allMessages.length > 0 ? (
+            <MessageList
+              messages={allMessages}
+              isStreaming={isStreaming}
+              currentStep={currentStep}
+              onCitationClick={handleCitationClick}
+            />
+          ) : (
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
               <View style={s.emptyContainer}>
                 <View style={s.emptyInner}>
                   <Image source={THINK_PNG} style={{ width: 120, height: 120 }} />
@@ -296,9 +308,9 @@ export function BookChatScreen({ route, navigation }: Props) {
                   ))}
                 </View>
               </View>
-            )}
-          </View>
-        </TouchableWithoutFeedback>
+            </TouchableWithoutFeedback>
+          )}
+        </View>
         <ChatInput
           onSend={handleSend}
           onStop={stopStream}
@@ -309,7 +321,7 @@ export function BookChatScreen({ route, navigation }: Props) {
 
       {/* Thread sidebar overlay */}
       {showSidebar && (
-        <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+        <View style={[StyleSheet.absoluteFill, { zIndex: 20 }]} pointerEvents="box-none">
           <Animated.View style={[s.sidebarBackdrop, { opacity: backdropAnim }]}>
             <Pressable style={StyleSheet.absoluteFill} onPress={closeSidebar} />
           </Animated.View>

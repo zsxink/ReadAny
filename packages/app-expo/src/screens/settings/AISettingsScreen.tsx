@@ -1,7 +1,8 @@
 import { useSettingsStore } from "@/stores";
 import type { AIEndpoint, AIProviderType } from "@readany/core/types";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -33,6 +34,260 @@ const PROVIDERS: { id: AIProviderType; label: string }[] = [
   { id: "deepseek", label: "DeepSeek" },
 ];
 
+// Individual endpoint editor with local state
+function EndpointEditor({
+  ep,
+  isActive,
+  onUpdate,
+  onDelete,
+  onFetchModels,
+  aiConfig,
+  setActiveEndpoint,
+  setActiveModel,
+  colors,
+  styles,
+  t,
+}: {
+  ep: AIEndpoint;
+  isActive: boolean;
+  onUpdate: (id: string, updates: Partial<AIEndpoint>) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+  onFetchModels: (ep: AIEndpoint) => Promise<void>;
+  aiConfig: { activeModel: string; activeEndpointId: string };
+  setActiveEndpoint: (id: string) => void;
+  setActiveModel: (model: string) => void;
+  colors: ThemeColors;
+  styles: ReturnType<typeof makeStyles>;
+  t: TFunction;
+}) {
+  // Local state for form fields
+  const [name, setName] = useState(ep.name);
+  const [apiKey, setApiKey] = useState(ep.apiKey);
+  const [baseUrl, setBaseUrl] = useState(ep.baseUrl);
+  const [newModelInput, setNewModelInput] = useState("");
+
+  // Sync local state when prop changes (e.g., from external update)
+  useEffect(() => {
+    setName(ep.name);
+    setApiKey(ep.apiKey);
+    setBaseUrl(ep.baseUrl);
+  }, [ep.name, ep.apiKey, ep.baseUrl]);
+
+  // Save unsaved data when component unmounts
+  useEffect(() => {
+    return () => {
+      // Component unmounting - save any pending changes
+      if (name !== ep.name) {
+        onUpdate(ep.id, { name }).catch(console.error);
+      }
+      if (apiKey !== ep.apiKey) {
+        onUpdate(ep.id, { apiKey }).catch(console.error);
+      }
+      if (baseUrl !== ep.baseUrl) {
+        onUpdate(ep.id, { baseUrl }).catch(console.error);
+      }
+    };
+  }, [name, apiKey, baseUrl, ep.name, ep.apiKey, ep.baseUrl, ep.id, onUpdate]);
+
+  const handleSaveName = useCallback(() => {
+    if (name !== ep.name) {
+      onUpdate(ep.id, { name }).catch(console.error);
+    }
+  }, [name, ep.name, ep.id, onUpdate]);
+
+  const handleSaveApiKey = useCallback(() => {
+    if (apiKey !== ep.apiKey) {
+      onUpdate(ep.id, { apiKey }).catch(console.error);
+    }
+  }, [apiKey, ep.apiKey, ep.id, onUpdate]);
+
+  const handleSaveBaseUrl = useCallback(() => {
+    if (baseUrl !== ep.baseUrl) {
+      onUpdate(ep.id, { baseUrl }).catch(console.error);
+    }
+  }, [baseUrl, ep.baseUrl, ep.id, onUpdate]);
+
+  const handleAddModel = useCallback(() => {
+    const trimmed = newModelInput.trim();
+    if (!trimmed || ep.models.includes(trimmed)) return;
+    onUpdate(ep.id, { models: [...ep.models, trimmed] }).catch(console.error);
+    setNewModelInput("");
+  }, [newModelInput, ep.models, ep.id, onUpdate]);
+
+  return (
+    <View style={styles.expandedContent}>
+      {/* Set as active */}
+      <TouchableOpacity style={styles.row} onPress={() => setActiveEndpoint(ep.id)}>
+        <Text style={styles.label}>{t("settings.ai_setDefault", "设为默认")}</Text>
+        <View style={[styles.toggle, isActive && styles.toggleActive]}>
+          <View style={[styles.toggleThumb, isActive && styles.toggleThumbActive]} />
+        </View>
+      </TouchableOpacity>
+
+      {/* Name */}
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>{t("settings.ai_name", "名称")}</Text>
+        <TextInput
+          style={styles.input}
+          value={name}
+          onChangeText={setName}
+          onBlur={handleSaveName}
+          placeholderTextColor={colors.mutedForeground}
+        />
+      </View>
+
+      {/* Provider grid */}
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>{t("settings.ai_providerLabel", "提供商")}</Text>
+        <View style={styles.providerGrid}>
+          {PROVIDERS.map((p) => (
+            <TouchableOpacity
+              key={p.id}
+              style={[
+                styles.providerBtn,
+                ep.provider === p.id && styles.providerBtnActive,
+              ]}
+              onPress={() => onUpdate(ep.id, { provider: p.id }).catch(console.error)}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.providerBtnText,
+                  ep.provider === p.id && styles.providerBtnTextActive,
+                ]}
+              >
+                {p.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      {/* API Key */}
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>{t("settings.ai_apiKey", "API Key")}</Text>
+        <PasswordInput
+          style={styles.input}
+          value={apiKey}
+          onChangeText={setApiKey}
+          onBlur={handleSaveApiKey}
+          placeholder="sk-..."
+          placeholderTextColor={colors.mutedForeground}
+        />
+      </View>
+
+      {/* Base URL */}
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>{t("settings.ai_baseUrl", "Base URL")}</Text>
+        <TextInput
+          style={styles.input}
+          value={baseUrl}
+          onChangeText={setBaseUrl}
+          onBlur={handleSaveBaseUrl}
+          placeholderTextColor={colors.mutedForeground}
+          autoCapitalize="none"
+        />
+      </View>
+
+      {/* Models */}
+      <View style={styles.fieldGroup}>
+        <View style={styles.modelsHeader}>
+          <Text style={styles.fieldLabel}>
+            {t("settings.ai_modelsList", "模型列表")}
+          </Text>
+          <TouchableOpacity
+            style={styles.fetchBtn}
+            onPress={() => onFetchModels(ep)}
+            disabled={!!ep.modelsFetching}
+          >
+            {ep.modelsFetching ? (
+              <LoaderIcon size={12} color={colors.primary} />
+            ) : (
+              <Text style={styles.fetchBtnText}>
+                {t("settings.ai_fetchModels", "获取模型")}
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* Model tags */}
+        <View style={styles.modelTags}>
+          {ep.models.map((m) => {
+            const modelActive = aiConfig.activeModel === m && isActive;
+            return (
+              <View
+                key={m}
+                style={[styles.modelTag, modelActive && styles.modelTagActive]}
+              >
+                <TouchableOpacity
+                  onPress={() => {
+                    setActiveEndpoint(ep.id);
+                    setActiveModel(m);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.modelTagText,
+                      modelActive && styles.modelTagTextActive,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {m}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() =>
+                    onUpdate(ep.id, {
+                      models: ep.models.filter((x) => x !== m),
+                    }).catch(console.error)
+                  }
+                  hitSlop={{
+                    top: 4,
+                    bottom: 4,
+                    left: 4,
+                    right: 4,
+                  }}
+                >
+                  <XIcon size={12} color={colors.mutedForeground} />
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+        </View>
+
+        {/* Add model input */}
+        <View style={styles.addModelRow}>
+          <TextInput
+            style={[styles.input, { flex: 1 }]}
+            placeholder={t("settings.ai_addManualModelPlaceholder", "手动添加模型名")}
+            placeholderTextColor={colors.mutedForeground}
+            value={newModelInput}
+            onChangeText={setNewModelInput}
+            onSubmitEditing={handleAddModel}
+          />
+          <TouchableOpacity
+            style={styles.addModelBtn}
+            onPress={handleAddModel}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.addModelBtnText}>{t("common.add", "添加")}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Delete button */}
+      <TouchableOpacity
+        style={styles.deleteBtn}
+        onPress={() => onDelete(ep.id)}
+        activeOpacity={0.8}
+      >
+        <Trash2Icon size={14} color={colors.destructive} />
+        <Text style={styles.deleteBtnText}>{t("common.delete", "删除")}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 export default function AISettingsScreen() {
   const colors = useColors();
   const styles = makeStyles(colors);
@@ -49,7 +304,6 @@ export default function AISettingsScreen() {
   } = useSettingsStore();
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [newModelInput, setNewModelInput] = useState("");
   const [manualModelInput, setManualModelInput] = useState("");
 
   const activeEndpoint = aiConfig.endpoints.find((ep) => ep.id === aiConfig.activeEndpointId);
@@ -81,16 +335,6 @@ export default function AISettingsScreen() {
       }
     },
     [fetchModels, updateEndpoint, aiConfig.activeModel, setActiveEndpoint, setActiveModel],
-  );
-
-  const handleAddManualModel = useCallback(
-    async (endpointId: string, models: string[]) => {
-      const trimmed = newModelInput.trim();
-      if (!trimmed || models.includes(trimmed)) return;
-      await updateEndpoint(endpointId, { models: [...models, trimmed] });
-      setNewModelInput("");
-    },
-    [newModelInput, updateEndpoint],
   );
 
   const addButton = (
@@ -151,301 +395,118 @@ export default function AISettingsScreen() {
 
                 {/* Expanded Content */}
                 {isExpanded && (
-                  <View style={styles.expandedContent}>
-                    {/* Set as active */}
-                    <TouchableOpacity style={styles.row} onPress={() => setActiveEndpoint(ep.id)}>
-                      <Text style={styles.label}>{t("settings.ai_setDefault", "设为默认")}</Text>
-                      <View style={[styles.toggle, isActive && styles.toggleActive]}>
-                        <View style={[styles.toggleThumb, isActive && styles.toggleThumbActive]} />
-                      </View>
-                    </TouchableOpacity>
-
-                    {/* Name */}
-                    <View style={styles.fieldGroup}>
-                      <Text style={styles.fieldLabel}>{t("settings.ai_name", "名称")}</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={ep.name}
-                        onChangeText={(v) => updateEndpoint(ep.id, { name: v }).catch(console.error)}
-                        placeholderTextColor={colors.mutedForeground}
-                      />
-                    </View>
-
-                    {/* Provider grid */}
-                    <View style={styles.fieldGroup}>
-                      <Text style={styles.fieldLabel}>
-                        {t("settings.ai_providerLabel", "提供商")}
-                      </Text>
-                      <View style={styles.providerGrid}>
-                        {PROVIDERS.map((p) => (
-                          <TouchableOpacity
-                            key={p.id}
-                            style={[
-                              styles.providerBtn,
-                              ep.provider === p.id && styles.providerBtnActive,
-                            ]}
-                            onPress={() => updateEndpoint(ep.id, { provider: p.id }).catch(console.error)}
-                            activeOpacity={0.7}
-                          >
-                            <Text
-                              style={[
-                                styles.providerBtnText,
-                                ep.provider === p.id && styles.providerBtnTextActive,
-                              ]}
-                            >
-                              {p.label}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </View>
-
-                    {/* API Key */}
-                    <View style={styles.fieldGroup}>
-                      <Text style={styles.fieldLabel}>{t("settings.ai_apiKey", "API Key")}</Text>
-                      <PasswordInput
-                        style={styles.input}
-                        value={ep.apiKey}
-                        onChangeText={(v) => updateEndpoint(ep.id, { apiKey: v }).catch(console.error)}
-                        placeholder="sk-..."
-                        placeholderTextColor={colors.mutedForeground}
-                      />
-                    </View>
-
-                    {/* Base URL */}
-                    <View style={styles.fieldGroup}>
-                      <Text style={styles.fieldLabel}>{t("settings.ai_baseUrl", "Base URL")}</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={ep.baseUrl}
-                        onChangeText={(v) => updateEndpoint(ep.id, { baseUrl: v }).catch(console.error)}
-                        placeholderTextColor={colors.mutedForeground}
-                        autoCapitalize="none"
-                      />
-                    </View>
-
-                    {/* Models */}
-                    <View style={styles.fieldGroup}>
-                      <View style={styles.modelsHeader}>
-                        <Text style={styles.fieldLabel}>
-                          {t("settings.ai_modelsList", "模型列表")}
-                        </Text>
-                        <TouchableOpacity
-                          style={styles.fetchBtn}
-                          onPress={() => handleFetchModels(ep)}
-                          disabled={!!ep.modelsFetching}
-                        >
-                          {ep.modelsFetching ? (
-                            <LoaderIcon size={12} color={colors.primary} />
-                          ) : (
-                            <Text style={styles.fetchBtnText}>
-                              {t("settings.ai_fetchModels", "获取模型")}
-                            </Text>
-                          )}
-                        </TouchableOpacity>
-                      </View>
-
-                      {/* Model tags */}
-                      <View style={styles.modelTags}>
-                        {ep.models.map((m) => {
-                          const modelActive = aiConfig.activeModel === m && isActive;
-                          return (
-                            <View
-                              key={m}
-                              style={[styles.modelTag, modelActive && styles.modelTagActive]}
-                            >
-                              <TouchableOpacity
-                                onPress={() => {
-                                  setActiveEndpoint(ep.id);
-                                  setActiveModel(m);
-                                }}
-                              >
-                                <Text
-                                  style={[
-                                    styles.modelTagText,
-                                    modelActive && styles.modelTagTextActive,
-                                  ]}
-                                  numberOfLines={1}
-                                >
-                                  {m}
-                                </Text>
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                onPress={() =>
-                                  updateEndpoint(ep.id, {
-                                    models: ep.models.filter((x) => x !== m),
-                                  }).catch(console.error)
-                                }
-                                hitSlop={{
-                                  top: 4,
-                                  bottom: 4,
-                                  left: 4,
-                                  right: 4,
-                                }}
-                              >
-                                <XIcon size={12} color={colors.mutedForeground} />
-                              </TouchableOpacity>
-                            </View>
-                          );
-                        })}
-                      </View>
-
-                      {/* Add model input */}
-                      <View style={styles.addModelRow}>
-                        <TextInput
-                          style={[styles.input, { flex: 1 }]}
-                          placeholder={t("settings.ai_addManualModelPlaceholder", "手动添加模型名")}
-                          placeholderTextColor={colors.mutedForeground}
-                          value={newModelInput}
-                          onChangeText={setNewModelInput}
-                          onSubmitEditing={() => handleAddManualModel(ep.id, ep.models)}
-                          autoCapitalize="none"
-                        />
-                        <TouchableOpacity
-                          style={styles.addModelBtn}
-                          onPress={() => handleAddManualModel(ep.id, ep.models)}
-                        >
-                          <Text style={styles.addModelBtnText}>{t("common.add", "添加")}</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-
-                    {/* Delete */}
-                    {aiConfig.endpoints.length > 1 && (
-                      <TouchableOpacity
-                        style={styles.deleteBtn}
-                        onPress={() => removeEndpoint(ep.id).catch(console.error)}
-                        activeOpacity={0.7}
-                      >
-                        <Trash2Icon size={16} color={colors.destructive} />
-                        <Text style={styles.deleteBtnText}>
-                          {t("settings.ai_deleteEndpoint", "删除端点")}
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
+                  <EndpointEditor
+                    ep={ep}
+                    isActive={isActive}
+                    onUpdate={updateEndpoint}
+                    onDelete={removeEndpoint}
+                    onFetchModels={handleFetchModels}
+                    aiConfig={aiConfig}
+                    setActiveEndpoint={setActiveEndpoint}
+                    setActiveModel={setActiveModel}
+                    colors={colors}
+                    styles={styles}
+                    t={t}
+                  />
                 )}
               </View>
             );
           })}
 
-          {/* Current Model Selection */}
-          <View style={styles.globalCard}>
-            <Text style={styles.globalTitle}>{t("settings.ai_activeModel", "模型")}</Text>
+          {/* Global Settings */}
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>{t("settings.ai_globalParams", "全局参数")}</Text>
 
-            {activeEndpoint && activeEndpoint.models.length > 0 ? (
-              <View style={styles.modelTags}>
-                {activeEndpoint.models.map((m) => {
-                  const isSelected = aiConfig.activeModel === m;
-                  return (
-                    <TouchableOpacity
-                      key={m}
-                      style={[styles.modelTag, isSelected && styles.modelTagActive]}
-                      onPress={() => {
-                        setActiveEndpoint(activeEndpoint.id);
-                        setActiveModel(m);
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <Text
-                        style={[styles.modelTagText, isSelected && styles.modelTagTextActive]}
-                        numberOfLines={1}
-                      >
-                        {m}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            ) : (
-              <View style={styles.addModelRow}>
-                <TextInput
-                  style={[styles.input, { flex: 1 }]}
-                  placeholder={t("settings.ai_selectModel", "选择模型")}
-                  placeholderTextColor={colors.mutedForeground}
-                  value={manualModelInput || aiConfig.activeModel}
-                  onChangeText={(v) => {
-                    setManualModelInput(v);
-                    setActiveModel(v);
-                  }}
-                  autoCapitalize="none"
-                />
-              </View>
-            )}
-
-            {activeEndpoint && activeEndpoint.models.length === 0 && (
-              <Text style={styles.noModelsHint}>
-                {t("settings.ai_noModels", "暂无模型 — 可从 API 拉取或手动添加")}
-              </Text>
-            )}
-          </View>
-
-          {/* Global Params */}
-          <View style={styles.globalCard}>
-            <Text style={styles.globalTitle}>{t("settings.ai_globalParams", "全局参数")}</Text>
-
-            {/* Temperature */}
-            <View style={styles.sliderGroup}>
-              <View style={styles.sliderHeader}>
-                <Text style={styles.sliderLabel}>
-                  {t("settings.ai_temperature", "Temperature")}
-                </Text>
-                <Text style={styles.sliderValue}>{aiConfig.temperature.toFixed(1)}</Text>
-              </View>
-              <TextInput
-                style={styles.sliderInput}
-                keyboardType="decimal-pad"
-                value={String(aiConfig.temperature)}
-                onChangeText={(v) => {
-                  const n = Number.parseFloat(v);
-                  if (!Number.isNaN(n) && n >= 0 && n <= 1) updateAIConfig({ temperature: n });
-                }}
-                placeholder="0.0 - 1.0"
-                placeholderTextColor={colors.mutedForeground}
+            <View style={styles.paramRow}>
+              <Text style={styles.paramLabel}>Temperature</Text>
+              <Text style={styles.paramValue}>{aiConfig.temperature}</Text>
+            </View>
+            <View style={styles.sliderTrack}>
+              <View
+                style={[
+                  styles.sliderFill,
+                  { width: `${(aiConfig.temperature / 2) * 100}%` },
+                ]}
               />
+              <View style={styles.sliderRow}>
+                {[0, 0.5, 1, 1.5, 2].map((v) => (
+                  <TouchableOpacity
+                    key={v}
+                    style={styles.sliderTick}
+                    onPress={() => updateAIConfig({ temperature: v })}
+                    hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                  >
+                    <View
+                      style={[
+                        styles.sliderDot,
+                        Math.abs(aiConfig.temperature - v) < 0.1 && styles.sliderDotActive,
+                      ]}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
 
-            {/* Max Tokens */}
-            <View style={styles.sliderGroup}>
-              <View style={styles.sliderHeader}>
-                <Text style={styles.sliderLabel}>{t("settings.ai_maxTokens", "Max Tokens")}</Text>
-                <Text style={styles.sliderValue}>{aiConfig.maxTokens}</Text>
-              </View>
+            <View style={[styles.paramRow, { marginTop: spacing.md }]}>
+              <Text style={styles.paramLabel}>Max Tokens</Text>
               <TextInput
-                style={styles.sliderInput}
-                keyboardType="number-pad"
+                style={styles.paramInput}
                 value={String(aiConfig.maxTokens)}
                 onChangeText={(v) => {
-                  const n = Number.parseInt(v, 10);
-                  if (!Number.isNaN(n) && n >= 1024 && n <= 32768) updateAIConfig({ maxTokens: n });
+                  const num = parseInt(v, 10);
+                  if (!isNaN(num) && num > 0) {
+                    updateAIConfig({ maxTokens: num });
+                  }
                 }}
-                placeholder="1024 - 32768"
-                placeholderTextColor={colors.mutedForeground}
+                keyboardType="number-pad"
               />
             </View>
 
-            {/* Context Window */}
-            <View style={styles.sliderGroup}>
-              <View style={styles.sliderHeader}>
-                <Text style={styles.sliderLabel}>
-                  {t("settings.ai_contextWindow", "上下文窗口")}
-                </Text>
-                <Text style={styles.sliderValue}>
-                  {aiConfig.slidingWindowSize} {t("settings.ai_contextWindowUnit", "轮")}
-                </Text>
-              </View>
+            <View style={[styles.paramRow, { marginTop: spacing.md }]}>
+              <Text style={styles.paramLabel}>{t("settings.ai_slidingWindow", "上下文窗口")}</Text>
               <TextInput
-                style={styles.sliderInput}
-                keyboardType="number-pad"
+                style={styles.paramInput}
                 value={String(aiConfig.slidingWindowSize)}
                 onChangeText={(v) => {
-                  const n = Number.parseInt(v, 10);
-                  if (!Number.isNaN(n) && n >= 2 && n <= 30)
-                    updateAIConfig({ slidingWindowSize: n });
+                  const num = parseInt(v, 10);
+                  if (!isNaN(num) && num > 0) {
+                    updateAIConfig({ slidingWindowSize: num });
+                  }
                 }}
-                placeholder="2 - 30"
-                placeholderTextColor={colors.mutedForeground}
+                keyboardType="number-pad"
               />
+            </View>
+          </View>
+
+          {/* Manual model add (for providers that don't support listing) */}
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>{t("settings.ai_manualModel", "手动添加模型")}</Text>
+            <Text style={styles.sectionDesc}>
+              {t("settings.ai_manualModelDesc", "如果提供商不支持获取模型列表，可以手动添加")}
+            </Text>
+            <View style={styles.addModelRow}>
+              <TextInput
+                style={[styles.input, { flex: 1 }]}
+                placeholder={t("settings.ai_modelNamePlaceholder", "模型名称")}
+                placeholderTextColor={colors.mutedForeground}
+                value={manualModelInput}
+                onChangeText={setManualModelInput}
+              />
+              <TouchableOpacity
+                style={styles.addModelBtn}
+                onPress={() => {
+                  const trimmed = manualModelInput.trim();
+                  if (!trimmed || !activeEndpoint) return;
+                  if (activeEndpoint.models.includes(trimmed)) return;
+                  updateEndpoint(activeEndpoint.id, {
+                    models: [...activeEndpoint.models, trimmed],
+                  }).catch(console.error);
+                  setManualModelInput("");
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.addModelBtnText}>{t("common.add", "添加")}</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </ScrollView>
@@ -456,127 +517,141 @@ export default function AISettingsScreen() {
 
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.background },
+    container: { flex: 1 },
     keyboardView: { flex: 1 },
     scroll: { flex: 1 },
-    scrollContent: { padding: spacing.lg, gap: 16 },
+    scrollContent: { padding: spacing.md, gap: spacing.md },
+
     addBtn: {
       flexDirection: "row",
       alignItems: "center",
       gap: 4,
-      backgroundColor: colors.primary,
       paddingHorizontal: 12,
       paddingVertical: 6,
-      borderRadius: radius.full,
+      borderRadius: radius.md,
+      backgroundColor: colors.primary,
     },
     addBtnText: {
-      fontSize: fontSize.xs,
+      fontSize: fontSize.sm,
       fontWeight: fontWeight.medium,
       color: colors.primaryForeground,
     },
+
     endpointCard: {
-      borderRadius: radius.xl,
+      borderRadius: radius.lg,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.card,
       overflow: "hidden",
     },
     endpointCardActive: {
-      borderColor: withOpacity(colors.primary, 0.5),
-      backgroundColor: withOpacity(colors.primary, 0.05),
+      borderColor: colors.primary,
     },
     endpointHeader: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 12,
-      paddingHorizontal: spacing.lg,
-      paddingVertical: 14,
+      justifyContent: "space-between",
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
     },
     endpointInfo: { flex: 1 },
-    endpointNameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    endpointNameRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
     endpointName: {
-      fontSize: fontSize.md,
-      fontWeight: fontWeight.medium,
+      fontSize: fontSize.base,
+      fontWeight: fontWeight.semibold,
       color: colors.foreground,
     },
     currentBadge: {
-      backgroundColor: withOpacity(colors.primary, 0.1),
-      paddingHorizontal: 8,
+      paddingHorizontal: 6,
       paddingVertical: 2,
-      borderRadius: radius.full,
+      borderRadius: radius.sm,
+      backgroundColor: withOpacity(colors.primary, 0.15),
     },
     currentBadgeText: {
-      fontSize: 10,
+      fontSize: fontSize.xs,
       fontWeight: fontWeight.medium,
       color: colors.primary,
     },
     endpointProvider: {
-      fontSize: fontSize.xs,
+      fontSize: fontSize.sm,
       color: colors.mutedForeground,
       marginTop: 2,
     },
     chevron: {
-      fontSize: 12,
+      fontSize: fontSize.sm,
       color: colors.mutedForeground,
     },
+
     expandedContent: {
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: colors.border,
-      paddingHorizontal: spacing.lg,
-      paddingVertical: spacing.lg,
-      gap: 16,
+      paddingHorizontal: spacing.md,
+      paddingBottom: spacing.md,
+      gap: spacing.md,
     },
+
     row: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
+      paddingVertical: spacing.xs,
     },
-    label: { fontSize: fontSize.sm, color: colors.foreground },
+    label: {
+      fontSize: fontSize.sm,
+      color: colors.foreground,
+    },
     toggle: {
       width: 44,
       height: 24,
       borderRadius: 12,
       backgroundColor: colors.muted,
-      justifyContent: "center",
       padding: 2,
     },
-    toggleActive: { backgroundColor: colors.primary },
+    toggleActive: {
+      backgroundColor: colors.primary,
+    },
     toggleThumb: {
       width: 20,
       height: 20,
       borderRadius: 10,
-      backgroundColor: colors.card,
+      backgroundColor: colors.background,
+      transform: [{ translateX: 0 }],
     },
-    toggleThumbActive: { alignSelf: "flex-end" },
-    fieldGroup: { gap: 6 },
+    toggleThumbActive: {
+      transform: [{ translateX: 20 }],
+    },
+
+    fieldGroup: { gap: spacing.xs },
     fieldLabel: {
-      fontSize: fontSize.xs,
-      color: colors.mutedForeground,
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.foreground,
     },
     input: {
-      borderRadius: radius.lg,
+      height: 36,
+      borderRadius: radius.md,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.background,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
+      paddingHorizontal: spacing.sm,
       fontSize: fontSize.sm,
       color: colors.foreground,
     },
+
     providerGrid: {
       flexDirection: "row",
       flexWrap: "wrap",
-      gap: 8,
+      gap: spacing.xs,
     },
     providerBtn: {
-      width: "47%",
-      borderRadius: radius.lg,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.xs,
+      borderRadius: radius.md,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.background,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      alignItems: "center",
     },
     providerBtnActive: {
       borderColor: colors.primary,
@@ -587,38 +662,41 @@ const makeStyles = (colors: ThemeColors) =>
       color: colors.foreground,
     },
     providerBtnTextActive: {
-      fontWeight: fontWeight.medium,
       color: colors.primary,
+      fontWeight: fontWeight.medium,
     },
+
     modelsHeader: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
     },
     fetchBtn: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 4,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
     },
     fetchBtnText: {
       fontSize: fontSize.xs,
-      color: colors.primary,
+      color: colors.foreground,
     },
     modelTags: {
       flexDirection: "row",
       flexWrap: "wrap",
-      gap: 6,
+      gap: spacing.xs,
     },
     modelTag: {
       flexDirection: "row",
       alignItems: "center",
       gap: 4,
-      borderRadius: radius.full,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 4,
+      borderRadius: radius.md,
       borderWidth: 1,
       borderColor: colors.border,
-      backgroundColor: colors.muted,
-      paddingHorizontal: 10,
-      paddingVertical: 4,
+      backgroundColor: colors.background,
     },
     modelTagActive: {
       borderColor: colors.primary,
@@ -627,80 +705,123 @@ const makeStyles = (colors: ThemeColors) =>
     modelTagText: {
       fontSize: fontSize.xs,
       color: colors.foreground,
-      maxWidth: 160,
+      maxWidth: 120,
     },
     modelTagTextActive: {
       color: colors.primary,
+      fontWeight: fontWeight.medium,
     },
+
     addModelRow: {
       flexDirection: "row",
-      gap: 8,
+      alignItems: "center",
+      gap: spacing.xs,
     },
     addModelBtn: {
-      borderRadius: radius.lg,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.xs,
+      borderRadius: radius.md,
       backgroundColor: colors.primary,
-      paddingHorizontal: 12,
-      justifyContent: "center",
     },
     addModelBtnText: {
       fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
       color: colors.primaryForeground,
     },
+
     deleteBtn: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
-      gap: 8,
-      borderRadius: radius.lg,
+      gap: 6,
+      paddingVertical: spacing.sm,
+      borderRadius: radius.md,
       borderWidth: 1,
-      borderColor: withOpacity(colors.destructive, 0.3),
-      paddingVertical: 10,
+      borderColor: colors.destructive,
+      backgroundColor: withOpacity(colors.destructive, 0.05),
     },
     deleteBtnText: {
       fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
       color: colors.destructive,
     },
-    globalCard: {
-      borderRadius: radius.xl,
-      backgroundColor: colors.card,
+
+    sectionCard: {
+      borderRadius: radius.lg,
       borderWidth: 1,
       borderColor: colors.border,
-      padding: spacing.lg,
-      gap: 16,
+      backgroundColor: colors.card,
+      padding: spacing.md,
+      gap: spacing.md,
     },
-    globalTitle: {
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.medium,
+    sectionTitle: {
+      fontSize: fontSize.base,
+      fontWeight: fontWeight.semibold,
       color: colors.foreground,
     },
-    sliderGroup: { gap: 8 },
-    sliderHeader: {
+    sectionDesc: {
+      fontSize: fontSize.sm,
+      color: colors.mutedForeground,
+    },
+
+    paramRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    paramLabel: {
+      fontSize: fontSize.sm,
+      color: colors.foreground,
+    },
+    paramValue: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.primary,
+    },
+    paramInput: {
+      width: 80,
+      height: 32,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+      paddingHorizontal: spacing.sm,
+      fontSize: fontSize.sm,
+      color: colors.foreground,
+      textAlign: "right",
+    },
+
+    sliderTrack: {
+      height: 24,
+      justifyContent: "center",
+      marginTop: spacing.xs,
+    },
+    sliderFill: {
+      position: "absolute",
+      left: 0,
+      top: 10,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: colors.primary,
+    },
+    sliderRow: {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
     },
-    sliderLabel: {
-      fontSize: fontSize.sm,
-      color: colors.mutedForeground,
+    sliderTick: {
+      padding: 4,
     },
-    sliderValue: {
-      fontSize: fontSize.sm,
-      color: colors.foreground,
-      fontVariant: ["tabular-nums"],
-    },
-    sliderInput: {
-      borderRadius: radius.lg,
-      borderWidth: 1,
+    sliderDot: {
+      width: 16,
+      height: 16,
+      borderRadius: 8,
+      borderWidth: 2,
       borderColor: colors.border,
       backgroundColor: colors.background,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      fontSize: fontSize.sm,
-      color: colors.foreground,
     },
-    noModelsHint: {
-      fontSize: fontSize.xs,
-      color: colors.mutedForeground,
-      marginTop: 4,
+    sliderDotActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primary,
     },
   });

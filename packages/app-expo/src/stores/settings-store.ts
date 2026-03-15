@@ -127,8 +127,6 @@ export const useSettingsStore = create<SettingsState>()(
         aiConfig: { ...state.aiConfig, endpoints: endpointsWithKeys },
         _apiKeysLoaded: true,
       });
-      
-      console.log("[SettingsStore] API keys loaded for", endpointsWithKeys.length, "endpoints");
     };
 
     return {
@@ -161,7 +159,6 @@ export const useSettingsStore = create<SettingsState>()(
         // Save API key to secure storage
         if (endpoint.apiKey) {
           await saveSecure(getApiKeyStorageKey(endpoint.id), endpoint.apiKey);
-          console.log("[SettingsStore] Saved API key for endpoint", endpoint.id);
         }
         // Add endpoint to state (apiKey will be loaded from secure storage)
         set((state) => ({
@@ -176,7 +173,6 @@ export const useSettingsStore = create<SettingsState>()(
         // If apiKey is being updated, save it to secure storage
         if (updates.apiKey !== undefined) {
           await saveSecure(getApiKeyStorageKey(id), updates.apiKey);
-          console.log("[SettingsStore] Updated API key for endpoint", id);
         }
         set((state) => ({
           aiConfig: {
@@ -191,7 +187,6 @@ export const useSettingsStore = create<SettingsState>()(
       removeEndpoint: async (id) => {
         // Delete API key from secure storage
         await deleteSecure(getApiKeyStorageKey(id));
-        console.log("[SettingsStore] Deleted API key for endpoint", id);
         set((state) => {
           const newEndpoints = state.aiConfig.endpoints.filter((ep) => ep.id !== id);
           const newActiveId =
@@ -214,7 +209,6 @@ export const useSettingsStore = create<SettingsState>()(
           aiConfig: {
             ...state.aiConfig,
             activeEndpointId: id,
-            activeModel: "",
           },
         })),
 
@@ -309,7 +303,6 @@ export const useSettingsStore = create<SettingsState>()(
 );
 
 // 在应用启动时加载 API keys
-// 使用延迟确保 persist 数据已经加载
 setTimeout(() => {
   useSettingsStore.getState().loadApiKeys();
-}, 100);
+}, 500);

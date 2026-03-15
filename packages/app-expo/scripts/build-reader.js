@@ -18,9 +18,11 @@ async function buildReader() {
   const entryContent = `
     import { makeBook, View } from "${FOLIATE_DIR.replace(/\\/g, "/")}/view.js";
     import { Overlayer } from "${FOLIATE_DIR.replace(/\\/g, "/")}/overlayer.js";
+    import * as CFI from "${FOLIATE_DIR.replace(/\\/g, "/")}/epubcfi.js";
 
     window.makeBook = makeBook;
     window.Overlayer = Overlayer;
+    window.CFI = CFI;
 
     if (!customElements.get('foliate-view')) {
       customElements.define('foliate-view', View);

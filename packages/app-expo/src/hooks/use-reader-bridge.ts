@@ -3,7 +3,7 @@ import type { TOCItem } from "@readany/core/types";
  * useReaderBridge — encapsulates RN ↔ WebView postMessage communication
  * for the foliate-js reader engine.
  */
-import { useCallback, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import type { WebView } from "react-native-webview";
 
 export interface RelocateEvent {
@@ -57,7 +57,6 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
   // ─── Send commands to WebView ───
 
   const inject = useCallback((code: string) => {
-    console.log("[ReaderBridge] Injecting code:", code.substring(0, 200) + "...");
     webViewRef.current?.injectJavaScript(`${code}; true;`);
   }, []);
 
@@ -70,13 +69,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       lastLocation?: string;
       pageMargin?: number;
     }) => {
-      console.log("[ReaderBridge] openBook called with params:", {
-        fileName: params.fileName,
-        base64Length: params.base64?.length,
-        lastLocation: params.lastLocation,
-      });
       const msg = JSON.stringify({ type: "openBook", ...params });
-      console.log("[ReaderBridge] Message JSON length:", msg.length);
       inject(`handleCommand(${msg})`);
     },
     [inject],
@@ -144,6 +137,16 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
     [inject],
   );
 
+  const highlightCFITemporarily = useCallback(
+    (cfi: string, duration = 1000) => {
+      inject(`window.addAnnotation(${JSON.stringify({ value: cfi, color: "orange" })})`);
+      setTimeout(() => {
+        inject(`window.removeAnnotation(${JSON.stringify({ value: cfi })})`);
+      }, duration);
+    },
+    [inject],
+  );
+
   const applySettings = useCallback(
     (settings: {
       fontSize?: number;
@@ -169,7 +172,6 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
 
   const setNavigationLocked = useCallback(
     (locked: boolean) => {
-      console.log("[ReaderBridge] setNavigationLocked:", locked);
       inject(`window.setNavigationLocked(${locked})`);
     },
     [inject],
@@ -180,23 +182,19 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
   const handleMessage = useCallback((event: { nativeEvent: { data: string } }) => {
     try {
       const msg = JSON.parse(event.nativeEvent.data);
-      console.log("[ReaderBridge] Received message:", msg.type, msg);
       const cb = callbacksRef.current;
 
       switch (msg.type) {
         case "ready":
-          console.log("[ReaderBridge] WebView ready!");
           cb.onReady?.();
           break;
         case "loaded":
-          console.log("[ReaderBridge] Book loaded!");
           cb.onLoaded?.();
           break;
         case "relocate":
           cb.onRelocate?.(msg);
           break;
         case "toc":
-          console.log("[ReaderBridge] TOC ready, items:", msg.items?.length || 0);
           cb.onTocReady?.(msg.items || []);
           break;
         case "selection":
@@ -219,10 +217,8 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
           cb.onError?.(msg.message || "Unknown error");
           break;
         case "foliate-loaded":
-          console.log("[ReaderBridge] foliate-js loaded in WebView");
           break;
         case "show-annotation":
-          console.log("[ReaderBridge] Show annotation:", msg.value);
           if (msg.value && msg.position) {
             cb.onShowAnnotation?.({
               value: msg.value,
@@ -232,7 +228,6 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
           }
           break;
         case "note-tooltip":
-          console.log("[ReaderBridge] Note tooltip:", msg.cfi);
           if (msg.cfi && msg.note && msg.position) {
             cb.onNoteTooltip?.({
               cfi: msg.cfi,
@@ -242,14 +237,14 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
           }
           break;
         default:
-          console.log("[ReaderBridge] Unknown message type:", msg.type);
+          break;
       }
     } catch (err) {
       console.error("[ReaderBridge] Parse error:", err);
     }
   }, []);
 
-  return {
+  return useMemo(() => ({
     webViewRef,
     handleMessage,
     // Commands
@@ -264,8 +259,26 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
     navigateSearch,
     addAnnotation,
     removeAnnotation,
+    highlightCFITemporarily,
     applySettings,
     setThemeColors,
     setNavigationLocked,
-  };
+  }), [
+    handleMessage,
+    openBook,
+    goNext,
+    goPrev,
+    goToFraction,
+    goToHref,
+    goToCFI,
+    search,
+    clearSearch,
+    navigateSearch,
+    addAnnotation,
+    removeAnnotation,
+    highlightCFITemporarily,
+    applySettings,
+    setThemeColors,
+    setNavigationLocked,
+  ]);
 }
