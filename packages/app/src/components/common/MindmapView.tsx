@@ -6,6 +6,12 @@ import { Maximize2, Minimize2, Download, RotateCcw } from "lucide-react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
+function getThemePrimaryColor(): string {
+  if (typeof window === "undefined") return "#2d2d30";
+  const style = getComputedStyle(document.documentElement);
+  return style.getPropertyValue("--primary").trim() || "#2d2d30";
+}
+
 interface MindmapViewProps {
   markdown: string;
   title?: string;
@@ -36,6 +42,7 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
         duration: 300,
         maxWidth: 300,
         paddingX: 16,
+        color: () => getThemePrimaryColor(),
         style: (id: string) => `
           .${id} {
             --markmap-text-color: #333;
@@ -76,6 +83,7 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
         duration: 300,
         maxWidth: 400,
         paddingX: 24,
+        color: () => getThemePrimaryColor(),
         style: (id: string) => `
           .${id} {
             --markmap-text-color: #333;
