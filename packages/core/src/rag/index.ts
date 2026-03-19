@@ -21,6 +21,24 @@ export {
   clearChunkCache,
 } from "./search";
 
+// Tokenizer exports
+export { tokenize, tokenizeQuery, getTokenFrequencies } from "./tokenizer";
+
+// Inverted index exports
+export {
+  buildInvertedIndex,
+  searchInvertedIndex,
+  getMatchingDocIds,
+  getIntersectingDocIds,
+  getIndexStats,
+} from "./inverted-index";
+export type {
+  Posting,
+  IndexEntry,
+  DocMeta,
+  InvertedIndex,
+} from "./inverted-index";
+
 export { vectorizeBook } from "./vectorize";
 export type { VectorizeCallback } from "./vectorize";
 

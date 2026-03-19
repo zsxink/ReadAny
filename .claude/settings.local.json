@@ -22,7 +22,19 @@
       "WebFetch(domain:www.npmjs.com)",
       "WebSearch",
       "Bash(cargo check:*)",
-      "Bash(tsc:*)"
+      "Bash(tsc:*)",
+      "WebFetch(domain:reeden.app)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:article.juejin.cn)",
+      "WebFetch(domain:blog.51cto.com)",
+      "WebFetch(domain:fast.v2ex.com)",
+      "WebFetch(domain:www.oomol.com)",
+      "WebFetch(domain:developer.aliyun.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:stackoverflow.com)",
+      "WebFetch(domain:mozilla.github.io)",
+      "WebFetch(domain:jsdev.space)",
+      "WebFetch(domain:pdf-lib.js.org)"
     ]
   }
 }

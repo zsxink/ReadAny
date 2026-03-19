@@ -1,15 +1,23 @@
 /**
  * Hybrid search — vector + BM25 with configurable weighting
- * Full implementation with actual search algorithms.
- *
- * Optimization: In-memory embedding cache per book to avoid repeated
- * SQLite BLOB deserialization on every search query.
+ * 
+ * Optimizations:
+ * - Inverted index for O(k*d) BM25 search instead of O(k*n*m)
+ * - Advanced tokenizer with CJK bigram support
+ * - In-memory caching for chunks and indexes
+ * - Graceful fallback when vector search fails
  */
 import type { Chunk, SearchQuery, SearchResult } from "../types";
 import { cosineSimilarity } from "./embedding";
 import type { EmbeddingService } from "./embedding-service";
 import { getChunks } from "../db/database";
 import { hasVectorDB, getVectorDB } from "./vector-db";
+import { tokenize, tokenizeQuery } from "./tokenizer";
+import {
+  buildInvertedIndex,
+  searchInvertedIndex,
+  type InvertedIndex,
+} from "./inverted-index";
 
 let embeddingService: EmbeddingService | null = null;
 
@@ -19,7 +27,6 @@ export function configureSearch(service: EmbeddingService): void {
 }
 
 // ---- In-memory chunk cache per book ----
-// Avoids loading + deserializing all embedding BLOBs from SQLite on every query.
 interface CachedBookChunks {
   chunks: Chunk[];
   timestamp: number;
@@ -42,12 +49,43 @@ async function getCachedChunks(bookId: string): Promise<Chunk[]> {
 /** Invalidate cache for a book (call after vectorization) */
 export function invalidateChunkCache(bookId: string): void {
   chunkCache.delete(bookId);
+  invalidateInvertedIndex(bookId);
 }
 
 /** Clear entire cache */
 export function clearChunkCache(): void {
   chunkCache.clear();
+  clearInvertedIndexCache();
 }
+
+// ---- Inverted index cache ----
+const invertedIndexCache = new Map<string, { index: InvertedIndex; timestamp: number }>();
+
+/** Build or get cached inverted index for a book */
+function getOrBuildInvertedIndex(chunks: Chunk[], bookId: string): InvertedIndex {
+  const cached = invertedIndexCache.get(bookId);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.index;
+  }
+
+  const documents = chunks.map((c) => ({ id: c.id, content: c.content }));
+  const index = buildInvertedIndex(documents, tokenize);
+  
+  invertedIndexCache.set(bookId, { index, timestamp: Date.now() });
+  return index;
+}
+
+/** Invalidate inverted index cache for a book */
+function invalidateInvertedIndex(bookId: string): void {
+  invertedIndexCache.delete(bookId);
+}
+
+/** Clear all inverted index cache */
+function clearInvertedIndexCache(): void {
+  invertedIndexCache.clear();
+}
+
+// ---- Search functions ----
 
 /** Execute a search query against book chunks */
 export async function search(query: SearchQuery): Promise<SearchResult[]> {
@@ -115,90 +153,32 @@ async function vectorSearch(query: SearchQuery): Promise<SearchResult[]> {
   return results;
 }
 
-// ---- BM25 pre-computed index cache ----
-interface BM25Index {
-  bookId: string;
-  avgdl: number;
-  docCount: number;
-  docTokens: string[][]; // tokenized content for each chunk
-  docLengths: number[];
-  chunkIds: string[];
-}
-
-const bm25IndexCache = new Map<string, { index: BM25Index; timestamp: number }>();
-
-function getOrBuildBM25Index(chunks: Chunk[], bookId: string): BM25Index {
-  const cached = bm25IndexCache.get(bookId);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-    return cached.index;
-  }
-
-  const docTokens = chunks.map((c) => tokenize(c.content));
-  const docLengths = docTokens.map((t) => t.length);
-  const avgdl = docLengths.reduce((s, l) => s + l, 0) / Math.max(chunks.length, 1);
-
-  const index: BM25Index = {
-    bookId,
-    avgdl,
-    docCount: chunks.length,
-    docTokens,
-    docLengths,
-    chunkIds: chunks.map((c) => c.id),
-  };
-
-  bm25IndexCache.set(bookId, { index, timestamp: Date.now() });
-  return index;
-}
-
-/** BM25 keyword search */
+/** BM25 keyword search using inverted index */
 async function bm25Search(query: SearchQuery): Promise<SearchResult[]> {
   const chunks = await getCachedChunks(query.bookId);
   if (chunks.length === 0) return [];
 
-  const terms = tokenize(query.query);
-  if (terms.length === 0) return [];
+  // Tokenize query (use query tokenizer for exact matching)
+  const queryTerms = tokenizeQuery(query.query);
+  if (queryTerms.length === 0) return [];
 
-  const idx = getOrBuildBM25Index(chunks, query.bookId);
+  // Build or get cached inverted index
+  const index = getOrBuildInvertedIndex(chunks, query.bookId);
 
-  // BM25 parameters
-  const k1 = 1.5;
-  const b = 0.75;
+  // Search using inverted index (O(k*d) complexity)
+  const searchResults = searchInvertedIndex(index, queryTerms, query.topK);
 
-  // Compute IDF for each query term
-  const idfMap = new Map<string, number>();
-  for (const term of terms) {
-    const df = idx.docTokens.filter((tokens) => tokens.includes(term)).length;
-    const idf = Math.log((idx.docCount - df + 0.5) / (df + 0.5) + 1);
-    idfMap.set(term, idf);
-  }
+  // Map results back to chunks
+  const chunkMap = new Map(chunks.map((c) => [c.id, c]));
 
-  // Score each chunk
-  const results: SearchResult[] = chunks
-    .map((chunk, ci) => {
-      const docTokens = idx.docTokens[ci];
-      const docLen = idx.docLengths[ci];
-      let score = 0;
-
-      for (const term of terms) {
-        const tf = docTokens.filter((t) => t === term).length;
-        const idf = idfMap.get(term) || 0;
-        score += idf * ((tf * (k1 + 1)) / (tf + k1 * (1 - b + b * (docLen / idx.avgdl))));
-      }
-
-      const highlights = score > 0 ? findHighlightSnippets(chunk.content, terms) : [];
-
-      return {
-        chunk,
-        score,
-        matchType: "bm25" as const,
-        highlights,
-      };
-    })
-    .filter((r) => r.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, query.topK);
-
-  return results;
+  return searchResults
+    .map(({ docId, score }) => ({
+      chunk: chunkMap.get(docId)!,
+      score,
+      matchType: "bm25" as const,
+      highlights: findHighlightSnippets(chunkMap.get(docId)?.content || "", queryTerms),
+    }))
+    .filter((r) => r.chunk); // Filter out missing chunks
 }
 
 /** Hybrid search combining vector and BM25 with RRF fusion */
@@ -258,15 +238,6 @@ function rrfFusion(
     }))
     .sort((a, b) => b.score - a.score)
     .slice(0, topK);
-}
-
-/** Tokenize text for BM25 — handles both English and CJK characters */
-function tokenize(text: string): string[] {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]/g, " ")
-    .split(/\s+/)
-    .filter((t) => t.length > 0);
 }
 
 /** Find highlight snippets around matching terms */
