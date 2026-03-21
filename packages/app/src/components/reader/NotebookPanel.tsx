@@ -1,28 +1,28 @@
+import { ExportDropdown } from "@/components/notes/ExportDropdown";
+import { Button } from "@/components/ui/button";
+import { MarkdownEditor } from "@/components/ui/markdown-editor";
+import { useAnnotationStore } from "@/stores/annotation-store";
+import { useLibraryStore } from "@/stores/library-store";
+import { useNotebookStore } from "@/stores/notebook-store";
+import { type ExportFormat, annotationExporter } from "@readany/core/export";
+import type { Highlight, HighlightColor, Note } from "@readany/core/types";
+import { HIGHLIGHT_COLOR_HEX } from "@readany/core/types";
+import { cn } from "@readany/core/utils";
+import {
+  ChevronDown,
+  ChevronRight,
+  Edit3,
+  Highlighter,
+  NotebookPen,
+  Save,
+  Trash2,
+  X,
+} from "lucide-react";
 /**
  * NotebookPanel — left sidebar for viewing and editing notes/highlights
  */
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  X,
-  NotebookPen,
-  Highlighter,
-  Save,
-  Trash2,
-  Edit3,
-  ChevronDown,
-  ChevronRight,
-} from "lucide-react";
-import { cn } from "@readany/core/utils";
-import { useNotebookStore } from "@/stores/notebook-store";
-import { useAnnotationStore } from "@/stores/annotation-store";
-import { useLibraryStore } from "@/stores/library-store";
-import { ExportDropdown } from "@/components/notes/ExportDropdown";
-import { annotationExporter, type ExportFormat } from "@readany/core/export";
-import type { Highlight, HighlightColor, Note } from "@readany/core/types";
-import { HIGHLIGHT_COLOR_HEX } from "@readany/core/types";
-import { MarkdownEditor } from "@/components/ui/markdown-editor";
-import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -34,24 +34,19 @@ interface NotebookPanelProps {
   onDeleteAnnotation?: (cfi: string) => void;
 }
 
-export function NotebookPanel({ bookId, onClose, onGoToCfi, onAddAnnotation, onDeleteAnnotation }: NotebookPanelProps) {
+export function NotebookPanel({
+  bookId,
+  onClose,
+  onGoToCfi,
+  onAddAnnotation,
+  onDeleteAnnotation,
+}: NotebookPanelProps) {
   const { t } = useTranslation();
-  
-  const { 
-    pendingNote, 
-    editingHighlight, 
-    clearPending,
-    saveDraft,
-    getDraft,
-    clearDraft,
-  } = useNotebookStore();
-  
-  const {
-    highlights,
-    addHighlight,
-    updateHighlight,
-    removeHighlight,
-  } = useAnnotationStore();
+
+  const { pendingNote, editingHighlight, clearPending, saveDraft, getDraft, clearDraft } =
+    useNotebookStore();
+
+  const { highlights, addHighlight, updateHighlight, removeHighlight } = useAnnotationStore();
 
   const books = useLibraryStore((s) => s.books);
 
@@ -63,11 +58,11 @@ export function NotebookPanel({ bookId, onClose, onGoToCfi, onAddAnnotation, onD
   });
 
   // Filter annotations for current book
-  const bookHighlights = highlights.filter(h => h.bookId === bookId);
-  
+  const bookHighlights = highlights.filter((h) => h.bookId === bookId);
+
   // Highlights with notes vs without
-  const highlightsWithNotes = bookHighlights.filter(h => h.note);
-  const highlightsWithoutNotes = bookHighlights.filter(h => !h.note);
+  const highlightsWithNotes = bookHighlights.filter((h) => h.note);
+  const highlightsWithoutNotes = bookHighlights.filter((h) => !h.note);
 
   // Initialize note content when editing starts
   useEffect(() => {
@@ -110,7 +105,7 @@ export function NotebookPanel({ bookId, onClose, onGoToCfi, onAddAnnotation, onD
       clearPending();
     } else if (editingHighlight) {
       // Update existing highlight's note
-      updateHighlight(editingHighlight.id, { 
+      updateHighlight(editingHighlight.id, {
         note: noteContent.trim() || undefined,
         updatedAt: Date.now(),
       });
@@ -175,7 +170,7 @@ export function NotebookPanel({ bookId, onClose, onGoToCfi, onAddAnnotation, onD
   };
 
   const toggleSection = (section: "highlights" | "notes") => {
-    setExpandedSections(prev => ({
+    setExpandedSections((prev) => ({
       ...prev,
       [section]: !prev[section],
     }));
@@ -184,12 +179,9 @@ export function NotebookPanel({ bookId, onClose, onGoToCfi, onAddAnnotation, onD
   const handleExport = (format: ExportFormat) => {
     const book = books.find((b) => b.id === bookId);
     if (!book) return;
-    const content = annotationExporter.export(
-      bookHighlights as Highlight[],
-      [] as Note[],
-      book,
-      { format },
-    );
+    const content = annotationExporter.export(bookHighlights as Highlight[], [] as Note[], book, {
+      format,
+    });
     if (format === "notion") {
       annotationExporter.copyToClipboard(content);
     } else {
@@ -206,14 +198,9 @@ export function NotebookPanel({ bookId, onClose, onGoToCfi, onAddAnnotation, onD
     <div className="flex h-full flex-col">
       {/* Header */}
       <div className="flex h-10 shrink-0 items-center justify-between border-b border-border/40 px-3">
-        <span className="text-xs font-medium text-foreground">
-          {t("notebook.title")}
-        </span>
+        <span className="text-xs font-medium text-foreground">{t("notebook.title")}</span>
         <div className="flex items-center gap-1">
-          <ExportDropdown
-            onExport={handleExport}
-            disabled={bookHighlights.length === 0}
-          />
+          <ExportDropdown onExport={handleExport} disabled={bookHighlights.length === 0} />
           <button
             type="button"
             className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -235,9 +222,7 @@ export function NotebookPanel({ bookId, onClose, onGoToCfi, onAddAnnotation, onD
                 <Highlighter className="h-3 w-3" />
                 <span>{t("notebook.selectedText")}</span>
               </div>
-              <p className="text-sm text-foreground line-clamp-3">
-                "{editingText}"
-              </p>
+              <p className="text-sm text-foreground line-clamp-3">"{editingText}"</p>
               {(pendingNote?.chapterTitle || editingHighlight?.chapterTitle) && (
                 <p className="mt-1 text-xs text-muted-foreground">
                   {pendingNote?.chapterTitle || editingHighlight?.chapterTitle}
@@ -296,12 +281,8 @@ export function NotebookPanel({ bookId, onClose, onGoToCfi, onAddAnnotation, onD
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
               )}
               <NotebookPen className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">
-                {t("notebook.notesSection")}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                ({highlightsWithNotes.length})
-              </span>
+              <span className="text-sm font-medium">{t("notebook.notesSection")}</span>
+              <span className="text-xs text-muted-foreground">({highlightsWithNotes.length})</span>
             </button>
             {expandedSections.notes && (
               <div className="px-3 pb-2">
@@ -334,9 +315,7 @@ export function NotebookPanel({ bookId, onClose, onGoToCfi, onAddAnnotation, onD
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
               )}
               <Highlighter className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">
-                {t("notebook.highlightsSection")}
-              </span>
+              <span className="text-sm font-medium">{t("notebook.highlightsSection")}</span>
               <span className="text-xs text-muted-foreground">
                 ({highlightsWithoutNotes.length})
               </span>
@@ -361,12 +340,8 @@ export function NotebookPanel({ bookId, onClose, onGoToCfi, onAddAnnotation, onD
         {bookHighlights.length === 0 && !isEditing && (
           <div className="flex h-full flex-col items-center justify-center p-6 text-center">
             <img src="/note.svg" alt="" className="mb-4 h-32 w-32" />
-            <p className="text-sm text-muted-foreground">
-              {t("notebook.empty")}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground/70">
-              {t("notebook.emptyHint")}
-            </p>
+            <p className="text-sm text-muted-foreground">{t("notebook.empty")}</p>
+            <p className="mt-1 text-xs text-muted-foreground/70">{t("notebook.emptyHint")}</p>
           </div>
         )}
       </div>
@@ -383,38 +358,35 @@ interface HighlightNoteItemProps {
   isActive?: boolean;
 }
 
-function HighlightNoteItem({ highlight, onClick, onEdit, onDeleteNote, isActive }: HighlightNoteItemProps) {
+function HighlightNoteItem({
+  highlight,
+  onClick,
+  onEdit,
+  onDeleteNote,
+  isActive,
+}: HighlightNoteItemProps) {
   const { t } = useTranslation();
   return (
     <div
       className={cn(
         "group mt-2 rounded-md border border-border/40 p-2 transition-colors cursor-pointer",
-        isActive ? "bg-muted" : "hover:bg-muted/50"
+        isActive ? "bg-muted" : "hover:bg-muted/50",
       )}
     >
-      <div 
-        className="flex items-start gap-2"
-        onClick={onClick}
-      >
+      <div className="flex items-start gap-2" onClick={onClick}>
         <div
           className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
           style={{ backgroundColor: HIGHLIGHT_COLOR_HEX[highlight.color] }}
         />
         <div className="flex-1 min-w-0">
-          <p className="text-sm text-foreground line-clamp-2">
-            "{highlight.text}"
-          </p>
+          <p className="text-sm text-foreground line-clamp-2">"{highlight.text}"</p>
           {highlight.note && (
             <div className="mt-1.5 text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1.5 prose prose-xs dark:prose-invert max-w-none break-words overflow-hidden [overflow-wrap:anywhere]">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {highlight.note}
-              </ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{highlight.note}</ReactMarkdown>
             </div>
           )}
           {highlight.chapterTitle && (
-            <p className="mt-1 text-xs text-muted-foreground/70">
-              {highlight.chapterTitle}
-            </p>
+            <p className="mt-1 text-xs text-muted-foreground/70">{highlight.chapterTitle}</p>
           )}
         </div>
       </div>
@@ -466,13 +438,9 @@ function HighlightItem({ highlight, onClick, onAddNote, onDelete }: HighlightIte
         style={{ backgroundColor: HIGHLIGHT_COLOR_HEX[highlight.color] }}
       />
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-foreground line-clamp-2">
-          "{highlight.text}"
-        </p>
+        <p className="text-sm text-foreground line-clamp-2">"{highlight.text}"</p>
         {highlight.chapterTitle && (
-          <p className="mt-1 text-xs text-muted-foreground/70">
-            {highlight.chapterTitle}
-          </p>
+          <p className="mt-1 text-xs text-muted-foreground/70">{highlight.chapterTitle}</p>
         )}
       </div>
       <div className="shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

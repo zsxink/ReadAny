@@ -26,7 +26,11 @@ export function NoteEditor({
 
   return (
     <div className="flex flex-col gap-3 p-3">
-      <Input placeholder={t("notes.noteTitle")} value={title} onChange={(e) => setTitle(e.target.value)} />
+      <Input
+        placeholder={t("notes.noteTitle")}
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+      />
       <Textarea
         placeholder={t("notes.writeMarkdown")}
         value={content}

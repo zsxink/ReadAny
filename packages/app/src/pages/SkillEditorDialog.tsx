@@ -1,5 +1,11 @@
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { Skill } from "@readany/core/types";
@@ -13,7 +19,12 @@ interface SkillEditorDialogProps {
   onSave?: (skill: Skill) => void;
 }
 
-export default function SkillEditorDialog({ isOpen, onClose, skill, onSave }: SkillEditorDialogProps) {
+export default function SkillEditorDialog({
+  isOpen,
+  onClose,
+  skill,
+  onSave,
+}: SkillEditorDialogProps) {
   const { t } = useTranslation();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -78,7 +89,9 @@ export default function SkillEditorDialog({ isOpen, onClose, skill, onSave }: Sk
 
         <div className="flex-1 space-y-4 overflow-y-auto px-1 py-2">
           <div className="space-y-2">
-            <label className="text-sm font-medium text-neutral-700">{t("settings.skillName")}</label>
+            <label className="text-sm font-medium text-neutral-700">
+              {t("settings.skillName")}
+            </label>
             <Input
               placeholder={t("settings.skillNamePlaceholder")}
               value={name}
@@ -92,7 +105,9 @@ export default function SkillEditorDialog({ isOpen, onClose, skill, onSave }: Sk
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-neutral-700">{t("settings.skillDescription")}</label>
+            <label className="text-sm font-medium text-neutral-700">
+              {t("settings.skillDescription")}
+            </label>
             <Input
               placeholder={t("settings.skillDescriptionPlaceholder")}
               value={description}
@@ -101,7 +116,9 @@ export default function SkillEditorDialog({ isOpen, onClose, skill, onSave }: Sk
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-neutral-700">{t("settings.skillPrompt")}</label>
+            <label className="text-sm font-medium text-neutral-700">
+              {t("settings.skillPrompt")}
+            </label>
             <Textarea
               placeholder={t("settings.skillPromptPlaceholder")}
               value={prompt}
@@ -115,11 +132,7 @@ export default function SkillEditorDialog({ isOpen, onClose, skill, onSave }: Sk
           <Button size="sm" variant="outline" onClick={onClose}>
             {t("common.cancel")}
           </Button>
-          <Button
-            size="sm"
-            onClick={handleSave}
-            disabled={!name.trim() || !prompt.trim()}
-          >
+          <Button size="sm" onClick={handleSave} disabled={!name.trim() || !prompt.trim()}>
             {t("common.save")}
           </Button>
         </DialogFooter>

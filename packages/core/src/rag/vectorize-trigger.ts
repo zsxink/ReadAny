@@ -1,3 +1,7 @@
+import { BUILTIN_EMBEDDING_MODELS } from "../ai/builtin-embedding-models";
+import { generateLocalEmbeddings, loadEmbeddingPipeline } from "../ai/local-embedding-service";
+import { deleteChunks, insertChunks } from "../db/database";
+import type { VectorizeProgress } from "../types";
 /**
  * Vectorize Trigger — high-level service that orchestrates book vectorization.
  * Connects: chapter data → chunking → embedding → database indexing → state update.
@@ -8,22 +12,13 @@
  * Supports both built-in (Transformers.js via Web Worker) and remote (OpenAI-compatible API) embedding models.
  */
 import { eventBus } from "../utils/event-bus";
-import type { VectorizeProgress } from "../types";
-import { BUILTIN_EMBEDDING_MODELS } from "../ai/builtin-embedding-models";
-import {
-  generateLocalEmbeddings,
-  loadEmbeddingPipeline,
-} from "../ai/local-embedding-service";
-import { insertChunks, deleteChunks } from "../db/database";
 import { chunkContent } from "./chunker";
-import { invalidateChunkCache } from "./search";
-import { hasVectorDB, getVectorDB } from "./vector-db";
-import type { VectorRecord } from "./vector-db";
 import type { ChapterData } from "./rag-types";
+import { invalidateChunkCache } from "./search";
+import { getVectorDB, hasVectorDB } from "./vector-db";
+import type { VectorRecord } from "./vector-db";
 
-export type VectorizeStatusCallback = (
-  progress: VectorizeProgress,
-) => void;
+export type VectorizeStatusCallback = (progress: VectorizeProgress) => void;
 
 /** Configuration describing the vector model to use */
 export interface VectorizeTriggerConfig {
@@ -70,9 +65,7 @@ export async function triggerVectorizeBook(
   onProgress?: VectorizeStatusCallback,
 ): Promise<void> {
   if (!config.vectorModelEnabled) {
-    throw new Error(
-      "Vector model is not enabled. Please enable it in Settings → Vector Model.",
-    );
+    throw new Error("Vector model is not enabled. Please enable it in Settings → Vector Model.");
   }
 
   if (chapters.length === 0) {
@@ -151,12 +144,7 @@ export async function triggerVectorizeBook(
         onProgress,
       );
     } else {
-      await generateRemoteEmbeddings(
-        allChunks,
-        config,
-        progress,
-        onProgress,
-      );
+      await generateRemoteEmbeddings(allChunks, config, progress, onProgress);
     }
 
     // Phase 3: Store in database (batch insert for performance)
@@ -175,7 +163,7 @@ export async function triggerVectorizeBook(
     if (hasVectorDB()) {
       try {
         const vectorDB = getVectorDB();
-        if (vectorDB && await vectorDB.isReady()) {
+        if (vectorDB && (await vectorDB.isReady())) {
           await vectorDB.deleteByBookId(bookId);
 
           const vectorRecords: VectorRecord[] = allChunks
@@ -243,9 +231,7 @@ async function generateBuiltinEmbeddings(
   onProgress?: VectorizeStatusCallback,
 ) {
   if (!builtinModelId) {
-    throw new Error(
-      "No built-in model selected. Please select one in Settings → Vector Model.",
-    );
+    throw new Error("No built-in model selected. Please select one in Settings → Vector Model.");
   }
 
   const model = BUILTIN_EMBEDDING_MODELS.find((m) => m.id === builtinModelId);
@@ -264,20 +250,16 @@ async function generateBuiltinEmbeddings(
     const batchOffset = i;
 
     // generateLocalEmbeddings now runs in Worker with per-item progress
-    const embeddings = await generateLocalEmbeddings(
-      builtinModelId,
-      texts,
-      (done, _total) => {
-        globalProcessed = batchOffset + done;
-        progress.processedChunks = globalProcessed;
-        eventBus.emit("vectorize:progress", {
-          bookId: progress.bookId,
-          progress: globalProcessed / progress.totalChunks,
-          status: "embedding",
-        });
-        onProgress?.(progress);
-      },
-    );
+    const embeddings = await generateLocalEmbeddings(builtinModelId, texts, (done, _total) => {
+      globalProcessed = batchOffset + done;
+      progress.processedChunks = globalProcessed;
+      eventBus.emit("vectorize:progress", {
+        bookId: progress.bookId,
+        progress: globalProcessed / progress.totalChunks,
+        status: "embedding",
+      });
+      onProgress?.(progress);
+    });
 
     for (let j = 0; j < batch.length; j++) {
       batch[j].embedding = embeddings[j];

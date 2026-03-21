@@ -1,11 +1,21 @@
-import type { AttachedQuote, Book, SemanticContext } from "@readany/core/types";
-import type { MessageV2, Part, TextPart, ToolCallPart, ReasoningPart } from "@readany/core/types/message";
-import { createTextPart, createAbortedPart, createReasoningPart } from "@readany/core/types/message";
-import { useCallback, useRef, useState } from "react";
 import { useChatStore } from "@/stores/chat-store";
 import { useSettingsStore } from "@/stores/settings-store";
-import type { Thread } from "@readany/core/types";
 import i18n from "@readany/core/i18n";
+import type { AttachedQuote, Book, SemanticContext } from "@readany/core/types";
+import type { Thread } from "@readany/core/types";
+import type {
+  MessageV2,
+  Part,
+  ReasoningPart,
+  TextPart,
+  ToolCallPart,
+} from "@readany/core/types/message";
+import {
+  createAbortedPart,
+  createReasoningPart,
+  createTextPart,
+} from "@readany/core/types/message";
+import { useCallback, useRef, useState } from "react";
 
 export interface StreamingChatOptions {
   book?: Book | null;
@@ -51,11 +61,12 @@ export function useStreamingChat(_options?: StreamingChatOptions) {
 
   const getOrCreateThread = useCallback(
     async (bookId?: string): Promise<Thread> => {
-      const { threads: freshThreads, generalActiveThreadId, bookActiveThreadIds } =
-        useChatStore.getState();
-      const activeId = bookId
-        ? bookActiveThreadIds[bookId] || null
-        : generalActiveThreadId;
+      const {
+        threads: freshThreads,
+        generalActiveThreadId,
+        bookActiveThreadIds,
+      } = useChatStore.getState();
+      const activeId = bookId ? bookActiveThreadIds[bookId] || null : generalActiveThreadId;
       const existing = activeId ? freshThreads.find((t) => t.id === activeId) : null;
       if (existing) return existing;
       return await createThread(bookId);
@@ -159,8 +170,11 @@ export function useStreamingChat(_options?: StreamingChatOptions) {
         if (quotes && quotes.length > 0) {
           const quotesText = quotes.map((q) => `> ${q.text.slice(0, 300)}`).join("\n\n");
           aiPrompt = content.trim()
-            ? `关于以下文本：\n${quotesText}\n\n${content.trim()}`
-            : `关于以下文本：\n${quotesText}\n\n请帮我分析这段文本。`;
+            ? i18n.t("chat.aboutFollowingText", "关于以下文本：") +
+              `\n${quotesText}\n\n${content.trim()}`
+            : i18n.t("chat.aboutFollowingTextAnalyze", "关于以下文本：") +
+              `\n${quotesText}\n\n` +
+              i18n.t("chat.helpAnalyzeText", "请帮我分析这段文本。");
         }
 
         const userMessageId = createMessageId();
@@ -204,7 +218,9 @@ export function useStreamingChat(_options?: StreamingChatOptions) {
         const model = aiConfig.activeModel;
 
         if (!endpoint?.apiKey || !model) {
-          throw new Error("请先在设置中配置 AI 端点和模型");
+          throw new Error(
+            i18n.t("settings.configureAIModelError", "请先在设置中配置 AI 端点和模型"),
+          );
         }
 
         const history = thread.messages.slice(-8).map((m) => ({
@@ -244,7 +260,7 @@ export function useStreamingChat(_options?: StreamingChatOptions) {
 
         const reader = response.body?.getReader();
         if (!reader) {
-          throw new Error("无法读取响应流");
+          throw new Error(i18n.t("chat.cannotReadStream", "无法读取响应流"));
         }
 
         const decoder = new TextDecoder();
@@ -266,7 +282,7 @@ export function useStreamingChat(_options?: StreamingChatOptions) {
               try {
                 const parsed = JSON.parse(data);
                 const delta = parsed.choices?.[0]?.delta;
-                
+
                 // Handle reasoning_content (DeepSeek)
                 const reasoningContent = delta?.reasoning_content;
                 if (reasoningContent) {
@@ -283,11 +299,14 @@ export function useStreamingChat(_options?: StreamingChatOptions) {
                   setState((prev) => ({
                     ...prev,
                     currentMessage: prev.currentMessage
-                      ? { ...prev.currentMessage, parts: [...streamingStateRef.current.currentParts] }
+                      ? {
+                          ...prev.currentMessage,
+                          parts: [...streamingStateRef.current.currentParts],
+                        }
                       : null,
                   }));
                 }
-                
+
                 // Handle regular content
                 const token = delta?.content;
                 if (token) {
@@ -306,7 +325,10 @@ export function useStreamingChat(_options?: StreamingChatOptions) {
                   setState((prev) => ({
                     ...prev,
                     currentMessage: prev.currentMessage
-                      ? { ...prev.currentMessage, parts: [...streamingStateRef.current.currentParts] }
+                      ? {
+                          ...prev.currentMessage,
+                          parts: [...streamingStateRef.current.currentParts],
+                        }
                       : null,
                   }));
                 }
@@ -401,7 +423,15 @@ export function useStreamingChat(_options?: StreamingChatOptions) {
         setStreaming(false);
       }
     },
-    [state.isStreaming, getOrCreateThread, addMessage, updateThreadTitle, setStreaming, _options?.bookId, saveAbortedMessage],
+    [
+      state.isStreaming,
+      getOrCreateThread,
+      addMessage,
+      updateThreadTitle,
+      setStreaming,
+      _options?.bookId,
+      saveAbortedMessage,
+    ],
   );
 
   const stopStream = useCallback(() => {

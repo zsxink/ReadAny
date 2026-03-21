@@ -1,7 +1,7 @@
 /**
  * Throttled Value Hook
  * Inspired by OpenCode's createThrottledValue
- * 
+ *
  * Prevents excessive re-renders during streaming by throttling value updates.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -45,7 +45,7 @@ export function useThrottledValue<T>(value: T, throttleMs: number = DEFAULT_THRO
 
 export function useThrottledCallback<T extends unknown[]>(
   callback: (...args: T) => void,
-  throttleMs: number = DEFAULT_THROTTLE_MS
+  throttleMs: number = DEFAULT_THROTTLE_MS,
 ): (...args: T) => void {
   const lastCallRef = useRef(0);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -81,7 +81,7 @@ export function useThrottledCallback<T extends unknown[]>(
         flush();
       }, remaining);
     },
-    [callback, throttleMs, flush]
+    [callback, throttleMs, flush],
   );
 
   useEffect(() => {
@@ -95,7 +95,7 @@ export function useThrottledCallback<T extends unknown[]>(
   return throttledCallback;
 }
 
-export function useStreamingText(initialText: string = "") {
+export function useStreamingText(initialText = "") {
   const [text, setText] = useState(initialText);
   const [isStreaming, setIsStreaming] = useState(false);
   const throttledText = useThrottledValue(text);

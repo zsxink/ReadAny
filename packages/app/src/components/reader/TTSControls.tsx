@@ -1,16 +1,3 @@
-/**
- * TTSControls — Floating TTS playback control bar.
- *
- * Appears at bottom of reader when TTS is active.
- * Uses shadcn/ui: Button, Select, Slider, Tooltip.
- */
-import { useEffect, useState } from "react";
-import { useTTSStore } from "@/stores/tts-store";
-import {
-  getBrowserVoices,
-  DASHSCOPE_VOICES,
-} from "@/lib/tts/tts-service";
-import type { TTSEngine } from "@/lib/tts/tts-service";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/password-input";
 import {
@@ -21,18 +8,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import {
-  Pause,
-  Play,
-  Square,
-  ChevronDown,
-  ChevronUp,
-  Volume2,
-  Minus,
-  Plus,
-} from "lucide-react";
-import { useTranslation } from "react-i18next";
+import { DASHSCOPE_VOICES, getBrowserVoices } from "@/lib/tts/tts-service";
+import type { TTSEngine } from "@/lib/tts/tts-service";
+import { useTTSStore } from "@/stores/tts-store";
 import { cn } from "@readany/core/utils";
+import { ChevronDown, ChevronUp, Minus, Pause, Play, Plus, Square, Volume2 } from "lucide-react";
+/**
+ * TTSControls — Floating TTS playback control bar.
+ *
+ * Appears at bottom of reader when TTS is active.
+ * Uses shadcn/ui: Button, Select, Slider, Tooltip.
+ */
+import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 interface TTSControlsProps {
   onClose: () => void;
@@ -70,15 +58,18 @@ export function TTSControls({ onClose, className }: TTSControlsProps) {
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className={cn("absolute left-0 right-0 z-[60] flex flex-col border-t border-border bg-background/98 shadow-lg backdrop-blur-sm animate-in slide-in-from-bottom-2 duration-200 transition-[bottom] duration-300", className || "bottom-0")}>
+      <div
+        className={cn(
+          "absolute left-0 right-0 z-[60] flex flex-col border-t border-border bg-background/98 shadow-lg backdrop-blur-sm animate-in slide-in-from-bottom-2 duration-200 transition-[bottom] duration-300",
+          className || "bottom-0",
+        )}
+      >
         {/* Expanded settings panel */}
         {expanded && (
           <div className="border-b border-border/40 px-4 py-3 space-y-3">
             {/* Engine selection */}
             <div className="flex items-center gap-3">
-              <span className="text-xs text-muted-foreground w-16 shrink-0">
-                {t("tts.engine")}
-              </span>
+              <span className="text-xs text-muted-foreground w-16 shrink-0">{t("tts.engine")}</span>
               <div className="flex gap-1">
                 {(["browser", "dashscope"] as TTSEngine[]).map((eng) => (
                   <Button
@@ -140,9 +131,7 @@ export function TTSControls({ onClose, className }: TTSControlsProps) {
                   </Select>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-xs text-muted-foreground w-16 shrink-0">
-                    API Key
-                  </span>
+                  <span className="text-xs text-muted-foreground w-16 shrink-0">API Key</span>
                   <PasswordInput
                     className="h-7 flex-1 text-xs"
                     placeholder={t("tts.apiKeyPlaceholder")}
@@ -228,12 +217,7 @@ export function TTSControls({ onClose, className }: TTSControlsProps) {
             {/* Stop */}
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={handleStop}
-                >
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleStop}>
                   <Square className="h-3.5 w-3.5" />
                 </Button>
               </TooltipTrigger>

@@ -8,6 +8,7 @@ import {
   Volume2Icon,
   XIcon,
 } from "@/components/ui/Icon";
+import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import type { SelectionEvent } from "@/hooks/use-reader-bridge";
 import { radius, spacing, useColors } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
@@ -30,7 +31,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { RichTextEditor } from "@/components/ui/RichTextEditor";
 
 const HIGHLIGHT_COLORS = [
   { key: "yellow", hex: "#facc15" },

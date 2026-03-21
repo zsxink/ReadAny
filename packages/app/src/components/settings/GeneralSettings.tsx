@@ -1,7 +1,3 @@
-/**
- * GeneralSettings — app-level settings
- */
-import { useState, useEffect } from "react";
 import {
   Select,
   SelectContent,
@@ -9,8 +5,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Coffee, Moon, Sun } from "lucide-react";
+/**
+ * GeneralSettings — app-level settings
+ */
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Sun, Moon, Coffee } from "lucide-react";
 
 type ThemeMode = "light" | "dark" | "sepia";
 
@@ -90,7 +90,7 @@ export function GeneralSettings() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="en">English</SelectItem>
-              <SelectItem value="zh">中文</SelectItem>
+              <SelectItem value="zh">{t("settings.simplifiedChinese", "中文")}</SelectItem>
             </SelectContent>
           </Select>
         </div>

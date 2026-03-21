@@ -12,7 +12,11 @@ export {
   webSessionEventSource,
   type SessionEventSource,
 } from "./use-reading-session";
-export { useStreamingChat, type StreamingChatOptions, type StreamingState } from "./use-streaming-chat";
+export {
+  useStreamingChat,
+  type StreamingChatOptions,
+  type StreamingState,
+} from "./use-streaming-chat";
 
 // Reader hooks
 export {

@@ -1,15 +1,15 @@
 ---
-import { useTranslations } from '../../i18n/utils';
+import { useTranslations } from "../../i18n/utils";
 
 // ReadAny doesn't pass lang directly to starlight pages easily without parsing URL
 const langMatch = Astro.url.pathname.match(/^\/ReadAny\/([a-z]{2})\//);
-const lang = langMatch ? langMatch[1] : 'en';
-const t = useTranslations(lang as 'en' | 'zh');
+const lang = langMatch ? langMatch[1] : "en";
+const t = useTranslations(lang as "en" | "zh");
 
-const title = lang === 'en' ? 'Welcome to the Support Center' : '欢迎来到帮助中心';
-const subtitle = lang === 'en' ? 'What can we help you with?' : '您想了解什么？';
-const searchPlaceholder = lang === 'en' ? 'Search documentation...' : '搜索文档...';
-const searchButton = lang === 'en' ? 'Search' : '搜索';
+const title = lang === "en" ? "Welcome to the Support Center" : "欢迎来到帮助中心";
+const subtitle = lang === "en" ? "What can we help you with?" : "您想了解什么？";
+const searchPlaceholder = lang === "en" ? "Search documentation..." : "搜索文档...";
+const searchButton = lang === "en" ? "Search" : "搜索";
 ---
 <div class="futu-hero-section">
   <div class="futu-hero-content">

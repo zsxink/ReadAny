@@ -1,3 +1,4 @@
+import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import {
   BookOpenIcon,
   CheckIcon,
@@ -10,7 +11,9 @@ import {
   Trash2Icon,
   XIcon,
 } from "@/components/ui/Icon";
+import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
+import type { TabParamList } from "@/navigation/TabNavigator";
 import { useAnnotationStore, useLibraryStore } from "@/stores";
 import {
   type ThemeColors,
@@ -18,17 +21,16 @@ import {
   fontWeight,
   radius,
   useColors,
-  withOpacity,
   useTheme,
+  withOpacity,
 } from "@/styles/theme";
-import { useNavigation, useFocusEffect } from "@react-navigation/native";
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
-import type { TabParamList } from "@/navigation/TabNavigator";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HighlightWithBook } from "@readany/core/db/database";
+import { AnnotationExporter, type ExportFormat } from "@readany/core/export";
 import { getPlatformService } from "@readany/core/services";
 import { HIGHLIGHT_COLOR_HEX } from "@readany/core/types";
-import { AnnotationExporter, type ExportFormat } from "@readany/core/export";
 import type { Highlight } from "@readany/core/types";
 /**
  * NotesScreen — matching Tauri mobile NotesPage exactly.
@@ -53,8 +55,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { RichTextEditor } from "@/components/ui/RichTextEditor";
-import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 
 const NOTE_PNG = require("../../assets/note.png");
 const NOTE_DARK_PNG = require("../../assets/note-dark.png");
@@ -63,7 +63,17 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 type DetailTab = "notes" | "highlights";
 type Props = BottomTabScreenProps<TabParamList, "Notes">;
 
-export function NotesView({ initialBookId, showBackButton, edges = ["top"], hideDetailHeader }: { initialBookId?: string | null; showBackButton?: boolean; edges?: ("top" | "bottom" | "left" | "right")[]; hideDetailHeader?: boolean }) {
+export function NotesView({
+  initialBookId,
+  showBackButton,
+  edges = ["top"],
+  hideDetailHeader,
+}: {
+  initialBookId?: string | null;
+  showBackButton?: boolean;
+  edges?: ("top" | "bottom" | "left" | "right")[];
+  hideDetailHeader?: boolean;
+}) {
   const colors = useColors();
   const { isDark } = useTheme();
   const s = makeStyles(colors);
@@ -312,27 +322,15 @@ export function NotesView({ initialBookId, showBackButton, edges = ["top"], hide
       if (!book) return;
 
       const exporter = new AnnotationExporter();
-      const content = exporter.export(
-        selectedBook.highlights as Highlight[],
-        [],
-        book,
-        { format },
-      );
+      const content = exporter.export(selectedBook.highlights as Highlight[], [], book, { format });
 
       try {
         if (format === "notion") {
           await exporter.copyToClipboard(content);
-          Alert.alert(
-            t("common.success", "成功"),
-            t("notes.copiedToClipboard", "已复制到剪贴板"),
-          );
+          Alert.alert(t("common.success", "成功"), t("notes.copiedToClipboard", "已复制到剪贴板"));
         } else {
           const ext = format === "json" ? "json" : "md";
-          await exporter.downloadAsFile(
-            content,
-            `${selectedBook.title}-${format}.${ext}`,
-            format,
-          );
+          await exporter.downloadAsFile(content, `${selectedBook.title}-${format}.${ext}`, format);
         }
       } catch (err) {
         console.error("Export failed:", err);
@@ -361,17 +359,17 @@ export function NotesView({ initialBookId, showBackButton, edges = ["top"], hide
   // Empty
   if (bookNotebooks.length === 0) {
     return (
-      <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={hideDetailHeader ? [] : ["top"]}>
+      <SafeAreaView
+        style={[s.container, { backgroundColor: colors.background }]}
+        edges={hideDetailHeader ? [] : ["top"]}
+      >
         {!hideDetailHeader && (
           <View style={s.header}>
             <Text style={s.headerTitle}>{t("notes.title", "笔记")}</Text>
           </View>
         )}
         <View style={s.emptyWrap}>
-          <Image
-            source={isDark ? NOTE_DARK_PNG : NOTE_PNG}
-            style={{ width: 160, height: 160 }}
-          />
+          <Image source={isDark ? NOTE_DARK_PNG : NOTE_PNG} style={{ width: 160, height: 160 }} />
           <Text style={s.emptyTitle}>{t("notes.empty", "暂无笔记")}</Text>
           <Text style={s.emptyHint}>{t("notes.emptyHint", "阅读时长按文字添加高亮和笔记")}</Text>
         </View>
@@ -382,10 +380,7 @@ export function NotesView({ initialBookId, showBackButton, edges = ["top"], hide
   // Detail view
   if (selectedBookId && selectedBook) {
     return (
-      <SafeAreaView
-        style={[s.container, { backgroundColor: colors.background }]}
-        edges={edges}
-      >
+      <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={edges}>
         {/* Detail header - hide entirely when from reader and empty */}
         {!(hideDetailHeader && selectedBook.highlights.length === 0) && (
           <View style={s.detailHeader}>
@@ -393,10 +388,7 @@ export function NotesView({ initialBookId, showBackButton, edges = ["top"], hide
               <View style={s.detailHeaderTop}>
                 {/* Back button - return to list when in tab navigation */}
                 {showBackButton && (
-                  <TouchableOpacity
-                    style={s.backBtn}
-                    onPress={() => setSelectedBookId(null)}
-                  >
+                  <TouchableOpacity style={s.backBtn} onPress={() => setSelectedBookId(null)}>
                     <ChevronLeftIcon size={20} color={colors.foreground} />
                   </TouchableOpacity>
                 )}
@@ -404,7 +396,9 @@ export function NotesView({ initialBookId, showBackButton, edges = ["top"], hide
                 {/* Book cover */}
                 {resolvedCovers.get(selectedBook.bookId) || selectedBook.coverUrl ? (
                   <Image
-                    source={{ uri: (resolvedCovers.get(selectedBook.bookId) || selectedBook.coverUrl) || "" }}
+                    source={{
+                      uri: resolvedCovers.get(selectedBook.bookId) || selectedBook.coverUrl || "",
+                    }}
                     style={s.detailCover}
                     resizeMode="cover"
                   />
@@ -440,7 +434,9 @@ export function NotesView({ initialBookId, showBackButton, edges = ["top"], hide
                 >
                   <NotebookPenIcon
                     size={12}
-                    color={detailTab === "notes" ? colors.primaryForeground : colors.mutedForeground}
+                    color={
+                      detailTab === "notes" ? colors.primaryForeground : colors.mutedForeground
+                    }
                   />
                   <Text style={[s.tabBtnText, detailTab === "notes" && s.tabBtnTextActive]}>
                     {t("notebook.notesSection", "笔记")} ({selectedBook.notesCount || 0})
@@ -457,8 +453,8 @@ export function NotesView({ initialBookId, showBackButton, edges = ["top"], hide
                     }
                   />
                   <Text style={[s.tabBtnText, detailTab === "highlights" && s.tabBtnTextActive]}>
-                    {t("notebook.highlightsSection", "高亮")} ({selectedBook.highlightsOnlyCount || 0}
-                    )
+                    {t("notebook.highlightsSection", "高亮")} (
+                    {selectedBook.highlightsOnlyCount || 0})
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -539,11 +535,7 @@ export function NotesView({ initialBookId, showBackButton, edges = ["top"], hide
           <Pressable style={s.exportOverlay} onPress={() => setShowExportMenu(false)} />
           <View style={s.exportDropdown}>
             {(["markdown", "json", "obsidian", "notion"] as const).map((fmt) => (
-              <TouchableOpacity
-                key={fmt}
-                style={s.exportItem}
-                onPress={() => handleExport(fmt)}
-              >
+              <TouchableOpacity key={fmt} style={s.exportItem} onPress={() => handleExport(fmt)}>
                 <Text style={s.exportItemText}>
                   {fmt === "markdown"
                     ? "Markdown"
@@ -563,10 +555,7 @@ export function NotesView({ initialBookId, showBackButton, edges = ["top"], hide
 
   // Main list view
   return (
-    <SafeAreaView
-      style={[s.container, { backgroundColor: colors.background }]}
-      edges={edges}
-    >
+    <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={edges}>
       <View style={s.header}>
         <View style={s.headerRow}>
           <Text style={s.headerTitle}>{t("notes.title", "笔记")}</Text>
@@ -675,7 +664,7 @@ function NotebookCard({
       {/* Cover */}
       {resolvedCoverUrl || book.coverUrl ? (
         <Image
-          source={{ uri: (resolvedCoverUrl || book.coverUrl) || "" }}
+          source={{ uri: resolvedCoverUrl || book.coverUrl || "" }}
           style={s.notebookCover}
           resizeMode="cover"
         />
@@ -1095,7 +1084,11 @@ const makeStyles = (colors: ThemeColors) =>
     editTabs: { flexDirection: "row", gap: 12, marginBottom: 8, paddingHorizontal: 4 },
     editTabBtn: { paddingBottom: 4 },
     editTabBtnActive: { borderBottomWidth: 2, borderBottomColor: colors.primary },
-    editTabText: { fontSize: fontSize.xs, color: colors.mutedForeground, fontWeight: fontWeight.medium },
+    editTabText: {
+      fontSize: fontSize.xs,
+      color: colors.mutedForeground,
+      fontWeight: fontWeight.medium,
+    },
     editTabTextActive: { color: colors.primary },
     editPreviewArea: {
       minHeight: 80,

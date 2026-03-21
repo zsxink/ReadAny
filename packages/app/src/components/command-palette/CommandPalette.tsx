@@ -1,3 +1,18 @@
+import { type SettingsTab, useAppStore } from "@/stores/app-store";
+import { cn } from "@readany/core/utils";
+import {
+  BookOpen,
+  Brain,
+  Info,
+  Keyboard,
+  Languages,
+  type LucideIcon,
+  Moon,
+  Search,
+  Settings,
+  Sun,
+  Volume2,
+} from "lucide-react";
 /**
  * CommandPalette — Cmd+Shift+P command palette for quick access to settings and actions.
  *
@@ -9,21 +24,6 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, type SettingsTab } from "@/stores/app-store";
-import { cn } from "@readany/core/utils";
-import {
-  Settings,
-  Sun,
-  Moon,
-  BookOpen,
-  Volume2,
-  Languages,
-  Brain,
-  Info,
-  Search,
-  Keyboard,
-  type LucideIcon,
-} from "lucide-react";
 
 // ── Types ──
 
@@ -80,7 +80,7 @@ function searchCommands(query: string, items: CommandItem[]): SearchResult[] {
 
   for (const item of items) {
     const searchTexts = [item.label, ...item.keywords];
-    let bestScore = -Infinity;
+    let bestScore = Number.NEGATIVE_INFINITY;
     let bestPositions: number[] = [];
 
     for (const text of searchTexts) {
@@ -91,7 +91,7 @@ function searchCommands(query: string, items: CommandItem[]): SearchResult[] {
       }
     }
 
-    if (bestScore > -Infinity) {
+    if (bestScore > Number.NEGATIVE_INFINITY) {
       results.push({ item, score: bestScore, matchPositions: bestPositions });
     }
   }
@@ -109,7 +109,9 @@ function trackRecent(commandId: string) {
     const ids = JSON.parse(localStorage.getItem(RECENT_KEY) || "[]") as string[];
     const updated = [commandId, ...ids.filter((id) => id !== commandId)].slice(0, MAX_RECENT);
     localStorage.setItem(RECENT_KEY, JSON.stringify(updated));
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 function getRecentIds(): string[] {
@@ -269,7 +271,9 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         keywords: ["command", "palette", "shortcut", "keyboard"],
         category: "actions",
         icon: Keyboard,
-        action: () => { /* already open */ },
+        action: () => {
+          /* already open */
+        },
         shortcut: "⌘⇧P",
       },
     ];

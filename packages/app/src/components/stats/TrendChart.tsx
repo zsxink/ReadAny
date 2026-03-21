@@ -1,9 +1,9 @@
+import { scaleLinear, scalePoint } from "d3-scale";
+import { area, curveMonotoneX, line } from "d3-shape";
 /**
  * TrendChart — SVG area/line chart for reading trends using D3
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { scaleLinear, scalePoint } from "d3-scale";
-import { line, area, curveMonotoneX } from "d3-shape";
 
 interface TrendData {
   date: string;
@@ -55,12 +55,20 @@ export function TrendChart({ data, height = 160, emptyMessage }: TrendChartProps
   const maxValue = useMemo(() => Math.max(...data.map((d) => d.value), 1), [data]);
 
   const xScale = useMemo(
-    () => scalePoint<string>().domain(data.map((d) => d.date)).range([0, innerWidth]).padding(0.05),
+    () =>
+      scalePoint<string>()
+        .domain(data.map((d) => d.date))
+        .range([0, innerWidth])
+        .padding(0.05),
     [data, innerWidth],
   );
 
   const yScale = useMemo(
-    () => scaleLinear().domain([0, maxValue * 1.1]).range([innerHeight, 0]).nice(),
+    () =>
+      scaleLinear()
+        .domain([0, maxValue * 1.1])
+        .range([innerHeight, 0])
+        .nice(),
     [maxValue, innerHeight],
   );
 
@@ -101,7 +109,11 @@ export function TrendChart({ data, height = 160, emptyMessage }: TrendChartProps
 
   if (!hasData && emptyMessage) {
     return (
-      <div ref={containerRef} className="flex items-center justify-center text-sm text-muted-foreground" style={{ height }}>
+      <div
+        ref={containerRef}
+        className="flex items-center justify-center text-sm text-muted-foreground"
+        style={{ height }}
+      >
         {emptyMessage}
       </div>
     );
@@ -171,7 +183,14 @@ export function TrendChart({ data, height = 160, emptyMessage }: TrendChartProps
           ))}
 
           {/* Baseline */}
-          <line x1={0} y1={innerHeight} x2={innerWidth} y2={innerHeight} stroke="var(--border)" strokeWidth={1} />
+          <line
+            x1={0}
+            y1={innerHeight}
+            x2={innerWidth}
+            y2={innerHeight}
+            stroke="var(--border)"
+            strokeWidth={1}
+          />
 
           {/* Invisible hit areas for hover */}
           {data.map((d, i) => {

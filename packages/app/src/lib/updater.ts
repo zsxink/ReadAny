@@ -1,6 +1,6 @@
-import { check } from "@tauri-apps/plugin-updater";
-import { relaunch } from "@tauri-apps/plugin-process";
 import i18n from "@readany/core/i18n";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { check } from "@tauri-apps/plugin-updater";
 
 export interface UpdateInfo {
   version: string;
@@ -14,7 +14,9 @@ let updateStatus: UpdateStatus = "idle";
 let availableUpdate: UpdateInfo | null = null;
 let downloadProgress = 0;
 let errorMessage = "";
-let statusListeners: Array<(status: UpdateStatus, info: UpdateInfo | null, progress: number, error: string) => void> = [];
+let statusListeners: Array<
+  (status: UpdateStatus, info: UpdateInfo | null, progress: number, error: string) => void
+> = [];
 
 export function getUpdateStatus(): UpdateStatus {
   return updateStatus;
@@ -33,7 +35,12 @@ export function getErrorMessage(): string {
 }
 
 export function subscribeToUpdates(
-  listener: (status: UpdateStatus, info: UpdateInfo | null, progress: number, error: string) => void
+  listener: (
+    status: UpdateStatus,
+    info: UpdateInfo | null,
+    progress: number,
+    error: string,
+  ) => void,
 ): () => void {
   statusListeners.push(listener);
   return () => {
@@ -73,7 +80,7 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
   } catch (error) {
     console.error("[Updater] Check failed:", error);
     updateStatus = "error";
-    
+
     const errorMsg = error instanceof Error ? error.message : String(error);
     if (errorMsg.includes("Could not fetch") || errorMsg.includes("network")) {
       errorMessage = i18n.t("settings.updaterNetworkError");
@@ -82,7 +89,7 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
     } else {
       errorMessage = i18n.t("settings.updaterCheckFailed");
     }
-    
+
     notifyListeners();
     return null;
   }

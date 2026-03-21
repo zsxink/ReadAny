@@ -1,5 +1,5 @@
-import { cn } from "@readany/core/utils";
 import * as SelectPrimitive from "@radix-ui/react-select";
+import { cn } from "@readany/core/utils";
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
 import type { ComponentPropsWithoutRef } from "react";
 
@@ -130,10 +130,7 @@ function SelectSeparator({
   ...props
 }: ComponentPropsWithoutRef<typeof SelectPrimitive.Separator>) {
   return (
-    <SelectPrimitive.Separator
-      className={cn("-mx-1 my-1 h-px bg-muted", className)}
-      {...props}
-    />
+    <SelectPrimitive.Separator className={cn("-mx-1 my-1 h-px bg-muted", className)} {...props} />
   );
 }
 

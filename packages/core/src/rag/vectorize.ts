@@ -1,11 +1,11 @@
+import { deleteChunks, insertChunks } from "../db/database";
 /**
  * Vectorize pipeline — orchestrates chunking + embedding + indexing for a book
  */
 import type { Chunk, VectorConfig, VectorizeProgress } from "../types";
 import { chunkContent } from "./chunker";
-import type { TextSegment } from "./rag-types";
 import { EmbeddingService } from "./embedding-service";
-import { deleteChunks, insertChunks } from "../db/database";
+import type { TextSegment } from "./rag-types";
 
 export type VectorizeCallback = (progress: VectorizeProgress) => void;
 
@@ -30,11 +30,18 @@ export async function vectorizeBook(
 
   // Phase 1: Chunk all chapters
   for (const chapter of chapters) {
-    const chunks = chunkContent(chapter.content, bookId, chapter.index, chapter.title, {
-      targetTokens: config.chunkSize,
-      minTokens: config.chunkMinSize,
-      overlapRatio: config.chunkOverlap,
-    }, chapter.segments);
+    const chunks = chunkContent(
+      chapter.content,
+      bookId,
+      chapter.index,
+      chapter.title,
+      {
+        targetTokens: config.chunkSize,
+        minTokens: config.chunkMinSize,
+        overlapRatio: config.chunkOverlap,
+      },
+      chapter.segments,
+    );
     allChunks.push(...chunks);
   }
 

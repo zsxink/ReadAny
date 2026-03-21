@@ -1,6 +1,7 @@
+import { getChunks } from "../db/database";
 /**
  * Hybrid search — vector + BM25 with configurable weighting
- * 
+ *
  * Optimizations:
  * - Inverted index for O(k*d) BM25 search instead of O(k*n*m)
  * - Advanced tokenizer with CJK bigram support
@@ -10,14 +11,9 @@
 import type { Chunk, SearchQuery, SearchResult } from "../types";
 import { cosineSimilarity } from "./embedding";
 import type { EmbeddingService } from "./embedding-service";
-import { getChunks } from "../db/database";
-import { hasVectorDB, getVectorDB } from "./vector-db";
+import { type InvertedIndex, buildInvertedIndex, searchInvertedIndex } from "./inverted-index";
 import { tokenize, tokenizeQuery } from "./tokenizer";
-import {
-  buildInvertedIndex,
-  searchInvertedIndex,
-  type InvertedIndex,
-} from "./inverted-index";
+import { getVectorDB, hasVectorDB } from "./vector-db";
 
 let embeddingService: EmbeddingService | null = null;
 
@@ -70,7 +66,7 @@ function getOrBuildInvertedIndex(chunks: Chunk[], bookId: string): InvertedIndex
 
   const documents = chunks.map((c) => ({ id: c.id, content: c.content }));
   const index = buildInvertedIndex(documents, tokenize);
-  
+
   invertedIndexCache.set(bookId, { index, timestamp: Date.now() });
   return index;
 }
@@ -112,7 +108,7 @@ async function vectorSearch(query: SearchQuery): Promise<SearchResult[]> {
   if (hasVectorDB()) {
     try {
       const vectorDB = getVectorDB();
-      if (vectorDB && await vectorDB.isReady()) {
+      if (vectorDB && (await vectorDB.isReady())) {
         const results = await vectorDB.search(queryEmbedding, query.bookId, query.topK);
 
         if (results.length > 0) {

@@ -3,27 +3,35 @@
  * Renders individual parts of a message (text, reasoning, tool calls, citations)
  */
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import type {
+  AbortedPart,
+  CitationPart,
+  MindmapPart,
+  Part,
+  ReasoningPart,
+  TextPart,
+  ToolCallPart,
+} from "@readany/core/types/message";
 import { cn } from "@readany/core/utils";
 import {
+  Brain,
   CheckCircle,
   ChevronDown,
   Circle,
   Loader2,
-  XCircle,
-  Brain,
-  Wrench,
   OctagonX,
+  Wrench,
+  XCircle,
 } from "lucide-react";
-import { useState, useEffect, useRef, lazy, Suspense } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { Part, TextPart, ReasoningPart, ToolCallPart, CitationPart, MindmapPart, AbortedPart } from "@readany/core/types/message";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
 const TEXT_RENDER_THROTTLE_MS = 100;
 
 // Lazy load MindmapView to avoid bundling markmap for non-mindmap messages
 const LazyMindmapView = lazy(() =>
-  import("@/components/common/MindmapView").then((m) => ({ default: m.MindmapView }))
+  import("@/components/common/MindmapView").then((m) => ({ default: m.MindmapView })),
 );
 
 function useThrottledText(text: string): string {
@@ -89,7 +97,7 @@ export function PartRenderer({ part, citations, onCitationClick }: PartProps) {
 function TextPartView({
   part,
   citations,
-  onCitationClick
+  onCitationClick,
 }: {
   part: TextPart;
   citations?: CitationPart[];
@@ -152,7 +160,9 @@ function ReasoningPartView({ part }: { part: ReasoningPart }) {
                   <Brain className="h-4 w-4 text-primary" />
                 )}
                 <span className="text-sm font-medium text-foreground">
-                  {part.status === "running" ? t("streaming.reasoningRunning") : t("streaming.reasoningDone")}
+                  {part.status === "running"
+                    ? t("streaming.reasoningRunning")
+                    : t("streaming.reasoningDone")}
                 </span>
                 {part.thinkingType && (
                   <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
@@ -163,7 +173,7 @@ function ReasoningPartView({ part }: { part: ReasoningPart }) {
               <ChevronDown
                 className={cn(
                   "h-4 w-4 text-muted-foreground transition-transform",
-                  isOpen && "rotate-180"
+                  isOpen && "rotate-180",
                 )}
               />
             </div>
@@ -251,7 +261,7 @@ function ToolCallPartView({ part }: { part: ToolCallPart }) {
               <ChevronDown
                 className={cn(
                   "h-4 w-4 text-muted-foreground transition-transform",
-                  isOpen && "rotate-180"
+                  isOpen && "rotate-180",
                 )}
               />
             </div>
@@ -266,7 +276,9 @@ function ToolCallPartView({ part }: { part: ToolCallPart }) {
 
               {Object.keys(part.args).length > 0 && (
                 <div>
-                  <h4 className="mb-1.5 text-xs font-medium text-muted-foreground">{t("common.params")}</h4>
+                  <h4 className="mb-1.5 text-xs font-medium text-muted-foreground">
+                    {t("common.params")}
+                  </h4>
                   <div className="rounded border border-border bg-background p-2 font-mono text-xs break-all">
                     {Object.entries(part.args).map(([key, value]) => (
                       <div key={key} className="mb-0.5 last:mb-0">
@@ -284,7 +296,9 @@ function ToolCallPartView({ part }: { part: ToolCallPart }) {
 
               {part.result !== undefined && (
                 <div>
-                  <h4 className="mb-1.5 text-xs font-medium text-muted-foreground">{t("common.result")}</h4>
+                  <h4 className="mb-1.5 text-xs font-medium text-muted-foreground">
+                    {t("common.result")}
+                  </h4>
                   <div className="max-h-48 overflow-auto rounded border border-border bg-background p-2 font-mono text-xs">
                     <pre className="whitespace-pre-wrap text-foreground">
                       {typeof part.result === "string" && part.result.length > 500
@@ -312,7 +326,11 @@ function MindmapPartView({ part }: { part: MindmapPart }) {
   const { t } = useTranslation();
   return (
     <div className="my-2">
-      <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">{t("streaming.loadingMindmap")}</div>}>
+      <Suspense
+        fallback={
+          <div className="p-4 text-sm text-muted-foreground">{t("streaming.loadingMindmap")}</div>
+        }
+      >
         <LazyMindmapView markdown={part.markdown} title={part.title} />
       </Suspense>
     </div>

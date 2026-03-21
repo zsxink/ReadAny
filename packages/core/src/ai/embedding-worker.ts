@@ -43,7 +43,11 @@ async function handleLoad(modelId: string, hfModelId: string) {
 
     // Dispose previous pipeline
     if (pipeline) {
-      try { await pipeline.dispose?.(); } catch { /* ignore */ }
+      try {
+        await pipeline.dispose?.();
+      } catch {
+        /* ignore */
+      }
       pipeline = null;
       currentModelId = null;
     }
@@ -62,7 +66,10 @@ async function handleLoad(modelId: string, hfModelId: string) {
     currentModelId = modelId;
     self.postMessage({ type: "load:done" });
   } catch (err) {
-    self.postMessage({ type: "load:error", error: err instanceof Error ? err.message : String(err) });
+    self.postMessage({
+      type: "load:error",
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 
@@ -90,13 +97,21 @@ async function handleEmbed(requestId: string, texts: string[]) {
 
     self.postMessage({ type: "embed:done", requestId, embeddings });
   } catch (err) {
-    self.postMessage({ type: "embed:error", requestId, error: err instanceof Error ? err.message : String(err) });
+    self.postMessage({
+      type: "embed:error",
+      requestId,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 
 async function handleDispose() {
   if (pipeline) {
-    try { await pipeline.dispose?.(); } catch { /* ignore */ }
+    try {
+      await pipeline.dispose?.();
+    } catch {
+      /* ignore */
+    }
     pipeline = null;
     currentModelId = null;
   }
@@ -111,7 +126,11 @@ async function handleClearCache(hfModelId: string) {
   try {
     // Dispose pipeline if it's the model being cleared
     if (pipeline && currentModelId) {
-      try { await pipeline.dispose?.(); } catch { /* ignore */ }
+      try {
+        await pipeline.dispose?.();
+      } catch {
+        /* ignore */
+      }
       pipeline = null;
       currentModelId = null;
     }

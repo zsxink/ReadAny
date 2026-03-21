@@ -1,12 +1,12 @@
 ---
 interface Props {
-  t: (key: string) => string
+  t: (key: string) => string;
 }
 
-const { t } = Astro.props
-const currentYear = new Date().getFullYear()
-const locale = Astro.url.pathname.includes('/zh/') ? 'zh' : 'en'
-const licenseText = locale === 'zh' ? 'GPL-3.0 许可证。' : 'GPL-3.0 License.'
+const { t } = Astro.props;
+const currentYear = new Date().getFullYear();
+const locale = Astro.url.pathname.includes("/zh/") ? "zh" : "en";
+const licenseText = locale === "zh" ? "GPL-3.0 许可证。" : "GPL-3.0 License.";
 ---
 
 <footer class="border-t border-border/50 py-8">

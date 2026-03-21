@@ -55,7 +55,7 @@ export async function extractBookChapters(filePath: string): Promise<ChapterData
 
       if (segments.length === 0) continue;
 
-      const content = segments.map(s => s.text).join("\n\n");
+      const content = segments.map((s) => s.text).join("\n\n");
 
       chapters.push({ index: i, title, content, segments });
     } catch (err) {
@@ -77,7 +77,8 @@ function extractSegmentsWithCfi(doc: Document, baseCfi: string): TextSegment[] {
   const body = doc.body;
   if (!body) return segments;
 
-  const blockSelector = "p, h1, h2, h3, h4, h5, h6, li, blockquote, dd, dt, figcaption, pre, td, th";
+  const blockSelector =
+    "p, h1, h2, h3, h4, h5, h6, li, blockquote, dd, dt, figcaption, pre, td, th";
   const blocks = body.querySelectorAll(blockSelector);
 
   if (blocks.length === 0) {
@@ -102,15 +103,19 @@ function extractSegmentsWithCfi(doc: Document, baseCfi: string): TextSegment[] {
       const range = doc.createRange();
       const firstNode = textNodes[0];
       const lastNode = textNodes[textNodes.length - 1];
-      
+
       range.setStart(firstNode, 0);
       range.setEnd(lastNode, lastNode.length);
-      
+
       const rangeCfi = CFI.fromRange(range);
       const fullCfi = CFI.joinIndir(baseCfi, rangeCfi);
       segments.push({ text, cfi: fullCfi });
     } catch (e) {
-      console.warn("[extractSegmentsWithCfi] Failed to create CFI for block:", text.slice(0, 50), e);
+      console.warn(
+        "[extractSegmentsWithCfi] Failed to create CFI for block:",
+        text.slice(0, 50),
+        e,
+      );
       segments.push({ text, cfi: baseCfi });
     }
   }
@@ -119,11 +124,7 @@ function extractSegmentsWithCfi(doc: Document, baseCfi: string): TextSegment[] {
 }
 
 function getTextNodes(element: Element): Text[] {
-  const walker = element.ownerDocument.createTreeWalker(
-    element,
-    NodeFilter.SHOW_TEXT,
-    null
-  );
+  const walker = element.ownerDocument.createTreeWalker(element, NodeFilter.SHOW_TEXT, null);
 
   const nodes: Text[] = [];
   let node: Text | null;
@@ -137,11 +138,7 @@ function getTextNodes(element: Element): Text[] {
 }
 
 function extractBlockText(block: Element): string {
-  const walker = block.ownerDocument.createTreeWalker(
-    block,
-    NodeFilter.SHOW_TEXT,
-    null
-  );
+  const walker = block.ownerDocument.createTreeWalker(block, NodeFilter.SHOW_TEXT, null);
 
   const texts: string[] = [];
   let node: Text | null;
@@ -180,8 +177,7 @@ function buildTocMap(toc: TOCItem[]): Map<string | number, string> {
 
 async function extractPdfChapters(fileBytes: Uint8Array): Promise<ChapterData[]> {
   const pdfjsLib = await import("pdfjs-dist");
-  pdfjsLib.GlobalWorkerOptions.workerSrc =
-    `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
   const pdfDoc = await pdfjsLib.getDocument({
     data: new Uint8Array(fileBytes),
@@ -201,9 +197,7 @@ async function extractPdfChapters(fileBytes: Uint8Array): Promise<ChapterData[]>
       try {
         const page = await pdfDoc.getPage(p);
         const textContent = await page.getTextContent();
-        const pageText = textContent.items
-          .map((item: any) => item.str ?? "")
-          .join(" ");
+        const pageText = textContent.items.map((item: any) => item.str ?? "").join(" ");
         if (pageText.trim()) {
           segments.push({
             text: pageText.trim(),
@@ -219,7 +213,7 @@ async function extractPdfChapters(fileBytes: Uint8Array): Promise<ChapterData[]>
       chapters.push({
         index: start - 1,
         title: `Pages ${start}-${end}`,
-        content: segments.map(s => s.text).join("\n\n"),
+        content: segments.map((s) => s.text).join("\n\n"),
         segments,
       });
     }

@@ -1,10 +1,10 @@
+import { create } from "zustand";
+import * as db from "../db/database";
 /**
  * Reading session store — session state machine (ACTIVE/PAUSED/STOPPED)
  * Connected to SQLite for persistence via core db module
  */
 import type { ReadingSession, ReadingStats, SessionState } from "../types";
-import * as db from "../db/database";
-import { create } from "zustand";
 import { generateId } from "../utils/generate-id";
 
 export interface ReadingSessionState {
@@ -101,7 +101,7 @@ export const useReadingSessionStore = create<ReadingSessionState>((set, get) => 
           endedAt: Date.now(),
         };
         await db.insertReadingSession(session);
-        
+
         set({
           currentSession: {
             ...currentSession,
@@ -125,7 +125,10 @@ export const useReadingSessionStore = create<ReadingSessionState>((set, get) => 
       const totalSessions = sessions.length;
       const averageSessionTime = totalSessions > 0 ? totalReadingTime / totalSessions : 0;
 
-      const dailyStatsMap = new Map<string, { readingTime: number; pagesRead: number; sessions: number }>();
+      const dailyStatsMap = new Map<
+        string,
+        { readingTime: number; pagesRead: number; sessions: number }
+      >();
       for (const s of sessions) {
         const day = new Date(s.startedAt).toISOString().split("T")[0];
         const existing = dailyStatsMap.get(day) || { readingTime: 0, pagesRead: 0, sessions: 0 };

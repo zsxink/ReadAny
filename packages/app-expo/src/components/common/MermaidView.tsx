@@ -1,10 +1,11 @@
-import { useColors } from "@/styles/theme";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, StyleSheet, TouchableOpacity, Text, ActivityIndicator } from "react-native";
-import WebView from "react-native-webview";
 import { Download, RotateCcw } from "@/components/ui/Icon";
+import { useColors } from "@/styles/theme";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import WebView from "react-native-webview";
 
 interface MermaidViewProps {
   chart: string;
@@ -177,6 +178,7 @@ const generateHtml = (colors: any) => {
 
 export function MermaidView({ chart, title }: MermaidViewProps) {
   const colors = useColors();
+  const { t } = useTranslation();
   const webviewRef = useRef<WebView>(null);
   const [loading, setLoading] = useState(true);
   const [isReady, setIsReady] = useState(false);
@@ -192,12 +194,12 @@ export function MermaidView({ chart, title }: MermaidViewProps) {
   // 渲染图表的函数
   const renderChart = useCallback((chartToRender: string) => {
     if (!webviewRef.current || !chartToRender) return;
-    
+
     const escapedChart = chartToRender
-      .replace(/\\/g, '\\\\')
-      .replace(/`/g, '\\`')
-      .replace(/\$/g, '\\$');
-    
+      .replace(/\\/g, "\\\\")
+      .replace(/`/g, "\\`")
+      .replace(/\$/g, "\\$");
+
     webviewRef.current.injectJavaScript(`
       (function() {
         if (window.renderChart) {
@@ -243,32 +245,35 @@ export function MermaidView({ chart, title }: MermaidViewProps) {
     `);
   }, []);
 
-  const onMessage = useCallback(async (event: any) => {
-    try {
-      const data = JSON.parse(event.nativeEvent.data);
-      if (data.type === 'loaded') {
-        setLoading(false);
-        setIsReady(true);
-      } else if (data.type === 'svg') {
-        const filename = `${title || 'mermaid'}.svg`;
-        const filepath = `${FileSystem.documentDirectory}${filename}`;
-        await FileSystem.writeAsStringAsync(filepath, data.content);
-        await Sharing.shareAsync(filepath, { mimeType: 'image/svg+xml' });
-      } else if (data.type === 'debug') {
-        console.log('[Mermaid Debug]', data.message);
+  const onMessage = useCallback(
+    async (event: any) => {
+      try {
+        const data = JSON.parse(event.nativeEvent.data);
+        if (data.type === "loaded") {
+          setLoading(false);
+          setIsReady(true);
+        } else if (data.type === "svg") {
+          const filename = `${title || "mermaid"}.svg`;
+          const filepath = `${FileSystem.documentDirectory}${filename}`;
+          await FileSystem.writeAsStringAsync(filepath, data.content);
+          await Sharing.shareAsync(filepath, { mimeType: "image/svg+xml" });
+        } else if (data.type === "debug") {
+          console.log("[Mermaid Debug]", data.message);
+        }
+      } catch (e) {
+        console.error("WebView message error:", e);
       }
-    } catch (e) {
-      console.error('WebView message error:', e);
-    }
-  }, [title]);
+    },
+    [title],
+  );
 
-  const displayTitle = title && title.length > 20 ? title.slice(0, 20) + '...' : title;
+  const displayTitle = title && title.length > 20 ? title.slice(0, 20) + "..." : title;
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={[styles.title, { color: colors.mutedForeground }]} numberOfLines={1}>
-          {displayTitle || 'Mermaid 图表'}
+          {displayTitle || t("mindmap.mermaidChart", "Mermaid 图表")}
         </Text>
         <View style={styles.controls}>
           <TouchableOpacity onPress={handleReset} style={styles.button}>
@@ -279,7 +284,7 @@ export function MermaidView({ chart, title }: MermaidViewProps) {
           </TouchableOpacity>
         </View>
       </View>
-      
+
       <View style={styles.webviewContainer}>
         {loading && (
           <View style={[styles.loading, { backgroundColor: colors.background }]}>
@@ -293,16 +298,16 @@ export function MermaidView({ chart, title }: MermaidViewProps) {
           onMessage={onMessage}
           scrollEnabled={false}
           bounces={false}
-          originWhitelist={['*']}
+          originWhitelist={["*"]}
           javaScriptEnabled={true}
           domStorageEnabled={true}
           mixedContentMode="compatibility"
         />
       </View>
-      
+
       <View style={[styles.footer, { borderColor: colors.border }]}>
         <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-          双击放大 · 双指缩放 · 拖动移动
+          {t("mindmap.zoomHint", "双击放大 · 双指缩放 · 拖动移动")}
         </Text>
       </View>
     </View>
@@ -311,13 +316,13 @@ export function MermaidView({ chart, title }: MermaidViewProps) {
 
 const styles = StyleSheet.create({
   container: {
-    overflow: 'hidden',
+    overflow: "hidden",
     marginVertical: 8,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 4,
     paddingVertical: 4,
   },
@@ -326,8 +331,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   controls: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 2,
   },
   button: {
@@ -336,16 +341,16 @@ const styles = StyleSheet.create({
   },
   webviewContainer: {
     height: 280,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   webview: {
     flex: 1,
-    backgroundColor: 'transparent',
+    backgroundColor: "transparent",
   },
   loading: {
     ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     zIndex: 1,
   },
   footer: {

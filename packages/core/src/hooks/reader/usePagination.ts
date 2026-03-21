@@ -19,11 +19,7 @@ const WHEEL_MIN_COOLDOWN_MS = 350;
 /** After the last wheel event, wait this long before unlocking (ms). */
 const WHEEL_IDLE_MS = 200;
 
-export function usePagination({
-  bookKey,
-  viewRef,
-  containerRef,
-}: UsePaginationOptions) {
+export function usePagination({ bookKey, viewRef, containerRef }: UsePaginationOptions) {
   const wheelLocked = useRef(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lockTime = useRef(0);

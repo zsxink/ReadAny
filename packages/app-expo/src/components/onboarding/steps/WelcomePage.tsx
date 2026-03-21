@@ -1,3 +1,4 @@
+import { DarkModeSvg } from "@/components/DarkModeSvg";
 import { useTheme } from "@/styles/theme";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -5,10 +6,9 @@ import { useSettingsStore } from "@readany/core/stores/settings-store";
 import { Bot, Languages, Search } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeInDown } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ReadingSvg from "../../../../assets/illustrations/reading.svg";
-import { DarkModeSvg } from "@/components/DarkModeSvg";
 import type { OnboardingStackParamList } from "../OnboardingNavigator";
 
 type NavProp = NativeStackNavigationProp<OnboardingStackParamList, "Welcome">;
@@ -65,10 +65,7 @@ export function WelcomePage() {
             {
               icon: <Bot size={24} color="#6366f1" />,
               title: t("onboarding.welcome.ai", "AI Co-pilot"),
-              desc: t(
-                "onboarding.welcome.aiDesc",
-                "Discuss books naturally with AI",
-              ),
+              desc: t("onboarding.welcome.aiDesc", "Discuss books naturally with AI"),
             },
             {
               icon: <Search size={24} color="#10b981" />,
@@ -78,10 +75,7 @@ export function WelcomePage() {
             {
               icon: <Languages size={24} color="#f59e0b" />,
               title: t("onboarding.welcome.translate", "Instant Translation"),
-              desc: t(
-                "onboarding.welcome.translateDesc",
-                "Seamless bilingual reading",
-              ),
+              desc: t("onboarding.welcome.translateDesc", "Seamless bilingual reading"),
             },
           ].map((f, i) => (
             <Animated.View
@@ -103,7 +97,16 @@ export function WelcomePage() {
         </View>
       </ScrollView>
 
-      <View style={[styles.footer, { backgroundColor: colors.background, borderTopColor: colors.border, paddingBottom: 16 + insets.bottom }]}>
+      <View
+        style={[
+          styles.footer,
+          {
+            backgroundColor: colors.background,
+            borderTopColor: colors.border,
+            paddingBottom: 16 + insets.bottom,
+          },
+        ]}
+      >
         <TouchableOpacity onPress={handleSkip} style={styles.skipBtn} activeOpacity={0.7}>
           <Text style={[styles.skipText, { color: colors.mutedForeground }]}>
             {t("onboarding.skip", "Skip")}

@@ -1,16 +1,22 @@
+import { ConfigGuideDialog, type ConfigGuideType } from "@/components/shared/ConfigGuideDialog";
 /**
  * ChatPanel — book-scoped sidebar chat panel.
  */
 import { useStreamingChat } from "@/hooks/use-streaming-chat";
-import { convertToMessageV2, mergeMessagesWithStreaming, groupThreadsByTime, getMonthLabel, formatRelativeTimeShort } from "@readany/core/utils";
 import { useChatStore } from "@/stores/chat-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import type { Book, CitationPart } from "@readany/core/types";
+import {
+  convertToMessageV2,
+  formatRelativeTimeShort,
+  getMonthLabel,
+  groupThreadsByTime,
+  mergeMessagesWithStreaming,
+} from "@readany/core/utils";
 import { History, MessageCirclePlus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ConfigGuideDialog, type ConfigGuideType } from "@/components/shared/ConfigGuideDialog";
-import { ChatInput, type AttachedQuote } from "./ChatInput";
+import { type AttachedQuote, ChatInput } from "./ChatInput";
 import { MessageList } from "./MessageList";
 import { ModelSelector } from "./ModelSelector";
 
@@ -34,13 +40,7 @@ export function ChatPanel({ book, onNavigateToCitation }: ChatPanelProps) {
   } = useChatStore();
 
   // Use streaming chat hook with book context
-  const {
-    isStreaming,
-    currentMessage,
-    currentStep,
-    sendMessage,
-    stopStream,
-  } = useStreamingChat({
+  const { isStreaming, currentMessage, currentStep, sendMessage, stopStream } = useStreamingChat({
     book: book || null,
     bookId,
   });
@@ -74,7 +74,7 @@ export function ChatPanel({ book, onNavigateToCitation }: ChatPanelProps) {
   }, [showThreadList]);
 
   const handleSend = useCallback(
-    (content: string, deepThinking: boolean = false, spoilerFree: boolean = false, quotes?: AttachedQuote[]) => {
+    (content: string, deepThinking = false, spoilerFree = false, quotes?: AttachedQuote[]) => {
       const { aiConfig } = useSettingsStore.getState();
       const endpoint = aiConfig.endpoints.find((e) => e.id === aiConfig.activeEndpointId);
       if (!endpoint?.apiKey || !aiConfig.activeModel) {
@@ -189,9 +189,7 @@ export function ChatPanel({ book, onNavigateToCitation }: ChatPanelProps) {
           title={t("chat.history")}
         >
           <History className="size-3.5" />
-          {bookThreads.length > 1 && (
-            <span className="text-[10px]">{bookThreads.length}</span>
-          )}
+          {bookThreads.length > 1 && <span className="text-[10px]">{bookThreads.length}</span>}
         </button>
         <div className="flex items-center gap-1">
           <ModelSelector />
@@ -216,82 +214,85 @@ export function ChatPanel({ book, onNavigateToCitation }: ChatPanelProps) {
                 <p className="py-4 text-center text-xs text-muted-foreground">
                   {t("chat.noConversations")}
                 </p>
-              ) : (() => {
-                const grouped = groupThreadsByTime(bookThreads);
-                const sections: { key: string; label: string; threads: typeof bookThreads }[] = [
-                  { key: "today", label: t("chat.today"), threads: grouped.today },
-                  { key: "yesterday", label: t("chat.yesterday"), threads: grouped.yesterday },
-                  { key: "last7Days", label: t("chat.last7Days"), threads: grouped.last7Days },
-                  { key: "last30Days", label: t("chat.last30Days"), threads: grouped.last30Days },
-                ];
+              ) : (
+                (() => {
+                  const grouped = groupThreadsByTime(bookThreads);
+                  const sections: { key: string; label: string; threads: typeof bookThreads }[] = [
+                    { key: "today", label: t("chat.today"), threads: grouped.today },
+                    { key: "yesterday", label: t("chat.yesterday"), threads: grouped.yesterday },
+                    { key: "last7Days", label: t("chat.last7Days"), threads: grouped.last7Days },
+                    { key: "last30Days", label: t("chat.last30Days"), threads: grouped.last30Days },
+                  ];
 
-                const olderByMonth = new Map<string, typeof bookThreads>();
-                for (const thread of grouped.older) {
-                  const monthLabel = getMonthLabel(thread.updatedAt);
-                  if (!olderByMonth.has(monthLabel)) {
-                    olderByMonth.set(monthLabel, []);
+                  const olderByMonth = new Map<string, typeof bookThreads>();
+                  for (const thread of grouped.older) {
+                    const monthLabel = getMonthLabel(thread.updatedAt);
+                    if (!olderByMonth.has(monthLabel)) {
+                      olderByMonth.set(monthLabel, []);
+                    }
+                    olderByMonth.get(monthLabel)!.push(thread);
                   }
-                  olderByMonth.get(monthLabel)!.push(thread);
-                }
-                const sortedMonths = [...olderByMonth.keys()].sort((a, b) => b.localeCompare(a));
-                for (const month of sortedMonths) {
-                  sections.push({ key: month, label: month, threads: olderByMonth.get(month)! });
-                }
+                  const sortedMonths = [...olderByMonth.keys()].sort((a, b) => b.localeCompare(a));
+                  for (const month of sortedMonths) {
+                    sections.push({ key: month, label: month, threads: olderByMonth.get(month)! });
+                  }
 
-                return sections.map(({ key, label, threads }) => {
-                  if (threads.length === 0) return null;
-                  return (
-                    <div key={key}>
-                      <div className="px-2 py-1 text-[10px] font-medium text-muted-foreground">
-                        {label}
-                      </div>
-                      {threads.map((thread) => {
-                        const lastMsg = thread.messages.length > 0
-                          ? thread.messages[thread.messages.length - 1]
-                          : null;
-                        const preview = lastMsg?.content?.slice(0, 60) || "";
-                        return (
-                          <div
-                            key={thread.id}
-                            className={`group flex cursor-pointer items-start gap-2 rounded-md px-2.5 py-2 transition-colors ${
-                              thread.id === activeThreadId
-                                ? "bg-primary/10 text-primary"
-                                : "text-neutral-600 hover:bg-muted"
-                            }`}
-                            onClick={() => handleSelectThread(thread.id)}
-                          >
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5">
-                                <span className="truncate text-xs font-medium">
-                                  {thread.title || t("chat.newChat")}
-                                </span>
-                                <span className="shrink-0 text-[10px] text-muted-foreground/50">
-                                  {formatRelativeTimeShort(thread.updatedAt, t)}
-                                </span>
-                              </div>
-                              {preview && (
-                                <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                                  {preview}
-                                </p>
-                              )}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteThread(thread.id);
-                              }}
-                              className="mt-0.5 hidden shrink-0 rounded p-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive group-hover:block"
+                  return sections.map(({ key, label, threads }) => {
+                    if (threads.length === 0) return null;
+                    return (
+                      <div key={key}>
+                        <div className="px-2 py-1 text-[10px] font-medium text-muted-foreground">
+                          {label}
+                        </div>
+                        {threads.map((thread) => {
+                          const lastMsg =
+                            thread.messages.length > 0
+                              ? thread.messages[thread.messages.length - 1]
+                              : null;
+                          const preview = lastMsg?.content?.slice(0, 60) || "";
+                          return (
+                            <div
+                              key={thread.id}
+                              className={`group flex cursor-pointer items-start gap-2 rounded-md px-2.5 py-2 transition-colors ${
+                                thread.id === activeThreadId
+                                  ? "bg-primary/10 text-primary"
+                                  : "text-neutral-600 hover:bg-muted"
+                              }`}
+                              onClick={() => handleSelectThread(thread.id)}
                             >
-                              <Trash2 className="size-3" />
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                });
-              })()}
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="truncate text-xs font-medium">
+                                    {thread.title || t("chat.newChat")}
+                                  </span>
+                                  <span className="shrink-0 text-[10px] text-muted-foreground/50">
+                                    {formatRelativeTimeShort(thread.updatedAt, t)}
+                                  </span>
+                                </div>
+                                {preview && (
+                                  <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                                    {preview}
+                                  </p>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteThread(thread.id);
+                                }}
+                                className="mt-0.5 hidden shrink-0 rounded p-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive group-hover:block"
+                              >
+                                <Trash2 className="size-3" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  });
+                })()
+              )}
             </div>
           </div>
         )}
@@ -312,9 +313,7 @@ export function ChatPanel({ book, onNavigateToCitation }: ChatPanelProps) {
             <div className="flex flex-col items-start gap-3 pl-1">
               <img src="/think.svg" alt="" className="h-28 w-28 shrink-0 dark:invert" />
               <div className="space-y-1">
-                <h3 className="text-lg font-semibold text-neutral-900">
-                  {t("chat.aiAssistant")}
-                </h3>
+                <h3 className="text-lg font-semibold text-neutral-900">{t("chat.aiAssistant")}</h3>
                 <p className="max-w-sm text-sm text-muted-foreground">
                   {t("chat.aiAssistantDesc")}
                 </p>

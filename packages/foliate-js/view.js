@@ -12,7 +12,9 @@ const isZip = async (file) => {
 
 const isPDF = async (file) => {
   const arr = new Uint8Array(await file.slice(0, 5).arrayBuffer());
-  return arr[0] === 0x25 && arr[1] === 0x50 && arr[2] === 0x44 && arr[3] === 0x46 && arr[4] === 0x2d;
+  return (
+    arr[0] === 0x25 && arr[1] === 0x50 && arr[2] === 0x44 && arr[3] === 0x46 && arr[4] === 0x2d
+  );
 };
 
 const isCBZ = ({ name, type }) => type === "application/vnd.comicbook+zip" || name.endsWith(".cbz");
@@ -23,15 +25,17 @@ const isFBZ = ({ name, type }) =>
   type === "application/x-zip-compressed-fb2" || name.endsWith(".fb2.zip") || name.endsWith(".fbz");
 
 const makeZipLoader = async (file) => {
-  const { configure, ZipReader, BlobReader, TextWriter, BlobWriter } = await import("./vendor/zip.js");
+  const { configure, ZipReader, BlobReader, TextWriter, BlobWriter } = await import(
+    "./vendor/zip.js"
+  );
   configure({ useWebWorkers: false });
   const reader = new ZipReader(new BlobReader(file));
   const entries = await reader.getEntries();
   const map = new Map(entries.map((entry) => [entry.filename, entry]));
   const load =
     (f) =>
-      (name, ...args) =>
-        map.has(name) ? f(map.get(name), ...args) : null;
+    (name, ...args) =>
+      map.has(name) ? f(map.get(name), ...args) : null;
   const loadText = load((entry) => entry.getData(new TextWriter()));
   const loadBlob = load((entry, type) => entry.getData(new BlobWriter(type)));
   const getSize = (name) => map.get(name)?.uncompressedSize ?? 0;
@@ -42,18 +46,18 @@ const getFileEntries = async (entry) =>
   entry.isFile
     ? entry
     : (
-      await Promise.all(
-        Array.from(
-          await new Promise((resolve, reject) =>
-            entry.createReader().readEntries(
-              (entries) => resolve(entries),
-              (error) => reject(error),
+        await Promise.all(
+          Array.from(
+            await new Promise((resolve, reject) =>
+              entry.createReader().readEntries(
+                (entries) => resolve(entries),
+                (error) => reject(error),
+              ),
             ),
+            getFileEntries,
           ),
-          getFileEntries,
-        ),
-      )
-    ).flat();
+        )
+      ).flat();
 
 const makeDirectoryLoader = async (entry) => {
   const entries = await getFileEntries(entry);
@@ -78,9 +82,9 @@ const makeDirectoryLoader = async (entry) => {
   return { loadText, loadBlob, getSize };
 };
 
-export class ResponseError extends Error { }
-export class NotFoundError extends Error { }
-export class UnsupportedTypeError extends Error { }
+export class ResponseError extends Error {}
+export class NotFoundError extends Error {}
+export class UnsupportedTypeError extends Error {}
 
 const fetchFile = async (url) => {
   const res = await fetch(url);
@@ -226,7 +230,7 @@ export class View extends HTMLElement {
   #tocProgress;
   #pageProgress;
   #searchResults = new Map();
-  #searchIndicatorConfig = { type: 'outline', options: {} };
+  #searchIndicatorConfig = { type: "outline", options: {} };
   #cursorAutohider = new CursorAutohider(this, () => this.hasAttribute("autohide-cursor"));
   isFixedLayout = false;
   lastLocation;
@@ -276,7 +280,9 @@ export class View extends HTMLElement {
     this.renderer.setAttribute("exportparts", "head,foot,filter");
     this.renderer.addEventListener("load", (e) => this.#onLoad(e.detail));
     this.renderer.addEventListener("relocate", (e) => this.#onRelocate(e.detail));
-    this.renderer.addEventListener("create-overlayer", (e) => e.detail.attach(this.#createOverlayer(e.detail)));
+    this.renderer.addEventListener("create-overlayer", (e) =>
+      e.detail.attach(this.#createOverlayer(e.detail)),
+    );
     this.renderer.open(book);
     this.#root.append(this.renderer);
 
@@ -291,7 +297,8 @@ export class View extends HTMLElement {
           const { doc } = this.renderer.getContents().find((x) => (x.index = resolved.index));
           const el = resolved.anchor(doc);
           el.classList.add(activeClass);
-          if (playbackActiveClass) el.ownerDocument.documentElement.classList.add(playbackActiveClass);
+          if (playbackActiveClass)
+            el.ownerDocument.documentElement.classList.add(playbackActiveClass);
           lastActive = new WeakRef(el);
         });
       });
@@ -299,7 +306,8 @@ export class View extends HTMLElement {
         const el = lastActive?.deref();
         if (el) {
           el.classList.remove(activeClass);
-          if (playbackActiveClass) el.ownerDocument.documentElement.classList.remove(playbackActiveClass);
+          if (playbackActiveClass)
+            el.ownerDocument.documentElement.classList.remove(playbackActiveClass);
         }
       });
     }
@@ -318,8 +326,8 @@ export class View extends HTMLElement {
   }
   goToTextStart() {
     return this.goTo(
-      this.book.landmarks?.find((m) => m.type.includes("bodymatter") || m.type.includes("text"))?.href ??
-      this.book.sections.findIndex((s) => s.linear !== "no"),
+      this.book.landmarks?.find((m) => m.type.includes("bodymatter") || m.type.includes("text"))
+        ?.href ?? this.book.sections.findIndex((s) => s.linear !== "no"),
     );
   }
   async init({ lastLocation, showTextStart }) {
@@ -342,7 +350,8 @@ export class View extends HTMLElement {
     const pageItem = this.#pageProgress?.getProgress(index, range);
     const cfi = this.getCFI(index, range);
     this.lastLocation = { ...progress, tocItem, pageItem, cfi, range };
-    if (reason === "snap" || reason === "page" || reason === "scroll") this.history.replaceState(cfi);
+    if (reason === "snap" || reason === "page" || reason === "scroll")
+      this.history.replaceState(cfi);
     this.#emit("relocate", this.lastLocation);
   }
   #onLoad({ doc, index }) {
@@ -375,7 +384,7 @@ export class View extends HTMLElement {
     });
   }
   async addAnnotation(annotation, remove) {
-    const { value, indicatorType = 'outline', indicatorOptions = {} } = annotation;
+    const { value, indicatorType = "outline", indicatorOptions = {} } = annotation;
     if (value.startsWith(SEARCH_PREFIX)) {
       const cfi = value.replace(SEARCH_PREFIX, "");
       const { index, anchor } = await this.resolveNavigation(cfi);
@@ -393,10 +402,10 @@ export class View extends HTMLElement {
         // 根据指示器类型选择绘制方法
         let drawMethod;
         switch (indicatorType) {
-          case 'arrow':
+          case "arrow":
             drawMethod = Overlayer.arrow;
             break;
-          case 'outline':
+          case "outline":
           default:
             drawMethod = Overlayer.outline;
             break;
@@ -454,7 +463,7 @@ export class View extends HTMLElement {
         const annotationWithConfig = {
           ...item,
           indicatorType: this.#searchIndicatorConfig.type,
-          indicatorOptions: this.#searchIndicatorConfig.options
+          indicatorOptions: this.#searchIndicatorConfig.options,
         };
         this.addAnnotation(annotationWithConfig);
       }
@@ -528,7 +537,8 @@ export class View extends HTMLElement {
     }
   }
   deselect() {
-    for (const { doc } of this.renderer.getContents()) doc.defaultView.getSelection().removeAllRanges();
+    for (const { doc } of this.renderer.getContents())
+      doc.defaultView.getSelection().removeAllRanges();
   }
   getSectionFractions() {
     return (this.#sectionProgress?.sectionFractions ?? []).map((x) => x + Number.EPSILON);
@@ -566,7 +576,8 @@ export class View extends HTMLElement {
   }
   async *#searchSection(matcher, query, index) {
     const doc = await this.book.sections[index].createDocument();
-    for (const { range, excerpt } of matcher(doc, query)) yield { cfi: this.getCFI(index, range), excerpt };
+    for (const { range, excerpt } of matcher(doc, query))
+      yield { cfi: this.getCFI(index, range), excerpt };
   }
   async *#searchBook(matcher, query) {
     const { sections } = this.book;
@@ -587,7 +598,8 @@ export class View extends HTMLElement {
     const { searchMatcher } = await import("./search.js");
     const { query, index } = opts;
     const matcher = searchMatcher(textWalker, { defaultLocale: this.language, ...opts });
-    const iter = index != null ? this.#searchSection(matcher, query, index) : this.#searchBook(matcher, query);
+    const iter =
+      index != null ? this.#searchSection(matcher, query, index) : this.#searchBook(matcher, query);
 
     const list = [];
     this.#searchResults.set(index, list);
@@ -600,7 +612,7 @@ export class View extends HTMLElement {
           const itemWithConfig = {
             ...item,
             indicatorType: this.#searchIndicatorConfig.type,
-            indicatorOptions: this.#searchIndicatorConfig.options
+            indicatorOptions: this.#searchIndicatorConfig.options,
           };
           this.addAnnotation(itemWithConfig);
         }
@@ -615,7 +627,7 @@ export class View extends HTMLElement {
           const itemWithConfig = {
             ...item,
             indicatorType: this.#searchIndicatorConfig.type,
-            indicatorOptions: this.#searchIndicatorConfig.options
+            indicatorOptions: this.#searchIndicatorConfig.options,
           };
           this.addAnnotation(itemWithConfig);
         }
@@ -625,10 +637,11 @@ export class View extends HTMLElement {
     yield "done";
   }
   clearSearch() {
-    for (const list of this.#searchResults.values()) for (const item of list) this.deleteAnnotation(item);
+    for (const list of this.#searchResults.values())
+      for (const item of list) this.deleteAnnotation(item);
     this.#searchResults.clear();
   }
-  setSearchIndicator(type = 'outline', options = {}) {
+  setSearchIndicator(type = "outline", options = {}) {
     this.#searchIndicatorConfig = { type, options };
   }
   async initTTS(granularity = "word", highlight) {

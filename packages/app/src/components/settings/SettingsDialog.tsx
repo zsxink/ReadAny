@@ -2,16 +2,16 @@
  * SettingsDialog — main settings modal using shadcn Dialog
  */
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { type SettingsTab, useAppStore } from "@/stores/app-store";
 import { cn } from "@readany/core/utils";
 import { useTranslation } from "react-i18next";
-import { useAppStore, type SettingsTab } from "@/stores/app-store";
-import { AboutSettings } from "./AboutSettings";
 import { AISettings } from "./AISettings";
+import { AboutSettings } from "./AboutSettings";
 import { GeneralSettings } from "./GeneralSettings";
 import { ReadSettingsPanel } from "./ReadSettings";
 import { SyncSettings } from "./SyncSettings";
-import { TranslationSettings } from "./TranslationSettings";
 import { TTSSettings } from "./TTSSettings";
+import { TranslationSettings } from "./TranslationSettings";
 import { VectorModelSettings } from "./VectorModelSettings";
 
 interface SettingsDialogProps {
@@ -19,7 +19,16 @@ interface SettingsDialogProps {
   onClose: () => void;
 }
 
-const TAB_IDS: SettingsTab[] = ["general", "reading", "ai", "vectorModel", "tts", "translation", "sync", "about"];
+const TAB_IDS: SettingsTab[] = [
+  "general",
+  "reading",
+  "ai",
+  "vectorModel",
+  "tts",
+  "translation",
+  "sync",
+  "about",
+];
 const TAB_KEYS: Record<SettingsTab, string> = {
   general: "settings.general",
   reading: "settings.reading",

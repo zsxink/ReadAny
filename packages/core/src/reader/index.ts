@@ -6,7 +6,12 @@ export { DEFAULT_BINDINGS, isInputElement, matchBinding, findAction } from "./ke
 export type { KeyBinding } from "./keyboard";
 
 // Pagination
-export { getPageDirection, getScrollPageOffset, navigatePage, calculateProgress } from "./pagination";
+export {
+  getPageDirection,
+  getScrollPageOffset,
+  navigatePage,
+  calculateProgress,
+} from "./pagination";
 export type { PageDirection } from "./pagination";
 
 // Progress tracking

@@ -6,10 +6,10 @@
  * 3. EdgeTTSPlayer — Microsoft Neural voices via WebSocket, gapless AudioContext playback
  */
 
-import type { TTSConfig, ITTSPlayer } from "./types";
-import { splitIntoChunks } from "./text-utils";
-import { fetchEdgeTTSAudio } from "./edge-tts";
 import { getPlatformService } from "../services/platform";
+import { fetchEdgeTTSAudio } from "./edge-tts";
+import { splitIntoChunks } from "./text-utils";
+import type { ITTSPlayer, TTSConfig } from "./types";
 
 // ── Browser SpeechSynthesis ──
 
@@ -23,8 +23,12 @@ export class BrowserTTSPlayer implements ITTSPlayer {
   onChunkChange?: (index: number, total: number) => void;
   onEnd?: () => void;
 
-  get speaking() { return this._speaking; }
-  get paused() { return this._paused; }
+  get speaking() {
+    return this._speaking;
+  }
+  get paused() {
+    return this._paused;
+  }
 
   speak(text: string, config: TTSConfig) {
     if (typeof window === "undefined" || !window.speechSynthesis) {
@@ -130,14 +134,24 @@ export class DashScopeTTSPlayer implements ITTSPlayer {
   onChunkChange?: (index: number, total: number) => void;
   onEnd?: () => void;
 
-  get playing() { return this._playing; }
-  get paused() { return this._paused; }
+  get playing() {
+    return this._playing;
+  }
+  get paused() {
+    return this._paused;
+  }
 
   async speak(text: string, config: TTSConfig) {
     this.abortController?.abort();
     this.abortController = null;
-    if (this.checkEndTimer) { clearInterval(this.checkEndTimer); this.checkEndTimer = null; }
-    if (this.decodeTimeout) { clearTimeout(this.decodeTimeout); this.decodeTimeout = null; }
+    if (this.checkEndTimer) {
+      clearInterval(this.checkEndTimer);
+      this.checkEndTimer = null;
+    }
+    if (this.decodeTimeout) {
+      clearTimeout(this.decodeTimeout);
+      this.decodeTimeout = null;
+    }
     this.cleanupAudio();
     this.pendingBytes = [];
 
@@ -154,7 +168,12 @@ export class DashScopeTTSPlayer implements ITTSPlayer {
 
     this.checkEndTimer = setInterval(() => {
       if (!this._playing) return;
-      if (this.allChunksDone && this.audioCtx && this.pendingBytes.length === 0 && !this.decodeTimeout) {
+      if (
+        this.allChunksDone &&
+        this.audioCtx &&
+        this.pendingBytes.length === 0 &&
+        !this.decodeTimeout
+      ) {
         if (!this.hasAudioData) {
           this.finishPlayback();
           return;
@@ -180,11 +199,7 @@ export class DashScopeTTSPlayer implements ITTSPlayer {
     this.allChunksDone = true;
   }
 
-  private async streamChunk(
-    text: string,
-    config: TTSConfig,
-    isFirst: boolean,
-  ): Promise<void> {
+  private async streamChunk(text: string, config: TTSConfig, isFirst: boolean): Promise<void> {
     const platform = getPlatformService();
     this.abortController = new AbortController();
     this.pendingBytes = [];
@@ -221,7 +236,10 @@ export class DashScopeTTSPlayer implements ITTSPlayer {
     let firstAudioReceived = false;
 
     while (true) {
-      if (!this._playing) { reader.cancel(); return; }
+      if (!this._playing) {
+        reader.cancel();
+        return;
+      }
       const { done, value } = await reader.read();
       if (done) break;
 
@@ -393,15 +411,22 @@ export class EdgeTTSPlayer implements ITTSPlayer {
   onChunkChange?: (index: number, total: number) => void;
   onEnd?: () => void;
 
-  get playing() { return this._playing; }
-  get paused() { return this._paused; }
+  get playing() {
+    return this._playing;
+  }
+  get paused() {
+    return this._paused;
+  }
 
   async speak(text: string, config: TTSConfig) {
     this.aborted = true;
     this.cleanupAudio();
     this.fetchBuffer.clear();
     this.producerWake?.();
-    if (this.checkEndTimer) { clearInterval(this.checkEndTimer); this.checkEndTimer = null; }
+    if (this.checkEndTimer) {
+      clearInterval(this.checkEndTimer);
+      this.checkEndTimer = null;
+    }
 
     this.chunks = splitIntoChunks(text, 800);
     this._playing = true;
@@ -468,7 +493,9 @@ export class EdgeTTSPlayer implements ITTSPlayer {
 
       while (this.fetchBuffer.size >= EdgeTTSPlayer.BUFFER_SIZE) {
         if (!this._playing || this.aborted) return;
-        await new Promise<void>((resolve) => { this.producerWake = resolve; });
+        await new Promise<void>((resolve) => {
+          this.producerWake = resolve;
+        });
         this.producerWake = null;
       }
 

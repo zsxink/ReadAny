@@ -8,9 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Switch } from "@/components/ui/switch";
+import { useVectorModelStore } from "@/stores/vector-model-store";
 import { BUILTIN_EMBEDDING_MODELS } from "@readany/core/ai/builtin-embedding-models";
 import { clearModelCache, loadEmbeddingPipeline } from "@readany/core/ai/local-embedding-service";
-import { useVectorModelStore } from "@/stores/vector-model-store";
 import type { VectorModelConfig } from "@readany/core/types";
 import { Check, Download, Edit2, Loader2, Plus, Trash2, X } from "lucide-react";
 import { useCallback, useState } from "react";
@@ -133,9 +133,7 @@ function BuiltinModelsSection() {
                   {isDownloading ? (
                     <div className="flex items-center gap-1.5">
                       <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                      <span className="text-xs text-muted-foreground">
-                        {state?.progress ?? 0}%
-                      </span>
+                      <span className="text-xs text-muted-foreground">{state?.progress ?? 0}%</span>
                     </div>
                   ) : isReady ? (
                     <div className="flex items-center gap-2">
@@ -249,13 +247,16 @@ function RemoteModelsSection() {
   }, []);
 
   const handleEdit = useCallback(() => {
-    if (!editingId || !formData.name.trim() || !formData.url.trim() || !formData.modelId.trim()) return;
+    if (!editingId || !formData.name.trim() || !formData.url.trim() || !formData.modelId.trim())
+      return;
     updateVectorModel(editingId, formData);
     resetForm();
   }, [editingId, formData, updateVectorModel, resetForm]);
 
   const handleDelete = useCallback(
-    (id: string) => { deleteVectorModel(id); },
+    (id: string) => {
+      deleteVectorModel(id);
+    },
     [deleteVectorModel],
   );
 
@@ -273,7 +274,11 @@ function RemoteModelsSection() {
           ? { model: model.modelId, input: "test" }
           : { input: ["test"], model: model.modelId, encoding_format: "float" };
 
-        const res = await fetch(testUrl, { method: "POST", headers, body: JSON.stringify(requestBody) });
+        const res = await fetch(testUrl, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(requestBody),
+        });
         if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
         const json = await res.json();
         const len = isOllama
@@ -281,10 +286,16 @@ function RemoteModelsSection() {
           : (json?.data?.[0]?.embedding?.length ?? 0);
 
         updateVectorModel(model.id, { dimension: len });
-        setTestResults((prev) => ({ ...prev, [model.id]: t("settings.vm_testSuccess", { dimension: len }) }));
+        setTestResults((prev) => ({
+          ...prev,
+          [model.id]: t("settings.vm_testSuccess", { dimension: len }),
+        }));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        setTestResults((prev) => ({ ...prev, [model.id]: t("settings.vm_testFailed", { error: message }) }));
+        setTestResults((prev) => ({
+          ...prev,
+          [model.id]: t("settings.vm_testFailed", { error: message }),
+        }));
       } finally {
         setTestingId(null);
       }
@@ -316,7 +327,10 @@ function RemoteModelsSection() {
             variant="outline"
             size="sm"
             className="h-7 text-xs gap-1"
-            onClick={() => { setShowAddForm(true); setEditingId(null); }}
+            onClick={() => {
+              setShowAddForm(true);
+              setEditingId(null);
+            }}
           >
             <Plus className="h-3 w-3" />
             {t("settings.vm_addModel")}
@@ -326,7 +340,9 @@ function RemoteModelsSection() {
 
       {/* Model cards */}
       {vectorModels.length === 0 && !showAddForm && !editingId && (
-        <p className="text-xs text-muted-foreground text-center py-4">{t("settings.vm_noRemoteModels")}</p>
+        <p className="text-xs text-muted-foreground text-center py-4">
+          {t("settings.vm_noRemoteModels")}
+        </p>
       )}
 
       <div className="space-y-2">
@@ -378,14 +394,24 @@ function RemoteModelsSection() {
                 />
               </div>
             </div>
-            {model.url && <p className="mt-1 text-xs text-muted-foreground truncate">{model.url}</p>}
-            {model.description && <p className="mt-0.5 text-xs text-muted-foreground truncate">{model.description}</p>}
+            {model.url && (
+              <p className="mt-1 text-xs text-muted-foreground truncate">{model.url}</p>
+            )}
+            {model.description && (
+              <p className="mt-0.5 text-xs text-muted-foreground truncate">{model.description}</p>
+            )}
             {testResults[model.id] && (
-              <p className={`mt-1 text-xs ${
-                testResults[model.id].includes("✓") ? "text-green-600 dark:text-green-400"
-                  : testResults[model.id].includes("✗") ? "text-destructive"
-                    : "text-muted-foreground"
-              }`}>{testResults[model.id]}</p>
+              <p
+                className={`mt-1 text-xs ${
+                  testResults[model.id].includes("✓")
+                    ? "text-green-600 dark:text-green-400"
+                    : testResults[model.id].includes("✗")
+                      ? "text-destructive"
+                      : "text-muted-foreground"
+                }`}
+              >
+                {testResults[model.id]}
+              </p>
             )}
           </div>
         ))}
@@ -405,7 +431,9 @@ function RemoteModelsSection() {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-xs text-muted-foreground">{t("settings.vm_name")} *</label>
+              <label className="mb-1 block text-xs text-muted-foreground">
+                {t("settings.vm_name")} *
+              </label>
               <Input
                 value={formData.name}
                 onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
@@ -414,7 +442,9 @@ function RemoteModelsSection() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-muted-foreground">{t("settings.vm_modelId")} *</label>
+              <label className="mb-1 block text-xs text-muted-foreground">
+                {t("settings.vm_modelId")} *
+              </label>
               <Input
                 value={formData.modelId}
                 onChange={(e) => setFormData((p) => ({ ...p, modelId: e.target.value }))}
@@ -425,7 +455,9 @@ function RemoteModelsSection() {
           </div>
 
           <div>
-            <label className="mb-1 block text-xs text-muted-foreground">{t("settings.vm_url")} *</label>
+            <label className="mb-1 block text-xs text-muted-foreground">
+              {t("settings.vm_url")} *
+            </label>
             <Input
               value={formData.url}
               onChange={(e) => setFormData((p) => ({ ...p, url: e.target.value }))}
@@ -436,7 +468,9 @@ function RemoteModelsSection() {
           </div>
 
           <div>
-            <label className="mb-1 block text-xs text-muted-foreground">{t("settings.vm_apiKey")}</label>
+            <label className="mb-1 block text-xs text-muted-foreground">
+              {t("settings.vm_apiKey")}
+            </label>
             <PasswordInput
               value={formData.apiKey}
               onChange={(e) => setFormData((p) => ({ ...p, apiKey: e.target.value }))}
@@ -446,7 +480,9 @@ function RemoteModelsSection() {
           </div>
 
           <div>
-            <label className="mb-1 block text-xs text-muted-foreground">{t("settings.vm_description")}</label>
+            <label className="mb-1 block text-xs text-muted-foreground">
+              {t("settings.vm_description")}
+            </label>
             <Input
               value={formData.description}
               onChange={(e) => setFormData((p) => ({ ...p, description: e.target.value }))}
@@ -479,12 +515,8 @@ function RemoteModelsSection() {
 /* ------------------------------------------------------------------ */
 export function VectorModelSettings() {
   const { t } = useTranslation();
-  const {
-    vectorModelEnabled,
-    vectorModelMode,
-    setVectorModelEnabled,
-    setVectorModelMode,
-  } = useVectorModelStore();
+  const { vectorModelEnabled, vectorModelMode, setVectorModelEnabled, setVectorModelMode } =
+    useVectorModelStore();
 
   return (
     <div className="space-y-6 p-4 pt-3">
@@ -503,7 +535,9 @@ export function VectorModelSettings() {
         <>
           {/* Mode toggle */}
           <section className="rounded-lg bg-muted/60 p-4">
-            <h2 className="text-sm font-medium text-foreground mb-2">{t("settings.vm_modeTitle")}</h2>
+            <h2 className="text-sm font-medium text-foreground mb-2">
+              {t("settings.vm_modeTitle")}
+            </h2>
             <div className="flex gap-2">
               <button
                 type="button"
@@ -515,7 +549,9 @@ export function VectorModelSettings() {
                 onClick={() => setVectorModelMode("builtin")}
               >
                 <div className="text-sm font-medium">{t("settings.vm_modeBuiltin")}</div>
-                <div className="text-xs text-muted-foreground mt-0.5">{t("settings.vm_modeBuiltinDesc")}</div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  {t("settings.vm_modeBuiltinDesc")}
+                </div>
               </button>
               <button
                 type="button"
@@ -527,7 +563,9 @@ export function VectorModelSettings() {
                 onClick={() => setVectorModelMode("remote")}
               >
                 <div className="text-sm font-medium">{t("settings.vm_modeRemote")}</div>
-                <div className="text-xs text-muted-foreground mt-0.5">{t("settings.vm_modeRemoteDesc")}</div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  {t("settings.vm_modeRemoteDesc")}
+                </div>
               </button>
             </div>
           </section>

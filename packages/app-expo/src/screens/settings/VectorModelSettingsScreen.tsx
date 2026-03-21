@@ -202,10 +202,7 @@ function BuiltinModelsSection() {
                 </View>
               ) : isReady ? (
                 <View style={s.readyActions}>
-                  <TouchableOpacity
-                    style={s.clearBtn}
-                    onPress={() => handleClear(model.id)}
-                  >
+                  <TouchableOpacity style={s.clearBtn} onPress={() => handleClear(model.id)}>
                     <Trash2Icon size={12} color={colors.mutedForeground} />
                     <Text style={s.clearBtnText}>{t("settings.vm_clearCache")}</Text>
                   </TouchableOpacity>

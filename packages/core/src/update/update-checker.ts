@@ -5,8 +5,7 @@
 
 import type { IPlatformService } from "../services/platform";
 
-const GITHUB_API_URL =
-  "https://api.github.com/repos/codedogQBY/ReadAny/releases/latest";
+const GITHUB_API_URL = "https://api.github.com/repos/codedogQBY/ReadAny/releases/latest";
 const THROTTLE_KEY = "update_last_check_at";
 const THROTTLE_HOURS = 24;
 
@@ -45,7 +44,7 @@ export async function checkForUpdate(
   if (!force) {
     const lastCheck = await platform.kvGetItem(THROTTLE_KEY);
     if (lastCheck) {
-      const elapsed = Date.now() - parseInt(lastCheck, 10);
+      const elapsed = Date.now() - Number.parseInt(lastCheck, 10);
       if (elapsed < THROTTLE_HOURS * 60 * 60 * 1000) {
         return { hasUpdate: false, currentVersion };
       }

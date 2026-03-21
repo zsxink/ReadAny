@@ -1,8 +1,8 @@
+import { create } from "zustand";
 /**
  * Notebook store — manages notebook panel state for note editing
  */
 import type { Highlight } from "../types";
-import { create } from "zustand";
 
 export interface PendingNote {
   /** Selected text to annotate */
@@ -31,14 +31,14 @@ export interface NotebookState {
   openNotebook: () => void;
   closeNotebook: () => void;
   toggleNotebook: () => void;
-  
+
   /** Start creating a new note from selection */
   startNewNote: (note: PendingNote) => void;
   /** Start editing note on existing highlight */
   startEditNote: (highlight: Highlight) => void;
   /** Clear pending note/editing state */
   clearPending: () => void;
-  
+
   /** Save draft for auto-recovery */
   saveDraft: (key: string, content: string) => void;
   /** Get draft by key */
@@ -52,7 +52,7 @@ function simpleHash(str: string): string {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
+    hash = (hash << 5) - hash + char;
     hash = hash & hash; // Convert to 32bit integer
   }
   return hash.toString(36);
@@ -68,24 +68,26 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
   closeNotebook: () => set({ isOpen: false, pendingNote: null, editingHighlight: null }),
   toggleNotebook: () => set((state) => ({ isOpen: !state.isOpen })),
 
-  startNewNote: (note) => set({ 
-    isOpen: true, 
-    pendingNote: note, 
-    editingHighlight: null 
-  }),
+  startNewNote: (note) =>
+    set({
+      isOpen: true,
+      pendingNote: note,
+      editingHighlight: null,
+    }),
 
-  startEditNote: (highlight) => set({ 
-    isOpen: true, 
-    pendingNote: null, 
-    editingHighlight: highlight 
-  }),
+  startEditNote: (highlight) =>
+    set({
+      isOpen: true,
+      pendingNote: null,
+      editingHighlight: highlight,
+    }),
 
   clearPending: () => set({ pendingNote: null, editingHighlight: null }),
 
   saveDraft: (key, content) => {
     const hash = simpleHash(key);
     set((state) => ({
-      drafts: { ...state.drafts, [hash]: content }
+      drafts: { ...state.drafts, [hash]: content },
     }));
   },
 

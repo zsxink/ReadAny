@@ -188,7 +188,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
     return new Promise<string>((resolve) => {
       // Store the resolve function so handleMessage can call it
       pendingVisibleTextResolveRef.current = resolve;
-      
+
       webViewRef.current?.injectJavaScript(`
         (function() {
           try {
@@ -222,8 +222,8 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
 
   const flashHighlight = useCallback(
     (cfi: string, color?: string, duration?: number) => {
-      const colorArg = color ? `'${color}'` : 'null';
-      const durationArg = duration ? duration : 'null';
+      const colorArg = color ? `'${color}'` : "null";
+      const durationArg = duration ? duration : "null";
       inject(`window.flashHighlight('${cfi}', ${colorArg}, ${durationArg})`);
     },
     [inject],
@@ -295,11 +295,14 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
           cb.onBookmarkSnippet?.(msg.textSnippet || "");
           break;
         case "visibleText":
-          console.log("[ReaderBridge] received visibleText:", JSON.stringify({
-            textLength: msg.text?.length || 0,
-            error: msg.error || "none",
-            debug: msg.debug || null
-          }));
+          console.log(
+            "[ReaderBridge] received visibleText:",
+            JSON.stringify({
+              textLength: msg.text?.length || 0,
+              error: msg.error || "none",
+              debug: msg.debug || null,
+            }),
+          );
           if (pendingVisibleTextResolveRef.current) {
             pendingVisibleTextResolveRef.current(msg.text || "");
             pendingVisibleTextResolveRef.current = null;
@@ -313,46 +316,49 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
     }
   }, []);
 
-  return useMemo(() => ({
-    webViewRef,
-    handleMessage,
-    // Commands
-    openBook,
-    goNext,
-    goPrev,
-    goToFraction,
-    goToHref,
-    goToCFI,
-    search,
-    clearSearch,
-    navigateSearch,
-    addAnnotation,
-    removeAnnotation,
-    highlightCFITemporarily,
-    applySettings,
-    setThemeColors,
-    setNavigationLocked,
-    requestPageSnippet,
-    getVisibleText,
-    flashHighlight,
-  }), [
-    handleMessage,
-    openBook,
-    goNext,
-    goPrev,
-    goToFraction,
-    goToHref,
-    goToCFI,
-    search,
-    clearSearch,
-    navigateSearch,
-    addAnnotation,
-    removeAnnotation,
-    highlightCFITemporarily,
-    applySettings,
-    setThemeColors,
-    setNavigationLocked,
-    requestPageSnippet,
-    getVisibleText,
-  ]);
+  return useMemo(
+    () => ({
+      webViewRef,
+      handleMessage,
+      // Commands
+      openBook,
+      goNext,
+      goPrev,
+      goToFraction,
+      goToHref,
+      goToCFI,
+      search,
+      clearSearch,
+      navigateSearch,
+      addAnnotation,
+      removeAnnotation,
+      highlightCFITemporarily,
+      applySettings,
+      setThemeColors,
+      setNavigationLocked,
+      requestPageSnippet,
+      getVisibleText,
+      flashHighlight,
+    }),
+    [
+      handleMessage,
+      openBook,
+      goNext,
+      goPrev,
+      goToFraction,
+      goToHref,
+      goToCFI,
+      search,
+      clearSearch,
+      navigateSearch,
+      addAnnotation,
+      removeAnnotation,
+      highlightCFITemporarily,
+      applySettings,
+      setThemeColors,
+      setNavigationLocked,
+      requestPageSnippet,
+      getVisibleText,
+    ],
+  );
 }

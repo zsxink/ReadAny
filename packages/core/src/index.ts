@@ -6,7 +6,14 @@
 export * from "./types";
 
 // Utils
-export { cn, debounce, throttle, eventBus, convertToMessageV2, mergeMessagesWithStreaming } from "./utils";
+export {
+  cn,
+  debounce,
+  throttle,
+  eventBus,
+  convertToMessageV2,
+  mergeMessagesWithStreaming,
+} from "./utils";
 export type { EventMap } from "./utils";
 
 // Services (platform abstraction)

@@ -2,27 +2,33 @@ import { BookOpenIcon, MoonIcon, SunIcon } from "@/components/ui/Icon";
 import { useTheme } from "@/styles/ThemeContext";
 import type { ThemeMode } from "@/styles/ThemeContext";
 import { fontSize, fontWeight, radius, spacing } from "@/styles/theme";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { SettingsHeader } from "./SettingsHeader";
 
-const THEMES: { id: ThemeMode; labelKey: string; Icon: typeof SunIcon }[] = [
-  { id: "light", labelKey: "settings.light", Icon: SunIcon },
-  { id: "dark", labelKey: "settings.dark", Icon: MoonIcon },
-  { id: "sepia", labelKey: "settings.sepia", Icon: BookOpenIcon },
+const THEMES: { id: ThemeMode; labelKey: string; fallback: string; Icon: typeof SunIcon }[] = [
+  { id: "light", labelKey: "settings.light", fallback: "Light", Icon: SunIcon },
+  { id: "dark", labelKey: "settings.dark", fallback: "Dark", Icon: MoonIcon },
+  { id: "sepia", labelKey: "settings.sepia", fallback: "Sepia", Icon: BookOpenIcon },
 ];
 
 const LANGUAGES = [
-  { code: "zh", label: "简体中文" },
-  { code: "en", label: "English" },
+  { code: "zh", labelKey: "settings.simplifiedChinese", fallback: "简体中文" },
+  { code: "en", labelKey: "settings.english", fallback: "English" },
 ] as const;
 
 export default function AppearanceSettingsScreen() {
   const { t, i18n } = useTranslation();
   const { mode, setMode, colors } = useTheme();
   const [lang, setLang] = useState(() => (i18n.language?.startsWith("zh") ? "zh" : "en"));
+
+  // Update lang state when i18n.language changes
+  useEffect(() => {
+    const newLang = i18n.language?.startsWith("zh") ? "zh" : "en";
+    setLang(newLang);
+  }, [i18n.language]);
 
   const handleLangChange = useCallback(async (code: string) => {
     setLang(code);
@@ -38,7 +44,10 @@ export default function AppearanceSettingsScreen() {
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={["top"]}>
-      <SettingsHeader title={t("settings.appearance", "外观设置")} subtitle={t("settings.realtimeHint")} />
+      <SettingsHeader
+        title={t("settings.appearanceLanguage", "外观与语言")}
+        subtitle={t("settings.realtimeHint")}
+      />
 
       <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent}>
         {/* Theme */}
@@ -71,7 +80,7 @@ export default function AppearanceSettingsScreen() {
                       active && { fontWeight: fontWeight.medium, color: colors.primary },
                     ]}
                   >
-                    {t(item.labelKey, item.id)}
+                    {t(item.labelKey, item.fallback)}
                   </Text>
                   {active && (
                     <View style={s.checkBadge}>
@@ -103,7 +112,9 @@ export default function AppearanceSettingsScreen() {
                 onPress={() => handleLangChange(l.code)}
                 activeOpacity={0.7}
               >
-                <Text style={[s.listItemText, { color: colors.foreground }]}>{l.label}</Text>
+                <Text style={[s.listItemText, { color: colors.foreground }]}>
+                  {t(l.labelKey, l.fallback)}
+                </Text>
                 {lang === l.code && (
                   <Text style={[s.checkPrimary, { color: colors.primary }]}>✓</Text>
                 )}

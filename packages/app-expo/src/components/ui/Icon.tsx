@@ -299,9 +299,7 @@ export const LoaderIcon = icon(() => (
   <Path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
 ));
 
-export const Loader2Icon = icon(() => (
-  <Path d="M21 12a9 9 0 1 1-6.219-8.56" />
-));
+export const Loader2Icon = icon(() => <Path d="M21 12a9 9 0 1 1-6.219-8.56" />);
 
 export const WrenchIcon = icon(() => (
   <>
@@ -447,13 +445,9 @@ export const EyeOffIcon = icon(() => (
   </>
 ));
 
-export const BoldIcon = icon(() => (
-  <Path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z" />
-));
+export const BoldIcon = icon(() => <Path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z" />);
 
-export const BoldIcon2 = icon(() => (
-  <Path d="M6 12h9a4 4 0 0 1 0 8H6z" />
-));
+export const BoldIcon2 = icon(() => <Path d="M6 12h9a4 4 0 0 1 0 8H6z" />);
 
 export const ItalicIcon = icon(() => (
   <>
@@ -515,9 +509,7 @@ export const QuoteIcon = icon(() => (
   </>
 ));
 
-export const MinusIcon = icon(() => (
-  <Path d="M5 12h14" />
-));
+export const MinusIcon = icon(() => <Path d="M5 12h14" />);
 
 export const Heading1Icon = icon(() => (
   <>
@@ -612,7 +604,10 @@ export const BookmarkIcon = icon(() => (
 ));
 
 // Filled variant for bookmark (active state)
-export function BookmarkFilledIcon({ size = 24, color = "#8e8e93" }: { size?: number; color?: string }) {
+export function BookmarkFilledIcon({
+  size = 24,
+  color = "#8e8e93",
+}: { size?: number; color?: string }) {
   return (
     <Svg
       width={size}

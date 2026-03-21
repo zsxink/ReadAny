@@ -1,3 +1,5 @@
+import { MermaidView } from "@/components/common/MermaidView";
+import { MindmapView } from "@/components/common/MindmapView";
 import { BrainIcon, CheckIcon, ChevronDownIcon, OctagonXIcon, XIcon } from "@/components/ui/Icon";
 import { useThrottledValue } from "@/hooks";
 import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from "@/styles/theme";
@@ -14,11 +16,15 @@ import type {
 } from "@readany/core/types/message";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { MarkdownRenderer } from "./MarkdownRenderer";
-import { MindmapPartView as LegacyMindmapPartView } from "./MindmapPartView";
-import { MindmapView } from "@/components/common/MindmapView";
-import { MermaidView } from "@/components/common/MermaidView";
 
 interface PartProps {
   part: Part;
@@ -55,7 +61,15 @@ function MermaidPartView({ part }: { part: MermaidPart }) {
   return <MermaidView chart={part.chart} title={part.title} />;
 }
 
-function TextPartView({ part, citations, onCitationClick }: { part: TextPart; citations?: CitationPart[]; onCitationClick?: (citation: CitationPart) => void }) {
+function TextPartView({
+  part,
+  citations,
+  onCitationClick,
+}: {
+  part: TextPart;
+  citations?: CitationPart[];
+  onCitationClick?: (citation: CitationPart) => void;
+}) {
   const throttledText = useThrottledValue(part.text, 100);
   const isStreaming = part.status === "running";
 
@@ -63,7 +77,14 @@ function TextPartView({ part, citations, onCitationClick }: { part: TextPart; ci
     return null;
   }
 
-  return <MarkdownRenderer content={throttledText} isStreaming={isStreaming} citations={citations} onCitationClick={onCitationClick} />;
+  return (
+    <MarkdownRenderer
+      content={throttledText}
+      isStreaming={isStreaming}
+      citations={citations}
+      onCitationClick={onCitationClick}
+    />
+  );
 }
 
 function ReasoningPartView({ part }: { part: ReasoningPart }) {
@@ -100,8 +121,8 @@ function ReasoningPartView({ part }: { part: ReasoningPart }) {
       </TouchableOpacity>
       {isOpen && (
         <View style={s.body}>
-          <ScrollView 
-            style={s.bodyScroll} 
+          <ScrollView
+            style={s.bodyScroll}
             nestedScrollEnabled
             showsVerticalScrollIndicator={true}
             scrollEventThrottle={16}

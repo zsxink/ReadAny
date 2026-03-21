@@ -93,6 +93,14 @@ export class ExpoPlatformService implements IPlatformService {
     return `file://${path}`;
   }
 
+  // ---- Language / Locale ----
+
+  async getLocale(): Promise<string> {
+    // Use React Native's I18nManager to get device locale
+    const { I18nManager } = require("react-native");
+    return I18nManager.localeIdentifier || "en_US";
+  }
+
   // ---- File picker (expo-document-picker) ----
 
   async pickFile(options?: FilePickerOptions): Promise<string | string[] | null> {
@@ -154,8 +162,8 @@ export class ExpoPlatformService implements IPlatformService {
   // ---- Network ----
 
   async fetch(url: string, options?: RequestInit): Promise<Response> {
-    const method = options?.method?.toUpperCase() || 'GET';
-    const standardMethods = ['GET', 'POST', 'PUT', 'DELETE', 'HEAD', 'OPTIONS', 'PATCH'];
+    const method = options?.method?.toUpperCase() || "GET";
+    const standardMethods = ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS", "PATCH"];
 
     // Use XMLHttpRequest for custom WebDAV methods (MKCOL, PROPFIND, etc.)
     // React Native's fetch doesn't properly support custom HTTP methods
@@ -170,7 +178,7 @@ export class ExpoPlatformService implements IPlatformService {
   private _fetchWithXHR(url: string, options?: RequestInit): Promise<Response> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      const method = options?.method || 'GET';
+      const method = options?.method || "GET";
 
       xhr.open(method, url, true);
 
@@ -210,7 +218,7 @@ export class ExpoPlatformService implements IPlatformService {
 
       // Send request
       if (options?.body) {
-        if (typeof options.body === 'string') {
+        if (typeof options.body === "string") {
           xhr.send(options.body);
         } else if (options.body instanceof ArrayBuffer) {
           xhr.send(options.body);

@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 
 interface OnboardingLayoutProps {
   illustration: string;
@@ -8,18 +8,24 @@ interface OnboardingLayoutProps {
   footer: ReactNode;
 }
 
-export function OnboardingLayout({ illustration, step, totalSteps, children, footer }: OnboardingLayoutProps) {
+export function OnboardingLayout({
+  illustration,
+  step,
+  totalSteps,
+  children,
+  footer,
+}: OnboardingLayoutProps) {
   return (
     <div className="flex h-full w-full flex-col">
       {/* Top section: Two columns */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left Col: Illustration (1/3) */}
         <div className="hidden sm:flex w-[280px] bg-muted/20 px-6 py-10 flex-col items-center justify-center relative border-r border-border/50 shrink-0">
-          <img 
-            key={step} 
-            src={illustration} 
-            className="w-full max-h-full dark:invert object-contain animate-in fade-in zoom-in-95 duration-500" 
-            alt="Step Illustration" 
+          <img
+            key={step}
+            src={illustration}
+            className="w-full max-h-full dark:invert object-contain animate-in fade-in zoom-in-95 duration-500"
+            alt="Step Illustration"
           />
         </div>
 
@@ -31,11 +37,8 @@ export function OnboardingLayout({ illustration, step, totalSteps, children, foo
 
       {/* Bottom section: Full width Footer */}
       <div className="w-full shrink-0 border-t border-border/50 bg-background/50 h-[88px] px-10 flex items-center relative z-20">
-        
         {/* Action Buttons spanning full width */}
-        <div className="w-full flex items-center justify-between z-10">
-          {footer}
-        </div>
+        <div className="w-full flex items-center justify-between z-10">{footer}</div>
 
         {/* Minimal Progress indicator, centered perfectly across the modal */}
         {step < totalSteps - 1 && (

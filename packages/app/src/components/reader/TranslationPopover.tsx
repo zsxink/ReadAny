@@ -1,13 +1,13 @@
+import { useTranslator } from "@/hooks/useTranslator";
 /**
  * TranslationPopover — compact floating popover for translation
  * Robust positioning: always stays within viewport
  */
 import { useSettingsStore } from "@/stores/settings-store";
-import { useTranslator } from "@/hooks/useTranslator";
-import { Check, ChevronDown, Copy, Loader2, Languages, X } from "lucide-react";
-import { useEffect, useState, useRef, useCallback } from "react";
+import { TRANSLATOR_LANGS, type TranslationTargetLang } from "@readany/core/types/translation";
+import { Check, ChevronDown, Copy, Languages, Loader2, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { TRANSLATOR_LANGS, TranslationTargetLang } from "@readany/core/types/translation";
 
 interface TranslationPopoverProps {
   text: string;
@@ -42,7 +42,7 @@ export function TranslationPopover({ text, position, onClose }: TranslationPopov
   const calculatePosition = useCallback(() => {
     const popoverHeight = Math.min(
       containerRef.current?.offsetHeight || POPOVER_MIN_HEIGHT,
-      POPOVER_MAX_HEIGHT
+      POPOVER_MAX_HEIGHT,
     );
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
@@ -50,7 +50,7 @@ export function TranslationPopover({ text, position, onClose }: TranslationPopov
     // Calculate X: center on selection point, but clamp to viewport
     let x = position.x;
     const halfWidth = POPOVER_WIDTH / 2;
-    
+
     // Clamp left edge
     if (x - halfWidth < PADDING) {
       x = halfWidth + PADDING;
@@ -63,7 +63,7 @@ export function TranslationPopover({ text, position, onClose }: TranslationPopov
     // Calculate Y: prefer above selection, fallback to below
     const spaceAbove = position.y - GAP;
     const spaceBelow = viewportHeight - position.y - GAP;
-    
+
     let y: number;
     let showAbove: boolean;
 
@@ -146,7 +146,9 @@ export function TranslationPopover({ text, position, onClose }: TranslationPopov
     };
 
     fetch();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [text, targetLang, translate]);
 
   const handleLangChange = (lang: TranslationTargetLang) => {
@@ -167,7 +169,7 @@ export function TranslationPopover({ text, position, onClose }: TranslationPopov
   const aiConfig = useSettingsStore((s) => s.aiConfig);
   const endpointId = translationConfig.provider.endpointId || aiConfig.activeEndpointId;
   const endpoint = aiConfig.endpoints.find((e) => e.id === endpointId);
-  const providerName = provider === "ai" ? (endpoint?.name || "AI") : "DeepL";
+  const providerName = provider === "ai" ? endpoint?.name || "AI" : "DeepL";
 
   return (
     <div
@@ -193,7 +195,7 @@ export function TranslationPopover({ text, position, onClose }: TranslationPopov
               <span>{TRANSLATOR_LANGS[targetLang]}</span>
               <ChevronDown className="h-3 w-3" />
             </button>
-            
+
             {langOpen && (
               <div className="absolute left-0 top-full z-50 mt-1 w-36 rounded-md border bg-background p-1 shadow-lg">
                 <div className="max-h-48 overflow-y-auto">
@@ -214,7 +216,7 @@ export function TranslationPopover({ text, position, onClose }: TranslationPopov
               </div>
             )}
           </div>
-          
+
           <button
             type="button"
             onClick={onClose}
@@ -233,9 +235,7 @@ export function TranslationPopover({ text, position, onClose }: TranslationPopov
             </div>
           )}
 
-          {error && !loading && (
-            <div className="py-1 text-sm text-destructive">{error}</div>
-          )}
+          {error && !loading && <div className="py-1 text-sm text-destructive">{error}</div>}
 
           {!loading && !error && translation && (
             <>

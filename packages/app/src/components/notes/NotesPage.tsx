@@ -1,3 +1,26 @@
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { MarkdownEditor } from "@/components/ui/markdown-editor";
+import { useResolvedSrc } from "@/hooks/use-resolved-src";
+import type { HighlightWithBook } from "@/lib/db/database";
+import { useAnnotationStore } from "@/stores/annotation-store";
+import { useAppStore } from "@/stores/app-store";
+import { useLibraryStore } from "@/stores/library-store";
+import { type ExportFormat, annotationExporter } from "@readany/core/export";
+import type { Highlight, Note } from "@readany/core/types";
+import { HIGHLIGHT_COLOR_HEX } from "@readany/core/types";
+import { cn } from "@readany/core/utils";
+import {
+  BookOpen,
+  Check,
+  ChevronLeft,
+  Edit3,
+  Highlighter,
+  NotebookPen,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 /**
  * NotesPage — Notebook-style knowledge management center
  * Layout: Left panel (book notebooks grid) + Right panel (selected book's notes & highlights)
@@ -5,33 +28,10 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
-import {
-  Highlighter,
-  BookOpen,
-  Trash2,
-  Search,
-  Edit3,
-  Check,
-  X,
-  NotebookPen,
-  ChevronLeft,
-} from "lucide-react";
-import { cn } from "@readany/core/utils";
-import { useAnnotationStore } from "@/stores/annotation-store";
-import { useLibraryStore } from "@/stores/library-store";
-import { useAppStore } from "@/stores/app-store";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { MarkdownEditor } from "@/components/ui/markdown-editor";
-import { ExportDropdown } from "./ExportDropdown";
-import { annotationExporter, type ExportFormat } from "@readany/core/export";
-import type { HighlightWithBook } from "@/lib/db/database";
-import type { Highlight, Note } from "@readany/core/types";
-import { HIGHLIGHT_COLOR_HEX } from "@readany/core/types";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useResolvedSrc } from "@/hooks/use-resolved-src";
+import { toast } from "sonner";
+import { ExportDropdown } from "./ExportDropdown";
 
 type DetailTab = "notes" | "highlights";
 
@@ -76,24 +76,24 @@ export function NotesPage() {
   useEffect(() => {
     if (activeTabId !== "notes") return;
     setIsLoading(true);
-    Promise.all([
-      loadAllHighlightsWithBooks(500),
-      loadStats(),
-    ]).finally(() => setIsLoading(false));
+    Promise.all([loadAllHighlightsWithBooks(500), loadStats()]).finally(() => setIsLoading(false));
   }, [loadAllHighlightsWithBooks, loadStats, activeTabId]);
 
   // Group highlights by book
   const bookNotebooks = useMemo(() => {
-    const grouped = new Map<string, {
-      bookId: string;
-      title: string;
-      author: string;
-      coverUrl: string | null;
-      highlights: HighlightWithBook[];
-      notesCount: number;
-      highlightsOnlyCount: number;
-      latestAt: number;
-    }>();
+    const grouped = new Map<
+      string,
+      {
+        bookId: string;
+        title: string;
+        author: string;
+        coverUrl: string | null;
+        highlights: HighlightWithBook[];
+        notesCount: number;
+        highlightsOnlyCount: number;
+        latestAt: number;
+      }
+    >();
 
     for (const h of highlightsWithBooks) {
       const existing = grouped.get(h.bookId);
@@ -121,7 +121,7 @@ export function NotesPage() {
 
   const selectedBook = useMemo(() => {
     if (!selectedBookId) return null;
-    return bookNotebooks.find(b => b.bookId === selectedBookId) || null;
+    return bookNotebooks.find((b) => b.bookId === selectedBookId) || null;
   }, [selectedBookId, bookNotebooks]);
 
   // Split into notes (has note text) and highlights-only
@@ -131,15 +131,16 @@ export function NotesPage() {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       all = all.filter(
-        h => h.text.toLowerCase().includes(q) ||
+        (h) =>
+          h.text.toLowerCase().includes(q) ||
           h.note?.toLowerCase().includes(q) ||
-          h.chapterTitle?.toLowerCase().includes(q)
+          h.chapterTitle?.toLowerCase().includes(q),
       );
     }
     const sorted = all.sort((a, b) => b.createdAt - a.createdAt);
     return {
-      notes: sorted.filter(h => h.note),
-      highlightsOnly: sorted.filter(h => !h.note),
+      notes: sorted.filter((h) => h.note),
+      highlightsOnly: sorted.filter((h) => !h.note),
     };
   }, [selectedBook, searchQuery]);
 
@@ -191,7 +192,11 @@ export function NotesPage() {
     setEditNote("");
   };
 
-  const doExport = (format: ExportFormat, book: { id: string; meta: { title: string } }, content: string) => {
+  const doExport = (
+    format: ExportFormat,
+    book: { id: string; meta: { title: string } },
+    content: string,
+  ) => {
     try {
       if (format === "notion") {
         annotationExporter.copyToClipboard(content);
@@ -273,10 +278,12 @@ export function NotesPage() {
   return (
     <div className="flex h-full">
       {/* Left Panel — Notebooks */}
-      <div className={cn(
-        "shrink-0 border-r border-border/40 flex flex-col",
-        selectedBookId ? "w-[260px]" : "w-full"
-      )}>
+      <div
+        className={cn(
+          "shrink-0 border-r border-border/40 flex flex-col",
+          selectedBookId ? "w-[260px]" : "w-full",
+        )}
+      >
         {/* Left header */}
         <div className="shrink-0 border-b border-border/40 px-4 py-3">
           <div className="flex items-center justify-between">
@@ -290,9 +297,7 @@ export function NotesPage() {
                 })}
               </p>
             </div>
-            {!selectedBookId && (
-              <ExportDropdown onExport={handleMultiBookExport} />
-            )}
+            {!selectedBookId && <ExportDropdown onExport={handleMultiBookExport} />}
           </div>
         </div>
 
@@ -308,7 +313,7 @@ export function NotesPage() {
                     "w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors",
                     book.bookId === selectedBookId
                       ? "bg-primary/10 text-primary"
-                      : "hover:bg-muted/60 text-foreground"
+                      : "hover:bg-muted/60 text-foreground",
                   )}
                   onClick={() => {
                     setSelectedBookId(book.bookId);
@@ -408,7 +413,7 @@ export function NotesPage() {
                     "flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-colors",
                     detailTab === "notes"
                       ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
                   )}
                   onClick={() => setDetailTab("notes")}
                 >
@@ -421,7 +426,7 @@ export function NotesPage() {
                     "flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-colors",
                     detailTab === "highlights"
                       ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
                   )}
                   onClick={() => setDetailTab("highlights")}
                 >
@@ -448,7 +453,11 @@ export function NotesPage() {
               <div className="flex h-full flex-col items-center justify-center p-6 text-center">
                 <NotebookPen className="mb-3 h-10 w-10 text-muted-foreground/40" />
                 <p className="text-sm text-muted-foreground">
-                  {searchQuery ? t("notes.noSearchResults") : (detailTab === "notes" ? t("notes.noNotes") : t("highlights.noHighlights"))}
+                  {searchQuery
+                    ? t("notes.noSearchResults")
+                    : detailTab === "notes"
+                      ? t("notes.noNotes")
+                      : t("highlights.noHighlights")}
                 </p>
               </div>
             ) : (
@@ -457,12 +466,14 @@ export function NotesPage() {
                   <div key={chapter}>
                     <div className="flex items-center gap-2 mb-3">
                       <div className="h-px flex-1 bg-border/50" />
-                      <span className="shrink-0 text-xs font-medium text-muted-foreground px-2">{chapter}</span>
+                      <span className="shrink-0 text-xs font-medium text-muted-foreground px-2">
+                        {chapter}
+                      </span>
                       <div className="h-px flex-1 bg-border/50" />
                     </div>
 
                     <div className="space-y-3">
-                      {items.map((item) => (
+                      {items.map((item) =>
                         detailTab === "notes" ? (
                           <NoteDetailCard
                             key={item.id}
@@ -474,7 +485,9 @@ export function NotesPage() {
                             onSaveNote={() => saveNote(item.id)}
                             onCancelEdit={cancelEdit}
                             onDeleteNote={() => handleDeleteNote(item)}
-                            onNavigate={() => handleOpenBook(selectedBook.bookId, selectedBook.title, item.cfi)}
+                            onNavigate={() =>
+                              handleOpenBook(selectedBook.bookId, selectedBook.title, item.cfi)
+                            }
                             t={t}
                           />
                         ) : (
@@ -482,11 +495,13 @@ export function NotesPage() {
                             key={item.id}
                             highlight={item}
                             onDelete={() => handleDeleteHighlight(item)}
-                            onNavigate={() => handleOpenBook(selectedBook.bookId, selectedBook.title, item.cfi)}
+                            onNavigate={() =>
+                              handleOpenBook(selectedBook.bookId, selectedBook.title, item.cfi)
+                            }
                             t={t}
                           />
-                        )
-                      ))}
+                        ),
+                      )}
                     </div>
                   </div>
                 ))}
@@ -516,10 +531,7 @@ interface NotebookCardProps {
 
 function NotebookCard({ book, onClick }: NotebookCardProps) {
   return (
-    <div
-      className="group flex h-full cursor-pointer flex-col justify-end"
-      onClick={onClick}
-    >
+    <div className="group flex h-full cursor-pointer flex-col justify-end" onClick={onClick}>
       {/* Cover — same aspect ratio and shadow as BookCard */}
       <div className="book-cover-shadow relative flex aspect-[28/41] w-full items-end justify-center overflow-hidden rounded transition-all duration-200">
         <CoverImage
@@ -621,23 +633,26 @@ function NoteDetailCard({
               autoFocus
             />
             <div className="flex flex-col gap-1">
-              <button type="button" className="rounded p-1.5 text-primary hover:bg-primary/10" onClick={onSaveNote}>
+              <button
+                type="button"
+                className="rounded p-1.5 text-primary hover:bg-primary/10"
+                onClick={onSaveNote}
+              >
                 <Check className="h-4 w-4" />
               </button>
-              <button type="button" className="rounded p-1.5 text-muted-foreground hover:bg-muted" onClick={onCancelEdit}>
+              <button
+                type="button"
+                className="rounded p-1.5 text-muted-foreground hover:bg-muted"
+                onClick={onCancelEdit}
+              >
                 <X className="h-4 w-4" />
               </button>
             </div>
           </div>
         ) : (
-          <div
-            className="mt-2 cursor-pointer"
-            onClick={onStartEdit}
-          >
+          <div className="mt-2 cursor-pointer" onClick={onStartEdit}>
             <div className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed break-words overflow-hidden [overflow-wrap:anywhere]">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {highlight.note || ""}
-              </ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{highlight.note || ""}</ReactMarkdown>
             </div>
           </div>
         )}
@@ -659,7 +674,10 @@ function NoteDetailCard({
             <button
               type="button"
               className="rounded p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-              onClick={(e) => { e.stopPropagation(); onDeleteNote(); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteNote();
+              }}
               title={t("notebook.deleteNote")}
             >
               <Trash2 className="h-3 w-3" />
@@ -681,7 +699,9 @@ interface HighlightDetailCardProps {
 }
 
 function HighlightDetailCard({ highlight, onDelete, onNavigate, t }: HighlightDetailCardProps) {
-  const hexColor = HIGHLIGHT_COLOR_HEX[highlight.color as keyof typeof HIGHLIGHT_COLOR_HEX] || HIGHLIGHT_COLOR_HEX.yellow;
+  const hexColor =
+    HIGHLIGHT_COLOR_HEX[highlight.color as keyof typeof HIGHLIGHT_COLOR_HEX] ||
+    HIGHLIGHT_COLOR_HEX.yellow;
 
   return (
     <div className="group relative rounded-lg border border-border/40 bg-card transition-colors hover:border-border/70">
@@ -706,7 +726,10 @@ function HighlightDetailCard({ highlight, onDelete, onNavigate, t }: HighlightDe
           <button
             type="button"
             className="rounded p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
-            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
             title={t("notebook.deleteHighlight")}
           >
             <Trash2 className="h-3 w-3" />

@@ -1,11 +1,3 @@
-/**
- * AboutSettings — 关于页面
- */
-import { useState, useEffect } from "react";
-import { useTranslation } from "react-i18next";
-import { ExternalLink, Github, BookOpen, Code2, Zap, Shield, RefreshCw, Download, Check, AlertCircle } from "lucide-react";
-import { getVersion } from "@tauri-apps/api/app";
-import { checkForUpdate, getUpdateStatus, getAvailableUpdate, getDownloadProgress, getErrorMessage, subscribeToUpdates, downloadAndInstall, relaunchApp, resetStatus } from "@/lib/updater";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,6 +7,35 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  checkForUpdate,
+  downloadAndInstall,
+  getAvailableUpdate,
+  getDownloadProgress,
+  getErrorMessage,
+  getUpdateStatus,
+  relaunchApp,
+  resetStatus,
+  subscribeToUpdates,
+} from "@/lib/updater";
+import { getVersion } from "@tauri-apps/api/app";
+import {
+  AlertCircle,
+  BookOpen,
+  Check,
+  Code2,
+  Download,
+  ExternalLink,
+  Github,
+  RefreshCw,
+  Shield,
+  Zap,
+} from "lucide-react";
+/**
+ * AboutSettings — 关于页面
+ */
+import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 const TECH_STACK = [
   { name: "Tauri", descKey: "settings.techStackTauri", icon: Shield },
@@ -45,7 +66,7 @@ export function AboutSettings() {
       setUpdate(u);
       setProgress(p);
       setError(e);
-      
+
       if (s === "available" && u) {
         setIsChecking(false);
         setDialogType("updateAvailable");
@@ -85,15 +106,9 @@ export function AboutSettings() {
     <div className="flex flex-col items-center p-6">
       {/* Logo & App Name */}
       <div className="mb-6 flex flex-col items-center">
-        <img
-          src="/logo.svg"
-          alt="ReadAny Logo"
-          className="mb-4 h-24 w-24 drop-shadow-lg"
-        />
+        <img src="/logo.svg" alt="ReadAny Logo" className="mb-4 h-24 w-24 drop-shadow-lg" />
         <h1 className="text-2xl font-bold text-foreground">ReadAny</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {t("settings.aboutDesc")}
-        </p>
+        <p className="mt-1 text-sm text-muted-foreground">{t("settings.aboutDesc")}</p>
       </div>
 
       {/* Version Card */}
@@ -101,7 +116,9 @@ export function AboutSettings() {
         <div className="flex items-center justify-between">
           <span className="text-sm text-muted-foreground">{t("settings.version")}</span>
           <div className="flex items-center gap-2">
-            <span className="font-mono text-sm font-medium text-foreground">{appVersion || "..."}</span>
+            <span className="font-mono text-sm font-medium text-foreground">
+              {appVersion || "..."}
+            </span>
             <button
               onClick={handleCheckUpdate}
               disabled={status === "checking" || status === "downloading"}
@@ -123,10 +140,7 @@ export function AboutSettings() {
               <span className="font-mono text-foreground">{progress}%</span>
             </div>
             <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full bg-primary transition-all"
-                style={{ width: `${progress}%` }}
-              />
+              <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
             </div>
           </div>
         </div>
@@ -138,26 +152,23 @@ export function AboutSettings() {
           <div className="rounded-lg bg-primary/10 p-3 text-center text-sm text-foreground">
             {t("settings.updateReadyMessage")}
           </div>
-          <Button
-            variant="default"
-            className="w-full"
-            onClick={handleRelaunch}
-          >
+          <Button variant="default" className="w-full" onClick={handleRelaunch}>
             {t("settings.relaunch")}
           </Button>
         </div>
       )}
 
       {/* Dialogs */}
-      <Dialog open={dialogType === "updateAvailable"} onOpenChange={(open) => !open && closeDialog()}>
+      <Dialog
+        open={dialogType === "updateAvailable"}
+        onOpenChange={(open) => !open && closeDialog()}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("settings.updateAvailable")}</DialogTitle>
             <DialogDescription>
               {update && (
-                <span>
-                  {t("settings.newVersionAvailable", { version: update.version })}
-                </span>
+                <span>{t("settings.newVersionAvailable", { version: update.version })}</span>
               )}
             </DialogDescription>
           </DialogHeader>
@@ -187,9 +198,7 @@ export function AboutSettings() {
             </DialogTitle>
           </DialogHeader>
           <DialogFooter>
-            <Button onClick={closeDialog}>
-              {t("settings.ok")}
-            </Button>
+            <Button onClick={closeDialog}>{t("settings.ok")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -215,15 +224,10 @@ export function AboutSettings() {
 
       {/* Tech Stack */}
       <div className="mb-6 w-full max-w-md">
-        <h2 className="mb-3 text-sm font-medium text-foreground">
-          {t("settings.techStack")}
-        </h2>
+        <h2 className="mb-3 text-sm font-medium text-foreground">{t("settings.techStack")}</h2>
         <div className="grid grid-cols-2 gap-2">
           {TECH_STACK.map(({ name, descKey, icon: Icon }) => (
-            <div
-              key={name}
-              className="flex items-center gap-3 rounded-lg bg-muted/60 p-3"
-            >
+            <div key={name} className="flex items-center gap-3 rounded-lg bg-muted/60 p-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
                 <Icon className="h-4 w-4 text-primary" />
               </div>
@@ -259,9 +263,7 @@ export function AboutSettings() {
         >
           <div className="flex items-center gap-3">
             <BookOpen className="h-5 w-5 text-muted-foreground" />
-            <span className="text-sm font-medium text-foreground">
-              {t("settings.feedback")}
-            </span>
+            <span className="text-sm font-medium text-foreground">{t("settings.feedback")}</span>
           </div>
           <ExternalLink className="h-4 w-4 text-muted-foreground" />
         </a>
@@ -270,9 +272,7 @@ export function AboutSettings() {
       {/* Copyright */}
       <div className="mt-8 text-center text-xs text-muted-foreground/60">
         <p>© 2026 codedogQBY. All rights reserved.</p>
-        <p className="mt-1">
-          {t("settings.license")}
-        </p>
+        <p className="mt-1">{t("settings.license")}</p>
       </div>
     </div>
   );

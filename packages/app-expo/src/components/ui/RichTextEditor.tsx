@@ -1,31 +1,32 @@
-import { useColors, radius } from "@/styles/theme";
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
-import { useCallback, useRef, useState } from "react";
-import {
-  View,
-  StyleSheet,
-  TouchableOpacity,
-  Text,
-  TextInput,
-  Modal,
-  ScrollView,
-} from "react-native";
 import {
   BoldIcon,
-  ItalicIcon,
-  StrikethroughIcon,
-  ListIcon,
-  ListOrderedIcon,
   CodeIcon,
-  Link2Icon,
-  QuoteIcon,
+  EditIcon,
+  EyeIcon,
   Heading1Icon,
   Heading2Icon,
   Heading3Icon,
+  ItalicIcon,
+  Link2Icon,
+  ListIcon,
+  ListOrderedIcon,
+  QuoteIcon,
+  StrikethroughIcon,
   XIcon,
-  EyeIcon,
-  EditIcon,
 } from "@/components/ui/Icon";
+import { radius, useColors } from "@/styles/theme";
+import { useCallback, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import {
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 interface RichTextEditorProps {
   initialContent?: string;
@@ -37,10 +38,12 @@ interface RichTextEditorProps {
 export function RichTextEditor({
   initialContent = "",
   onChange,
-  placeholder = "写下你的想法...",
+  placeholder,
   autoFocus = false,
 }: RichTextEditorProps) {
   const colors = useColors();
+  const { t } = useTranslation();
+  const defaultPlaceholder = placeholder ?? t("common.writeYourThoughts", "写下你的想法...");
   const [value, setValue] = useState(initialContent);
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
@@ -71,8 +74,7 @@ export function RichTextEditor({
     (prefix: string, suffix: string) => {
       const { start, end } = selectionRef.current;
       const selected = value.substring(start, end);
-      const newText =
-        value.substring(0, start) + prefix + selected + suffix + value.substring(end);
+      const newText = value.substring(0, start) + prefix + selected + suffix + value.substring(end);
       handleChange(newText);
       const newPos = start + prefix.length + selected.length + suffix.length;
       selectionRef.current = { start: newPos, end: newPos };
@@ -90,13 +92,16 @@ export function RichTextEditor({
 
       if (currentLine.startsWith(prefix)) {
         const newText =
-          value.substring(0, lineStart) + currentLine.substring(prefix.length) + value.substring(actualEnd);
+          value.substring(0, lineStart) +
+          currentLine.substring(prefix.length) +
+          value.substring(actualEnd);
         handleChange(newText);
         return;
       }
 
       const stripped = currentLine.replace(/^(#{1,3}\s|[-*]\s|\d+\.\s|>\s)/, "");
-      const newText = value.substring(0, lineStart) + prefix + stripped + value.substring(actualEnd);
+      const newText =
+        value.substring(0, lineStart) + prefix + stripped + value.substring(actualEnd);
       handleChange(newText);
     },
     [value, handleChange],
@@ -217,7 +222,10 @@ export function RichTextEditor({
 
       {previewMode ? (
         <ScrollView
-          style={[styles.previewWrapper, { borderColor: colors.border, backgroundColor: colors.background }]}
+          style={[
+            styles.previewWrapper,
+            { borderColor: colors.border, backgroundColor: colors.background },
+          ]}
           contentContainerStyle={styles.previewContent}
         >
           {value.trim() ? (
@@ -229,7 +237,12 @@ export function RichTextEditor({
           )}
         </ScrollView>
       ) : (
-        <View style={[styles.editorWrapper, { borderColor: colors.border, backgroundColor: colors.background }]}>
+        <View
+          style={[
+            styles.editorWrapper,
+            { borderColor: colors.border, backgroundColor: colors.background },
+          ]}
+        >
           <TextInput
             ref={inputRef}
             value={value}
@@ -255,7 +268,7 @@ export function RichTextEditor({
         <View style={styles.modalOverlay}>
           <View style={styles.linkModal}>
             <View style={styles.linkModalHeader}>
-              <Text style={styles.linkModalTitle}>插入链接</Text>
+              <Text style={styles.linkModalTitle}>{t("common.insertLink", "插入链接")}</Text>
               <TouchableOpacity onPress={() => setShowLinkModal(false)}>
                 <XIcon size={20} color={colors.mutedForeground} />
               </TouchableOpacity>
@@ -264,14 +277,14 @@ export function RichTextEditor({
               style={styles.linkInput}
               value={linkText}
               onChangeText={setLinkText}
-              placeholder="链接文字"
+              placeholder={t("common.linkText", "链接文字")}
               placeholderTextColor={colors.mutedForeground}
             />
             <TextInput
               style={styles.linkInput}
               value={linkUrl}
               onChangeText={setLinkUrl}
-              placeholder="输入链接地址"
+              placeholder={t("common.enterLinkUrl", "输入链接地址")}
               placeholderTextColor={colors.mutedForeground}
               autoCapitalize="none"
               autoCorrect={false}
@@ -282,10 +295,10 @@ export function RichTextEditor({
                 style={styles.linkCancelBtn}
                 onPress={() => setShowLinkModal(false)}
               >
-                <Text style={styles.linkCancelText}>取消</Text>
+                <Text style={styles.linkCancelText}>{t("common.cancel", "取消")}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.linkConfirmBtn} onPress={handleInsertLink}>
-                <Text style={styles.linkConfirmText}>确定</Text>
+                <Text style={styles.linkConfirmText}>{t("common.confirm", "确定")}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -304,7 +317,14 @@ interface ToolbarButtonProps {
   styles: ReturnType<typeof makeStyles>;
 }
 
-function ToolbarButton({ onPress, isActive, disabled, children, colors, styles }: ToolbarButtonProps) {
+function ToolbarButton({
+  onPress,
+  isActive,
+  disabled,
+  children,
+  colors,
+  styles,
+}: ToolbarButtonProps) {
   return (
     <TouchableOpacity
       style={[

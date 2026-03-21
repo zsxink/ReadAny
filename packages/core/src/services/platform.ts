@@ -43,6 +43,10 @@ export interface IPlatformService {
   readonly isMobile: boolean;
   readonly isDesktop: boolean;
 
+  // ---- Language / Locale ----
+  // Returns the system locale, e.g. "en-US", "zh-CN", "ja-JP"
+  getLocale?(): Promise<string>;
+
   // ---- File system ----
   readFile(path: string): Promise<Uint8Array>;
   writeFile(path: string, data: Uint8Array): Promise<void>;
@@ -63,10 +67,7 @@ export interface IPlatformService {
 
   // ---- Network (for scenarios requiring custom headers) ----
   fetch(url: string, options?: RequestInit): Promise<Response>;
-  createWebSocket(
-    url: string,
-    options?: WebSocketOptions
-  ): Promise<IWebSocket>;
+  createWebSocket(url: string, options?: WebSocketOptions): Promise<IWebSocket>;
 
   // ---- App info ----
   getAppVersion(): Promise<string>;
@@ -88,11 +89,22 @@ export interface IPlatformService {
 
   // ---- File sharing / download ----
   // Web: Blob + <a> download, RN: expo-file-system + expo-sharing
-  shareOrDownloadFile(
-    content: string,
-    filename: string,
-    mimeType: string,
-  ): Promise<void>;
+  shareOrDownloadFile(content: string, filename: string, mimeType: string): Promise<void>;
+
+  // ---- LAN Sync ----
+  // Get local IP address for LAN sync
+  getLocalIP?(): Promise<string>;
+  // Start a local HTTP server for LAN sync
+  startLANServer?(
+    port: number,
+    handler: (
+      method: string,
+      path: string,
+      headers: Record<string, string>,
+    ) => Promise<{ status: number; body?: Uint8Array; headers?: Record<string, string> }>,
+  ): Promise<{ port: number; server: unknown }>;
+  // Stop the local HTTP server
+  stopLANServer?(server: unknown): Promise<void>;
 }
 
 /**
@@ -112,9 +124,7 @@ export function setPlatformService(service: IPlatformService): void {
 
 export function getPlatformService(): IPlatformService {
   if (!_platformService) {
-    throw new Error(
-      "PlatformService not initialized. Call setPlatformService() at app startup."
-    );
+    throw new Error("PlatformService not initialized. Call setPlatformService() at app startup.");
   }
   return _platformService;
 }

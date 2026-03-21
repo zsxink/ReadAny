@@ -1,14 +1,14 @@
 import { PasswordInput } from "@/components/ui/password-input";
-import { TRANSLATOR_PROVIDERS } from "@readany/core/types/translation";
-import { Check, ChevronDown } from "lucide-react";
 /**
  * TranslationSettings — translation provider config
  * AI translation uses existing AI config from AI settings
  * Target language is selected in the translation popup
  */
 import { useSettingsStore } from "@/stores/settings-store";
-import { useTranslation } from "react-i18next";
+import { TRANSLATOR_PROVIDERS } from "@readany/core/types/translation";
+import { Check, ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 export function TranslationSettings() {
   const { t } = useTranslation();
@@ -91,10 +91,10 @@ export function TranslationSettings() {
   return (
     <div className="space-y-4 p-4 pt-3">
       <section className="rounded-lg bg-muted/60 p-4">
-        <h2 className="mb-4 text-sm font-medium text-foreground">{t("settings.translation_title")}</h2>
-        <p className="mb-4 text-xs text-muted-foreground">
-          {t("settings.translation_desc")}
-        </p>
+        <h2 className="mb-4 text-sm font-medium text-foreground">
+          {t("settings.translation_title")}
+        </h2>
+        <p className="mb-4 text-xs text-muted-foreground">{t("settings.translation_desc")}</p>
 
         <div className="space-y-4">
           {/* 翻译引擎选择 */}
@@ -149,7 +149,9 @@ export function TranslationSettings() {
                     }`}
                   >
                     <span className="truncate">{selectedModel || t("settings.selectModel")}</span>
-                    {totalModels > 1 && <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />}
+                    {totalModels > 1 && (
+                      <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    )}
                   </button>
                   {modelOpen && totalModels > 1 && (
                     <div className="absolute left-0 top-full z-50 mt-1 w-full rounded-lg border bg-background p-1 shadow-lg">
@@ -162,7 +164,8 @@ export function TranslationSettings() {
                               </div>
                             )}
                             {ep.models.map((model) => {
-                              const isActive = model === selectedModel && ep.id === selectedEndpointId;
+                              const isActive =
+                                model === selectedModel && ep.id === selectedEndpointId;
                               return (
                                 <button
                                   key={`${ep.id}-${model}`}
@@ -200,9 +203,7 @@ export function TranslationSettings() {
                 value={translationConfig.provider.apiKey || ""}
                 onChange={(e) => handleApiKeyChange(e.target.value)}
               />
-              <p className="text-xs text-muted-foreground">
-                {t("settings.deeplKeyHint")}
-              </p>
+              <p className="text-xs text-muted-foreground">{t("settings.deeplKeyHint")}</p>
             </div>
           )}
         </div>

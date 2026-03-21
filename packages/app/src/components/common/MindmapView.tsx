@@ -1,9 +1,9 @@
-import { useEffect, useRef, useCallback, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { Download, Maximize2, Minimize2, RotateCcw } from "lucide-react";
 import { Transformer } from "markmap-lib";
 import { Markmap } from "markmap-view";
-import { Maximize2, Minimize2, Download, RotateCcw } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 function getThemePrimaryColor(): string {
@@ -36,14 +36,16 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
       markmapRef.current.setData(root);
       markmapRef.current.fit();
     } else {
-      const mm = Markmap.create(svgRef.current, {
-        autoFit: true,
-        fitRatio: 0.8,
-        duration: 300,
-        maxWidth: 300,
-        paddingX: 16,
-        color: () => getThemePrimaryColor(),
-        style: (id: string) => `
+      const mm = Markmap.create(
+        svgRef.current,
+        {
+          autoFit: true,
+          fitRatio: 0.8,
+          duration: 300,
+          maxWidth: 300,
+          paddingX: 16,
+          color: () => getThemePrimaryColor(),
+          style: (id: string) => `
           .${id} {
             --markmap-text-color: #333;
             --markmap-code-bg: #f5f5f5;
@@ -64,7 +66,9 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
             background-color: #f5f5f5;
           }
         `,
-      }, root);
+        },
+        root,
+      );
       markmapRef.current = mm;
     }
   }, [markdown]);
@@ -77,14 +81,16 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
     if (fullscreenMarkmapRef.current) {
       fullscreenMarkmapRef.current.setData(root);
     } else {
-      const mm = Markmap.create(fullscreenSvgRef.current, {
-        autoFit: true,
-        fitRatio: 0.8,
-        duration: 300,
-        maxWidth: 400,
-        paddingX: 24,
-        color: () => getThemePrimaryColor(),
-        style: (id: string) => `
+      const mm = Markmap.create(
+        fullscreenSvgRef.current,
+        {
+          autoFit: true,
+          fitRatio: 0.8,
+          duration: 300,
+          maxWidth: 400,
+          paddingX: 24,
+          color: () => getThemePrimaryColor(),
+          style: (id: string) => `
           .${id} {
             --markmap-text-color: #333;
             --markmap-code-bg: #f5f5f5;
@@ -105,7 +111,9 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
             background-color: #f5f5f5;
           }
         `,
-      }, root);
+        },
+        root,
+      );
       fullscreenMarkmapRef.current = mm;
     }
   }, [markdown, expanded]);
@@ -146,9 +154,12 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
     const svgElement = expanded ? fullscreenSvgRef.current : svgRef.current;
     if (!svgElement) return;
 
-    const gElement = svgElement.querySelector('g');
-    let contentX = -500, contentY = -500, contentWidth = 2000, contentHeight = 1500;
-    
+    const gElement = svgElement.querySelector("g");
+    let contentX = -500,
+      contentY = -500,
+      contentWidth = 2000,
+      contentHeight = 1500;
+
     if (gElement) {
       try {
         const bbox = gElement.getBBox();
@@ -157,24 +168,23 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
         contentY = bbox.y - padding;
         contentWidth = bbox.width + padding * 2;
         contentHeight = bbox.height + padding * 2;
-      } catch (e) {
-      }
+      } catch (e) {}
     }
-    
+
     const clonedSvg = svgElement.cloneNode(true) as SVGSVGElement;
-    
-    const clonedG = clonedSvg.querySelector('g');
+
+    const clonedG = clonedSvg.querySelector("g");
     if (clonedG) {
-      clonedG.setAttribute('transform', 'translate(0,0) scale(1)');
+      clonedG.setAttribute("transform", "translate(0,0) scale(1)");
     }
-    
-    clonedSvg.setAttribute('viewBox', `${contentX} ${contentY} ${contentWidth} ${contentHeight}`);
-    clonedSvg.setAttribute('width', String(contentWidth));
-    clonedSvg.setAttribute('height', String(contentHeight));
-    
-    clonedSvg.style.width = '';
-    clonedSvg.style.height = '';
-    
+
+    clonedSvg.setAttribute("viewBox", `${contentX} ${contentY} ${contentWidth} ${contentHeight}`);
+    clonedSvg.setAttribute("width", String(contentWidth));
+    clonedSvg.setAttribute("height", String(contentHeight));
+
+    clonedSvg.style.width = "";
+    clonedSvg.style.height = "";
+
     const bgRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
     bgRect.setAttribute("x", String(contentX));
     bgRect.setAttribute("y", String(contentY));
@@ -182,7 +192,7 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
     bgRect.setAttribute("height", String(contentHeight));
     bgRect.setAttribute("fill", "white");
     clonedSvg.insertBefore(bgRect, clonedSvg.firstChild);
-    
+
     const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
     style.textContent = `
       .markmap {
@@ -202,9 +212,9 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
     clonedSvg.insertBefore(style, clonedSvg.firstChild);
 
     let svgData = new XMLSerializer().serializeToString(clonedSvg);
-    svgData = svgData.replace(/var\(--foreground\)/g, '#333');
-    svgData = svgData.replace(/var\(--background\)/g, '#fff');
-    svgData = svgData.replace(/var\(--muted\)/g, '#f5f5f5');
+    svgData = svgData.replace(/var\(--foreground\)/g, "#333");
+    svgData = svgData.replace(/var\(--background\)/g, "#fff");
+    svgData = svgData.replace(/var\(--muted\)/g, "#f5f5f5");
     const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
     const svgUrl = URL.createObjectURL(svgBlob);
 
@@ -215,7 +225,7 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
     downloadLink.click();
     document.body.removeChild(downloadLink);
     URL.revokeObjectURL(svgUrl);
-    
+
     toast.success(t("common.downloadSuccess", "图表已下载"));
   }, [expanded, title, t]);
 
@@ -266,10 +276,7 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
               </div>
             </div>
             <div className="flex-1 overflow-hidden" data-fullscreen="true">
-              <svg
-                ref={fullscreenSvgRef}
-                className="w-full h-full"
-              />
+              <svg ref={fullscreenSvgRef} className="w-full h-full" />
             </div>
             <div className="border-t border-border px-4 py-2">
               <span className="text-xs text-muted-foreground">
@@ -278,7 +285,7 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
             </div>
           </div>
         </div>,
-        document.body
+        document.body,
       )
     : null;
 
@@ -321,10 +328,7 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
         </div>
 
         <div className="overflow-hidden" style={{ height: 400 }} data-mindmap="true">
-          <svg
-            ref={svgRef}
-            className="w-full h-full"
-          />
+          <svg ref={svgRef} className="w-full h-full" />
         </div>
         <div className="border-t border-border px-3 py-1.5">
           <span className="text-xs text-muted-foreground">

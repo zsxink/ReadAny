@@ -1,8 +1,8 @@
+import { scaleBand, scaleLinear } from "d3-scale";
 /**
  * BarChart — SVG bar chart using D3 scales + React rendering
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { scaleBand, scaleLinear } from "d3-scale";
 
 interface BarData {
   label: string;
@@ -48,7 +48,11 @@ export function BarChart({ data, height = 200, emptyMessage }: BarChartProps) {
   const hasData = data.some((d) => d.value > 0);
 
   const xScale = useMemo(
-    () => scaleBand<string>().domain(data.map((d) => d.label)).range([0, innerWidth]).padding(0.3),
+    () =>
+      scaleBand<string>()
+        .domain(data.map((d) => d.label))
+        .range([0, innerWidth])
+        .padding(0.3),
     [data, innerWidth],
   );
 
@@ -62,7 +66,11 @@ export function BarChart({ data, height = 200, emptyMessage }: BarChartProps) {
 
   if (!hasData && emptyMessage) {
     return (
-      <div ref={containerRef} className="flex items-center justify-center text-sm text-muted-foreground" style={{ height }}>
+      <div
+        ref={containerRef}
+        className="flex items-center justify-center text-sm text-muted-foreground"
+        style={{ height }}
+      >
         {emptyMessage}
       </div>
     );
@@ -186,7 +194,14 @@ export function BarChart({ data, height = 200, emptyMessage }: BarChartProps) {
           ))}
 
           {/* Baseline */}
-          <line x1={0} y1={innerHeight} x2={innerWidth} y2={innerHeight} stroke="var(--border)" strokeWidth={1} />
+          <line
+            x1={0}
+            y1={innerHeight}
+            x2={innerWidth}
+            y2={innerHeight}
+            stroke="var(--border)"
+            strokeWidth={1}
+          />
         </g>
       </svg>
     </div>

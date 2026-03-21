@@ -1,10 +1,10 @@
+import { useResolvedSrc } from "@/hooks/use-resolved-src";
 /**
  * BookList — list view for books
  */
 import { useAppStore } from "@/stores/app-store";
 import type { Book } from "@readany/core/types";
 import { useTranslation } from "react-i18next";
-import { useResolvedSrc } from "@/hooks/use-resolved-src";
 
 interface BookListProps {
   books: Book[];
@@ -29,7 +29,9 @@ function BookListItem({ book, onOpen }: BookListItemProps) {
         {coverSrc ? (
           <img src={coverSrc} alt="" className="h-full w-full object-cover" />
         ) : (
-          <span className="text-sm font-bold text-muted-foreground">{book.meta.title.charAt(0)}</span>
+          <span className="text-sm font-bold text-muted-foreground">
+            {book.meta.title.charAt(0)}
+          </span>
         )}
       </div>
       <div className="min-w-0 flex-1">

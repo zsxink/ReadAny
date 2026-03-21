@@ -15,7 +15,14 @@ interface SearchBarProps {
   currentIndex: number;
 }
 
-export function SearchBar({ onSearch, onNext, onPrev, onClose, resultCount, currentIndex }: SearchBarProps) {
+export function SearchBar({
+  onSearch,
+  onNext,
+  onPrev,
+  onClose,
+  resultCount,
+  currentIndex,
+}: SearchBarProps) {
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -26,13 +33,16 @@ export function SearchBar({ onSearch, onNext, onPrev, onClose, resultCount, curr
     };
   }, []);
 
-  const handleChange = useCallback((value: string) => {
-    setQuery(value);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      onSearch(value);
-    }, 300);
-  }, [onSearch]);
+  const handleChange = useCallback(
+    (value: string) => {
+      setQuery(value);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        onSearch(value);
+      }, 300);
+    },
+    [onSearch],
+  );
 
   return (
     <div className="flex items-center gap-2 border-b border-border bg-background px-4 py-2">
@@ -45,11 +55,19 @@ export function SearchBar({ onSearch, onNext, onPrev, onClose, resultCount, curr
         autoFocus
       />
       {resultCount > 0 && (
-        <span className="text-xs text-muted-foreground">{currentIndex + 1} / {resultCount}</span>
+        <span className="text-xs text-muted-foreground">
+          {currentIndex + 1} / {resultCount}
+        </span>
       )}
-      <button onClick={onPrev} className="p-1 hover:bg-muted rounded"><ChevronUp className="h-4 w-4" /></button>
-      <button onClick={onNext} className="p-1 hover:bg-muted rounded"><ChevronDown className="h-4 w-4" /></button>
-      <button onClick={onClose} className="p-1 hover:bg-muted rounded"><X className="h-4 w-4" /></button>
+      <button onClick={onPrev} className="p-1 hover:bg-muted rounded">
+        <ChevronUp className="h-4 w-4" />
+      </button>
+      <button onClick={onNext} className="p-1 hover:bg-muted rounded">
+        <ChevronDown className="h-4 w-4" />
+      </button>
+      <button onClick={onClose} className="p-1 hover:bg-muted rounded">
+        <X className="h-4 w-4" />
+      </button>
     </div>
   );
 }

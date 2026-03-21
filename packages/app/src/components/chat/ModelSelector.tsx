@@ -18,24 +18,15 @@ export function ModelSelector() {
   const activeEndpointId = aiConfig.activeEndpointId;
 
   // Collect all endpoints that have models
-  const endpointsWithModels = aiConfig.endpoints.filter(
-    (ep) => ep.models.length > 0,
-  );
-  const totalModels = endpointsWithModels.reduce(
-    (sum, ep) => sum + ep.models.length,
-    0,
-  );
+  const endpointsWithModels = aiConfig.endpoints.filter((ep) => ep.models.length > 0);
+  const totalModels = endpointsWithModels.reduce((sum, ep) => sum + ep.models.length, 0);
   const multipleEndpoints = endpointsWithModels.length > 1;
 
   // Close on outside click
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (
-        popoverRef.current &&
-        !popoverRef.current.contains(e.target as Node)
-      )
-        setOpen(false);
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -64,9 +55,7 @@ export function ModelSelector() {
         type="button"
         onClick={() => canSwitch && setOpen(!open)}
         className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs text-muted-foreground transition-colors ${
-          canSwitch
-            ? "cursor-pointer hover:bg-muted hover:text-foreground"
-            : "cursor-default"
+          canSwitch ? "cursor-pointer hover:bg-muted hover:text-foreground" : "cursor-default"
         }`}
         title={currentModel || t("chat.currentModel")}
       >
@@ -85,17 +74,14 @@ export function ModelSelector() {
                   </div>
                 )}
                 {ep.models.map((model) => {
-                  const isActive =
-                    model === currentModel && ep.id === activeEndpointId;
+                  const isActive = model === currentModel && ep.id === activeEndpointId;
                   return (
                     <button
                       key={`${ep.id}-${model}`}
                       type="button"
                       onClick={() => handleSelect(ep.id, model)}
                       className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors ${
-                        isActive
-                          ? "bg-primary/10 text-primary"
-                          : "text-neutral-700 hover:bg-muted"
+                        isActive ? "bg-primary/10 text-primary" : "text-neutral-700 hover:bg-muted"
                       }`}
                     >
                       <span className="truncate">{model}</span>

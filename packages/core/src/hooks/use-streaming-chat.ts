@@ -1,17 +1,39 @@
+import { useCallback, useRef, useState } from "react";
+import { getBuiltinSkills } from "../ai/skills/builtin-skills";
 import { StreamingChat, createMessageId } from "../ai/streaming";
+import { getAvailableTools } from "../ai/tools";
+import { getSkills as getDbSkills } from "../db/database";
+import i18n from "../i18n";
 import { useChatStore } from "../stores/chat-store";
 import { useSettingsStore } from "../stores/settings-store";
-import { getSkills as getDbSkills } from "../db/database";
-import { getBuiltinSkills } from "../ai/skills/builtin-skills";
-import { getAvailableTools } from "../ai/tools";
-import type { AttachedQuote, Book, SemanticContext, Skill, Thread, Part, TextPart, ToolCallPart, ReasoningPart, CitationPart, MessageV2 } from "../types";
-import { useCallback, useRef, useState } from "react";
-import { createTextPart, createReasoningPart, createToolCallPart, createQuotePart, createMindmapPart, createCitationPart, createAbortedPart } from "../types/message";
+import type {
+  AttachedQuote,
+  Book,
+  CitationPart,
+  MessageV2,
+  Part,
+  ReasoningPart,
+  SemanticContext,
+  Skill,
+  TextPart,
+  Thread,
+  ToolCallPart,
+} from "../types";
+import {
+  createAbortedPart,
+  createCitationPart,
+  createMindmapPart,
+  createQuotePart,
+  createReasoningPart,
+  createTextPart,
+  createToolCallPart,
+} from "../types/message";
 import type { MindmapPart } from "../types/message";
-import i18n from "../i18n";
 
 /** Type guard for mindmap tool result */
-function isMindmapResult(result: unknown): result is { type: "mindmap"; title: string; markdown: string } {
+function isMindmapResult(
+  result: unknown,
+): result is { type: "mindmap"; title: string; markdown: string } {
   return (
     typeof result === "object" &&
     result !== null &&
@@ -41,12 +63,7 @@ export function useStreamingChat(options?: StreamingChatOptions) {
   const [error, setError] = useState<Error | null>(null);
   const streamingRef = useRef<StreamingChat | null>(null);
 
-  const {
-    createThread,
-    addMessage,
-    updateThreadTitle,
-    setStreaming,
-  } = useChatStore();
+  const { createThread, addMessage, updateThreadTitle, setStreaming } = useChatStore();
 
   const aiConfig = useSettingsStore((s) => s.aiConfig);
 
@@ -74,10 +91,12 @@ export function useStreamingChat(options?: StreamingChatOptions) {
   const getOrCreateThread = useCallback(
     async (bookId?: string): Promise<Thread> => {
       // Read fresh state directly to avoid stale closure
-      const { threads: freshThreads, generalActiveThreadId, bookActiveThreadIds } = useChatStore.getState();
-      const activeId = bookId
-        ? bookActiveThreadIds[bookId] || null
-        : generalActiveThreadId;
+      const {
+        threads: freshThreads,
+        generalActiveThreadId,
+        bookActiveThreadIds,
+      } = useChatStore.getState();
+      const activeId = bookId ? bookActiveThreadIds[bookId] || null : generalActiveThreadId;
       const existing = activeId ? freshThreads.find((t) => t.id === activeId) : null;
       if (existing) return existing;
       return await createThread(bookId);
@@ -86,7 +105,13 @@ export function useStreamingChat(options?: StreamingChatOptions) {
   );
 
   const sendMessage = useCallback(
-    async (content: string, overrideBookId?: string, deepThinking: boolean = false, spoilerFree: boolean = false, quotes?: AttachedQuote[]) => {
+    async (
+      content: string,
+      overrideBookId?: string,
+      deepThinking = false,
+      spoilerFree = false,
+      quotes?: AttachedQuote[],
+    ) => {
       if ((!content.trim() && (!quotes || quotes.length === 0)) || state.isStreaming) return;
 
       const messageId = createMessageId();
@@ -110,9 +135,7 @@ export function useStreamingChat(options?: StreamingChatOptions) {
 
         let aiPrompt = content.trim();
         if (quotes && quotes.length > 0) {
-          const quotesText = quotes
-            .map((q) => `> ${q.text.slice(0, 300)}`)
-            .join("\n\n");
+          const quotesText = quotes.map((q) => `> ${q.text.slice(0, 300)}`).join("\n\n");
           aiPrompt = content.trim()
             ? `关于以下文本：\n${quotesText}\n\n${content.trim()}`
             : `关于以下文本：\n${quotesText}\n\n请帮我分析这段文本。`;
@@ -474,7 +497,7 @@ export function useStreamingChat(options?: StreamingChatOptions) {
                 (p) =>
                   p.type === "tool_call" &&
                   (p as ToolCallPart).name === name &&
-                  !(p as ToolCallPart).result
+                  !(p as ToolCallPart).result,
               ) as ToolCallPart | undefined;
             if (part) {
               part.result = result;
@@ -518,7 +541,7 @@ export function useStreamingChat(options?: StreamingChatOptions) {
               citation.chapterIndex,
               citation.cfi,
               citation.text,
-              citation.citationIndex
+              citation.citationIndex,
             );
             currentParts.push(citationPart);
             setState((prev) => ({

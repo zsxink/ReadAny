@@ -61,8 +61,8 @@ export interface DavResource {
 
 /** Detailed progress information for sync operations */
 export interface SyncProgress {
-  phase: 'database' | 'files';
-  operation: 'upload' | 'download';
+  phase: "database" | "files";
+  operation: "upload" | "download";
   currentFile?: string;
   completedFiles: number;
   totalFiles: number;

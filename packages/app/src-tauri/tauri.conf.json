@@ -62,9 +62,7 @@
   },
   "plugins": {
     "updater": {
-      "endpoints": [
-        "https://github.com/codedogQBY/ReadAny/releases/latest/download/latest.json"
-      ],
+      "endpoints": ["https://github.com/codedogQBY/ReadAny/releases/latest/download/latest.json"],
       "pubkey": "",
       "dangerousDisableSignatureCheck": true
     }

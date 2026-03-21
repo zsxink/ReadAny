@@ -6,12 +6,11 @@
 import * as pdfjsLib from "pdfjs-dist";
 
 // Configure PDF.js worker — always set to match the API version
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-  `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
 // CSS caches (loaded once)
-let textLayerCSS = null;
-let annotationLayerCSS = null;
+const textLayerCSS = null;
+const annotationLayerCSS = null;
 
 // Inline text_layer_builder CSS
 const TEXT_LAYER_CSS = `
@@ -141,8 +140,12 @@ const render = async (page, doc, zoom) => {
     // Hide offscreen canvases created by TextLayer
     for (const c of document.querySelectorAll(".hiddenCanvasElement")) {
       Object.assign(c.style, {
-        position: "absolute", top: "0", left: "0",
-        width: "0", height: "0", display: "none",
+        position: "absolute",
+        top: "0",
+        left: "0",
+        width: "0",
+        height: "0",
+        display: "none",
       });
     }
 
@@ -153,7 +156,11 @@ const render = async (page, doc, zoom) => {
 
     // Panning + text selection cursor logic
     let isPanning = false;
-    let startX = 0, startY = 0, scrollLeft = 0, scrollTop = 0, scrollParent = null;
+    let startX = 0,
+      startY = 0,
+      scrollLeft = 0,
+      scrollTop = 0,
+      scrollParent = null;
 
     const findScrollableParent = (element) => {
       let current = element;
@@ -162,7 +169,10 @@ const render = async (page, doc, zoom) => {
           const style = window.getComputedStyle(current);
           const overflow = style.overflow + style.overflowY + style.overflowX;
           if (/(auto|scroll)/.test(overflow)) {
-            if (current.scrollHeight > current.clientHeight || current.scrollWidth > current.clientWidth) {
+            if (
+              current.scrollHeight > current.clientHeight ||
+              current.scrollWidth > current.clientWidth
+            ) {
               return current;
             }
           }
@@ -178,7 +188,8 @@ const render = async (page, doc, zoom) => {
       const selection = doc.getSelection();
       const hasTextSelection = selection && selection.toString().length > 0;
       const elementUnderCursor = doc.elementFromPoint(e.clientX, e.clientY);
-      const hasTextUnderneath = elementUnderCursor &&
+      const hasTextUnderneath =
+        elementUnderCursor &&
         (elementUnderCursor.tagName === "SPAN" || elementUnderCursor.tagName === "P") &&
         elementUnderCursor.textContent.trim().length > 0;
 
@@ -209,17 +220,27 @@ const render = async (page, doc, zoom) => {
         const dx = e.screenX - startX;
         const dy = e.screenY - startY;
         if (scrollParent === window) window.scrollTo(scrollLeft - dx, scrollTop - dy);
-        else { scrollParent.scrollLeft = scrollLeft - dx; scrollParent.scrollTop = scrollTop - dy; }
+        else {
+          scrollParent.scrollLeft = scrollLeft - dx;
+          scrollParent.scrollTop = scrollTop - dy;
+        }
       }
     };
 
     textContainer.onpointerup = () => {
-      if (isPanning) { isPanning = false; scrollParent = null; textContainer.style.cursor = "grab"; }
-      else textContainer.classList.remove("selecting");
+      if (isPanning) {
+        isPanning = false;
+        scrollParent = null;
+        textContainer.style.cursor = "grab";
+      } else textContainer.classList.remove("selecting");
     };
 
     textContainer.onpointerleave = () => {
-      if (isPanning) { isPanning = false; scrollParent = null; textContainer.style.cursor = "grab"; }
+      if (isPanning) {
+        isPanning = false;
+        scrollParent = null;
+        textContainer.style.cursor = "grab";
+      }
     };
 
     doc.addEventListener("selectionchange", () => {
@@ -238,11 +259,14 @@ const render = async (page, doc, zoom) => {
     const linkService = {
       goToDestination: () => {},
       getDestinationHash: (dest) => JSON.stringify(dest),
-      addLinkAttributes: (link, url) => { link.href = url; },
+      addLinkAttributes: (link, url) => {
+        link.href = url;
+      },
     };
     try {
       await new pdfjsLib.AnnotationLayer({
-        page, viewport,
+        page,
+        viewport,
         div: annotationDiv,
         linkService,
       }).render({ annotations: await page.getAnnotations() });
@@ -298,9 +322,7 @@ const makeTOCItem = async (item, pdf) => {
   let pageIndex = undefined;
   if (item.dest) {
     try {
-      const dest = typeof item.dest === "string"
-        ? await pdf.getDestination(item.dest)
-        : item.dest;
+      const dest = typeof item.dest === "string" ? await pdf.getDestination(item.dest) : item.dest;
       if (dest?.[0]) pageIndex = await pdf.getPageIndex(dest[0]);
     } catch (e) {
       console.warn("Failed to get page index for TOC item:", item.title, e);
@@ -354,9 +376,7 @@ export const makePDF = async (file) => {
 
   // TOC
   const outline = await pdf.getOutline();
-  book.toc = outline
-    ? await Promise.all(outline.map((item) => makeTOCItem(item, pdf)))
-    : null;
+  book.toc = outline ? await Promise.all(outline.map((item) => makeTOCItem(item, pdf))) : null;
 
   // If no outline, create a simple page list
   if (!book.toc || book.toc.length === 0) {
@@ -397,9 +417,7 @@ export const makePDF = async (file) => {
     try {
       const parsed = JSON.parse(href);
       if (typeof parsed === "number") return { index: parsed };
-      const dest = typeof parsed === "string"
-        ? await pdf.getDestination(parsed)
-        : parsed;
+      const dest = typeof parsed === "string" ? await pdf.getDestination(parsed) : parsed;
       const index = await pdf.getPageIndex(dest[0]);
       return { index };
     } catch {
@@ -411,9 +429,7 @@ export const makePDF = async (file) => {
     try {
       const parsed = JSON.parse(href);
       if (typeof parsed === "number") return [parsed, null];
-      const dest = typeof parsed === "string"
-        ? await pdf.getDestination(parsed)
-        : parsed;
+      const dest = typeof parsed === "string" ? await pdf.getDestination(parsed) : parsed;
       const index = await pdf.getPageIndex(dest[0]);
       return [index, null];
     } catch {

@@ -68,7 +68,11 @@ export default function TTSSettingsScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={["top"]}
     >
-      <SettingsHeader title={t("tts.title", "TTS 设置")} subtitle={t("settings.realtimeHint")} right={previewBtn} />
+      <SettingsHeader
+        title={t("tts.title", "TTS 设置")}
+        subtitle={t("settings.realtimeHint")}
+        right={previewBtn}
+      />
 
       <KeyboardAvoidingView
         style={styles.keyboardView}

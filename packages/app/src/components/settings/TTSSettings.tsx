@@ -1,17 +1,3 @@
-/**
- * TTSSettings — TTS configuration panel in the settings dialog.
- *
- * Uses shadcn/ui components: Select, Slider, Button.
- */
-import { useEffect, useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { useTTSStore } from "@/stores/tts-store";
-import {
-  getBrowserVoices,
-  DASHSCOPE_VOICES,
-  EDGE_TTS_VOICES,
-} from "@/lib/tts/tts-service";
-import type { TTSEngine } from "@/lib/tts/tts-service";
 import { PasswordInput } from "@/components/ui/password-input";
 import {
   Select,
@@ -21,8 +7,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
+import { DASHSCOPE_VOICES, EDGE_TTS_VOICES, getBrowserVoices } from "@/lib/tts/tts-service";
+import type { TTSEngine } from "@/lib/tts/tts-service";
+import { useTTSStore } from "@/stores/tts-store";
 import { cn } from "@readany/core/utils";
-import { Volume2, Zap, Globe, Mic } from "lucide-react";
+import { Globe, Mic, type Volume2, Zap } from "lucide-react";
+/**
+ * TTSSettings — TTS configuration panel in the settings dialog.
+ *
+ * Uses shadcn/ui components: Select, Slider, Button.
+ */
+import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 export function TTSSettings() {
   const { t } = useTranslation();
@@ -52,7 +48,12 @@ export function TTSSettings() {
   const engines: { id: TTSEngine; icon: typeof Volume2; label: string; desc: string }[] = [
     { id: "edge", icon: Zap, label: t("tts.edgeEngine"), desc: t("tts.edgeEngineDesc") },
     { id: "browser", icon: Globe, label: t("tts.browserEngine"), desc: t("tts.browserEngineDesc") },
-    { id: "dashscope", icon: Mic, label: t("tts.dashscopeEngine"), desc: t("tts.dashscopeEngineDesc") },
+    {
+      id: "dashscope",
+      icon: Mic,
+      label: t("tts.dashscopeEngine"),
+      desc: t("tts.dashscopeEngineDesc"),
+    },
   ];
 
   return (

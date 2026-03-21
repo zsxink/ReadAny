@@ -185,7 +185,7 @@ export function convertToMessageV2(messages: any[]): MessageV2[] {
 export function mergeMessagesWithStreaming(
   storeMessages: MessageV2[],
   currentMessage: MessageV2 | null,
-  isStreaming: boolean
+  isStreaming: boolean,
 ): MessageV2[] {
   if (isStreaming && currentMessage) {
     return [...storeMessages.filter((m) => m.id !== currentMessage.id), currentMessage];

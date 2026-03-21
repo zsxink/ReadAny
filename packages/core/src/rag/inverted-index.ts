@@ -1,24 +1,24 @@
 /**
  * Inverted Index for BM25 search
- * 
+ *
  * Optimizes search by pre-computing:
  * - Term → Document IDs mapping (inverted index)
  * - Document term frequencies
  * - IDF scores
- * 
+ *
  * Time complexity:
  * - Build: O(n * m) where n = docs, m = avg tokens per doc
  * - Search: O(k * d) where k = query terms, d = avg docs per term
- * 
+ *
  * vs. naive approach O(k * n * m) for every query
  */
 
-import { tokenize, getTokenFrequencies } from "./tokenizer";
+import { getTokenFrequencies, tokenize } from "./tokenizer";
 
 /** Posting entry: document ID + term frequency */
 export interface Posting {
   docId: string;
-  tf: number;  // term frequency in this document
+  tf: number; // term frequency in this document
 }
 
 /** Inverted index entry for a term */
@@ -52,11 +52,11 @@ export interface InvertedIndex {
 
 /**
  * Build inverted index from documents
- * 
+ *
  * @param documents - Array of { id, content } objects
  * @param tokenizeFn - Tokenization function (default: built-in tokenizer)
  * @returns Inverted index
- * 
+ *
  * @example
  * const index = buildInvertedIndex([
  *   { id: "1", content: "Hello world" },
@@ -74,7 +74,7 @@ export function buildInvertedIndex(
   for (const doc of documents) {
     const tokens = tokenizeFn(doc.content);
     const tokenFreqs = getTokenFrequencies(tokens);
-    
+
     // Store document metadata
     docMeta.set(doc.id, { docId: doc.id, length: tokens.length });
     totalLength += tokens.length;
@@ -105,7 +105,7 @@ export function buildInvertedIndex(
 
 /**
  * Search using inverted index with BM25 scoring
- * 
+ *
  * @param index - Inverted index
  * @param queryTerms - Tokenized query terms
  * @param topK - Maximum number of results
@@ -135,10 +135,11 @@ export function searchInvertedIndex(
 
     for (const posting of postings) {
       const docLength = index.docMeta.get(posting.docId)?.length ?? 0;
-      
+
       // BM25 score for this term in this document
       const tf = posting.tf;
-      const normalizedTf = (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * (docLength / index.avgDocLength)));
+      const normalizedTf =
+        (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * (docLength / index.avgDocLength)));
       const termScore = idf * normalizedTf;
 
       scores.set(posting.docId, (scores.get(posting.docId) || 0) + termScore);
@@ -155,50 +156,44 @@ export function searchInvertedIndex(
 /**
  * Get document IDs that contain ANY of the query terms (for filtering)
  */
-export function getMatchingDocIds(
-  index: InvertedIndex,
-  queryTerms: string[],
-): Set<string> {
+export function getMatchingDocIds(index: InvertedIndex, queryTerms: string[]): Set<string> {
   const matchingDocs = new Set<string>();
-  
+
   for (const term of queryTerms) {
     const entry = index.termIndex.get(term);
     if (!entry) continue;
-    
+
     for (const posting of entry.postings) {
       matchingDocs.add(posting.docId);
     }
   }
-  
+
   return matchingDocs;
 }
 
 /**
  * Get document IDs that contain ALL of the query terms (AND query)
  */
-export function getIntersectingDocIds(
-  index: InvertedIndex,
-  queryTerms: string[],
-): Set<string> {
+export function getIntersectingDocIds(index: InvertedIndex, queryTerms: string[]): Set<string> {
   if (queryTerms.length === 0) return new Set();
-  
+
   // Get docs for first term
   const firstEntry = index.termIndex.get(queryTerms[0]);
   if (!firstEntry) return new Set();
-  
+
   let result = new Set(firstEntry.postings.map((p) => p.docId));
-  
+
   // Intersect with docs for remaining terms
   for (let i = 1; i < queryTerms.length; i++) {
     const entry = index.termIndex.get(queryTerms[i]);
     if (!entry) return new Set(); // No docs contain this term
-    
+
     const termDocs = new Set(entry.postings.map((p) => p.docId));
     result = new Set([...result].filter((id) => termDocs.has(id)));
-    
+
     if (result.size === 0) return new Set();
   }
-  
+
   return result;
 }
 
@@ -215,7 +210,7 @@ export function getIndexStats(index: InvertedIndex): {
   for (const meta of index.docMeta.values()) {
     totalTermsInDocs += meta.length;
   }
-  
+
   return {
     totalDocs: index.totalDocs,
     totalTerms: index.termIndex.size,

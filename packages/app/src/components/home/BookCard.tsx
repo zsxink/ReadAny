@@ -1,16 +1,25 @@
+import { ConfigGuideDialog, type ConfigGuideType } from "@/components/shared/ConfigGuideDialog";
+import { useResolvedSrc } from "@/hooks/use-resolved-src";
 /**
  * BookCard — Readest-inspired book card with realistic cover rendering
  */
 import { triggerVectorizeBook } from "@/lib/rag/vectorize-trigger";
-import { useLibraryStore } from "@/stores/library-store";
 import { useAppStore } from "@/stores/app-store";
+import { useLibraryStore } from "@/stores/library-store";
 import { useVectorModelStore } from "@/stores/vector-model-store";
 import type { Book, VectorizeProgress } from "@readany/core/types";
-import { Check, ChevronRight, Database, Hash, Loader2, MoreVertical, Plus, Trash2 } from "lucide-react";
+import {
+  Check,
+  ChevronRight,
+  Database,
+  Hash,
+  Loader2,
+  MoreVertical,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { memo, useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ConfigGuideDialog, type ConfigGuideType } from "@/components/shared/ConfigGuideDialog";
-import { useResolvedSrc } from "@/hooks/use-resolved-src";
 
 interface BookCardProps {
   book: Book;
@@ -124,9 +133,7 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
         )}
 
         {/* Book spine overlay — only when image loaded */}
-        {imageLoaded && !imageError && (
-          <div className="book-spine absolute inset-0 rounded" />
-        )}
+        {imageLoaded && !imageError && <div className="book-spine absolute inset-0 rounded" />}
 
         {/* Fallback cover — serif title + author */}
         {!hasCover && (
@@ -205,7 +212,15 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
       {/* Context menu — fixed position to avoid any overflow clipping */}
       {showMenu && menuPos && (
         <>
-          <div className="fixed inset-0 z-50" onClick={(e) => { e.stopPropagation(); setShowMenu(false); setShowTagMenu(false); setMenuPos(null); }} />
+          <div
+            className="fixed inset-0 z-50"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowMenu(false);
+              setShowTagMenu(false);
+              setMenuPos(null);
+            }}
+          />
           <div
             className="fixed z-50 min-w-36 rounded-lg border bg-popover p-1 shadow-lg"
             style={{ bottom: window.innerHeight - menuPos.y + 4, left: menuPos.x - 152 }}
@@ -240,14 +255,20 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
               <button
                 type="button"
                 className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-foreground hover:bg-muted"
-                onClick={(e) => { e.stopPropagation(); setShowTagMenu(!showTagMenu); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowTagMenu(!showTagMenu);
+                }}
               >
                 <Hash className="h-3.5 w-3.5" />
                 {t("home.manageTags")}
                 <ChevronRight className="ml-auto h-3 w-3" />
               </button>
               {showTagMenu && (
-                <div className="absolute right-full top-0 z-50 mr-1 min-w-36 max-h-52 overflow-y-auto rounded-lg border bg-popover p-1 shadow-lg" onClick={(e) => e.stopPropagation()}>
+                <div
+                  className="absolute right-full top-0 z-50 mr-1 min-w-36 max-h-52 overflow-y-auto rounded-lg border bg-popover p-1 shadow-lg"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   {allTags.map((tag) => {
                     const hasTag = book.tags.includes(tag);
                     return (
@@ -261,7 +282,9 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
                           else addTagToBook(book.id, tag);
                         }}
                       >
-                        <div className={`flex h-3.5 w-3.5 items-center justify-center rounded border ${hasTag ? "border-primary bg-primary" : "border-border"}`}>
+                        <div
+                          className={`flex h-3.5 w-3.5 items-center justify-center rounded border ${hasTag ? "border-primary bg-primary" : "border-border"}`}
+                        >
                           {hasTag && <Check className="h-2.5 w-2.5 text-white" />}
                         </div>
                         <span className="truncate">{tag}</span>
@@ -316,7 +339,10 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
         {book.tags.length > 0 ? (
           <div className="mt-0.5 flex flex-wrap gap-0.5">
             {book.tags.slice(0, 2).map((tag) => (
-              <span key={tag} className="inline-flex items-center rounded-full bg-muted px-1.5 py-px text-[9px] text-muted-foreground">
+              <span
+                key={tag}
+                className="inline-flex items-center rounded-full bg-muted px-1.5 py-px text-[9px] text-muted-foreground"
+              >
                 {tag}
               </span>
             ))}

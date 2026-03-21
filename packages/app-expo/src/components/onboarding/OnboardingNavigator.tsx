@@ -1,13 +1,13 @@
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { useTheme } from "@/styles/theme";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { View } from "react-native";
-import { WelcomePage } from "./steps/WelcomePage";
-import { AppearancePage } from "./steps/AppearancePage";
 import { AIPage } from "./steps/AIPage";
-import { EmbeddingPage } from "./steps/EmbeddingPage";
-import { TranslationPage } from "./steps/TranslationPage";
-import { SyncPage } from "./steps/SyncPage";
+import { AppearancePage } from "./steps/AppearancePage";
 import { CompletePage } from "./steps/CompletePage";
+import { EmbeddingPage } from "./steps/EmbeddingPage";
+import { SyncPage } from "./steps/SyncPage";
+import { TranslationPage } from "./steps/TranslationPage";
+import { WelcomePage } from "./steps/WelcomePage";
 
 export type OnboardingStackParamList = {
   Welcome: undefined;

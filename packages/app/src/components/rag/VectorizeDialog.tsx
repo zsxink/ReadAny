@@ -36,13 +36,15 @@ export function VectorizeDialog({ bookTitle, progress, onStart, onClose }: Vecto
             <p className="text-center text-sm text-muted-foreground">
               {progress.status === "completed"
                 ? t("vectorize.complete")
-                : t("vectorize.progress", { status: progress.status, processed: progress.processedChunks, total: progress.totalChunks })}
+                : t("vectorize.progress", {
+                    status: progress.status,
+                    processed: progress.processedChunks,
+                    total: progress.totalChunks,
+                  })}
             </p>
           </div>
         ) : (
-          <p className="mb-4 text-sm text-muted-foreground">
-            {t("vectorize.description")}
-          </p>
+          <p className="mb-4 text-sm text-muted-foreground">{t("vectorize.description")}</p>
         )}
 
         <div className="flex justify-end gap-2">

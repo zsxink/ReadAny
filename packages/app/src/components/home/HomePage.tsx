@@ -32,7 +32,9 @@ export function HomePage() {
     try {
       const selected = await open({
         multiple: true,
-        filters: [{ name: "Books", extensions: ["epub", "pdf", "mobi", "azw", "azw3", "fb2", "fbz"] }],
+        filters: [
+          { name: "Books", extensions: ["epub", "pdf", "mobi", "azw", "azw3", "fb2", "fbz"] },
+        ],
       } as const);
       if (selected) {
         const paths = Array.isArray(selected) ? selected : [selected];
@@ -53,7 +55,11 @@ export function HomePage() {
     <div className="flex h-full flex-col">
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between px-6 pt-5 pb-2">
-        <h1 className="text-3xl font-bold text-foreground">{activeTag === "__uncategorized__" ? t("sidebar.uncategorized") : activeTag || t("home.library")}</h1>
+        <h1 className="text-3xl font-bold text-foreground">
+          {activeTag === "__uncategorized__"
+            ? t("sidebar.uncategorized")
+            : activeTag || t("home.library")}
+        </h1>
         <button
           id="tour-add-book"
           type="button"

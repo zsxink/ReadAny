@@ -45,11 +45,12 @@ export function TranslationPanel({ text, onClose }: TranslationPanelProps) {
     try {
       const { getActiveEndpoint } = useSettingsStore.getState();
       const endpointId = translationConfig.provider.endpointId || aiConfig.activeEndpointId;
-      
+
       // 找到对应的端点并加载 apiKey
       const endpointFromState = aiConfig.endpoints.find((e) => e.id === endpointId);
       const activeEndpoint = await getActiveEndpoint();
-      const endpoint = endpointFromState?.id === activeEndpoint?.id ? activeEndpoint : endpointFromState;
+      const endpoint =
+        endpointFromState?.id === activeEndpoint?.id ? activeEndpoint : endpointFromState;
       const model = translationConfig.provider.model || aiConfig.activeModel;
 
       if (!endpoint?.apiKey) {

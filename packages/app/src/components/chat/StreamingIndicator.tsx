@@ -1,10 +1,10 @@
+import { cn } from "@readany/core/utils";
 /**
  * StreamingIndicator — shows current AI processing status
  * Displays thinking/tool-calling/responding state with animation
  */
 import { Brain, Loader2, Wrench } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { cn } from "@readany/core/utils";
 
 interface StreamingIndicatorProps {
   step: "thinking" | "tool_calling" | "responding" | "idle";
@@ -68,10 +68,12 @@ export function StreamingProgress({ steps, className }: StreamingProgressProps) 
       {steps.map((step, index) => (
         <div key={index} className="flex items-center gap-1">
           {index > 0 && (
-            <span className={cn(
-              "mx-1",
-              step.status === "completed" ? "text-primary" : "text-muted-foreground"
-            )}>
+            <span
+              className={cn(
+                "mx-1",
+                step.status === "completed" ? "text-primary" : "text-muted-foreground",
+              )}
+            >
               →
             </span>
           )}
@@ -80,7 +82,7 @@ export function StreamingProgress({ steps, className }: StreamingProgressProps) 
               "rounded px-1.5 py-0.5",
               step.status === "running" && "bg-primary/10 text-foreground",
               step.status === "completed" && "bg-primary/10 text-foreground",
-              step.status === "pending" && "text-muted-foreground"
+              step.status === "pending" && "text-muted-foreground",
             )}
           >
             {step.label}

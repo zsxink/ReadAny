@@ -4,9 +4,9 @@
  * Supports OpenAI-compatible, Anthropic Claude, and Google Gemini providers.
  */
 import type { AIConfig, Book, SemanticContext, Skill, Thread } from "../types";
-import type { ToolDefinition } from "./tool-types";
 import { streamReadingAgent } from "./agents/reading-agent";
 import { processMessages } from "./message-pipeline";
+import type { ToolDefinition } from "./tool-types";
 
 export interface StreamingOptions {
   thread: Thread;
@@ -35,7 +35,10 @@ export interface StreamingOptions {
   onError: (error: Error) => void;
   onToolCall?: (toolName: string, args: Record<string, unknown>) => void;
   onToolResult?: (toolName: string, result: unknown) => void;
-  onReasoning?: (content: string, type?: "thinking" | "planning" | "analyzing" | "deciding") => void;
+  onReasoning?: (
+    content: string,
+    type?: "thinking" | "planning" | "analyzing" | "deciding",
+  ) => void;
   onCitation?: (citation: {
     id: string;
     bookId: string;

@@ -28,7 +28,9 @@
     "more": "多",
     "success": "成功！",
     "failed": "失败",
-    "testing": "测试中..."
+    "testing": "测试中...",
+    "minutes": "分钟",
+    "hours": "小时"
   },
   "sidebar": {
     "library": "书库",
@@ -126,7 +128,8 @@
     "importFirst": "导入书籍",
     "noResults": "没有找到匹配的书籍",
     "resultsCount": "找到 {{count}} 本书",
-    "importing": "导入中..."
+    "importing": "导入中...",
+    "importedCount": "成功导入 {{count}} 本书"
   },
   "home": {
     "library": "书库",
@@ -398,7 +401,7 @@
     "autoSave": "自动保存间隔",
     "autoSaveDesc": "阅读进度保存频率",
     "languageDesc": "选择界面显示语言",
-    "appearance": "外观与语言",
+    "appearance": "外观设置",
     "updaterNetworkError": "无法连接到更新服务器，请检查网络连接",
     "updaterNoUpdate": "暂无可用更新或服务暂时不可用",
     "updaterCheckFailed": "检查更新失败",
@@ -454,6 +457,7 @@
     "ai_deleteEndpoint": "删除端点",
     "ai_globalParams": "全局参数",
     "ai_contextWindow": "上下文窗口",
+    "ai_slidingWindow": "上下文窗口",
     "ai_contextWindowUnit": "条",
     "ai_addManualModelPlaceholder": "手动添加模型名...",
     "ai_newEndpoint": "新端点",
@@ -591,6 +595,52 @@
     "syncConflictDownload": "下载远程",
     "syncProgressDatabase": "正在{{operation}}...",
     "syncProgressFiles": "{{operation}}文件 {{completed}}/{{total}}",
+    "syncBackendType": "同步方式",
+    "syncWebdavDesc": "通过 WebDAV 服务同步",
+    "syncS3Desc": "通过 S3 兼容存储同步",
+    "syncLANDesc": "局域网临时同步",
+    "syncWebDavConfig": "WebDAV 配置",
+    "syncS3Config": "S3 配置",
+    "syncS3Endpoint": "服务端点",
+    "syncS3Region": "区域",
+    "syncS3Bucket": "存储桶",
+    "syncS3AccessKeyId": "Access Key ID",
+    "syncS3SecretAccessKey": "Secret Access Key",
+    "syncS3PathStyle": "使用路径样式 URL",
+    "syncLANConfig": "局域网同步",
+    "syncLANDescFull": "在局域网内临时同步数据，适合快速迁移或离线同步。",
+    "syncLANServer": "作为服务端",
+    "syncLANServerDesc": "生成二维码供其他设备扫描",
+    "syncLANClient": "作为客户端",
+    "syncLANClientDesc": "扫描二维码或手动连接",
+    "syncLANServerTitle": "局域网同步服务端",
+    "syncLANClientTitle": "局域网同步客户端",
+    "syncLANServerStatus": {
+      "idle": "未启动",
+      "starting": "启动中...",
+      "running": "运行中",
+      "stopping": "停止中...",
+      "error": "出错"
+    },
+    "syncLANQRPlaceholder": "二维码将显示在这里",
+    "syncLANPairCode": "配对码",
+    "syncLANServerHint": "在另一台设备上打开 ReadAny，扫描此二维码或手动输入配对码进行连接",
+    "syncLANServerStart": "启动服务",
+    "syncLANServerStarting": "启动中...",
+    "syncLANServerStop": "停止服务",
+    "syncLANScanQR": "扫描二维码",
+    "syncLANScannerPlaceholder": "摄像头预览区域",
+    "syncLANManualConnect": "手动连接",
+    "syncLANIP": "IP 地址",
+    "syncLANPort": "端口",
+    "syncLANPairCodeLabel": "配对码",
+    "syncLANInvalidQR": "无效的二维码",
+    "syncLANFillAll": "请填写所有字段",
+    "syncLANConnectionFailed": "连接失败，请检查配对码是否正确",
+    "syncLANConnecting": "连接中...",
+    "syncLANConnect": "连接并同步",
+    "syncLANManualIPHint": "无法自动检测 IP 地址，请手动输入本机局域网 IP",
+    "syncLANAddress": "地址",
     "translationProvider": "翻译引擎",
     "selectModel": "选择模型",
     "noModelsFetched": "请先在 AI 设置中获取模型列表",
@@ -601,7 +651,8 @@
     "webdavUrl": "WebDAV 服务器地址",
     "username": "用户名",
     "password": "应用密码",
-    "testConnection": "测试连接"
+    "testConnection": "测试连接",
+    "appearanceLanguage": "外观与语言"
   },
   "stats": {
     "title": "阅读统计",
@@ -635,6 +686,7 @@
     "minutesShort": "{{time}}m",
     "readingDays": "阅读天数",
     "readingDaysDesc": "有阅读活动的天数",
+    "noReading": "无阅读",
     "noData": "开始阅读，查看你的统计数据！",
     "prevPeriod": "上一期",
     "nextPeriod": "下一期",
@@ -701,7 +753,10 @@
     "description": "书籍 {{bookId}} 的可视化结构将在此显示。",
     "exitFullscreen": "退出全屏 (Esc)",
     "fullscreen": "全屏查看",
-    "download": "下载思维导图"
+    "download": "下载思维导图",
+    "mermaidChart": "Mermaid 图表",
+    "zoomHint": "双击放大 · 双指缩放 · 拖动移动",
+    "zoomHintMindmap": "双指缩放 · 拖动移动 · 点击节点展开/收起"
   },
   "commandPalette": {
     "placeholder": "搜索命令...",
@@ -774,7 +829,11 @@
     "complete": {
       "title": "大功告成！",
       "desc": "所有配置已就绪。随时可以在设置中修改这些选项。现在就可以导入书籍、与 AI 对话或开始探索了！",
-      "start": "开始阅读"
+      "start": "开始阅读",
+      "feature1": "AI 对话",
+      "feature2": "翻译",
+      "feature3": "云端同步",
+      "feature4": "智能搜索"
     }
   },
   "tour": {
@@ -797,6 +856,10 @@
     "settings": {
       "title": "设置",
       "desc": "配置 AI 提供商、翻译引擎等。"
+    },
+    "sync": {
+      "title": "多平台同步",
+      "desc": "选择 WebDAV、S3 或局域网同步，让你的书库在不同设备间保持同步。支持二维码配对，快速完成设置。"
     }
   }
 }

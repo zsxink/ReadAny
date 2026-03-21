@@ -1,3 +1,16 @@
+import { useBookShortcuts } from "@/hooks/reader/useBookShortcuts";
+import { useFoliateEvents } from "@/hooks/reader/useFoliateEvents";
+import type { FoliateView } from "@/hooks/reader/useFoliateView";
+import { wrappedFoliateView } from "@/hooks/reader/useFoliateView";
+import { usePagination } from "@/hooks/reader/usePagination";
+import { readingContextService } from "@/lib/ai/reading-context-service";
+import type { BookDoc, BookFormat } from "@/lib/reader/document-loader";
+import { getDirection, isFixedLayoutFormat } from "@/lib/reader/document-loader";
+import { getFontTheme } from "@/lib/reader/font-themes";
+import { registerIframeEventHandlers } from "@/lib/reader/iframe-event-handlers";
+import type { ViewSettings } from "@readany/core/types";
+import { Overlayer } from "foliate-js/overlayer.js";
+import { marked } from "marked";
 /**
  * FoliateViewer — core book rendering component using foliate-js <foliate-view>.
  *
@@ -13,20 +26,7 @@
  * It receives a pre-parsed BookDoc from the parent (ReaderView),
  * which is created by DocumentLoader.
  */
-import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from "react";
-import type { BookDoc, BookFormat } from "@/lib/reader/document-loader";
-import { getDirection, isFixedLayoutFormat } from "@/lib/reader/document-loader";
-import { registerIframeEventHandlers } from "@/lib/reader/iframe-event-handlers";
-import { useFoliateEvents } from "@/hooks/reader/useFoliateEvents";
-import { usePagination } from "@/hooks/reader/usePagination";
-import { useBookShortcuts } from "@/hooks/reader/useBookShortcuts";
-import type { FoliateView } from "@/hooks/reader/useFoliateView";
-import { wrappedFoliateView } from "@/hooks/reader/useFoliateView";
-import type { ViewSettings } from "@readany/core/types";
-import { readingContextService } from "@/lib/ai/reading-context-service";
-import { Overlayer } from "foliate-js/overlayer.js";
-import { getFontTheme } from "@/lib/reader/font-themes";
-import { marked } from "marked";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 
 type AppTheme = "light" | "dark" | "sepia";
 
@@ -263,7 +263,11 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
             // Add the temporary highlight
             view.addAnnotation(tempAnnotation, false);
 
-            console.log("[highlightCFITemporarily] Annotation added, will remove in", duration, "ms");
+            console.log(
+              "[highlightCFITemporarily] Annotation added, will remove in",
+              duration,
+              "ms",
+            );
 
             // Remove it after the specified duration
             setTimeout(() => {
@@ -305,7 +309,7 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
             // current "page". We must use the paginator's scroll position to
             // determine which text nodes are actually visible.
             const isPaginated = !renderer.scrolled;
-            const pSize = renderer.size;   // container visible width (one page)
+            const pSize = renderer.size; // container visible width (one page)
             const pStart = renderer.start; // abs(scrollLeft)
 
             if (isPaginated && pSize > 0) {
@@ -313,7 +317,7 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
               // (page 0 is padding). So visible range in iframe coords is
               // [start - size, end - size].
               const visibleLeft = pStart - pSize;
-              const visibleRight = pStart;  // end - size = (start + size) - size = start
+              const visibleRight = pStart; // end - size = (start + size) - size = start
 
               const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
                 acceptNode: (node: Node) => {
@@ -331,11 +335,7 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
                 const range = doc.createRange();
                 range.selectNodeContents(textNode);
                 const rect = range.getBoundingClientRect();
-                if (
-                  rect.right > visibleLeft &&
-                  rect.left < visibleRight &&
-                  rect.width > 0
-                ) {
+                if (rect.right > visibleLeft && rect.left < visibleRight && rect.width > 0) {
                   const text = textNode.nodeValue?.trim();
                   if (text) visibleTexts.push(text);
                 }
@@ -583,7 +583,10 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
         // No note - remove from tracking set if present
         cfisWithNotes.delete(annotation.value);
         // Draw regular highlight
-        console.log("[drawAnnotationHandler] Calling draw(Overlayer.highlight) with:", { hexColor, vertical });
+        console.log("[drawAnnotationHandler] Calling draw(Overlayer.highlight) with:", {
+          hexColor,
+          vertical,
+        });
         draw(Overlayer.highlight, { color: hexColor, vertical });
         console.log("[drawAnnotationHandler] draw() call completed");
       }
@@ -643,80 +646,90 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
     // Track if show-annotation handler fired (suppress pointerup side effects)
     const annotationClickedRef = useRef(false);
 
-    const attachSelectionListener = useCallback((doc: Document) => {
-      // Avoid double-registering
-      // biome-ignore lint: runtime flag on Document
-      if ((doc as any).__readany_selection_registered) return;
-      // biome-ignore lint: runtime flag on Document
-      (doc as any).__readany_selection_registered = true;
+    const attachSelectionListener = useCallback(
+      (doc: Document) => {
+        // Avoid double-registering
+        // biome-ignore lint: runtime flag on Document
+        if ((doc as any).__readany_selection_registered) return;
+        // biome-ignore lint: runtime flag on Document
+        (doc as any).__readany_selection_registered = true;
 
-      const handlePointerDown = () => {
-        // Reset annotation click flag
-        annotationClickedRef.current = false;
-        // Record if there's a selection when pointer goes down
-        const view = viewRef.current;
-        const contents = view?.renderer?.getContents?.();
-        if (contents?.[0]?.doc) {
-          const iframeDoc = contents[0].doc as Document;
-          const sel = iframeDoc.getSelection();
-          hadSelectionOnPointerDown.current = !!(sel && !sel.isCollapsed && sel.toString().trim().length > 0);
-        }
-      };
-
-      const handlePointerUp = (ev: PointerEvent) => {
-        // Capture coordinates immediately (before setTimeout)
-        const clientX = ev.clientX;
-        const clientY = ev.clientY;
-
-        setTimeout(() => {
-          // If show-annotation handler already handled this click, skip
-          if (annotationClickedRef.current) {
-            annotationClickedRef.current = false;
-            return;
-          }
-
+        const handlePointerDown = () => {
+          // Reset annotation click flag
+          annotationClickedRef.current = false;
+          // Record if there's a selection when pointer goes down
           const view = viewRef.current;
           const contents = view?.renderer?.getContents?.();
-          if (!contents?.[0]?.doc) return;
-
-          const iframeDoc = contents[0].doc as Document;
-          const sel = iframeDoc.getSelection();
-          const hasSelectionNow = sel && !sel.isCollapsed && sel.toString().trim().length > 0;
-
-          // Check if there's a new selection being made
-          const newSel = getSelectionFromView();
-
-          if (newSel) {
-            // New selection made - update stored range and notify parent
-            currentSelectionRange.current = newSel.range ?? null;
-            currentSelectionIndex.current = newSel.chapterIndex;
-            onSelectionRef.current?.(newSel);
-          } else if (currentSelectionRange.current) {
-            // No new selection, but we had a previous selection
-            // Selection was cleared (either by clicking inside to dismiss, or outside)
-            // Always notify parent to hide the popover
-            currentSelectionRange.current = null;
-            onSelectionRef.current?.(null);
-          } else {
-            // No previous selection and no new selection
-            // This is a simple click - toggle toolbar if there was no selection before
-            if (!hadSelectionOnPointerDown.current && !hasSelectionNow) {
-              // Send message to toggle toolbar
-              console.log("[handlePointerUp] sending iframe-single-click, bookKey:", bookKey);
-              window.postMessage({
-                type: "iframe-single-click",
-                bookKey,
-                clientX,
-                clientY,
-              }, "*");
-            }
+          if (contents?.[0]?.doc) {
+            const iframeDoc = contents[0].doc as Document;
+            const sel = iframeDoc.getSelection();
+            hadSelectionOnPointerDown.current = !!(
+              sel &&
+              !sel.isCollapsed &&
+              sel.toString().trim().length > 0
+            );
           }
-        }, 10);
-      };
-      
-      doc.addEventListener("pointerdown", handlePointerDown);
-      doc.addEventListener("pointerup", handlePointerUp);
-    }, [bookKey]);
+        };
+
+        const handlePointerUp = (ev: PointerEvent) => {
+          // Capture coordinates immediately (before setTimeout)
+          const clientX = ev.clientX;
+          const clientY = ev.clientY;
+
+          setTimeout(() => {
+            // If show-annotation handler already handled this click, skip
+            if (annotationClickedRef.current) {
+              annotationClickedRef.current = false;
+              return;
+            }
+
+            const view = viewRef.current;
+            const contents = view?.renderer?.getContents?.();
+            if (!contents?.[0]?.doc) return;
+
+            const iframeDoc = contents[0].doc as Document;
+            const sel = iframeDoc.getSelection();
+            const hasSelectionNow = sel && !sel.isCollapsed && sel.toString().trim().length > 0;
+
+            // Check if there's a new selection being made
+            const newSel = getSelectionFromView();
+
+            if (newSel) {
+              // New selection made - update stored range and notify parent
+              currentSelectionRange.current = newSel.range ?? null;
+              currentSelectionIndex.current = newSel.chapterIndex;
+              onSelectionRef.current?.(newSel);
+            } else if (currentSelectionRange.current) {
+              // No new selection, but we had a previous selection
+              // Selection was cleared (either by clicking inside to dismiss, or outside)
+              // Always notify parent to hide the popover
+              currentSelectionRange.current = null;
+              onSelectionRef.current?.(null);
+            } else {
+              // No previous selection and no new selection
+              // This is a simple click - toggle toolbar if there was no selection before
+              if (!hadSelectionOnPointerDown.current && !hasSelectionNow) {
+                // Send message to toggle toolbar
+                console.log("[handlePointerUp] sending iframe-single-click, bookKey:", bookKey);
+                window.postMessage(
+                  {
+                    type: "iframe-single-click",
+                    bookKey,
+                    clientX,
+                    clientY,
+                  },
+                  "*",
+                );
+              }
+            }
+          }, 10);
+        };
+
+        doc.addEventListener("pointerdown", handlePointerDown);
+        doc.addEventListener("pointerup", handlePointerUp);
+      },
+      [bookKey],
+    );
 
     const getSelectionFromView = useCallback((): BookSelection | null => {
       const view = viewRef.current;
@@ -834,7 +847,9 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
           viewRef.current = view;
 
           // Set search indicator color (use primary theme color instead of red)
-          const primaryColor = getComputedStyle(document.documentElement).getPropertyValue("--primary")?.trim() || "#3b82f6";
+          const primaryColor =
+            getComputedStyle(document.documentElement).getPropertyValue("--primary")?.trim() ||
+            "#3b82f6";
           if ((view as any).setSearchIndicator) {
             (view as any).setSearchIndicator("outline", { color: primaryColor });
           }
@@ -967,7 +982,12 @@ function applyDocumentStyles(doc: Document, _settings: ViewSettings, isFixedLayo
 }
 
 /** Apply renderer-level settings (layout, columns, margins) */
-function applyRendererSettings(view: FoliateView, settings: ViewSettings, isFixedLayout: boolean, theme: AppTheme) {
+function applyRendererSettings(
+  view: FoliateView,
+  settings: ViewSettings,
+  isFixedLayout: boolean,
+  theme: AppTheme,
+) {
   const renderer = view.renderer;
   if (!renderer) return;
 
@@ -1003,7 +1023,7 @@ function getRendererStyles(settings: ViewSettings, theme: AppTheme): string {
 
   // Get font theme
   const fontTheme = getFontTheme(settings.fontTheme);
-  
+
   // Use CJK font for Chinese/Japanese/Korean text, serif for others
   const fontFamily = `'${fontTheme.cjk}', '${fontTheme.serif}', serif`;
 
@@ -1077,7 +1097,12 @@ pre {
 }
 
 /** Apply CSS styles to the renderer (lightweight update path) */
-function applyRendererStyles(view: FoliateView, settings: ViewSettings, isFixedLayout: boolean, theme: AppTheme) {
+function applyRendererStyles(
+  view: FoliateView,
+  settings: ViewSettings,
+  isFixedLayout: boolean,
+  theme: AppTheme,
+) {
   const renderer = view.renderer;
   if (!renderer?.setStyles) return;
 
@@ -1282,7 +1307,11 @@ function ensureNoteTooltipSystem(doc: Document) {
       hideTimer = null;
     }
     // Render markdown as HTML
-    try { content.innerHTML = noteMarkdownToHtml(note); } catch { content.textContent = note; }
+    try {
+      content.innerHTML = noteMarkdownToHtml(note);
+    } catch {
+      content.textContent = note;
+    }
     tooltip.classList.remove("below");
     // Make visible off-screen to measure
     tooltip.style.left = "-9999px";

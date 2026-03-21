@@ -2,7 +2,10 @@ import { cn } from "@readany/core/utils";
 import { Eye, EyeOff } from "lucide-react";
 import { type InputHTMLAttributes, useState } from "react";
 
-export function PasswordInput({ className, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, "type">) {
+export function PasswordInput({
+  className,
+  ...props
+}: Omit<InputHTMLAttributes<HTMLInputElement>, "type">) {
   const [visible, setVisible] = useState(false);
 
   return (

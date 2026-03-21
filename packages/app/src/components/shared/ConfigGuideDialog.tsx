@@ -1,10 +1,4 @@
-/**
- * ConfigGuideDialog — modal dialog prompting user to configure AI or vector model.
- * Uses shadcn-ui Dialog components. Desktop version uses setShowSettings to open settings tab.
- */
-import { useTranslation } from "react-i18next";
-import { useAppStore } from "@/stores/app-store";
-import type { SettingsTab } from "@/stores/app-store";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -13,7 +7,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { useAppStore } from "@/stores/app-store";
+import type { SettingsTab } from "@/stores/app-store";
+/**
+ * ConfigGuideDialog — modal dialog prompting user to configure AI or vector model.
+ * Uses shadcn-ui Dialog components. Desktop version uses setShowSettings to open settings tab.
+ */
+import { useTranslation } from "react-i18next";
 
 export type ConfigGuideType = "ai" | "vectorModel" | null;
 
@@ -22,7 +22,10 @@ interface ConfigGuideDialogProps {
   onClose: () => void;
 }
 
-const CONFIG: Record<"ai" | "vectorModel", { titleKey: string; descKey: string; settingsTab: SettingsTab; actionKey: string }> = {
+const CONFIG: Record<
+  "ai" | "vectorModel",
+  { titleKey: string; descKey: string; settingsTab: SettingsTab; actionKey: string }
+> = {
   ai: {
     titleKey: "chat.notConfigured",
     descKey: "chat.notConfiguredDesc",
@@ -45,7 +48,12 @@ export function ConfigGuideDialog({ type, onClose }: ConfigGuideDialogProps) {
   const cfg = CONFIG[type];
 
   return (
-    <Dialog open={!!type} onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Dialog
+      open={!!type}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>{t(cfg.titleKey)}</DialogTitle>

@@ -1,5 +1,5 @@
-import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import type { TabParamList } from "@/navigation/TabNavigator";
+import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import { NotesView } from "./NotesView";
 
 type Props = BottomTabScreenProps<TabParamList, "Notes">;

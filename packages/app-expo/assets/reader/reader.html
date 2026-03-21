@@ -112,6 +112,14 @@
     let searchGenerator = null;
     let searchResults = [];
     let searchIndex = 0;
+    let currentSettings = {
+      fontSize: 16,
+      lineHeight: 1.6,
+      fontTheme: 'default',
+      paragraphSpacing: 8,
+      pageMargin: 16,
+      viewMode: 'paginated'
+    };
 
     // Store user annotations for re-rendering on page change
     const userAnnotations = new Map();
@@ -423,6 +431,7 @@
           renderer.setAttribute('animated', '');
           // Default gap/margin
           const margin = msg.pageMargin || 16;
+          currentSettings.pageMargin = margin;
           const gapPercent = Math.max(1, Math.round((margin / 393) * 100));
           renderer.setAttribute('gap', gapPercent + '%');
           renderer.setAttribute('margin', margin + 'px');
@@ -497,6 +506,9 @@
       if (!view || !view.renderer) return;
       const renderer = view.renderer;
 
+      // Merge new settings with current settings
+      currentSettings = { ...currentSettings, ...settings };
+
       if (settings.fontSize || settings.lineHeight || settings.fontTheme || settings.paragraphSpacing) {
         const fontThemes = {
           default: { cjk: 'system-ui', serif: '-apple-system' },
@@ -506,11 +518,11 @@
           literary: { cjk: 'STFangsong', serif: 'Baskerville' },
         };
 
-        const theme = fontThemes[settings.fontTheme] || fontThemes.default;
+        const theme = fontThemes[currentSettings.fontTheme] || fontThemes.default;
         const fontFamily = "'" + theme.cjk + "', '" + theme.serif + "', serif";
-        const fSize = settings.fontSize || 16;
-        const lh = settings.lineHeight || 1.6;
-        const ps = settings.paragraphSpacing || 8;
+        const fSize = currentSettings.fontSize;
+        const lh = currentSettings.lineHeight;
+        const ps = currentSettings.paragraphSpacing;
 
         renderer.setStyles(`
           html, body {
@@ -529,14 +541,14 @@
       }
 
       if (settings.pageMargin != null) {
-        const margin = settings.pageMargin;
+        const margin = currentSettings.pageMargin;
         const gapPercent = Math.max(1, Math.round((margin / 393) * 100));
         renderer.setAttribute('gap', gapPercent + '%');
         renderer.setAttribute('margin', margin + 'px');
       }
 
       if (settings.viewMode) {
-        if (settings.viewMode === 'scroll') {
+        if (currentSettings.viewMode === 'scroll') {
           renderer.setAttribute('flow', 'scrolled');
           renderer.setAttribute('max-inline-size', '9999px');
         } else {

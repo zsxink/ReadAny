@@ -1,12 +1,12 @@
+import { closeDB, initDatabase, resetDBCache } from "@readany/core/db";
 /**
  * Mobile (Expo) sync adapter — implements ISyncAdapter
  * using expo-sqlite, expo-file-system, and expo-crypto.
  */
 import type { ISyncAdapter } from "@readany/core/sync";
-import { closeDB, resetDBCache, initDatabase } from "@readany/core/db";
-import { Directory, File, Paths } from "expo-file-system";
-import * as Crypto from "expo-crypto";
 import Constants from "expo-constants";
+import * as Crypto from "expo-crypto";
+import { Directory, File, Paths } from "expo-file-system";
 import { Platform } from "react-native";
 
 export class MobileSyncAdapter implements ISyncAdapter {
@@ -73,15 +73,12 @@ export class MobileSyncAdapter implements ISyncAdapter {
 
   async hashFile(filePath: string): Promise<string> {
     const file = new File(filePath);
-    const data = file.bytes();
+    const data = await file.bytes();
     const hash = await Crypto.digestStringAsync(
       Crypto.CryptoDigestAlgorithm.SHA256,
-      // Convert Uint8Array to base64 string for hashing
       arrayBufferToBase64(data),
       { encoding: Crypto.CryptoEncoding.BASE64 },
     );
-    // digestStringAsync with BASE64 encoding returns base64, we need hex
-    // Actually, let's use the hex encoding directly
     return Crypto.digestStringAsync(
       Crypto.CryptoDigestAlgorithm.SHA256,
       arrayBufferToBase64(data),
@@ -126,9 +123,7 @@ export class MobileSyncAdapter implements ISyncAdapter {
       const dir = new Directory(dirPath);
       if (!dir.exists) return [];
       const entries = dir.list();
-      return entries
-        .filter((e) => e instanceof File)
-        .map((e) => e.name);
+      return entries.filter((e) => e instanceof File).map((e) => e.name);
     } catch {
       return [];
     }

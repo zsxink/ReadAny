@@ -1,4 +1,4 @@
-import { BrainIcon, WrenchIcon, Loader2Icon } from "@/components/ui/Icon";
+import { BrainIcon, Loader2Icon, WrenchIcon } from "@/components/ui/Icon";
 import { fontSize as fs, fontWeight as fw, radius, useColors } from "@/styles/theme";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, Text, View } from "react-native";

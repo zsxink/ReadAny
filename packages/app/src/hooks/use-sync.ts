@@ -1,10 +1,14 @@
+import { useLibraryStore } from "@/stores/library-store";
+import { useSyncStore } from "@/stores/sync-store";
 /**
  * Hook for managing auto-sync lifecycle.
  * Uses the shared core sync store instead of Rust backend events.
  */
 import { useEffect, useRef } from "react";
-import { useSyncStore } from "@/stores/sync-store";
-import { useLibraryStore } from "@/stores/library-store";
+
+function hasAutoSync(config: unknown): config is { autoSync: boolean; syncIntervalMins?: number } {
+  return typeof config === "object" && config !== null && "autoSync" in config;
+}
 
 /** Auto-sync: load config, trigger on startup (delayed), and periodically */
 export function useAutoSync() {
@@ -36,7 +40,9 @@ export function useAutoSync() {
 
   // Delayed startup sync + periodic sync
   useEffect(() => {
-    if (!isConfigured || !config?.autoSync) {
+    const autoSyncEnabled = hasAutoSync(config) && config.autoSync;
+
+    if (!isConfigured || !autoSyncEnabled) {
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
@@ -52,7 +58,7 @@ export function useAutoSync() {
     }, 10_000);
 
     // Periodic sync
-    const intervalMs = (config.syncIntervalMins || 30) * 60 * 1000;
+    const intervalMs = (hasAutoSync(config) ? config.syncIntervalMins || 30 : 30) * 60 * 1000;
     timerRef.current = setInterval(() => {
       if (statusRef.current === "idle") {
         syncNow();
@@ -66,5 +72,5 @@ export function useAutoSync() {
         timerRef.current = null;
       }
     };
-  }, [isConfigured, config?.autoSync, config?.syncIntervalMins, syncNow]);
+  }, [isConfigured, config, syncNow]);
 }

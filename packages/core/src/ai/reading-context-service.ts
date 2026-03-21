@@ -1,12 +1,12 @@
 /**
  * Reading Context Service
- * 
+ *
  * Tracks user's current reading state including:
  * - Current chapter and position
  * - Text selection
  * - Recent highlights
  * - Reading progress
- * 
+ *
  * Provides real-time context for AI tools.
  */
 import { getHighlights } from "../db/database";

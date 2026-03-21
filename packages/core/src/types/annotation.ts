@@ -5,13 +5,13 @@ export type HighlightColor = "red" | "yellow" | "green" | "blue" | "pink" | "pur
 
 // Hex color values for each highlight color
 export const HIGHLIGHT_COLOR_HEX: Record<HighlightColor, string> = {
-  red: "#f87171",      // red-400
-  yellow: "#facc15",   // yellow-400
-  green: "#4ade80",    // green-400
-  blue: "#60a5fa",     // blue-400
-  pink: "#f472b6",     // pink-400
-  purple: "#c084fc",   // purple-400
-  violet: "#a78bfa",   // violet-400
+  red: "#f87171", // red-400
+  yellow: "#facc15", // yellow-400
+  green: "#4ade80", // green-400
+  blue: "#60a5fa", // blue-400
+  pink: "#f472b6", // pink-400
+  purple: "#c084fc", // purple-400
+  violet: "#a78bfa", // violet-400
 };
 
 // All available highlight colors in display order

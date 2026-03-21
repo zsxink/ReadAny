@@ -1,10 +1,17 @@
-import type { TOCItem } from "./FoliateViewer";
-import type { Bookmark } from "@readany/core/types";
-import { useReaderStore } from "@/stores/reader-store";
 import { useAnnotationStore } from "@/stores/annotation-store";
-import { Bookmark as BookmarkIcon, BookOpen, ChevronDown, ChevronRight, Trash2, X } from "lucide-react";
+import { useReaderStore } from "@/stores/reader-store";
+import type { Bookmark } from "@readany/core/types";
+import {
+  BookOpen,
+  Bookmark as BookmarkIcon,
+  ChevronDown,
+  ChevronRight,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { TOCItem } from "./FoliateViewer";
 
 type PanelTab = "toc" | "bookmarks";
 
@@ -63,15 +70,17 @@ function TOCItemRow({ item, currentChapterIndex, onGoToChapter, idx }: TOCItemRo
         <span className="truncate">{item.title}</span>
       </button>
 
-      {hasChildren && expanded && item.subitems?.map((child, childIdx) => (
-        <TOCItemRow
-          key={child.id}
-          item={child}
-          currentChapterIndex={currentChapterIndex}
-          onGoToChapter={onGoToChapter}
-          idx={childIdx}
-        />
-      ))}
+      {hasChildren &&
+        expanded &&
+        item.subitems?.map((child, childIdx) => (
+          <TOCItemRow
+            key={child.id}
+            item={child}
+            currentChapterIndex={currentChapterIndex}
+            onGoToChapter={onGoToChapter}
+            idx={childIdx}
+          />
+        ))}
     </div>
   );
 }
@@ -101,17 +110,13 @@ function BookmarkItem({
     >
       <BookmarkIcon className="h-3.5 w-3.5 shrink-0 text-primary fill-primary" />
       <div className="flex-1 min-w-0">
-        <span className="block truncate">
-          {bookmark.chapterTitle || t("common.unnamed")}
-        </span>
+        <span className="block truncate">{bookmark.chapterTitle || t("common.unnamed")}</span>
         {bookmark.label && (
           <span className="block truncate text-xs text-muted-foreground/70 mt-0.5">
             {bookmark.label}
           </span>
         )}
-        <span className="block text-xs text-muted-foreground/50 mt-0.5">
-          {dateStr}
-        </span>
+        <span className="block text-xs text-muted-foreground/50 mt-0.5">{dateStr}</span>
       </div>
       <span
         className="shrink-0 p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"
@@ -127,7 +132,14 @@ function BookmarkItem({
   );
 }
 
-export function TOCPanel({ tocItems, onGoToChapter, onGoToCfi, onClose, tabId, bookId }: TOCPanelProps) {
+export function TOCPanel({
+  tocItems,
+  onGoToChapter,
+  onGoToCfi,
+  onClose,
+  tabId,
+  bookId,
+}: TOCPanelProps) {
   const { t } = useTranslation();
   const tab = useReaderStore((s) => s.tabs[tabId]);
   const currentChapterIndex = tab?.chapterIndex ?? 0;
@@ -216,25 +228,23 @@ export function TOCPanel({ tocItems, onGoToChapter, onGoToCfi, onClose, tabId, b
             ))}
           </div>
         )
+      ) : bookBookmarks.length === 0 ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6">
+          <BookmarkIcon className="h-8 w-8 text-muted-foreground/40" />
+          <p className="text-xs text-muted-foreground">{t("bookmarks.empty")}</p>
+          <p className="text-xs text-muted-foreground/60 text-center">{t("bookmarks.emptyHint")}</p>
+        </div>
       ) : (
-        bookBookmarks.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6">
-            <BookmarkIcon className="h-8 w-8 text-muted-foreground/40" />
-            <p className="text-xs text-muted-foreground">{t("bookmarks.empty")}</p>
-            <p className="text-xs text-muted-foreground/60 text-center">{t("bookmarks.emptyHint")}</p>
-          </div>
-        ) : (
-          <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 py-2">
-            {bookBookmarks.map((bm) => (
-              <BookmarkItem
-                key={bm.id}
-                bookmark={bm}
-                onClick={() => onGoToCfi?.(bm.cfi)}
-                onDelete={() => removeBookmark(bm.id)}
-              />
-            ))}
-          </div>
-        )
+        <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 py-2">
+          {bookBookmarks.map((bm) => (
+            <BookmarkItem
+              key={bm.id}
+              bookmark={bm}
+              onClick={() => onGoToCfi?.(bm.cfi)}
+              onDelete={() => removeBookmark(bm.id)}
+            />
+          ))}
+        </div>
       )}
     </div>
   );

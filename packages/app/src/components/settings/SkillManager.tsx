@@ -3,7 +3,18 @@ import { Switch } from "@/components/ui/switch";
 import { getSkills, updateSkill } from "@/lib/db/database";
 import { builtinSkills } from "@readany/core/ai/skills/builtin-skills";
 import type { Skill } from "@readany/core/types";
-import { BookOpen, Compass, FileText, GitBranch, Languages, Lightbulb, Plus, Puzzle, Quote, Users } from "lucide-react";
+import {
+  BookOpen,
+  Compass,
+  FileText,
+  GitBranch,
+  Languages,
+  Lightbulb,
+  Plus,
+  Puzzle,
+  Quote,
+  Users,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -58,9 +69,7 @@ export function SkillManager() {
   async function toggleSkill(skillId: string, enabled: boolean) {
     try {
       await updateSkill(skillId, { enabled });
-      setSkills((prev) =>
-        prev.map((s) => (s.id === skillId ? { ...s, enabled } : s)),
-      );
+      setSkills((prev) => prev.map((s) => (s.id === skillId ? { ...s, enabled } : s)));
     } catch (error) {
       console.error("Failed to update skill:", error);
     }
@@ -73,12 +82,8 @@ export function SkillManager() {
       <section className="rounded-lg bg-muted/60 p-4">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-medium text-foreground">
-              {t("settings.skills_title")}
-            </h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {t("settings.skills_desc")}
-            </p>
+            <h2 className="text-sm font-medium text-foreground">{t("settings.skills_title")}</h2>
+            <p className="mt-1 text-xs text-muted-foreground">{t("settings.skills_desc")}</p>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">
@@ -112,12 +117,8 @@ export function SkillManager() {
                     <SkillIcon name={skill.icon} />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-foreground">
-                      {skill.name}
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {skill.description}
-                    </p>
+                    <p className="text-sm font-medium text-foreground">{skill.name}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{skill.description}</p>
                     {skill.parameters.length > 0 && (
                       <div className="mt-1 flex flex-wrap gap-1">
                         {skill.parameters.slice(0, 3).map((p) => (
@@ -155,9 +156,7 @@ export function SkillManager() {
       </section>
 
       <section className="rounded-lg bg-muted/60 p-4">
-        <h3 className="mb-3 text-sm font-medium text-foreground">
-          {t("settings.skillUsage")}
-        </h3>
+        <h3 className="mb-3 text-sm font-medium text-foreground">{t("settings.skillUsage")}</h3>
         <div className="space-y-2 text-xs text-muted-foreground">
           <p>
             <strong>{t("settings.skillUsageSummary")}:</strong>{" "}
@@ -168,8 +167,7 @@ export function SkillManager() {
             {t("settings.skillUsageCharacterDesc")}
           </p>
           <p>
-            <strong>{t("settings.skillUsageQuote")}:</strong>{" "}
-            {t("settings.skillUsageQuoteDesc")}
+            <strong>{t("settings.skillUsageQuote")}:</strong> {t("settings.skillUsageQuoteDesc")}
           </p>
           <p>
             <strong>{t("settings.skillUsageAnalysis")}:</strong>{" "}

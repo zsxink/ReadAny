@@ -9,7 +9,6 @@ import type { Book } from "@readany/core/types";
 import { memo, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  ActivityIndicator,
   Animated,
   Dimensions,
   Easing,

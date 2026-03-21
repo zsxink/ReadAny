@@ -10,7 +10,7 @@ import { OnboardingLayout } from "../OnboardingLayout";
 
 export function SyncPage({ onNext, onPrev, step, totalSteps }: any) {
   const { t } = useTranslation();
-  const { config, saveConfig, testConnection } = useSyncStore();
+  const { config, saveWebDavConfig, testWebDavConnection } = useSyncStore();
 
   const [url, setUrl] = useState("");
   const [username, setUsername] = useState("");
@@ -20,8 +20,10 @@ export function SyncPage({ onNext, onPrev, step, totalSteps }: any) {
 
   useEffect(() => {
     const loadExistingConfig = async () => {
-      if (config?.url) setUrl(config.url);
-      if (config?.username) setUsername(config.username);
+      if (config?.type === "webdav") {
+        if (config.url) setUrl(config.url);
+        if (config.username) setUsername(config.username);
+      }
 
       const platform = getPlatformService();
       const savedPassword = await platform.kvGetItem("sync_password");
@@ -33,7 +35,7 @@ export function SyncPage({ onNext, onPrev, step, totalSteps }: any) {
   const handleTest = async () => {
     setStatus("testing");
     try {
-      const ok = await testConnection(url, username, password);
+      const ok = await testWebDavConnection(url, username, password);
       setStatus(ok ? "success" : "error");
     } catch {
       setStatus("error");
@@ -42,7 +44,7 @@ export function SyncPage({ onNext, onPrev, step, totalSteps }: any) {
 
   const handleNext = async () => {
     if (url && username && password) {
-      await saveConfig(url, username, password);
+      await saveWebDavConfig(url, username, password);
     }
     onNext();
   };

@@ -67,9 +67,7 @@ export function setSyncAdapter(adapter: ISyncAdapter): void {
 
 export function getSyncAdapter(): ISyncAdapter {
   if (!_syncAdapter) {
-    throw new Error(
-      "Sync adapter not initialized. Call setSyncAdapter() first.",
-    );
+    throw new Error("Sync adapter not initialized. Call setSyncAdapter() first.");
   }
   return _syncAdapter;
 }

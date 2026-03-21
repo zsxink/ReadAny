@@ -1,6 +1,6 @@
 /**
  * Message Part Types - Inspired by OpenCode's Part system
- * 
+ *
  * Messages are composed of multiple Parts, each with its own type and state.
  * This enables real-time streaming of individual parts (reasoning, tools, text).
  */
@@ -74,7 +74,15 @@ export interface AbortedPart extends BasePart {
   reason: string;
 }
 
-export type Part = TextPart | ReasoningPart | ToolCallPart | CitationPart | QuotePart | MindmapPart | MermaidPart | AbortedPart;
+export type Part =
+  | TextPart
+  | ReasoningPart
+  | ToolCallPart
+  | CitationPart
+  | QuotePart
+  | MindmapPart
+  | MermaidPart
+  | AbortedPart;
 
 export interface MessageV2 {
   id: string;
@@ -123,7 +131,10 @@ export function createTextPart(text: string): TextPart {
   };
 }
 
-export function createReasoningPart(text: string, thinkingType?: ReasoningPart["thinkingType"]): ReasoningPart {
+export function createReasoningPart(
+  text: string,
+  thinkingType?: ReasoningPart["thinkingType"],
+): ReasoningPart {
   return {
     id: `reasoning-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     type: "reasoning",
@@ -134,7 +145,11 @@ export function createReasoningPart(text: string, thinkingType?: ReasoningPart["
   };
 }
 
-export function createToolCallPart(name: string, args: Record<string, unknown>, reasoning?: string): ToolCallPart {
+export function createToolCallPart(
+  name: string,
+  args: Record<string, unknown>,
+  reasoning?: string,
+): ToolCallPart {
   return {
     id: `tool-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     type: "tool_call",
@@ -152,7 +167,7 @@ export function createCitationPart(
   chapterIndex: number,
   cfi: string,
   text: string,
-  citationIndex?: number
+  citationIndex?: number,
 ): CitationPart {
   return {
     id: `citation-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,

@@ -1,8 +1,8 @@
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getSkills, updateSkill, insertSkill, deleteSkill } from "@/lib/db/database";
+import { deleteSkill, getSkills, insertSkill, updateSkill } from "@/lib/db/database";
 import { builtinSkills } from "@readany/core/ai/skills/builtin-skills";
 import type { Skill } from "@readany/core/types";
-import { Badge } from "@/components/ui/badge";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -38,9 +38,7 @@ export default function SkillsPage() {
   async function toggleSkill(skillId: string, enabled: boolean) {
     try {
       await updateSkill(skillId, { enabled });
-      setSkills((prev) =>
-        prev.map((s) => (s.id === skillId ? { ...s, enabled } : s)),
-      );
+      setSkills((prev) => prev.map((s) => (s.id === skillId ? { ...s, enabled } : s)));
     } catch (error) {
       console.error("Failed to update skill:", error);
     }
@@ -55,9 +53,7 @@ export default function SkillsPage() {
           description: skill.description,
           prompt: skill.prompt,
         });
-        setSkills((prev) =>
-          prev.map((s) => (s.id === skill.id ? { ...s, ...skill } : s)),
-        );
+        setSkills((prev) => prev.map((s) => (s.id === skill.id ? { ...s, ...skill } : s)));
       } else {
         await insertSkill(skill);
         setSkills((prev) => [...prev, skill]);
@@ -192,7 +188,12 @@ function SkillItem({ skill, onToggle, onEdit, onDelete }: SkillItemProps) {
             <Pencil className="size-3.5" />
           </Button>
           {!skill.builtIn && (
-            <Button variant="ghost" size="icon" className="size-7 hover:text-red-500" onClick={() => onDelete(skill.id)}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7 hover:text-red-500"
+              onClick={() => onDelete(skill.id)}
+            >
               <Trash2 className="size-3.5" />
             </Button>
           )}

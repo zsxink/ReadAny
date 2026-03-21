@@ -4,7 +4,7 @@
  * Place this at the border of a panel. Emits onResizeStart once,
  * onResize(delta) continuously, and onResizeEnd when released.
  */
-import { useCallback, useRef, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface ResizeHandleProps {
   /** Which side of the panel the handle sits on */
@@ -18,22 +18,25 @@ interface ResizeHandleProps {
   className?: string;
 }
 
-export function ResizeHandle({ side, onResizeStart, onResize, onResizeEnd, className }: ResizeHandleProps) {
+export function ResizeHandle({
+  side,
+  onResizeStart,
+  onResize,
+  onResizeEnd,
+  className,
+}: ResizeHandleProps) {
   const [isDragging, setIsDragging] = useState(false);
   const startXRef = useRef(0);
   const didStartRef = useRef(false);
 
-  const handlePointerDown = useCallback(
-    (e: React.PointerEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      startXRef.current = e.clientX;
-      didStartRef.current = false;
-      setIsDragging(true);
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    },
-    [],
-  );
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    startXRef.current = e.clientX;
+    didStartRef.current = false;
+    setIsDragging(true);
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }, []);
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {

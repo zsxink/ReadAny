@@ -1,25 +1,30 @@
+import { closeDB, initDatabase, resetDBCache } from "@readany/core/db";
 /**
  * Desktop (Tauri) sync adapter — implements ISyncAdapter
  * using Tauri invoke commands and @tauri-apps/plugin-fs.
  */
 import type { ISyncAdapter } from "@readany/core/sync";
-import { closeDB, resetDBCache, initDatabase } from "@readany/core/db";
-import { invoke } from "@tauri-apps/api/core";
-import {
-  readFile,
-  writeFile,
-  copyFile,
-  remove,
-  exists,
-  readDir,
-  mkdir,
-} from "@tauri-apps/plugin-fs";
-import { appDataDir, tempDir, join } from "@tauri-apps/api/path";
 import { getVersion } from "@tauri-apps/api/app";
+import { invoke } from "@tauri-apps/api/core";
+import { appDataDir, join, tempDir } from "@tauri-apps/api/path";
+import {
+  copyFile,
+  exists,
+  mkdir,
+  readDir,
+  readFile,
+  remove,
+  writeFile,
+} from "@tauri-apps/plugin-fs";
 
 export class DesktopSyncAdapter implements ISyncAdapter {
   private isRelativePath(p: string): boolean {
-    return !p.startsWith("/") && !p.startsWith("file://") && !p.startsWith("asset://") && !p.startsWith("http");
+    return (
+      !p.startsWith("/") &&
+      !p.startsWith("file://") &&
+      !p.startsWith("asset://") &&
+      !p.startsWith("http")
+    );
   }
 
   private async resolveToAbsolute(path: string): Promise<string> {

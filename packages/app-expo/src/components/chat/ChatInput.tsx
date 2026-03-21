@@ -11,7 +11,12 @@ import { useTranslation } from "react-i18next";
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 interface ChatInputProps {
-  onSend: (text: string, deepThinking: boolean, spoilerFree: boolean, quotes?: AttachedQuote[]) => void;
+  onSend: (
+    text: string,
+    deepThinking: boolean,
+    spoilerFree: boolean,
+    quotes?: AttachedQuote[],
+  ) => void;
   onStop?: () => void;
   isStreaming?: boolean;
   quotes?: AttachedQuote[];

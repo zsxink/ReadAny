@@ -5,8 +5,8 @@
  * All methods are async to support both Web (localStorage) and RN (AsyncStorage).
  */
 
-import type { TranslatorName } from "./types";
 import { getPlatformService } from "../services/platform";
+import type { TranslatorName } from "./types";
 
 const CACHE_PREFIX = "readany_translation_cache_";
 

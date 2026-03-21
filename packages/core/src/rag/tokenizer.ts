@@ -1,6 +1,6 @@
 /**
  * Tokenizer for BM25 search — supports English, Chinese, Japanese, Korean
- * 
+ *
  * Features:
  * - English: lowercase + stemming-like normalization
  * - Chinese: character-level + bigram tokenization
@@ -11,34 +11,141 @@
 
 /** Common Chinese stop words */
 const CHINESE_STOP_WORDS = new Set([
-  "的", "了", "在", "是", "我", "有", "和", "就", "不", "人", "都", "一",
-  "一个", "上", "也", "很", "到", "说", "要", "去", "你", "会", "着",
-  "没有", "看", "好", "自己", "这", "他", "她", "它", "们", "那", "些",
-  "什么", "怎么", "这个", "那个", "可以", "没", "把", "被", "让", "给",
-  "从", "向", "对", "为", "以", "与", "而", "但", "或", "如果", "因为",
-  "所以", "但是", "而且", "虽然", "尽管", "还是", "已经", "正在", "将",
+  "的",
+  "了",
+  "在",
+  "是",
+  "我",
+  "有",
+  "和",
+  "就",
+  "不",
+  "人",
+  "都",
+  "一",
+  "一个",
+  "上",
+  "也",
+  "很",
+  "到",
+  "说",
+  "要",
+  "去",
+  "你",
+  "会",
+  "着",
+  "没有",
+  "看",
+  "好",
+  "自己",
+  "这",
+  "他",
+  "她",
+  "它",
+  "们",
+  "那",
+  "些",
+  "什么",
+  "怎么",
+  "这个",
+  "那个",
+  "可以",
+  "没",
+  "把",
+  "被",
+  "让",
+  "给",
+  "从",
+  "向",
+  "对",
+  "为",
+  "以",
+  "与",
+  "而",
+  "但",
+  "或",
+  "如果",
+  "因为",
+  "所以",
+  "但是",
+  "而且",
+  "虽然",
+  "尽管",
+  "还是",
+  "已经",
+  "正在",
+  "将",
 ]);
 
 /** Common English stop words */
 const ENGLISH_STOP_WORDS = new Set([
-  "a", "an", "and", "are", "as", "at", "be", "by", "for", "from",
-  "has", "he", "in", "is", "it", "its", "of", "on", "that", "the",
-  "to", "was", "were", "will", "with", "this", "but", "they", "have",
-  "had", "what", "when", "where", "which", "who", "why", "how", "not",
-  "no", "nor", "so", "too", "very", "can", "could", "may", "might",
-  "shall", "should", "would", "do", "does", "did", "been", "being",
+  "a",
+  "an",
+  "and",
+  "are",
+  "as",
+  "at",
+  "be",
+  "by",
+  "for",
+  "from",
+  "has",
+  "he",
+  "in",
+  "is",
+  "it",
+  "its",
+  "of",
+  "on",
+  "that",
+  "the",
+  "to",
+  "was",
+  "were",
+  "will",
+  "with",
+  "this",
+  "but",
+  "they",
+  "have",
+  "had",
+  "what",
+  "when",
+  "where",
+  "which",
+  "who",
+  "why",
+  "how",
+  "not",
+  "no",
+  "nor",
+  "so",
+  "too",
+  "very",
+  "can",
+  "could",
+  "may",
+  "might",
+  "shall",
+  "should",
+  "would",
+  "do",
+  "does",
+  "did",
+  "been",
+  "being",
 ]);
 
 /** Combined stop words */
 const STOP_WORDS = new Set([...CHINESE_STOP_WORDS, ...ENGLISH_STOP_WORDS]);
 
 /** Unicode ranges for different scripts */
-const CJK_UNIFIED = /[\u4e00-\u9fff]/;           // Chinese characters
-const CJK_EXTENSION = /[\u3400-\u4dbf]/;          // CJK Extension A
-const HIRAGANA = /[\u3040-\u309f]/;               // Japanese Hiragana
-const KATAKANA = /[\u30a0-\u30ff]/;               // Japanese Katakana
-const HANGUL = /[\uac00-\ud7af]/;                 // Korean Hangul
-const HANGUL_JAMO = /[\u1100-\u11ff]/;            // Korean Jamo
+const CJK_UNIFIED = /[\u4e00-\u9fff]/; // Chinese characters
+const CJK_EXTENSION = /[\u3400-\u4dbf]/; // CJK Extension A
+const HIRAGANA = /[\u3040-\u309f]/; // Japanese Hiragana
+const KATAKANA = /[\u30a0-\u30ff]/; // Japanese Katakana
+const HANGUL = /[\uac00-\ud7af]/; // Korean Hangul
+const HANGUL_JAMO = /[\u1100-\u11ff]/; // Korean Jamo
 const ALPHANUMERIC = /[a-zA-Z0-9]/;
 
 /**
@@ -75,7 +182,7 @@ function isAlphanumeric(char: string): boolean {
 function normalizeText(text: string): string {
   return text
     .toLowerCase()
-    .normalize("NFKC")  // Normalize Unicode (e.g., full-width to half-width)
+    .normalize("NFKC") // Normalize Unicode (e.g., full-width to half-width)
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -86,7 +193,7 @@ function normalizeText(text: string): string {
 function extractAlphanumericTokens(text: string): string[] {
   const tokens: string[] = [];
   let current = "";
-  
+
   for (const char of text) {
     if (isAlphanumeric(char)) {
       current += char;
@@ -97,11 +204,11 @@ function extractAlphanumericTokens(text: string): string[] {
       }
     }
   }
-  
+
   if (current.length > 0) {
     tokens.push(current);
   }
-  
+
   return tokens;
 }
 
@@ -110,13 +217,13 @@ function extractAlphanumericTokens(text: string): string[] {
  */
 function extractCJKChars(text: string): string[] {
   const tokens: string[] = [];
-  
+
   for (const char of text) {
     if (isCJK(char)) {
       tokens.push(char);
     }
   }
-  
+
   return tokens;
 }
 
@@ -127,7 +234,7 @@ function extractCJKChars(text: string): string[] {
 function generateCJKBigrams(text: string): string[] {
   const bigrams: string[] = [];
   let prevCJK: string | null = null;
-  
+
   for (const char of text) {
     if (isCJK(char)) {
       if (prevCJK !== null) {
@@ -138,7 +245,7 @@ function generateCJKBigrams(text: string): string[] {
       prevCJK = null;
     }
   }
-  
+
   return bigrams;
 }
 
@@ -148,7 +255,7 @@ function generateCJKBigrams(text: string): string[] {
 function extractJapaneseTokens(text: string): string[] {
   const tokens: string[] = [];
   let current = "";
-  
+
   for (const char of text) {
     if (isJapanese(char)) {
       current += char;
@@ -159,11 +266,11 @@ function extractJapaneseTokens(text: string): string[] {
       }
     }
   }
-  
+
   if (current.length > 0) {
     tokens.push(current);
   }
-  
+
   return tokens;
 }
 
@@ -173,7 +280,7 @@ function extractJapaneseTokens(text: string): string[] {
 function extractKoreanTokens(text: string): string[] {
   const tokens: string[] = [];
   let current = "";
-  
+
   for (const char of text) {
     if (isKorean(char)) {
       current += char;
@@ -184,11 +291,11 @@ function extractKoreanTokens(text: string): string[] {
       }
     }
   }
-  
+
   if (current.length > 0) {
     tokens.push(current);
   }
-  
+
   return tokens;
 }
 
@@ -201,13 +308,13 @@ function filterTokens(tokens: string[], minLength = 1): string[] {
 
 /**
  * Tokenize text for BM25 search
- * 
+ *
  * @param text - Input text
  * @param options - Tokenization options
  * @returns Array of tokens
- * 
+ *
  * @example
- * tokenize("Hello 世界 AI人工智能") 
+ * tokenize("Hello 世界 AI人工智能")
  * // → ["hello", "世", "界", "ai", "人工", "智能", "世界"]
  */
 export function tokenize(
@@ -225,7 +332,7 @@ export function tokenize(
     minLength?: number;
     /** Remove stop words (default: true) */
     removeStopWords?: boolean;
-  } = {}
+  } = {},
 ): string[] {
   const {
     bigrams = true,

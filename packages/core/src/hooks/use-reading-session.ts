@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef } from "react";
 /**
  * useReadingSession — reading session state machine hook
  *
@@ -6,9 +7,8 @@
  * - React Native: inject an AppState-based adapter
  */
 import { type SessionEvent, createSessionDetector } from "../reader/session-detector";
-import { useReadingSessionStore } from "../stores/reading-session-store";
 import { useAppStore } from "../stores/app-store";
-import { useCallback, useEffect, useRef } from "react";
+import { useReadingSessionStore } from "../stores/reading-session-store";
 
 // Save session every 5 minutes
 const AUTO_SAVE_INTERVAL = 5 * 60 * 1000;
@@ -61,8 +61,14 @@ export function setSessionEventSource(source: SessionEventSource): void {
 }
 
 export function useReadingSession(bookId: string | null, tabId?: string) {
-  const { startSession, pauseSession, resumeSession, stopSession, updateActiveTime, saveCurrentSession } =
-    useReadingSessionStore();
+  const {
+    startSession,
+    pauseSession,
+    resumeSession,
+    stopSession,
+    updateActiveTime,
+    saveCurrentSession,
+  } = useReadingSessionStore();
   const activeTabId = useAppStore((s) => s.activeTabId);
   const isTabActive = tabId ? activeTabId === tabId : true;
 
@@ -127,15 +133,15 @@ export function useReadingSession(bookId: string | null, tabId?: string) {
       const currentTabId = useAppStore.getState().activeTabId;
       const isCurrentTabActive = tabId ? currentTabId === tabId : true;
       const currentState = detectorRef.current.currentState;
-      
+
       const idleDuration = Date.now() - lastActivityRef.current;
       if (idleDuration >= 30000) {
         sendEvent({ type: "idle", duration: idleDuration });
       }
-      
+
       if (currentState === "ACTIVE" && isCurrentTabActive) {
         updateActiveTime();
-        
+
         if (Date.now() - lastSaveRef.current >= AUTO_SAVE_INTERVAL) {
           lastSaveRef.current = Date.now();
           saveCurrentSession();

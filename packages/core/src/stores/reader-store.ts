@@ -1,8 +1,8 @@
+import { create } from "zustand";
 /**
  * Reader store — per-tab reading state, progress, CFI
  */
 import type { TOCItem } from "../types";
-import { create } from "zustand";
 
 export interface NavigationHistoryItem {
   cfi: string;
@@ -151,10 +151,7 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
           ...state.tabs,
           [tabId]: {
             ...tab,
-            navigationHistory: [
-              ...tab.navigationHistory,
-              { ...item, timestamp: Date.now() },
-            ],
+            navigationHistory: [...tab.navigationHistory, { ...item, timestamp: Date.now() }],
           },
         },
       };

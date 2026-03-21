@@ -1,13 +1,13 @@
 /**
  * Context Tools
- * 
+ *
  * Tools for accessing user's current reading context:
  * - getCurrentChapter: Get current chapter info
  * - getSelection: Get user's selected text
  * - getReadingProgress: Get reading progress
  * - getRecentHighlights: Get recent highlights
  */
-import { getHighlights, getBook } from "../db/database";
+import { getBook, getHighlights } from "../db/database";
 import { readingContextService } from "./reading-context-service";
 import type { ToolDefinition } from "./tool-types";
 

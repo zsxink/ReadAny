@@ -1,0 +1,356 @@
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { useSyncStore } from "@/stores/sync-store";
+import { getPlatformService } from "@readany/core/services";
+import type { LANConnectionState } from "@readany/core/sync/lan-backend";
+import {
+  type LANQRData,
+  type LANServerStatus,
+  createLANServer,
+} from "@readany/core/sync/lan-server";
+/**
+ * LANSyncDialog — LAN sync configuration dialog with QR code and manual connection.
+ */
+import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+
+interface LANSyncDialogProps {
+  open: boolean;
+  onClose: () => void;
+  mode: "server" | "client";
+}
+
+export function LANSyncDialog({ open, onClose, mode }: LANSyncDialogProps) {
+  const { t } = useTranslation();
+  const { syncNow } = useSyncStore();
+
+  // Server state
+  const [serverStatus, setServerStatus] = useState<LANServerStatus>("idle");
+  const [qrData, setQRData] = useState<LANQRData | null>(null);
+  const [server, setServer] = useState<ReturnType<typeof createLANServer> | null>(null);
+
+  // Client state
+  const [connectionState, setConnectionState] = useState<LANConnectionState>("idle");
+  const [manualIP, setManualIP] = useState("");
+  const [manualPort, setManualPort] = useState("");
+  const [manualPairCode, setManualPairCode] = useState("");
+
+  // Manual IP for server (when auto-detection fails)
+  const [showManualIPInput, setShowManualIPInput] = useState(false);
+  const [manualServerIP, setManualServerIP] = useState("");
+
+  const [error, setError] = useState("");
+
+  // Server mode: start/stop server
+  const handleStartServer = useCallback(async () => {
+    setError("");
+    setServerStatus("starting");
+    setShowManualIPInput(false);
+
+    try {
+      const deviceName = `ReadAny Desktop`;
+
+      const newServer = createLANServer({
+        deviceName,
+        events: {
+          onStatusChange: (status) => {
+            setServerStatus(status);
+            if (status === "error") {
+              setShowManualIPInput(true);
+            }
+          },
+          onError: (err) => {
+            setError(err);
+            setShowManualIPInput(true);
+          },
+        },
+      });
+
+      await newServer.start();
+      const data = newServer.getQRData();
+      if (data) {
+        setQRData(data);
+      }
+      setServer(newServer);
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      setError(errorMsg);
+      setServerStatus("error");
+      setShowManualIPInput(true);
+    }
+  }, []);
+
+  const handleStartWithManualIP = useCallback(async () => {
+    if (!manualServerIP) {
+      setError(t("settings.syncLANFillAll"));
+      return;
+    }
+
+    setError("");
+    setServerStatus("starting");
+
+    try {
+      const deviceName = `ReadAny Desktop`;
+
+      const newServer = createLANServer({
+        deviceName,
+        events: {
+          onStatusChange: setServerStatus,
+          onError: setError,
+        },
+      });
+
+      // Set manual IP before starting
+      newServer.setManualIP(manualServerIP);
+      await newServer.start();
+      const data = newServer.getQRData();
+      if (data) {
+        setQRData(data);
+      }
+      setServer(newServer);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setServerStatus("error");
+    }
+  }, [manualServerIP, t]);
+
+  const handleStopServer = useCallback(async () => {
+    if (server) {
+      await server.stop();
+      setServer(null);
+    }
+    setServerStatus("idle");
+    setQRData(null);
+    setShowManualIPInput(false);
+    setManualServerIP("");
+  }, [server]);
+
+  // Client mode: manual connect
+  const handleManualConnect = useCallback(async () => {
+    if (!manualIP || !manualPort || !manualPairCode) {
+      setError(t("settings.syncLANFillAll"));
+      return;
+    }
+
+    setError("");
+    setConnectionState("connecting");
+
+    try {
+      const serverUrl = `http://${manualIP}:${manualPort}`;
+      const platform = getPlatformService();
+
+      // Test connection
+      const response = await platform.fetch(`${serverUrl}/ping`, {
+        method: "GET",
+        headers: {
+          "X-Pair-Code": manualPairCode,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(t("settings.syncLANConnectionFailed"));
+      }
+
+      setConnectionState("connected");
+
+      // Start sync
+      await syncNow();
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setConnectionState("error");
+    }
+  }, [manualIP, manualPort, manualPairCode, syncNow, onClose, t]);
+
+  // Cleanup on close
+  useEffect(() => {
+    if (!open) {
+      handleStopServer();
+      setConnectionState("idle");
+      setError("");
+      setManualIP("");
+      setManualPort("");
+      setManualPairCode("");
+    }
+  }, [open, handleStopServer]);
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogTitle>
+          {mode === "server" ? t("settings.syncLANServerTitle") : t("settings.syncLANClientTitle")}
+        </DialogTitle>
+
+        {mode === "server" ? (
+          <div className="space-y-4">
+            {/* Server status */}
+            <div className="flex items-center gap-2">
+              <div
+                className={`h-2 w-2 rounded-full ${
+                  serverStatus === "running"
+                    ? "bg-green-500"
+                    : serverStatus === "error"
+                      ? "bg-red-500"
+                      : "bg-gray-400"
+                }`}
+              />
+              <span className="text-sm text-muted-foreground">
+                {t(`settings.syncLANServerStatus.${serverStatus}`)}
+              </span>
+            </div>
+
+            {/* Manual IP input (shown when auto-detection fails) */}
+            {showManualIPInput && serverStatus !== "running" && (
+              <div className="rounded-lg border border-orange-400/60 bg-orange-50/40 p-3 dark:bg-orange-950/20">
+                <p className="text-xs text-muted-foreground mb-2">
+                  {t("settings.syncLANManualIPHint")}
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={manualServerIP}
+                    onChange={(e) => setManualServerIP(e.target.value)}
+                    placeholder="192.168.1.100"
+                    className="flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground outline-none focus:border-primary"
+                  />
+                  <button
+                    onClick={handleStartWithManualIP}
+                    disabled={!manualServerIP}
+                    className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {t("settings.syncLANServerStart")}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* QR Code display */}
+            {qrData && (
+              <div className="flex flex-col items-center space-y-3">
+                <div className="rounded-lg bg-white p-4">
+                  <div className="h-48 w-48 bg-gray-100 flex items-center justify-center text-xs text-gray-500">
+                    {t("settings.syncLANQRPlaceholder")}
+                  </div>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm font-medium">{t("settings.syncLANPairCode")}</p>
+                  <p className="text-2xl font-mono tracking-widest">{qrData.pairCode}</p>
+                </div>
+                <div className="text-center text-xs text-muted-foreground">
+                  <p>
+                    {t("settings.syncLANAddress")}: {qrData.ip}:{qrData.port}
+                  </p>
+                </div>
+                <p className="text-xs text-muted-foreground text-center">
+                  {t("settings.syncLANServerHint")}
+                </p>
+              </div>
+            )}
+
+            {/* Error display */}
+            {error && !showManualIPInput && (
+              <div className="rounded-md bg-red-50/60 p-3 text-xs text-red-500 dark:bg-red-950/20">
+                {error}
+              </div>
+            )}
+
+            {/* Start/Stop buttons */}
+            {!showManualIPInput && (
+              <div className="flex gap-2">
+                {serverStatus !== "running" ? (
+                  <button
+                    onClick={handleStartServer}
+                    disabled={serverStatus === "starting"}
+                    className="flex-1 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {serverStatus === "starting"
+                      ? t("settings.syncLANServerStarting")
+                      : t("settings.syncLANServerStart")}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleStopServer}
+                    className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+                  >
+                    {t("settings.syncLANServerStop")}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* QR Scanner placeholder */}
+            <div className="rounded-lg bg-muted/60 p-4">
+              <p className="text-sm font-medium mb-2">{t("settings.syncLANScanQR")}</p>
+              <div className="h-32 bg-gray-100 rounded flex items-center justify-center text-xs text-gray-500">
+                {t("settings.syncLANScannerPlaceholder")}
+              </div>
+            </div>
+
+            {/* Manual connection */}
+            <div className="space-y-3">
+              <p className="text-sm font-medium">{t("settings.syncLANManualConnect")}</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="mb-1 block text-xs text-muted-foreground">
+                    {t("settings.syncLANIP")}
+                  </label>
+                  <input
+                    type="text"
+                    value={manualIP}
+                    onChange={(e) => setManualIP(e.target.value)}
+                    placeholder="192.168.1.100"
+                    className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-muted-foreground">
+                    {t("settings.syncLANPort")}
+                  </label>
+                  <input
+                    type="text"
+                    value={manualPort}
+                    onChange={(e) => setManualPort(e.target.value)}
+                    placeholder="8080"
+                    className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">
+                  {t("settings.syncLANPairCodeLabel")}
+                </label>
+                <input
+                  type="text"
+                  value={manualPairCode}
+                  onChange={(e) => setManualPairCode(e.target.value)}
+                  placeholder="123456"
+                  maxLength={6}
+                  className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground outline-none focus:border-primary"
+                />
+              </div>
+            </div>
+
+            {/* Error display */}
+            {error && (
+              <div className="rounded-md bg-red-50/60 p-3 text-xs text-red-500 dark:bg-red-950/20">
+                {error}
+              </div>
+            )}
+
+            {/* Connect button */}
+            <button
+              onClick={handleManualConnect}
+              disabled={connectionState === "connecting"}
+              className="w-full rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+            >
+              {connectionState === "connecting"
+                ? t("settings.syncLANConnecting")
+                : t("settings.syncLANConnect")}
+            </button>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}

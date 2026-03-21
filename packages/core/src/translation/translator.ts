@@ -36,7 +36,7 @@ export const SUPPORTED_LANGUAGES = [
   { code: "sv", name: "Swedish", nativeName: "Svenska" },
 ] as const;
 
-export type TranslationTargetLang = typeof SUPPORTED_LANGUAGES[number]["code"];
+export type TranslationTargetLang = (typeof SUPPORTED_LANGUAGES)[number]["code"];
 
 export interface TranslationResult {
   originalText: string;
@@ -58,22 +58,25 @@ export function getLanguageNativeName(code: string): string {
 /** Legacy translate function for backward compatibility */
 export async function translate(
   text: string,
-  config: { provider: { id: string; apiKey?: string; baseUrl?: string }; targetLang: string; model?: string },
+  config: {
+    provider: { id: string; apiKey?: string; baseUrl?: string };
+    targetLang: string;
+    model?: string;
+  },
 ): Promise<TranslationResult> {
   const { getTranslator } = await import("./providers");
-  
+
   const provider = getTranslator(config.provider.id as any);
   if (!provider) {
     return { originalText: text, translatedText: "", targetLang: config.targetLang };
   }
 
   try {
-    const results = await provider.translate(
-      [text],
-      "AUTO",
-      config.targetLang,
-      { apiKey: config.provider.apiKey, baseUrl: config.provider.baseUrl, model: config.model },
-    );
+    const results = await provider.translate([text], "AUTO", config.targetLang, {
+      apiKey: config.provider.apiKey,
+      baseUrl: config.provider.baseUrl,
+      model: config.model,
+    });
     return {
       originalText: text,
       translatedText: results[0] || "",
@@ -88,22 +91,29 @@ export async function translate(
 /** Batch translate function */
 export async function translateBatch(
   texts: string[],
-  config: { provider: { id: string; apiKey?: string; baseUrl?: string }; targetLang: string; model?: string },
+  config: {
+    provider: { id: string; apiKey?: string; baseUrl?: string };
+    targetLang: string;
+    model?: string;
+  },
 ): Promise<TranslationResult[]> {
   const { getTranslator } = await import("./providers");
-  
+
   const provider = getTranslator(config.provider.id as any);
   if (!provider) {
-    return texts.map((text) => ({ originalText: text, translatedText: "", targetLang: config.targetLang }));
+    return texts.map((text) => ({
+      originalText: text,
+      translatedText: "",
+      targetLang: config.targetLang,
+    }));
   }
 
   try {
-    const results = await provider.translate(
-      texts,
-      "AUTO",
-      config.targetLang,
-      { apiKey: config.provider.apiKey, baseUrl: config.provider.baseUrl, model: config.model },
-    );
+    const results = await provider.translate(texts, "AUTO", config.targetLang, {
+      apiKey: config.provider.apiKey,
+      baseUrl: config.provider.baseUrl,
+      model: config.model,
+    });
     return texts.map((text, i) => ({
       originalText: text,
       translatedText: results[i] || "",
@@ -111,6 +121,10 @@ export async function translateBatch(
     }));
   } catch (error) {
     console.error("Batch translation error:", error);
-    return texts.map((text) => ({ originalText: text, translatedText: "", targetLang: config.targetLang }));
+    return texts.map((text) => ({
+      originalText: text,
+      translatedText: "",
+      targetLang: config.targetLang,
+    }));
   }
 }

@@ -87,11 +87,17 @@ function StatCard({
 function MiniHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
   const themeColors = useColors();
   const s = makeStyles(themeColors);
+  const { t } = useTranslation();
   const WEEKS = 16;
   const DAYS_PER_WEEK = 7;
   const GAP = 2;
   const [containerWidth, setContainerWidth] = useState(0);
-  const [selectedCell, setSelectedCell] = useState<{ date: string; time: number; x: number; y: number } | null>(null);
+  const [selectedCell, setSelectedCell] = useState<{
+    date: string;
+    time: number;
+    x: number;
+    y: number;
+  } | null>(null);
 
   // Calculate cell size based on container width
   // containerWidth = WEEKS * CELL + (WEEKS - 1) * GAP
@@ -104,7 +110,8 @@ function MiniHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
     for (const d of dailyStats) statsMap.set(d.date, d.totalTime);
 
     const today = new Date();
-    const result: { col: number; row: number; intensity: number; date: string; time: number }[] = [];
+    const result: { col: number; row: number; intensity: number; date: string; time: number }[] =
+      [];
     const maxTime = Math.max(1, ...dailyStats.map((d) => d.totalTime));
 
     for (let w = WEEKS - 1; w >= 0; w--) {
@@ -139,8 +146,8 @@ function MiniHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
   };
 
   const formatTime = (minutes: number) => {
-    if (minutes < 60) return `${Math.round(minutes)}分钟`;
-    return `${(minutes / 60).toFixed(1)}小时`;
+    if (minutes < 60) return `${Math.round(minutes)}${t("common.minutes", "分钟")}`;
+    return `${(minutes / 60).toFixed(1)}${t("common.hours", "小时")}`;
   };
 
   const handleCellPress = (cell: { date: string; time: number }, col: number, row: number) => {
@@ -159,15 +166,15 @@ function MiniHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
     if (!selectedCell || containerWidth === 0) return null;
     const TOOLTIP_WIDTH = 80;
     const TOOLTIP_HEIGHT = 24;
-    
+
     let left = selectedCell.x - TOOLTIP_WIDTH / 2;
     let top = selectedCell.y - TOOLTIP_HEIGHT - 8;
-    
+
     // Boundary detection
     if (left < 4) left = 4;
     if (left + TOOLTIP_WIDTH > containerWidth - 4) left = containerWidth - TOOLTIP_WIDTH - 4;
     if (top < 4) top = selectedCell.y + CELL + 4; // Show below if no space above
-    
+
     return { left, top };
   };
 
@@ -198,7 +205,7 @@ function MiniHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
           ))}
         </View>
       )}
-      
+
       {/* Selected cell tooltip */}
       {selectedCell && tooltipStyle && (
         <View
@@ -220,18 +227,26 @@ function MiniHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
             elevation: 3,
           }}
         >
-          <Text style={{ fontSize: 12, color: themeColors.cardForeground, fontWeight: "500", textAlign: "center" }}>
-            {formatDisplayDate(selectedCell.date)} {selectedCell.time > 0 ? formatTime(selectedCell.time) : "无阅读"}
+          <Text
+            style={{
+              fontSize: 12,
+              color: themeColors.cardForeground,
+              fontWeight: "500",
+              textAlign: "center",
+            }}
+          >
+            {formatDisplayDate(selectedCell.date)}{" "}
+            {selectedCell.time > 0 ? formatTime(selectedCell.time) : t("stats.noReading", "无阅读")}
           </Text>
         </View>
       )}
-      
+
       <View style={s.heatmapLegend}>
-        <Text style={s.heatmapLegendText}>少</Text>
+        <Text style={s.heatmapLegendText}>{t("common.less", "少")}</Text>
         {[0, 0.25, 0.5, 0.75, 1].map((v) => (
           <View key={v} style={[s.heatmapLegendCell, { backgroundColor: getColor(v) }]} />
         ))}
-        <Text style={s.heatmapLegendText}>多</Text>
+        <Text style={s.heatmapLegendText}>{t("common.more", "多")}</Text>
       </View>
     </View>
   );
@@ -388,11 +403,19 @@ export function ProfileScreen() {
             <View style={s.menuCard}>
               {section.items.map((item, idx) => {
                 const Icon = item.icon;
+                const itemKey = "route" in item ? item.route : item.url;
+                const handlePress = () => {
+                  if ("url" in item && item.url) {
+                    Linking.openURL(item.url);
+                  } else if ("route" in item) {
+                    nav.navigate(item.route as any);
+                  }
+                };
                 return (
                   <TouchableOpacity
-                    key={item.route ?? item.url}
+                    key={itemKey}
                     style={[s.menuItem, idx < section.items.length - 1 && s.menuItemBorder]}
-                    onPress={() => item.url ? Linking.openURL(item.url) : nav.navigate(item.route as any)}
+                    onPress={handlePress}
                     activeOpacity={0.7}
                   >
                     <Icon size={20} color={colors.mutedForeground} />

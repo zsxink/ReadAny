@@ -30,11 +30,7 @@ export function ContextPopover() {
 
   return (
     <>
-      <TouchableOpacity
-        style={s.trigger}
-        onPress={() => setVisible(true)}
-        activeOpacity={0.7}
-      >
+      <TouchableOpacity style={s.trigger} onPress={() => setVisible(true)} activeOpacity={0.7}>
         <BookOpenIcon size={16} color={colors.foreground} />
         {count > 0 && (
           <View style={s.badge}>
@@ -52,15 +48,11 @@ export function ContextPopover() {
         <Pressable style={s.overlay} onPress={() => setVisible(false)} />
         <View style={s.sheet}>
           <View style={s.handle} />
-          <Text style={s.title}>
-            {t("chat.selectBooks", "选择书籍上下文")}
-          </Text>
+          <Text style={s.title}>{t("chat.selectBooks", "选择书籍上下文")}</Text>
 
           {books.length === 0 ? (
             <View style={s.emptyWrap}>
-              <Text style={s.emptyText}>
-                {t("library.empty", "暂无书籍")}
-              </Text>
+              <Text style={s.emptyText}>{t("library.empty", "暂无书籍")}</Text>
             </View>
           ) : (
             <ScrollView style={s.list} showsVerticalScrollIndicator={false}>
@@ -87,9 +79,7 @@ export function ContextPopover() {
                       )}
                     </View>
                     <View style={[s.checkbox, isSelected && s.checkboxActive]}>
-                      {isSelected && (
-                        <CheckIcon size={12} color={colors.primaryForeground} />
-                      )}
+                      {isSelected && <CheckIcon size={12} color={colors.primaryForeground} />}
                     </View>
                   </TouchableOpacity>
                 );

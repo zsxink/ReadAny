@@ -56,9 +56,21 @@ export function startTour() {
           title: i18n.t("tour.settings.title", "Settings"),
           description: i18n.t(
             "tour.settings.desc",
-            "Configure AI provider, translation engine, and more.",
+            "Configure AI provider, translation engine, sync and more.",
           ),
           side: "right",
+          align: "start",
+        },
+      },
+      {
+        element: "#tour-sync-backend",
+        popover: {
+          title: i18n.t("tour.sync.title", "Multi-Platform Sync"),
+          description: i18n.t(
+            "tour.sync.desc",
+            "Choose WebDAV, S3, or LAN sync to keep your library in sync across devices. Supports QR code pairing for quick setup.",
+          ),
+          side: "left",
           align: "start",
         },
       },

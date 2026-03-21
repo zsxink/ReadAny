@@ -145,7 +145,7 @@ export interface VectorModelConfig {
   dimension?: number;
 }
 
-export type StreamEventType = 
+export type StreamEventType =
   | "token"
   | "tool_call"
   | "tool_result"

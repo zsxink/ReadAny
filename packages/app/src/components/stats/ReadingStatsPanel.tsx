@@ -1,17 +1,22 @@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { readingStatsService } from "@/lib/stats/reading-stats";
-import type { DailyStats, OverallStats, PeriodBookStats, TrendPoint } from "@/lib/stats/reading-stats";
+import type {
+  DailyStats,
+  OverallStats,
+  PeriodBookStats,
+  TrendPoint,
+} from "@/lib/stats/reading-stats";
+import { useAppStore } from "@/stores/app-store";
+import { useReadingSessionStore } from "@/stores/reading-session-store";
 import { BookOpen, ChevronLeft, ChevronRight, Clock, Flame, TrendingUp } from "lucide-react";
 /**
  * ReadingStatsPanel — displays reading statistics with charts, heatmap and book list
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore } from "@/stores/app-store";
-import { useReadingSessionStore } from "@/stores/reading-session-store";
 import { BarChart } from "./BarChart";
-import { TrendChart } from "./TrendChart";
 import { PeriodBookList } from "./PeriodBookList";
+import { TrendChart } from "./TrendChart";
 
 type ChartMode = "week" | "month";
 type ChartView = "heatmap" | "bar";
@@ -166,10 +171,10 @@ export function ReadingStatsPanel() {
   // Transform DailyStats → BarChart data
   const barChartData = useMemo(() => {
     if (chartMode === "week") {
-      const dayNames =
-        lang === "zh"
-          ? ["一", "二", "三", "四", "五", "六", "日"]
-          : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+      const isChinese = i18n.language.startsWith("zh");
+      const dayNames = isChinese
+        ? ["一", "二", "三", "四", "五", "六", "日"]
+        : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
       return chartData.map((d, i) => ({
         label: dayNames[i] || d.date.slice(5),
         value: d.totalTime,
@@ -180,7 +185,7 @@ export function ReadingStatsPanel() {
       label: String(new Date(d.date).getDate()),
       value: d.totalTime,
     }));
-  }, [chartData, chartMode, lang]);
+  }, [chartData, chartMode, i18n.language]);
 
   // Transform TrendPoint → TrendChart data
   const trendChartData = useMemo(
@@ -240,7 +245,9 @@ export function ReadingStatsPanel() {
           <div className="space-y-1">
             <h3 className="text-base font-semibold text-foreground">{t("stats.heatmapTitle")}</h3>
             <p className="text-xs text-muted-foreground">
-              {chartView === "heatmap" ? t("stats.heatmapDesc") : t("stats.barChartDesc", "查看指定时间段的阅读统计")}
+              {chartView === "heatmap"
+                ? t("stats.heatmapDesc")
+                : t("stats.barChartDesc", "查看指定时间段的阅读统计")}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -370,7 +377,7 @@ export function ReadingStatsPanel() {
 /* ── Heatmap Chart ── */
 
 function HeatmapChart({ dailyStats, lang }: { dailyStats: DailyStats[]; lang: string }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const [cellSize, setCellSize] = useState(12);
   const gap = 2;
@@ -424,7 +431,9 @@ function HeatmapChart({ dailyStats, lang }: { dailyStats: DailyStats[]; lang: st
       }
 
       if (month !== lastMonth) {
-        const monthName = cursor.toLocaleDateString(lang === "zh" ? "zh-CN" : "en", { month: "short" });
+        const monthName = cursor.toLocaleDateString(lang === "zh" ? "zh-CN" : "en", {
+          month: "short",
+        });
         mLabels.push({ label: monthName, col: weekIdx });
         lastMonth = month;
       }
@@ -442,7 +451,8 @@ function HeatmapChart({ dailyStats, lang }: { dailyStats: DailyStats[]; lang: st
   }, [dailyStats, lang]);
 
   const dayLabels = useMemo(() => {
-    const days = lang === "zh"
+    const isChinese = i18n.language.startsWith("zh");
+    const days = isChinese
       ? ["日", "一", "二", "三", "四", "五", "六"]
       : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     return [
@@ -450,7 +460,7 @@ function HeatmapChart({ dailyStats, lang }: { dailyStats: DailyStats[]; lang: st
       { idx: 3, label: days[3] },
       { idx: 5, label: days[5] },
     ];
-  }, [lang]);
+  }, [i18n.language]);
 
   return (
     <TooltipProvider delayDuration={100}>
@@ -475,7 +485,10 @@ function HeatmapChart({ dailyStats, lang }: { dailyStats: DailyStats[]; lang: st
 
           <div className="flex gap-0">
             {/* Day of week labels */}
-            <div className="flex flex-col justify-between pr-1.5" style={{ width: `${labelWidth}px`, height: `${7 * unit - gap}px` }}>
+            <div
+              className="flex flex-col justify-between pr-1.5"
+              style={{ width: `${labelWidth}px`, height: `${7 * unit - gap}px` }}
+            >
               {[0, 1, 2, 3, 4, 5, 6].map((d) => {
                 const label = dayLabels.find((l) => l.idx === d);
                 return (
@@ -490,9 +503,14 @@ function HeatmapChart({ dailyStats, lang }: { dailyStats: DailyStats[]; lang: st
             <div className="flex" style={{ gap: `${gap}px` }}>
               {weeks.map((week, wi) => (
                 <div key={wi} className="flex flex-col" style={{ gap: `${gap}px` }}>
-                  {week[0] && week[0].dayOfWeek > 0 && wi === 0 &&
+                  {week[0] &&
+                    week[0].dayOfWeek > 0 &&
+                    wi === 0 &&
                     Array.from({ length: week[0].dayOfWeek }).map((_, i) => (
-                      <div key={`empty-${i}`} style={{ height: `${cellSize}px`, width: `${cellSize}px` }} />
+                      <div
+                        key={`empty-${i}`}
+                        style={{ height: `${cellSize}px`, width: `${cellSize}px` }}
+                      />
                     ))}
                   {week.map((day) => (
                     <Tooltip key={day.date}>
@@ -505,7 +523,10 @@ function HeatmapChart({ dailyStats, lang }: { dailyStats: DailyStats[]; lang: st
                       <TooltipContent side="top" className="bg-popover text-popover-foreground">
                         <p className="text-xs font-medium">
                           {day.time > 0
-                            ? t("stats.heatmapTooltip", { time: Math.round(day.time), date: day.date })
+                            ? t("stats.heatmapTooltip", {
+                                time: Math.round(day.time),
+                                date: day.date,
+                              })
                             : t("stats.heatmapNoReading", { date: day.date })}
                         </p>
                       </TooltipContent>

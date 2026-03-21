@@ -1,3 +1,11 @@
+import { create } from "zustand";
+import {
+  deleteThread as dbDeleteThread,
+  getThreads as dbGetThreads,
+  insertMessage as dbInsertMessage,
+  insertThread as dbInsertThread,
+  updateThreadTitle as dbUpdateThreadTitle,
+} from "../db/database";
 /**
  * Chat store — conversation threads, messages, streaming state.
  *
@@ -7,15 +15,7 @@
  * - Each book has its own active thread; general chat has its own.
  * - All threads are persisted to SQLite via core db module
  */
-import type { Message, SemanticContext, Thread, ToolCall, ReasoningStep } from "../types";
-import {
-  deleteThread as dbDeleteThread,
-  getThreads as dbGetThreads,
-  insertMessage as dbInsertMessage,
-  insertThread as dbInsertThread,
-  updateThreadTitle as dbUpdateThreadTitle,
-} from "../db/database";
-import { create } from "zustand";
+import type { Message, ReasoningStep, SemanticContext, Thread, ToolCall } from "../types";
 
 export interface ChatState {
   threads: Thread[];
@@ -194,9 +194,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     set((state) => ({
       threads: state.threads.map((t) =>
-        t.id === threadId
-          ? { ...t, messages: [...t.messages, message], updatedAt: Date.now() }
-          : t,
+        t.id === threadId ? { ...t, messages: [...t.messages, message], updatedAt: Date.now() } : t,
       ),
     }));
   },
@@ -207,9 +205,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         t.id === threadId
           ? {
               ...t,
-              messages: t.messages.map((m) =>
-                m.id === messageId ? { ...m, content } : m,
-              ),
+              messages: t.messages.map((m) => (m.id === messageId ? { ...m, content } : m)),
             }
           : t,
       ),
@@ -223,9 +219,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
 
     set((state) => ({
-      threads: state.threads.map((t) =>
-        t.id === threadId ? { ...t, title } : t,
-      ),
+      threads: state.threads.map((t) => (t.id === threadId ? { ...t, title } : t)),
     }));
   },
 
@@ -233,23 +227,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setStreamingContent: (content) => set({ streamingContent: content }),
   appendStreamingContent: (chunk) =>
     set((state) => ({ streamingContent: state.streamingContent + chunk })),
-  
+
   setToolCalls: (toolCalls) => set({ toolCalls }),
   addToolCall: (toolCall) => set((state) => ({ toolCalls: [...state.toolCalls, toolCall] })),
   updateToolCall: (id, update) =>
     set((state) => ({
-      toolCalls: state.toolCalls.map((tc) =>
-        tc.id === id ? { ...tc, ...update } : tc
-      ),
+      toolCalls: state.toolCalls.map((tc) => (tc.id === id ? { ...tc, ...update } : tc)),
     })),
-  
+
   setReasoning: (reasoning) => set({ reasoning }),
   addReasoningStep: (step) => set((state) => ({ reasoning: [...state.reasoning, step] })),
-  
+
   setCurrentStep: (step) => set({ currentStep: step }),
-  
+
   setSemanticContext: (ctx) => set({ semanticContext: ctx }),
-  
+
   resetStreamingState: () =>
     set({
       isStreaming: false,

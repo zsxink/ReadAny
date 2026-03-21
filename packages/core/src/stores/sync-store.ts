@@ -1,29 +1,24 @@
 /**
- * Shared sync store — manages WebDAV sync configuration and state.
+ * Shared sync store — manages sync configuration and state for multiple backends.
+ * Supports WebDAV, S3, and LAN sync.
  * Used by both desktop (Tauri) and mobile (Expo).
  */
 
 import { create } from "zustand";
-import { getPlatformService } from "../services/platform";
-import { WebDavClient } from "../sync/webdav-client";
-import { determineSyncDirection, runSync } from "../sync/sync-engine";
-import type {
-  SyncConfig,
-  SyncDirection,
-  SyncResult,
-  SyncStatusType,
-  SyncProgress,
-} from "../sync/sync-types";
-import { DEFAULT_SYNC_CONFIG } from "../sync/sync-types";
 import { getVectorDB, hasVectorDB } from "../rag/vector-db";
-
-const SYNC_CONFIG_KEY = "sync_config";
-const SYNC_PASSWORD_KEY = "sync_password";
+import { getPlatformService } from "../services/platform";
+import type { S3Config, SyncConfig, WebDavConfig } from "../sync/sync-backend";
+import { DEFAULT_SYNC_CONFIG, SYNC_CONFIG_KEY, SYNC_SECRET_KEYS } from "../sync/sync-backend";
+import { createSyncBackend, getSecretKeyForBackend } from "../sync/sync-backend-factory";
+import { determineSyncDirection, runSync } from "../sync/sync-engine";
+import type { SyncDirection, SyncProgress, SyncResult, SyncStatusType } from "../sync/sync-types";
+import { WebDavClient } from "../sync/webdav-client";
 
 export interface SyncState {
   // Config
   config: SyncConfig | null;
   isConfigured: boolean;
+  backendType: "webdav" | "s3" | "lan" | null;
 
   // Runtime state
   status: SyncStatusType;
@@ -37,19 +32,29 @@ export interface SyncState {
 
   // Actions
   loadConfig: () => Promise<void>;
-  saveConfig: (
-    url: string,
-    username: string,
-    password: string,
+
+  // WebDAV actions
+  saveWebDavConfig: (url: string, username: string, password: string) => Promise<void>;
+  testWebDavConnection: (url: string, username: string, password: string) => Promise<boolean>;
+
+  // S3 actions
+  saveS3Config: (
+    config: Omit<
+      S3Config,
+      "type" | "autoSync" | "syncIntervalMins" | "wifiOnly" | "notifyOnComplete"
+    >,
+    secretAccessKey: string,
   ) => Promise<void>;
-  testConnection: (
-    url: string,
-    username: string,
-    password: string,
+  testS3Connection: (
+    config: Omit<
+      S3Config,
+      "type" | "autoSync" | "syncIntervalMins" | "wifiOnly" | "notifyOnComplete"
+    >,
+    secretAccessKey: string,
   ) => Promise<boolean>;
-  syncNow: (
-    resolvedDirection?: "upload" | "download",
-  ) => Promise<SyncResult | null>;
+
+  // Sync actions
+  syncNow: (resolvedDirection?: "upload" | "download") => Promise<SyncResult | null>;
   setAutoSync: (enabled: boolean) => Promise<void>;
   setWifiOnly: (enabled: boolean) => Promise<void>;
   setNotifyOnComplete: (enabled: boolean) => Promise<void>;
@@ -59,6 +64,7 @@ export interface SyncState {
 export const useSyncStore = create<SyncState>((set, get) => ({
   config: null,
   isConfigured: false,
+  backendType: null,
   status: "idle",
   lastSyncAt: null,
   lastResult: null,
@@ -72,10 +78,22 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       const configStr = await platform.kvGetItem(SYNC_CONFIG_KEY);
       if (configStr) {
         const config = JSON.parse(configStr) as SyncConfig;
-        const password = await platform.kvGetItem(SYNC_PASSWORD_KEY);
+        const secretKey = config.type !== "lan" ? getSecretKeyForBackend(config.type) : null;
+        const secret = secretKey ? await platform.kvGetItem(secretKey) : null;
+
+        const isConfigured =
+          config.type === "lan"
+            ? true
+            : !!(
+                secret &&
+                ((config.type === "webdav" && config.url && config.username) ||
+                  (config.type === "s3" && config.endpoint && config.bucket && config.accessKeyId))
+              );
+
         set({
           config,
-          isConfigured: !!(config.url && config.username && password),
+          isConfigured,
+          backendType: config.type,
         });
       }
     } catch {
@@ -83,29 +101,63 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     }
   },
 
-  saveConfig: async (url, username, password) => {
+  saveWebDavConfig: async (url, username, password) => {
     const platform = getPlatformService();
     const existing = get().config;
-    const config: SyncConfig = {
+    const config: WebDavConfig = {
+      type: "webdav",
       url: url.replace(/\/+$/, ""),
       username,
-      autoSync: existing?.autoSync ?? DEFAULT_SYNC_CONFIG.autoSync!,
+      autoSync: (existing as WebDavConfig)?.autoSync ?? DEFAULT_SYNC_CONFIG.autoSync,
       syncIntervalMins:
-        existing?.syncIntervalMins ??
-        DEFAULT_SYNC_CONFIG.syncIntervalMins!,
-      wifiOnly: existing?.wifiOnly ?? DEFAULT_SYNC_CONFIG.wifiOnly!,
+        (existing as WebDavConfig)?.syncIntervalMins ?? DEFAULT_SYNC_CONFIG.syncIntervalMins,
+      wifiOnly: (existing as WebDavConfig)?.wifiOnly ?? DEFAULT_SYNC_CONFIG.wifiOnly,
       notifyOnComplete:
-        existing?.notifyOnComplete ??
-        DEFAULT_SYNC_CONFIG.notifyOnComplete!,
+        (existing as WebDavConfig)?.notifyOnComplete ?? DEFAULT_SYNC_CONFIG.notifyOnComplete,
     };
     await platform.kvSetItem(SYNC_CONFIG_KEY, JSON.stringify(config));
-    await platform.kvSetItem(SYNC_PASSWORD_KEY, password);
-    set({ config, isConfigured: true });
+    await platform.kvSetItem(SYNC_SECRET_KEYS.webdav, password);
+    set({ config, isConfigured: true, backendType: "webdav" });
   },
 
-  testConnection: async (url, username, password) => {
+  testWebDavConnection: async (url, username, password) => {
     const client = new WebDavClient(url, username, password);
     return client.testConnection();
+  },
+
+  saveS3Config: async (s3Config, secretAccessKey) => {
+    const platform = getPlatformService();
+    const existing = get().config;
+    const config: S3Config = {
+      ...s3Config,
+      type: "s3",
+      autoSync: (existing as S3Config)?.autoSync ?? DEFAULT_SYNC_CONFIG.autoSync,
+      syncIntervalMins:
+        (existing as S3Config)?.syncIntervalMins ?? DEFAULT_SYNC_CONFIG.syncIntervalMins,
+      wifiOnly: (existing as S3Config)?.wifiOnly ?? DEFAULT_SYNC_CONFIG.wifiOnly,
+      notifyOnComplete:
+        (existing as S3Config)?.notifyOnComplete ?? DEFAULT_SYNC_CONFIG.notifyOnComplete,
+    };
+    await platform.kvSetItem(SYNC_CONFIG_KEY, JSON.stringify(config));
+    await platform.kvSetItem(SYNC_SECRET_KEYS.s3, secretAccessKey);
+    set({ config, isConfigured: true, backendType: "s3" });
+  },
+
+  testS3Connection: async (s3Config, secretAccessKey) => {
+    try {
+      const config: S3Config = {
+        ...s3Config,
+        type: "s3",
+        autoSync: false,
+        syncIntervalMins: 30,
+        wifiOnly: false,
+        notifyOnComplete: true,
+      };
+      const backend = createSyncBackend(config, secretAccessKey);
+      return backend.testConnection();
+    } catch {
+      return false;
+    }
   },
 
   syncNow: async (resolvedDirection) => {
@@ -117,33 +169,35 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     }
 
     const platform = getPlatformService();
-    const password = await platform.kvGetItem(SYNC_PASSWORD_KEY);
-    if (!password) {
-      set({ error: "No password configured" });
+    const secretKey =
+      state.config.type !== "lan" ? getSecretKeyForBackend(state.config.type) : null;
+    const secret = secretKey ? await platform.kvGetItem(secretKey) : null;
+
+    if (state.config.type !== "lan" && !secret) {
+      set({ error: "No credentials configured" });
       return null;
     }
 
     set({ status: "checking", error: null, pendingDirection: null });
 
     try {
-      const client = new WebDavClient(
-        state.config.url,
-        state.config.username,
-        password,
-      );
+      // Create backend instance
+      const backend = createSyncBackend(state.config, secret || "");
 
       // Test connection
-      await client.ping();
+      const connected = await backend.testConnection();
+      if (!connected) {
+        throw new Error("Failed to connect to sync backend");
+      }
 
       let direction: "upload" | "download";
       let remoteManifest: import("../sync/sync-types").RemoteSyncManifest | null = null;
 
       if (resolvedDirection) {
-        // User already resolved the conflict
         direction = resolvedDirection;
       } else {
         // Determine direction automatically
-        const result = await determineSyncDirection(client);
+        const result = await determineSyncDirection(backend);
         remoteManifest = result.remoteManifest;
 
         if (result.direction === "none") {
@@ -158,7 +212,6 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         }
 
         if (result.direction === "conflict") {
-          // Store the pending direction and return — UI will show dialog
           set({ status: "idle", pendingDirection: "conflict" });
           return null;
         }
@@ -172,7 +225,6 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         progress: null,
       });
 
-      // Progress callback to update store
       const onProgress = (progress: SyncProgress) => {
         set({ progress });
       };
@@ -180,7 +232,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       const onDatabaseReplaced = async () => {
         if (hasVectorDB()) {
           const vectorDB = getVectorDB();
-          if (vectorDB?.rebuild && await vectorDB.isReady()) {
+          if (vectorDB?.rebuild && (await vectorDB.isReady())) {
             console.log("[Sync] Rebuilding vector index after download...");
             try {
               const count = await vectorDB.rebuild();
@@ -192,7 +244,13 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         }
       };
 
-      const syncResult = await runSync(client, direction, onProgress, remoteManifest, onDatabaseReplaced);
+      const syncResult = await runSync(
+        backend,
+        direction,
+        onProgress,
+        remoteManifest,
+        onDatabaseReplaced,
+      );
 
       set({
         status: "idle",
@@ -248,10 +306,12 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   resetSync: async () => {
     const platform = getPlatformService();
     await platform.kvRemoveItem(SYNC_CONFIG_KEY);
-    await platform.kvRemoveItem(SYNC_PASSWORD_KEY);
+    await platform.kvRemoveItem(SYNC_SECRET_KEYS.webdav);
+    await platform.kvRemoveItem(SYNC_SECRET_KEYS.s3);
     set({
       config: null,
       isConfigured: false,
+      backendType: null,
       status: "idle",
       lastSyncAt: null,
       lastResult: null,

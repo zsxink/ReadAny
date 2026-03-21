@@ -1,12 +1,3 @@
-import { useEffect, useState } from "react";
-import { useReaderStore } from "@/stores/reader-store";
-import { useTTSStore } from "@/stores/tts-store";
-import {
-  getBrowserVoices,
-  DASHSCOPE_VOICES,
-  EDGE_TTS_VOICES,
-} from "@/lib/tts/tts-service";
-import type { TTSEngine } from "@/lib/tts/tts-service";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/password-input";
 import {
@@ -16,24 +7,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { DASHSCOPE_VOICES, EDGE_TTS_VOICES, getBrowserVoices } from "@/lib/tts/tts-service";
+import type { TTSEngine } from "@/lib/tts/tts-service";
+import { useReaderStore } from "@/stores/reader-store";
+import { useTTSStore } from "@/stores/tts-store";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
+  Minus,
   Pause,
   Play,
-  Square,
-  ChevronUp,
-  ChevronDown,
-  Volume2,
-  Minus,
   Plus,
+  Square,
+  Volume2,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 interface FooterBarProps {
@@ -116,9 +107,7 @@ export function FooterBar({
           <div className="border-b border-border/40 px-4 py-3 space-y-3 animate-in slide-in-from-bottom-1 duration-150">
             {/* Engine selection */}
             <div className="flex items-center gap-3">
-              <span className="text-xs text-muted-foreground w-16 shrink-0">
-                {t("tts.engine")}
-              </span>
+              <span className="text-xs text-muted-foreground w-16 shrink-0">{t("tts.engine")}</span>
               <div className="flex gap-1">
                 {(["edge", "browser", "dashscope"] as TTSEngine[]).map((eng) => (
                   <Button
@@ -128,7 +117,11 @@ export function FooterBar({
                     className="h-7 text-xs"
                     onClick={() => updateConfig({ engine: eng })}
                   >
-                    {eng === "browser" ? t("tts.browserEngine") : eng === "edge" ? t("tts.edgeEngine") : t("tts.dashscopeEngine")}
+                    {eng === "browser"
+                      ? t("tts.browserEngine")
+                      : eng === "edge"
+                        ? t("tts.edgeEngine")
+                        : t("tts.dashscopeEngine")}
                   </Button>
                 ))}
               </div>
@@ -149,7 +142,8 @@ export function FooterBar({
                   </SelectTrigger>
                   <SelectContent className="max-h-[200px]">
                     {EDGE_TTS_VOICES.filter((v) => {
-                      const selectedLang = config.edgeVoice?.split("-").slice(0, 2).join("-") || "zh-CN";
+                      const selectedLang =
+                        config.edgeVoice?.split("-").slice(0, 2).join("-") || "zh-CN";
                       return v.lang === selectedLang;
                     }).map((v) => (
                       <SelectItem key={v.id} value={v.id}>
@@ -204,9 +198,7 @@ export function FooterBar({
                   </Select>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-xs text-muted-foreground w-16 shrink-0">
-                    API Key
-                  </span>
+                  <span className="text-xs text-muted-foreground w-16 shrink-0">API Key</span>
                   <PasswordInput
                     className="h-7 flex-1 text-xs"
                     placeholder={t("tts.apiKeyPlaceholder")}
@@ -303,12 +295,7 @@ export function FooterBar({
                 {/* Stop */}
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={handleTTSStop}
-                    >
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleTTSStop}>
                       <Square className="h-3 w-3" />
                     </Button>
                   </TooltipTrigger>

@@ -1,6 +1,11 @@
+import { getPlatformService } from "@readany/core/services";
+import { useSyncStore } from "@readany/core/stores";
+import { type LANQRData, createLANBackend } from "@readany/core/sync/lan-backend";
+import { createLANServer } from "@readany/core/sync/lan-server";
+import type { S3Config, WebDavConfig } from "@readany/core/sync/sync-backend";
 /**
- * SyncSettingsScreen — WebDAV sync configuration and status panel (mobile).
- * Uses the shared core sync store with whole-database overwrite sync.
+ * SyncSettingsScreen — Multi-backend sync configuration and status panel (mobile).
+ * Supports WebDAV, S3, and LAN sync.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -18,8 +23,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useSyncStore } from "@readany/core/stores";
-import { getPlatformService } from "@readany/core/services";
 import { PasswordInput } from "../../components/ui/PasswordInput";
 import {
   type ThemeColors,
@@ -32,6 +35,22 @@ import {
 } from "../../styles/theme";
 import { SettingsHeader } from "./SettingsHeader";
 
+type BackendType = "webdav" | "s3" | "lan";
+
+function isWebDavConfig(config: unknown): config is WebDavConfig {
+  return (
+    typeof config === "object" && config !== null && (config as WebDavConfig).type === "webdav"
+  );
+}
+
+function isS3Config(config: unknown): config is S3Config {
+  return typeof config === "object" && config !== null && (config as S3Config).type === "s3";
+}
+
+function hasAutoSync(config: unknown): config is { autoSync: boolean } {
+  return typeof config === "object" && config !== null && "autoSync" in config;
+}
+
 export default function SyncSettingsScreen() {
   const colors = useColors();
   const styles = makeStyles(colors);
@@ -40,6 +59,7 @@ export default function SyncSettingsScreen() {
   const {
     config,
     isConfigured,
+    backendType,
     status,
     lastSyncAt,
     lastResult,
@@ -47,16 +67,41 @@ export default function SyncSettingsScreen() {
     progress,
     pendingDirection,
     loadConfig,
-    testConnection,
-    saveConfig,
+    testWebDavConnection,
+    saveWebDavConfig,
+    testS3Connection,
+    saveS3Config,
     syncNow,
     setAutoSync,
     resetSync,
   } = useSyncStore();
 
+  // Backend type selector
+  const [selectedBackend, setSelectedBackend] = useState<BackendType>("webdav");
+
+  // WebDAV state
   const [url, setUrl] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+
+  // S3 state
+  const [s3Endpoint, setS3Endpoint] = useState("");
+  const [s3Region, setS3Region] = useState("auto");
+  const [s3Bucket, setS3Bucket] = useState("");
+  const [s3AccessKeyId, setS3AccessKeyId] = useState("");
+  const [s3SecretAccessKey, setS3SecretAccessKey] = useState("");
+
+  // LAN state
+  const [lanMode, setLanMode] = useState<"server" | "client">("server");
+  const [lanServerStatus, setLanServerStatus] = useState<string>("idle");
+  const [lanQrData, setLanQrData] = useState<LANQRData | null>(null);
+  const [lanManualIP, setLanManualIP] = useState("");
+  const [lanManualPort, setLanManualPort] = useState("");
+  const [lanManualPairCode, setLanManualPairCode] = useState("");
+  const [lanConnectionState, setLanConnectionState] = useState<string>("idle");
+  const [lanServer, setLanServer] = useState<ReturnType<typeof createLANServer> | null>(null);
+  const [lanError, setLanError] = useState("");
+
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<"success" | "error" | null>(null);
   const [testError, setTestError] = useState("");
@@ -89,13 +134,26 @@ export default function SyncSettingsScreen() {
   // Load saved password from KV when config changes
   useEffect(() => {
     if (config) {
-      setUrl(config.url);
-      setUsername(config.username);
-      getPlatformService()
-        .kvGetItem("sync_password")
-        .then((pw) => {
-          if (pw) setPassword(pw);
-        });
+      setSelectedBackend(config.type);
+      if (config.type === "webdav") {
+        setUrl(config.url);
+        setUsername(config.username);
+        getPlatformService()
+          .kvGetItem("sync_password")
+          .then((pw) => {
+            if (pw) setPassword(pw);
+          });
+      } else if (config.type === "s3") {
+        setS3Endpoint(config.endpoint);
+        setS3Region(config.region);
+        setS3Bucket(config.bucket);
+        setS3AccessKeyId(config.accessKeyId);
+        getPlatformService()
+          .kvGetItem("sync_s3_secret_key")
+          .then((key) => {
+            if (key) setS3SecretAccessKey(key);
+          });
+      }
     }
   }, [config]);
 
@@ -103,7 +161,14 @@ export default function SyncSettingsScreen() {
     setTesting(true);
     setTestResult(null);
     try {
-      await testConnection(url, username, password);
+      if (selectedBackend === "webdav") {
+        await testWebDavConnection(url, username, password);
+      } else if (selectedBackend === "s3") {
+        await testS3Connection(
+          { endpoint: s3Endpoint, region: s3Region, bucket: s3Bucket, accessKeyId: s3AccessKeyId },
+          s3SecretAccessKey,
+        );
+      }
       setTestResult("success");
     } catch (e) {
       setTestResult("error");
@@ -111,16 +176,104 @@ export default function SyncSettingsScreen() {
     } finally {
       setTesting(false);
     }
-  }, [url, username, password, testConnection]);
+  }, [
+    selectedBackend,
+    url,
+    username,
+    password,
+    s3Endpoint,
+    s3Region,
+    s3Bucket,
+    s3AccessKeyId,
+    s3SecretAccessKey,
+    testWebDavConnection,
+    testS3Connection,
+  ]);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
     try {
-      await saveConfig(url, username, password);
+      if (selectedBackend === "webdav") {
+        await saveWebDavConfig(url, username, password);
+      } else if (selectedBackend === "s3") {
+        await saveS3Config(
+          { endpoint: s3Endpoint, region: s3Region, bucket: s3Bucket, accessKeyId: s3AccessKeyId },
+          s3SecretAccessKey,
+        );
+      }
     } finally {
       setSaving(false);
     }
-  }, [url, username, password, saveConfig]);
+  }, [
+    selectedBackend,
+    url,
+    username,
+    password,
+    s3Endpoint,
+    s3Region,
+    s3Bucket,
+    s3AccessKeyId,
+    s3SecretAccessKey,
+    saveWebDavConfig,
+    saveS3Config,
+  ]);
+
+  // LAN Server handlers
+  const handleStartLanServer = useCallback(async () => {
+    setLanError("");
+    setLanServerStatus("starting");
+    try {
+      const deviceName = "ReadAny Mobile";
+      const server = createLANServer({
+        deviceName,
+        events: {
+          onStatusChange: setLanServerStatus,
+          onError: setLanError,
+        },
+      });
+      await server.start();
+      const data = server.getQRData();
+      if (data) {
+        setLanQrData(data);
+      }
+      setLanServer(server);
+    } catch (e) {
+      setLanError(e instanceof Error ? e.message : String(e));
+      setLanServerStatus("error");
+    }
+  }, []);
+
+  const handleStopLanServer = useCallback(async () => {
+    if (lanServer) {
+      await lanServer.stop();
+      setLanServer(null);
+    }
+    setLanServerStatus("idle");
+    setLanQrData(null);
+  }, [lanServer]);
+
+  // LAN Client handlers
+  const handleLanClientConnect = useCallback(async () => {
+    if (!lanManualIP || !lanManualPort || !lanManualPairCode) {
+      setLanError(t("settings.syncLANFillAll"));
+      return;
+    }
+    setLanError("");
+    setLanConnectionState("connecting");
+    try {
+      const serverUrl = `http://${lanManualIP}:${lanManualPort}`;
+      const backend = createLANBackend(serverUrl, lanManualPairCode, "Desktop");
+      const connected = await backend.testConnection();
+      if (!connected) {
+        throw new Error(t("settings.syncLANConnectionFailed"));
+      }
+      setLanConnectionState("connected");
+      await syncNow();
+    } catch (e) {
+      setLanError(e instanceof Error ? e.message : String(e));
+      setLanConnectionState("error");
+    }
+  }, [lanManualIP, lanManualPort, lanManualPairCode, syncNow, t]);
 
   const handleSync = useCallback(async () => {
     await syncNow();
@@ -134,18 +287,14 @@ export default function SyncSettingsScreen() {
   );
 
   const handleReset = useCallback(() => {
-    Alert.alert(
-      t("settings.syncReset"),
-      t("settings.syncResetConfirm"),
-      [
-        { text: t("common.cancel"), style: "cancel" },
-        {
-          text: t("common.confirm"),
-          style: "destructive",
-          onPress: () => resetSync(),
-        },
-      ],
-    );
+    Alert.alert(t("settings.syncReset"), t("settings.syncResetConfirm"), [
+      { text: t("common.cancel"), style: "cancel" },
+      {
+        text: t("common.confirm"),
+        style: "destructive",
+        onPress: () => resetSync(),
+      },
+    ]);
   }, [t, resetSync]);
 
   const formatLastSync = (ts: number | null) => {
@@ -170,6 +319,8 @@ export default function SyncSettingsScreen() {
     }
   };
 
+  const autoSyncEnabled = hasAutoSync(config) ? config.autoSync : false;
+
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
@@ -187,77 +338,387 @@ export default function SyncSettingsScreen() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
-          {/* Connection */}
+          {/* Backend Type Selector */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t("settings.syncConnection")}</Text>
-            <View style={styles.card}>
-              <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>{t("settings.syncUrl")}</Text>
-                <TextInput
-                  style={styles.input}
-                  value={url}
-                  onChangeText={setUrl}
-                  placeholder={t("settings.syncUrlPlaceholder")}
-                  placeholderTextColor={colors.mutedForeground}
-                  autoCapitalize="none"
-                  keyboardType="url"
-                />
-              </View>
-
-              <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>{t("settings.syncUsername")}</Text>
-                <TextInput
-                  style={styles.input}
-                  value={username}
-                  onChangeText={setUsername}
-                  placeholder={t("settings.syncUsername")}
-                  placeholderTextColor={colors.mutedForeground}
-                  autoCapitalize="none"
-                />
-              </View>
-
-              <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>{t("settings.syncPassword")}</Text>
-                <PasswordInput
-                  style={styles.input}
-                  value={password}
-                  onChangeText={setPassword}
-                  placeholder={t("settings.syncPassword")}
-                  placeholderTextColor={colors.mutedForeground}
-                />
-              </View>
-
-              <View style={styles.btnRow}>
-                <TouchableOpacity
-                  style={[styles.outlineBtn, (!url || testing) && styles.btnDisabled]}
-                  onPress={handleTest}
-                  disabled={testing || !url}
-                  activeOpacity={0.7}
+            <Text style={styles.sectionTitle}>{t("settings.syncBackendType")}</Text>
+            <View style={styles.backendSelector}>
+              <TouchableOpacity
+                style={[styles.backendBtn, selectedBackend === "webdav" && styles.backendBtnActive]}
+                onPress={() => setSelectedBackend("webdav")}
+              >
+                <Text
+                  style={[
+                    styles.backendBtnText,
+                    selectedBackend === "webdav" && styles.backendBtnTextActive,
+                  ]}
                 >
-                  <Text style={styles.outlineBtnText}>
-                    {testing ? t("settings.syncTesting") : t("settings.syncTestConnection")}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.primaryBtn, (saving || !url || !username) && styles.btnDisabled]}
-                  onPress={handleSave}
-                  disabled={saving || !url || !username}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.primaryBtnText}>{t("settings.syncSave")}</Text>
-                </TouchableOpacity>
-              </View>
-
-              {testResult === "success" && (
-                <Text style={styles.successText}>{t("settings.syncTestSuccess")}</Text>
-              )}
-              {testResult === "error" && (
-                <Text style={styles.errorText}>
-                  {t("settings.syncTestFailed", { error: testError })}
+                  WebDAV
                 </Text>
-              )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.backendBtn, selectedBackend === "s3" && styles.backendBtnActive]}
+                onPress={() => setSelectedBackend("s3")}
+              >
+                <Text
+                  style={[
+                    styles.backendBtnText,
+                    selectedBackend === "s3" && styles.backendBtnTextActive,
+                  ]}
+                >
+                  S3
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.backendBtn, selectedBackend === "lan" && styles.backendBtnActive]}
+                onPress={() => setSelectedBackend("lan")}
+              >
+                <Text
+                  style={[
+                    styles.backendBtnText,
+                    selectedBackend === "lan" && styles.backendBtnTextActive,
+                  ]}
+                >
+                  LAN
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
+
+          {/* WebDAV Connection */}
+          {selectedBackend === "webdav" && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{t("settings.syncConnection")}</Text>
+              <View style={styles.card}>
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>{t("settings.syncUrl")}</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={url}
+                    onChangeText={setUrl}
+                    placeholder={t("settings.syncUrlPlaceholder")}
+                    placeholderTextColor={colors.mutedForeground}
+                    autoCapitalize="none"
+                    keyboardType="url"
+                  />
+                </View>
+
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>{t("settings.syncUsername")}</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={username}
+                    onChangeText={setUsername}
+                    placeholder={t("settings.syncUsername")}
+                    placeholderTextColor={colors.mutedForeground}
+                    autoCapitalize="none"
+                  />
+                </View>
+
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>{t("settings.syncPassword")}</Text>
+                  <PasswordInput
+                    style={styles.input}
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder={t("settings.syncPassword")}
+                    placeholderTextColor={colors.mutedForeground}
+                  />
+                </View>
+
+                <View style={styles.btnRow}>
+                  <TouchableOpacity
+                    style={[styles.outlineBtn, (!url || testing) && styles.btnDisabled]}
+                    onPress={handleTest}
+                    disabled={testing || !url}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.outlineBtnText}>
+                      {testing ? t("settings.syncTesting") : t("settings.syncTestConnection")}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.primaryBtn, (saving || !url || !username) && styles.btnDisabled]}
+                    onPress={handleSave}
+                    disabled={saving || !url || !username}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.primaryBtnText}>{t("settings.syncSave")}</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {testResult === "success" && (
+                  <Text style={styles.successText}>{t("settings.syncTestSuccess")}</Text>
+                )}
+                {testResult === "error" && (
+                  <Text style={styles.errorText}>
+                    {t("settings.syncTestFailed", { error: testError })}
+                  </Text>
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* S3 Connection */}
+          {selectedBackend === "s3" && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{t("settings.syncConnection")}</Text>
+              <View style={styles.card}>
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>{t("settings.syncS3Endpoint")}</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={s3Endpoint}
+                    onChangeText={setS3Endpoint}
+                    placeholder="https://s3.amazonaws.com"
+                    placeholderTextColor={colors.mutedForeground}
+                    autoCapitalize="none"
+                    keyboardType="url"
+                  />
+                </View>
+
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>{t("settings.syncS3Region")}</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={s3Region}
+                    onChangeText={setS3Region}
+                    placeholder="us-east-1"
+                    placeholderTextColor={colors.mutedForeground}
+                    autoCapitalize="none"
+                  />
+                </View>
+
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>{t("settings.syncS3Bucket")}</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={s3Bucket}
+                    onChangeText={setS3Bucket}
+                    placeholder="my-bucket"
+                    placeholderTextColor={colors.mutedForeground}
+                    autoCapitalize="none"
+                  />
+                </View>
+
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>{t("settings.syncS3AccessKeyId")}</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={s3AccessKeyId}
+                    onChangeText={setS3AccessKeyId}
+                    placeholder="AKIAIOSFODNN7EXAMPLE"
+                    placeholderTextColor={colors.mutedForeground}
+                    autoCapitalize="none"
+                  />
+                </View>
+
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>{t("settings.syncS3SecretAccessKey")}</Text>
+                  <PasswordInput
+                    style={styles.input}
+                    value={s3SecretAccessKey}
+                    onChangeText={setS3SecretAccessKey}
+                    placeholder={t("settings.syncS3SecretAccessKey")}
+                    placeholderTextColor={colors.mutedForeground}
+                  />
+                </View>
+
+                <View style={styles.btnRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.outlineBtn,
+                      (!s3Endpoint || !s3Bucket || testing) && styles.btnDisabled,
+                    ]}
+                    onPress={handleTest}
+                    disabled={testing || !s3Endpoint || !s3Bucket}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.outlineBtnText}>
+                      {testing ? t("settings.syncTesting") : t("settings.syncTestConnection")}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.primaryBtn,
+                      (saving || !s3Endpoint || !s3Bucket || !s3AccessKeyId) && styles.btnDisabled,
+                    ]}
+                    onPress={handleSave}
+                    disabled={saving || !s3Endpoint || !s3Bucket || !s3AccessKeyId}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.primaryBtnText}>{t("settings.syncSave")}</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {testResult === "success" && (
+                  <Text style={styles.successText}>{t("settings.syncTestSuccess")}</Text>
+                )}
+                {testResult === "error" && (
+                  <Text style={styles.errorText}>
+                    {t("settings.syncTestFailed", { error: testError })}
+                  </Text>
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* LAN Connection */}
+          {selectedBackend === "lan" && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{t("settings.syncConnection")}</Text>
+              <View style={styles.card}>
+                <Text style={styles.lanDesc}>{t("settings.syncLANDescFull")}</Text>
+
+                {/* Mode selector */}
+                <View style={styles.lanModeSelector}>
+                  <TouchableOpacity
+                    style={[styles.lanModeBtn, lanMode === "server" && styles.lanModeBtnActive]}
+                    onPress={() => setLanMode("server")}
+                  >
+                    <Text
+                      style={[
+                        styles.lanModeBtnText,
+                        lanMode === "server" && styles.lanModeBtnTextActive,
+                      ]}
+                    >
+                      {t("settings.syncLANServer")}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.lanModeBtn, lanMode === "client" && styles.lanModeBtnActive]}
+                    onPress={() => setLanMode("client")}
+                  >
+                    <Text
+                      style={[
+                        styles.lanModeBtnText,
+                        lanMode === "client" && styles.lanModeBtnTextActive,
+                      ]}
+                    >
+                      {t("settings.syncLANClient")}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {lanMode === "server" ? (
+                  <View style={styles.lanServerSection}>
+                    <View style={styles.lanStatusRow}>
+                      <View
+                        style={[
+                          styles.lanStatusDot,
+                          lanServerStatus === "running" && styles.lanStatusDotGreen,
+                        ]}
+                      />
+                      <Text style={styles.lanStatusText}>
+                        {t(`settings.syncLANServerStatus.${lanServerStatus}`)}
+                      </Text>
+                    </View>
+
+                    {lanQrData && (
+                      <View style={styles.lanQrSection}>
+                        <View style={styles.lanQrPlaceholder}>
+                          <Text style={styles.lanQrText}>{t("settings.syncLANQRPlaceholder")}</Text>
+                        </View>
+                        <Text style={styles.lanPairCodeLabel}>{t("settings.syncLANPairCode")}</Text>
+                        <Text style={styles.lanPairCode}>{lanQrData.pairCode}</Text>
+                        <Text style={styles.lanAddress}>
+                          {lanQrData.ip}:{lanQrData.port}
+                        </Text>
+                      </View>
+                    )}
+
+                    {lanError && <Text style={styles.errorText}>{lanError}</Text>}
+
+                    <View style={styles.btnRow}>
+                      {lanServerStatus !== "running" ? (
+                        <TouchableOpacity
+                          style={[styles.primaryBtn, styles.lanBtn]}
+                          onPress={handleStartLanServer}
+                          disabled={lanServerStatus === "starting"}
+                        >
+                          <Text style={styles.primaryBtnText}>
+                            {lanServerStatus === "starting"
+                              ? t("settings.syncLANServerStarting")
+                              : t("settings.syncLANServerStart")}
+                          </Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity
+                          style={[styles.outlineBtn, styles.lanBtn]}
+                          onPress={handleStopLanServer}
+                        >
+                          <Text style={styles.outlineBtnText}>
+                            {t("settings.syncLANServerStop")}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.lanClientSection}>
+                    <View style={styles.fieldGroup}>
+                      <Text style={styles.fieldLabel}>{t("settings.syncLANIP")}</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={lanManualIP}
+                        onChangeText={setLanManualIP}
+                        placeholder="192.168.1.100"
+                        placeholderTextColor={colors.mutedForeground}
+                      />
+                    </View>
+                    <View style={styles.fieldGroup}>
+                      <Text style={styles.fieldLabel}>{t("settings.syncLANPort")}</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={lanManualPort}
+                        onChangeText={setLanManualPort}
+                        placeholder="8080"
+                        placeholderTextColor={colors.mutedForeground}
+                        keyboardType="number-pad"
+                      />
+                    </View>
+                    <View style={styles.fieldGroup}>
+                      <Text style={styles.fieldLabel}>{t("settings.syncLANPairCodeLabel")}</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={lanManualPairCode}
+                        onChangeText={setLanManualPairCode}
+                        placeholder="123456"
+                        placeholderTextColor={colors.mutedForeground}
+                        maxLength={6}
+                        keyboardType="number-pad"
+                      />
+                    </View>
+
+                    {lanError && <Text style={styles.errorText}>{lanError}</Text>}
+
+                    <TouchableOpacity
+                      style={[
+                        styles.primaryBtn,
+                        (lanConnectionState === "connecting" ||
+                          !lanManualIP ||
+                          !lanManualPort ||
+                          !lanManualPairCode) &&
+                          styles.btnDisabled,
+                      ]}
+                      onPress={handleLanClientConnect}
+                      disabled={
+                        lanConnectionState === "connecting" ||
+                        !lanManualIP ||
+                        !lanManualPort ||
+                        !lanManualPairCode
+                      }
+                    >
+                      <Text style={styles.primaryBtnText}>
+                        {lanConnectionState === "connecting"
+                          ? t("settings.syncLANConnecting")
+                          : t("settings.syncLANConnect")}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
 
           {/* Conflict Resolution */}
           {pendingDirection === "conflict" && (
@@ -294,15 +755,15 @@ export default function SyncSettingsScreen() {
                   <View>
                     <Text style={styles.syncLabel}>{t("settings.syncLastSync")}</Text>
                     <Text style={styles.syncValue}>{formatLastSync(lastSyncAt)}</Text>
-                    {statusLabel() && (
-                      <Text style={styles.statusText}>{statusLabel()}</Text>
-                    )}
+                    {statusLabel() && <Text style={styles.statusText}>{statusLabel()}</Text>}
                     {/* Sync progress bar */}
                     {isBusy && progress && (
                       <View style={styles.progressContainer}>
                         <View style={styles.progressTrack}>
                           {progress.phase === "database" ? (
-                            <Animated.View style={[styles.progressFill, { width: "100%", opacity: pulseAnim }]} />
+                            <Animated.View
+                              style={[styles.progressFill, { width: "100%", opacity: pulseAnim }]}
+                            />
                           ) : (
                             <View
                               style={[
@@ -316,9 +777,17 @@ export default function SyncSettingsScreen() {
                         </View>
                         <Text style={styles.progressText}>
                           {progress.phase === "database"
-                            ? t("settings.syncProgressDatabase", { operation: progress.operation === "upload" ? t("settings.syncUploading") : t("settings.syncDownloading") })
+                            ? t("settings.syncProgressDatabase", {
+                                operation:
+                                  progress.operation === "upload"
+                                    ? t("settings.syncUploading")
+                                    : t("settings.syncDownloading"),
+                              })
                             : t("settings.syncProgressFiles", {
-                                operation: progress.operation === "upload" ? t("settings.syncUploading") : t("settings.syncDownloading"),
+                                operation:
+                                  progress.operation === "upload"
+                                    ? t("settings.syncUploading")
+                                    : t("settings.syncDownloading"),
                                 completed: progress.completedFiles,
                                 total: progress.totalFiles,
                               })}
@@ -332,9 +801,7 @@ export default function SyncSettingsScreen() {
                     disabled={isBusy}
                     activeOpacity={0.7}
                   >
-                    {isBusy && (
-                      <ActivityIndicator size="small" color={colors.primaryForeground} />
-                    )}
+                    {isBusy && <ActivityIndicator size="small" color={colors.primaryForeground} />}
                     <Text style={styles.syncBtnText}>
                       {isBusy ? t("settings.syncSyncing") : t("settings.syncNow")}
                     </Text>
@@ -369,9 +836,7 @@ export default function SyncSettingsScreen() {
                 )}
 
                 {/* Error */}
-                {error && !lastResult && (
-                  <Text style={styles.errorText}>{error}</Text>
-                )}
+                {error && !lastResult && <Text style={styles.errorText}>{error}</Text>}
 
                 {/* Auto sync toggle */}
                 <View style={styles.autoSyncRow}>
@@ -380,11 +845,11 @@ export default function SyncSettingsScreen() {
                     <Text style={styles.autoSyncDesc}>{t("settings.syncAutoSyncDesc")}</Text>
                   </View>
                   <TouchableOpacity
-                    style={[styles.toggle, config?.autoSync && styles.toggleActive]}
-                    onPress={() => setAutoSync(!config?.autoSync)}
+                    style={[styles.toggle, autoSyncEnabled && styles.toggleActive]}
+                    onPress={() => setAutoSync(!autoSyncEnabled)}
                   >
                     <View
-                      style={[styles.toggleThumb, config?.autoSync && styles.toggleThumbActive]}
+                      style={[styles.toggleThumb, autoSyncEnabled && styles.toggleThumbActive]}
                     />
                   </TouchableOpacity>
                 </View>
@@ -618,30 +1083,139 @@ const makeStyles = (colors: ThemeColors) =>
     },
     resetBtnText: {
       fontSize: fontSize.sm,
-      fontWeight: fontWeight.medium,
       color: colors.destructive,
     },
     resetDesc: {
       fontSize: fontSize.xs,
       color: colors.mutedForeground,
+      marginTop: 8,
+      textAlign: "center",
     },
     progressContainer: {
       marginTop: 8,
-      gap: 4,
     },
     progressTrack: {
-      height: 6,
-      borderRadius: 3,
+      height: 4,
       backgroundColor: colors.muted,
+      borderRadius: 2,
       overflow: "hidden",
     },
     progressFill: {
       height: "100%",
-      borderRadius: 3,
       backgroundColor: colors.primary,
+      borderRadius: 2,
     },
     progressText: {
       fontSize: fontSize.xs,
       color: colors.mutedForeground,
+      marginTop: 4,
     },
+    backendSelector: {
+      flexDirection: "row",
+      gap: 8,
+    },
+    backendBtn: {
+      flex: 1,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      borderRadius: radius.lg,
+      backgroundColor: colors.muted,
+      alignItems: "center",
+    },
+    backendBtnActive: {
+      backgroundColor: colors.primary,
+    },
+    backendBtnText: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.mutedForeground,
+    },
+    backendBtnTextActive: {
+      color: colors.primaryForeground,
+    },
+    lanDesc: {
+      fontSize: fontSize.xs,
+      color: colors.mutedForeground,
+      marginBottom: 12,
+    },
+    lanModeSelector: {
+      flexDirection: "row",
+      gap: 8,
+      marginBottom: 12,
+    },
+    lanModeBtn: {
+      flex: 1,
+      paddingVertical: 8,
+      borderRadius: radius.md,
+      backgroundColor: colors.muted,
+      alignItems: "center",
+    },
+    lanModeBtnActive: {
+      backgroundColor: colors.primary,
+    },
+    lanModeBtnText: {
+      fontSize: fontSize.xs,
+      fontWeight: fontWeight.medium,
+      color: colors.mutedForeground,
+    },
+    lanModeBtnTextActive: {
+      color: colors.primaryForeground,
+    },
+    lanStatusRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      marginBottom: 12,
+    },
+    lanStatusDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: colors.muted,
+    },
+    lanStatusDotGreen: {
+      backgroundColor: colors.emerald,
+    },
+    lanStatusText: {
+      fontSize: fontSize.xs,
+      color: colors.mutedForeground,
+    },
+    lanQrSection: {
+      alignItems: "center",
+      marginBottom: 12,
+    },
+    lanQrPlaceholder: {
+      width: 160,
+      height: 160,
+      backgroundColor: colors.muted,
+      borderRadius: radius.lg,
+      justifyContent: "center",
+      alignItems: "center",
+      marginBottom: 12,
+    },
+    lanQrText: {
+      fontSize: fontSize.xs,
+      color: colors.mutedForeground,
+    },
+    lanPairCodeLabel: {
+      fontSize: fontSize.xs,
+      fontWeight: fontWeight.medium,
+      color: colors.foreground,
+    },
+    lanPairCode: {
+      fontSize: 24,
+      fontWeight: fontWeight.bold,
+      letterSpacing: 4,
+      color: colors.foreground,
+      marginVertical: 8,
+    },
+    lanAddress: {
+      fontSize: fontSize.xs,
+      color: colors.mutedForeground,
+    },
+    lanBtn: {
+      flex: 1,
+    },
+    lanServerSection: {},
+    lanClientSection: {},
   });

@@ -1,6 +1,6 @@
 /**
  * Skills Module
- * 
+ *
  * Provides skill management and execution capabilities.
  */
 export { builtinSkills, getBuiltinSkill, getBuiltinSkills, isBuiltinSkill } from "./builtin-skills";

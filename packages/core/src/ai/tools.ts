@@ -1,19 +1,30 @@
-import { getChunks, getHighlights, getNotes, getBooks, getBook, updateBook, getAllHighlights, getAllNotes, getReadingSessionsByDateRange, getSkills as getDbSkills } from "../db/database";
+import {
+  getAllHighlights,
+  getAllNotes,
+  getBook,
+  getBooks,
+  getChunks,
+  getSkills as getDbSkills,
+  getHighlights,
+  getNotes,
+  getReadingSessionsByDateRange,
+  updateBook,
+} from "../db/database";
 import { emitLibraryChanged } from "../events/library-events";
-import { getBuiltinSkills } from "./skills/builtin-skills";
 import { search } from "../rag/search";
-import { getContextTools } from "./context-tools";
-import { loadFromFS, debouncedSave } from "../stores/persist";
+import { debouncedSave, loadFromFS } from "../stores/persist";
 /**
  * AI Tool registration — conditional tool registration based on book state
  * Full implementation with RAG search pipeline integration
- * 
+ *
  * Tool Categories:
  * - RAG Tools: ragSearch, ragToc, ragContext
  * - Analysis Tools: summarize, extractEntities, analyzeArguments, findQuotes
  * - Annotation Tools: getAnnotations
  */
 import type { SearchQuery, Skill } from "../types";
+import { getContextTools } from "./context-tools";
+import { getBuiltinSkills } from "./skills/builtin-skills";
 import type { ToolDefinition, ToolParameter } from "./tool-types";
 
 /** Create RAG search tool for a specific book */
@@ -165,24 +176,24 @@ function createSummarizeTool(bookId: string): ToolDefinition {
           return { error: `Chapter ${chapterIndex} not found` };
         }
         const content = chapterChunks.map((c) => c.content).join("\n\n");
-        const truncatedContent = style === "brief" 
-          ? content.slice(0, 3000) 
-          : content.slice(0, 8000);
+        const truncatedContent =
+          style === "brief" ? content.slice(0, 3000) : content.slice(0, 8000);
 
         return {
           scope: "chapter",
           chapterTitle: chapterChunks[0]?.chapterTitle,
           chapterIndex: chapterIndex,
           content: truncatedContent,
-          chunks: chapterChunks.map(c => ({
+          chunks: chapterChunks.map((c) => ({
             content: c.content,
             cfi: c.startCfi || "",
             chapterTitle: c.chapterTitle,
-            chapterIndex: c.chapterIndex
+            chapterIndex: c.chapterIndex,
           })),
-          instruction: style === "brief"
-            ? "Generate a concise summary (2-3 sentences) of this chapter content. Use the 'chunks' array to extract CFI for citations."
-            : "Generate a detailed summary covering main points, key arguments, and important details. Use the 'chunks' array to extract CFI for citations.",
+          instruction:
+            style === "brief"
+              ? "Generate a concise summary (2-3 sentences) of this chapter content. Use the 'chunks' array to extract CFI for citations."
+              : "Generate a detailed summary covering main points, key arguments, and important details. Use the 'chunks' array to extract CFI for citations.",
         };
       }
 
@@ -197,7 +208,11 @@ function createSummarizeTool(bookId: string): ToolDefinition {
 
         const sampledContent: string[] = [];
         const chapterList = Array.from(chapters.entries()).sort((a, b) => a[0] - b[0]);
-        const chapterCfiMap: Array<{ chapterIndex: number; chapterTitle: string; firstChunkCfi: string }> = [];
+        const chapterCfiMap: Array<{
+          chapterIndex: number;
+          chapterTitle: string;
+          firstChunkCfi: string;
+        }> = [];
 
         for (const [idx, title] of chapterList) {
           const chapterChunks = chunks.filter((c) => c.chapterIndex === idx);
@@ -207,7 +222,7 @@ function createSummarizeTool(bookId: string): ToolDefinition {
             chapterCfiMap.push({
               chapterIndex: idx,
               chapterTitle: title,
-              firstChunkCfi: firstChunk.startCfi || ""
+              firstChunkCfi: firstChunk.startCfi || "",
             });
           }
         }
@@ -217,9 +232,10 @@ function createSummarizeTool(bookId: string): ToolDefinition {
           totalChapters: chapters.size,
           content: sampledContent.join("\n").slice(0, style === "brief" ? 4000 : 10000),
           chapters: chapterCfiMap,
-          instruction: style === "brief"
-            ? "Generate a concise book summary (1-2 paragraphs) covering the main theme and key points. Use the 'chapters' array to extract CFI for citations."
-            : "Generate a comprehensive book summary covering: main theme, chapter-by-chapter overview, key arguments, and conclusions. Use the 'chapters' array to extract CFI for citations.",
+          instruction:
+            style === "brief"
+              ? "Generate a concise book summary (1-2 paragraphs) covering the main theme and key points. Use the 'chapters' array to extract CFI for citations."
+              : "Generate a comprehensive book summary covering: main theme, chapter-by-chapter overview, key arguments, and conclusions. Use the 'chapters' array to extract CFI for citations.",
         };
       }
 
@@ -237,11 +253,13 @@ function createExtractEntitiesTool(bookId: string): ToolDefinition {
     parameters: {
       entityType: {
         type: "string",
-        description: "Type of entities to extract: 'characters', 'places', 'concepts', 'organizations', or 'all'",
+        description:
+          "Type of entities to extract: 'characters', 'places', 'concepts', 'organizations', or 'all'",
       },
       chapterIndex: {
         type: "number",
-        description: "Specific chapter index (optional, extracts from entire book if not specified)",
+        description:
+          "Specific chapter index (optional, extracts from entire book if not specified)",
       },
     },
     execute: async (args) => {
@@ -249,9 +267,8 @@ function createExtractEntitiesTool(bookId: string): ToolDefinition {
       const chapterIndex = args.chapterIndex as number | undefined;
 
       const chunks = await getChunks(bookId);
-      const targetChunks = chapterIndex !== undefined
-        ? chunks.filter((c) => c.chapterIndex === chapterIndex)
-        : chunks;
+      const targetChunks =
+        chapterIndex !== undefined ? chunks.filter((c) => c.chapterIndex === chapterIndex) : chunks;
 
       if (targetChunks.length === 0) {
         return { error: "No content found" };
@@ -283,11 +300,11 @@ function createExtractEntitiesTool(bookId: string): ToolDefinition {
         chapterIndex,
         chapterTitle: targetChunks[0]?.chapterTitle,
         content,
-        chunks: sampledChunks.map(c => ({
+        chunks: sampledChunks.map((c) => ({
           content: c.content,
           cfi: c.startCfi || "",
           chapterTitle: c.chapterTitle,
-          chapterIndex: c.chapterIndex
+          chapterIndex: c.chapterIndex,
         })),
         instruction: `The above is raw book content. Read through it carefully and identify all ${entityType === "all" ? "named entities (characters, places, organizations, key concepts)" : entityType}. List each entity with a brief description based ONLY on what appears in this text. Use the 'chunks' array to extract CFI for citations. This is all the data you need — do NOT call any more tools.`,
       };
@@ -308,7 +325,8 @@ function createAnalyzeArgumentsTool(bookId: string): ToolDefinition {
       },
       focusType: {
         type: "string",
-        description: "'main' for main arguments, 'evidence' for supporting evidence, 'structure' for logical structure, or 'all'",
+        description:
+          "'main' for main arguments, 'evidence' for supporting evidence, 'structure' for logical structure, or 'all'",
       },
     },
     execute: async (args) => {
@@ -316,9 +334,10 @@ function createAnalyzeArgumentsTool(bookId: string): ToolDefinition {
       const focusType = (args.focusType as string) || "all";
 
       const chunks = await getChunks(bookId);
-      const targetChunks = chapterIndex !== undefined
-        ? chunks.filter((c) => c.chapterIndex === chapterIndex)
-        : chunks.slice(0, 15);
+      const targetChunks =
+        chapterIndex !== undefined
+          ? chunks.filter((c) => c.chapterIndex === chapterIndex)
+          : chunks.slice(0, 15);
 
       if (targetChunks.length === 0) {
         return { error: "No content found" };
@@ -331,8 +350,10 @@ function createAnalyzeArgumentsTool(bookId: string): ToolDefinition {
 
       const focusInstructions: Record<string, string> = {
         main: "Identify and explain the main arguments or thesis presented. What is the author trying to prove or convey?",
-        evidence: "Identify the evidence, examples, and data used to support arguments. How strong is the supporting evidence?",
-        structure: "Analyze the logical structure: how are arguments organized? What is the reasoning chain?",
+        evidence:
+          "Identify the evidence, examples, and data used to support arguments. How strong is the supporting evidence?",
+        structure:
+          "Analyze the logical structure: how are arguments organized? What is the reasoning chain?",
         all: "Provide a comprehensive analysis: main arguments, supporting evidence, logical structure, and overall persuasiveness.",
       };
 
@@ -341,13 +362,15 @@ function createAnalyzeArgumentsTool(bookId: string): ToolDefinition {
         chapterIndex,
         chapterTitle: targetChunks[0]?.chapterTitle,
         content,
-        chunks: targetChunks.map(c => ({
+        chunks: targetChunks.map((c) => ({
           content: c.content,
           cfi: c.startCfi || "",
           chapterTitle: c.chapterTitle,
-          chapterIndex: c.chapterIndex
+          chapterIndex: c.chapterIndex,
         })),
-        instruction: (focusInstructions[focusType] || focusInstructions.all) + " Use the 'chunks' array to extract CFI for citations.",
+        instruction:
+          (focusInstructions[focusType] || focusInstructions.all) +
+          " Use the 'chunks' array to extract CFI for citations.",
       };
     },
   };
@@ -362,7 +385,8 @@ function createFindQuotesTool(bookId: string): ToolDefinition {
     parameters: {
       quoteType: {
         type: "string",
-        description: "'insightful' for wisdom/insights, 'beautiful' for literary beauty, 'controversial' for debate-worthy, or 'all'",
+        description:
+          "'insightful' for wisdom/insights, 'beautiful' for literary beauty, 'controversial' for debate-worthy, or 'all'",
       },
       chapterIndex: {
         type: "number",
@@ -379,9 +403,8 @@ function createFindQuotesTool(bookId: string): ToolDefinition {
       const maxQuotes = (args.maxQuotes as number) || 5;
 
       const chunks = await getChunks(bookId);
-      const targetChunks = chapterIndex !== undefined
-        ? chunks.filter((c) => c.chapterIndex === chapterIndex)
-        : chunks;
+      const targetChunks =
+        chapterIndex !== undefined ? chunks.filter((c) => c.chapterIndex === chapterIndex) : chunks;
 
       if (targetChunks.length === 0) {
         return { error: "No content found" };
@@ -394,9 +417,12 @@ function createFindQuotesTool(bookId: string): ToolDefinition {
         .slice(0, 12000);
 
       const quoteInstructions: Record<string, string> = {
-        insightful: "Find quotes containing wisdom, insights, or thought-provoking ideas. Explain why each quote is significant.",
-        beautiful: "Find quotes with beautiful language, vivid imagery, or literary merit. Note the stylistic elements.",
-        controversial: "Find quotes that present controversial opinions or debate-worthy points. Explain the controversy.",
+        insightful:
+          "Find quotes containing wisdom, insights, or thought-provoking ideas. Explain why each quote is significant.",
+        beautiful:
+          "Find quotes with beautiful language, vivid imagery, or literary merit. Note the stylistic elements.",
+        controversial:
+          "Find quotes that present controversial opinions or debate-worthy points. Explain the controversy.",
         all: "Find a mix of insightful, beautiful, and notable quotes. For each, explain its significance and context.",
       };
 
@@ -405,11 +431,11 @@ function createFindQuotesTool(bookId: string): ToolDefinition {
         maxQuotes,
         chapterIndex,
         content,
-        chunks: targetChunks.slice(0, 30).map(c => ({
+        chunks: targetChunks.slice(0, 30).map((c) => ({
           content: c.content,
           cfi: c.startCfi || "",
           chapterTitle: c.chapterTitle,
-          chapterIndex: c.chapterIndex
+          chapterIndex: c.chapterIndex,
         })),
         instruction: `${quoteInstructions[quoteType] || quoteInstructions.all} Return at most ${maxQuotes} quotes with their locations. Use the 'chunks' array to extract CFI for citations.`,
       };
@@ -470,12 +496,14 @@ function createAddCitationTool(bookId: string): ToolDefinition {
     parameters: {
       citationIndex: {
         type: "number",
-        description: "The citation number you will use in your response text. If you write [1] in your response, pass 1 here. If you write [2], pass 2. This MUST match the [N] marker in your response text.",
+        description:
+          "The citation number you will use in your response text. If you write [1] in your response, pass 1 here. If you write [2], pass 2. This MUST match the [N] marker in your response text.",
         required: true,
       },
       chapterTitle: {
         type: "string",
-        description: "The chapter title where this content is from (get this from ragSearch or other tool results)",
+        description:
+          "The chapter title where this content is from (get this from ragSearch or other tool results)",
         required: true,
       },
       chapterIndex: {
@@ -485,12 +513,14 @@ function createAddCitationTool(bookId: string): ToolDefinition {
       },
       cfi: {
         type: "string",
-        description: "REQUIRED: The exact CFI (Canonical Fragment Identifier) from ragSearch or other tool results. Extract the 'cfi' field from the search result or chunk that contains your quoted text. This CFI enables users to jump to the precise location in the book. NEVER pass empty string - if the tool result has a CFI, you MUST use it.",
+        description:
+          "REQUIRED: The exact CFI (Canonical Fragment Identifier) from ragSearch or other tool results. Extract the 'cfi' field from the search result or chunk that contains your quoted text. This CFI enables users to jump to the precise location in the book. NEVER pass empty string - if the tool result has a CFI, you MUST use it.",
         required: true,
       },
       quotedText: {
         type: "string",
-        description: "A short excerpt of the actual text being cited (max 200 characters). This helps users verify the citation.",
+        description:
+          "A short excerpt of the actual text being cited (max 200 characters). This helps users verify the citation.",
         required: true,
       },
       reasoning: {
@@ -614,7 +644,8 @@ function createCompareSectionsTool(bookId: string): ToolDefinition {
       },
       compareType: {
         type: "string",
-        description: "'themes' for theme comparison, 'arguments' for argument comparison, 'style' for writing style, or 'all'",
+        description:
+          "'themes' for theme comparison, 'arguments' for argument comparison, 'style' for writing style, or 'all'",
       },
     },
     execute: async (args) => {
@@ -631,12 +662,20 @@ function createCompareSectionsTool(bookId: string): ToolDefinition {
         return { error: "One or both chapters not found" };
       }
 
-      const content1 = chapter1Chunks.map((c) => c.content).join("\n\n").slice(0, 4000);
-      const content2 = chapter2Chunks.map((c) => c.content).join("\n\n").slice(0, 4000);
+      const content1 = chapter1Chunks
+        .map((c) => c.content)
+        .join("\n\n")
+        .slice(0, 4000);
+      const content2 = chapter2Chunks
+        .map((c) => c.content)
+        .join("\n\n")
+        .slice(0, 4000);
 
       const compareInstructions: Record<string, string> = {
-        themes: "Compare the themes discussed in both sections. What themes are shared? What themes are unique to each?",
-        arguments: "Compare the arguments presented. Are they consistent? Contradictory? Complementary?",
+        themes:
+          "Compare the themes discussed in both sections. What themes are shared? What themes are unique to each?",
+        arguments:
+          "Compare the arguments presented. Are they consistent? Contradictory? Complementary?",
         style: "Compare the writing style, tone, and language used in both sections.",
         all: "Provide a comprehensive comparison: themes, arguments, writing style, and any connections or contrasts.",
       };
@@ -646,26 +685,28 @@ function createCompareSectionsTool(bookId: string): ToolDefinition {
           index: chapterIndex1,
           title: chapter1Chunks[0]?.chapterTitle,
           content: content1,
-          chunks: chapter1Chunks.map(c => ({
+          chunks: chapter1Chunks.map((c) => ({
             content: c.content,
             cfi: c.startCfi || "",
             chapterTitle: c.chapterTitle,
-            chapterIndex: c.chapterIndex
-          }))
+            chapterIndex: c.chapterIndex,
+          })),
         },
         chapter2: {
           index: chapterIndex2,
           title: chapter2Chunks[0]?.chapterTitle,
           content: content2,
-          chunks: chapter2Chunks.map(c => ({
+          chunks: chapter2Chunks.map((c) => ({
             content: c.content,
             cfi: c.startCfi || "",
             chapterTitle: c.chapterTitle,
-            chapterIndex: c.chapterIndex
-          }))
+            chapterIndex: c.chapterIndex,
+          })),
         },
         compareType,
-        instruction: (compareInstructions[compareType] || compareInstructions.all) + " Use the 'chunks' arrays in chapter1 and chapter2 to extract CFI for citations.",
+        instruction:
+          (compareInstructions[compareType] || compareInstructions.all) +
+          " Use the 'chunks' arrays in chapter1 and chapter2 to extract CFI for citations.",
       };
     },
   };
@@ -693,7 +734,8 @@ function createListBooksTool(): ToolDefinition {
       },
       status: {
         type: "string",
-        description: "Filter by reading status: 'unread' (0%), 'reading' (1-99%), or 'completed' (100%)",
+        description:
+          "Filter by reading status: 'unread' (0%), 'reading' (1-99%), or 'completed' (100%)",
       },
       limit: {
         type: "number",
@@ -753,7 +795,8 @@ function createSearchAllHighlightsTool(): ToolDefinition {
       },
       days: {
         type: "number",
-        description: "Only return highlights from the last N days (e.g. 7=last week, 30=last month)",
+        description:
+          "Only return highlights from the last N days (e.g. 7=last week, 30=last month)",
       },
       limit: {
         type: "number",
@@ -822,7 +865,7 @@ function createSearchAllNotesTool(): ToolDefinition {
 
       const notes = await getAllNotes(limit * 2);
       const highlightsWithNotes = await getAllHighlights(limit * 2);
-      const highlightNotes = highlightsWithNotes.filter(h => h.note);
+      const highlightNotes = highlightsWithNotes.filter((h) => h.note);
 
       const books = await getBooks();
       const bookMap = new Map(books.map((b) => [b.id, b.meta.title]));
@@ -946,7 +989,8 @@ function createClassifyBooksTool(): ToolDefinition {
       },
       bookId: {
         type: "string",
-        description: "Optional. If provided, return info for this specific book instead of all uncategorized books.",
+        description:
+          "Optional. If provided, return info for this specific book instead of all uncategorized books.",
       },
     },
     execute: async (args) => {
@@ -1103,13 +1147,13 @@ function createManageBookTagsTool(): ToolDefinition {
       },
       action: {
         type: "string",
-        description:
-          '"create" | "rename" | "delete" | "removeFromBook" | "setBookTags"',
+        description: '"create" | "rename" | "delete" | "removeFromBook" | "setBookTags"',
         required: true,
       },
       tag: {
         type: "string",
-        description: "The tag to rename (for rename action). For delete action, use 'tags' parameter instead to support batch deletion.",
+        description:
+          "The tag to rename (for rename action). For delete action, use 'tags' parameter instead to support batch deletion.",
       },
       newTag: {
         type: "string",
@@ -1149,7 +1193,12 @@ function createManageBookTagsTool(): ToolDefinition {
           }
         }
         if (newTags.length === 0) {
-          return { success: true, action: "create", createdTags: [], message: "All tags already exist" };
+          return {
+            success: true,
+            action: "create",
+            createdTags: [],
+            message: "All tags already exist",
+          };
         }
         const allTags = [...existingSet].sort();
         debouncedSave("library-tags", allTags);
@@ -1199,7 +1248,12 @@ function createManageBookTagsTool(): ToolDefinition {
           }
         }
         emitLibraryChanged(tagsToDelete);
-        return { success: true, action: "delete", deletedTags: tagsToDelete, affectedBooks: affectedCount };
+        return {
+          success: true,
+          action: "delete",
+          deletedTags: tagsToDelete,
+          affectedBooks: affectedCount,
+        };
       }
 
       if (action === "removeFromBook") {
@@ -1293,12 +1347,11 @@ function createGetSkillsTool(): ToolDefinition {
       let dbSkills: Skill[] = [];
       try {
         dbSkills = await getDbSkills();
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
 
-      const allSkills = [
-        ...builtins,
-        ...dbSkills.filter((s) => !s.builtIn && s.enabled),
-      ];
+      const allSkills = [...builtins, ...dbSkills.filter((s) => !s.builtIn && s.enabled)];
 
       // Fuzzy match by name or description
       const matched = allSkills.filter(
@@ -1359,7 +1412,8 @@ function createMindmapTool(): ToolDefinition {
       },
       markdown: {
         type: "string",
-        description: "The mindmap content in standard Markdown heading format (NOT mermaid syntax). Use # for root topic, ## for main branches, ### for sub-branches, and - for leaf items. NEVER use mermaid 'mindmap' syntax. Example:\n# Main Topic\n## Branch 1\n### Sub-branch 1.1\n- Detail A\n- Detail B\n## Branch 2\n- Detail C\n- Detail D",
+        description:
+          "The mindmap content in standard Markdown heading format (NOT mermaid syntax). Use # for root topic, ## for main branches, ### for sub-branches, and - for leaf items. NEVER use mermaid 'mindmap' syntax. Example:\n# Main Topic\n## Branch 1\n### Sub-branch 1.1\n- Detail A\n- Detail B\n## Branch 2\n- Detail C\n- Detail D",
         required: true,
       },
     },
@@ -1379,7 +1433,7 @@ function createMindmapTool(): ToolDefinition {
         const headingMatch = line.match(/^(#{1,6})\s/);
         const listMatch = line.match(/^(\s*)-\s/);
         if (headingMatch) return Math.max(max, headingMatch[1].length);
-        if (listMatch) return Math.max(max, 7 + Math.floor((listMatch[1].length) / 2));
+        if (listMatch) return Math.max(max, 7 + Math.floor(listMatch[1].length / 2));
         return max;
       }, 0);
 
@@ -1427,10 +1481,7 @@ export function getAvailableTools(options: {
     }
 
     // Annotation & citation tools (always available when book is loaded)
-    tools.push(
-      createGetAnnotationsTool(options.bookId),
-      createAddCitationTool(options.bookId),
-    );
+    tools.push(createGetAnnotationsTool(options.bookId), createAddCitationTool(options.bookId));
   }
 
   // Add custom skills
@@ -1444,7 +1495,7 @@ export function getAvailableTools(options: {
 /** Convert mermaid mindmap syntax to markmap Markdown heading format */
 function convertMermaidMindmapToMarkdown(mermaidText: string, fallbackTitle: string): string {
   // Strip mermaid code fence markers
-  let text = mermaidText
+  const text = mermaidText
     .replace(/```mermaid\s*/g, "")
     .replace(/```\s*/g, "")
     .replace(/^mindmap\s*/m, "")
@@ -1472,9 +1523,9 @@ function convertMermaidMindmapToMarkdown(mermaidText: string, fallbackTitle: str
 
     // Clean up mermaid-specific syntax: remove parentheses wrapping, brackets, etc.
     const cleanText = trimmed
-      .replace(/^\((.+)\)$/, "$1")    // (text) → text
-      .replace(/^\[(.+)\]$/, "$1")    // [text] → text
-      .replace(/^\{(.+)\}$/, "$1")    // {text} → text
+      .replace(/^\((.+)\)$/, "$1") // (text) → text
+      .replace(/^\[(.+)\]$/, "$1") // [text] → text
+      .replace(/^\{(.+)\}$/, "$1") // {text} → text
       .replace(/^["'](.+)["']$/, "$1"); // "text" → text
 
     if (depth === 0) {
@@ -1529,7 +1580,8 @@ function skillToTool(skill: Skill): ToolDefinition {
         skillName: skill.name,
         skillPrompt: skill.prompt,
         args,
-        instruction: "Follow the skill prompt above to complete this task. Use the provided parameters and context.",
+        instruction:
+          "Follow the skill prompt above to complete this task. Use the provided parameters and context.",
       };
     },
   };

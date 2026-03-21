@@ -1,37 +1,37 @@
 ---
 interface Props {
-  t: (key: string) => string
+  t: (key: string) => string;
 }
 
-const { t } = Astro.props
+const { t } = Astro.props;
 
 const links = [
   {
-    name: t('community.discussions'),
-    href: 'https://github.com/codedogQBY/ReadAny/discussions',
+    name: t("community.discussions"),
+    href: "https://github.com/codedogQBY/ReadAny/discussions",
     available: true,
   },
   {
-    name: t('community.issues'),
-    href: 'https://github.com/codedogQBY/ReadAny/issues',
+    name: t("community.issues"),
+    href: "https://github.com/codedogQBY/ReadAny/issues",
     available: true,
   },
   {
-    name: t('community.discord'),
-    href: '#',
+    name: t("community.discord"),
+    href: "#",
     available: false,
   },
   {
-    name: t('community.twitter'),
-    href: '#',
+    name: t("community.twitter"),
+    href: "#",
     available: false,
   },
   {
-    name: t('community.wechat'),
-    href: '#',
+    name: t("community.wechat"),
+    href: "#",
     available: false,
   },
-]
+];
 ---
 
 <!-- Vercel-style: Clean list of links -->

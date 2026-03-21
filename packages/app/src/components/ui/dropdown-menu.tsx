@@ -1,5 +1,5 @@
-import { cn } from "@readany/core/utils";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
+import { cn } from "@readany/core/utils";
 import type { ComponentPropsWithoutRef } from "react";
 
 const DropdownMenu = DropdownMenuPrimitive.Root;

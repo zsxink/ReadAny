@@ -1,9 +1,9 @@
+import { useResolvedSrc } from "@/hooks/use-resolved-src";
+import type { PeriodBookStats } from "@readany/core/stats";
 /**
  * PeriodBookList — shows books read in a time period with reading time and progress
  */
 import { useTranslation } from "react-i18next";
-import type { PeriodBookStats } from "@readany/core/stats";
-import { useResolvedSrc } from "@/hooks/use-resolved-src";
 
 interface PeriodBookListProps {
   books: PeriodBookStats[];
@@ -33,7 +33,9 @@ function PeriodBookListItem({ book }: PeriodBookListItemProps) {
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
           <p className="truncate text-sm font-medium text-foreground">{book.title}</p>
-          <span className="flex-shrink-0 text-xs text-muted-foreground">{formatTime(book.totalTime)}</span>
+          <span className="flex-shrink-0 text-xs text-muted-foreground">
+            {formatTime(book.totalTime)}
+          </span>
         </div>
         <p className="truncate text-xs text-muted-foreground">{book.author}</p>
         {/* Progress bar */}
@@ -44,7 +46,9 @@ function PeriodBookListItem({ book }: PeriodBookListItemProps) {
               style={{ width: `${Math.min(book.progress * 100, 100)}%` }}
             />
           </div>
-          <span className="text-[10px] text-muted-foreground">{Math.round(book.progress * 100)}%</span>
+          <span className="text-[10px] text-muted-foreground">
+            {Math.round(book.progress * 100)}%
+          </span>
         </div>
       </div>
     </div>

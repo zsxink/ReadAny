@@ -2,7 +2,7 @@
  * MessageList — scrollable message list with streaming support
  * Uses Part-based rendering for real-time updates
  */
-import type { MessageV2, CitationPart, QuotePart } from "@readany/core/types/message";
+import type { CitationPart, MessageV2, QuotePart } from "@readany/core/types/message";
 import { ArrowDown, Quote } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -20,7 +20,12 @@ interface MessageListProps {
 /** Threshold (px) to consider the user "at the bottom" */
 const BOTTOM_THRESHOLD = 80;
 
-export function MessageList({ messages, onCitationClick, isStreaming, currentStep }: MessageListProps) {
+export function MessageList({
+  messages,
+  onCitationClick,
+  isStreaming,
+  currentStep,
+}: MessageListProps) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   /** Whether the user has intentionally scrolled away from the bottom */
@@ -37,7 +42,7 @@ export function MessageList({ messages, onCitationClick, isStreaming, currentSte
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     const el = containerRef.current;
     if (!el) return;
-    
+
     if (behavior === "smooth") {
       el.scrollTo({
         top: el.scrollHeight,
@@ -91,16 +96,11 @@ export function MessageList({ messages, onCitationClick, isStreaming, currentSte
     isStreaming &&
     currentStep &&
     currentStep !== "idle" &&
-    (!lastMsg ||
-      lastMsg.role !== "assistant" ||
-      lastMsg.parts.length === 0);
+    (!lastMsg || lastMsg.role !== "assistant" || lastMsg.parts.length === 0);
 
   // Determine if the last assistant message is the one currently being streamed
   const isLastMsgStreaming =
-    isStreaming &&
-    !!lastMsg &&
-    lastMsg.role === "assistant" &&
-    lastMsg.parts.length > 0;
+    isStreaming && !!lastMsg && lastMsg.role === "assistant" && lastMsg.parts.length > 0;
 
   return (
     <div ref={containerRef} className="relative flex h-full flex-col overflow-y-auto py-4">
@@ -114,9 +114,7 @@ export function MessageList({ messages, onCitationClick, isStreaming, currentSte
             currentStep={currentStep}
           />
         ))}
-        {showStreamingIndicator && (
-          <StreamingIndicator step={currentStep!} />
-        )}
+        {showStreamingIndicator && <StreamingIndicator step={currentStep!} />}
       </div>
 
       {/* Sticky scroll-to-bottom button — stays at visible bottom of scroll container */}
@@ -152,9 +150,7 @@ function UserQuoteBlock({ part }: { part: QuotePart }) {
         <p className="text-xs leading-relaxed text-foreground/80">
           {part.text.length > 200 ? `${part.text.slice(0, 200)}...` : part.text}
         </p>
-        {part.source && (
-          <p className="mt-1 text-[10px] text-muted-foreground">— {part.source}</p>
-        )}
+        {part.source && <p className="mt-1 text-[10px] text-muted-foreground">— {part.source}</p>}
       </div>
     </div>
   );
@@ -192,7 +188,7 @@ function MessageBubble({ message, onCitationClick, isStreaming, currentStep }: M
   }
 
   const hasContent = message.parts.some(
-    (p) => (p.type === "text" && p.text.trim()) || p.type !== "text"
+    (p) => (p.type === "text" && p.text.trim()) || p.type !== "text",
   );
 
   if (!hasContent) return null;
@@ -225,9 +221,7 @@ function MessageBubble({ message, onCitationClick, isStreaming, currentStep }: M
           onCitationClick={onCitationClick}
         />
       ))}
-      {showGapIndicator && (
-        <StreamingIndicator step="thinking" />
-      )}
+      {showGapIndicator && <StreamingIndicator step="thinking" />}
     </div>
   );
 }

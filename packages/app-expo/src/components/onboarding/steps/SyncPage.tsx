@@ -4,6 +4,7 @@ import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { getPlatformService } from "@readany/core/services";
 import { useSyncStore } from "@readany/core/stores/sync-store";
+import type { WebDavConfig } from "@readany/core/sync/sync-backend";
 import { AlertCircle, CheckCircle2, Eye, EyeOff } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -23,12 +24,18 @@ import type { OnboardingStackParamList } from "../OnboardingNavigator";
 
 type NavProp = NativeStackNavigationProp<OnboardingStackParamList, "Sync">;
 
+function isWebDavConfig(config: unknown): config is WebDavConfig {
+  return (
+    typeof config === "object" && config !== null && (config as WebDavConfig).type === "webdav"
+  );
+}
+
 export function SyncPage() {
   const { t } = useTranslation();
   const navigation = useNavigation<NavProp>();
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const { config, loadConfig, saveConfig, testConnection } = useSyncStore();
+  const { config, loadConfig, saveWebDavConfig, testWebDavConnection } = useSyncStore();
 
   const [url, setUrl] = useState("");
   const [username, setUsername] = useState("");
@@ -41,8 +48,10 @@ export function SyncPage() {
   }, [loadConfig]);
 
   useEffect(() => {
-    if (config?.url) setUrl(config.url);
-    if (config?.username) setUsername(config.username);
+    if (isWebDavConfig(config)) {
+      if (config.url) setUrl(config.url);
+      if (config.username) setUsername(config.username);
+    }
 
     const loadPassword = async () => {
       const platform = getPlatformService();
@@ -55,8 +64,8 @@ export function SyncPage() {
   const handleTest = async () => {
     setStatus("testing");
     try {
-      const ok = await testConnection(url, username, password);
-      setStatus(ok ? "success" : "error");
+      await testWebDavConnection(url, username, password);
+      setStatus("success");
     } catch {
       setStatus("error");
     }
@@ -64,7 +73,7 @@ export function SyncPage() {
 
   const handleNext = async () => {
     if (url && username && password) {
-      await saveConfig(url, username, password);
+      await saveWebDavConfig(url, username, password);
     }
     navigation.navigate("Complete");
   };

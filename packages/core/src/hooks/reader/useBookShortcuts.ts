@@ -98,8 +98,7 @@ export function useBookShortcuts({
 
     const onMessage = (event: MessageEvent) => {
       const data = event.data;
-      if (data?.type !== "iframe-keydown" || data.bookKey !== bookKey)
-        return;
+      if (data?.type !== "iframe-keydown" || data.bookKey !== bookKey) return;
 
       handleAction(data.key, {
         ctrlKey: data.ctrlKey,

@@ -55,20 +55,32 @@ export function chunkContent(
 
     const segTokens = estimateTokens(segText);
 
-    if (currentTokens + segTokens > config.targetTokens && currentTokens >= config.minTokens && currentTexts.length > 0) {
-      chunks.push(createChunkFromSegments(
-        currentTexts.join("\n\n"),
-        bookId,
-        chapterIndex,
-        chapterTitle,
-        chunks.length,
-        startCfi,
-        endCfi,
-        currentCfis,
-      ));
+    if (
+      currentTokens + segTokens > config.targetTokens &&
+      currentTokens >= config.minTokens &&
+      currentTexts.length > 0
+    ) {
+      chunks.push(
+        createChunkFromSegments(
+          currentTexts.join("\n\n"),
+          bookId,
+          chapterIndex,
+          chapterTitle,
+          chunks.length,
+          startCfi,
+          endCfi,
+          currentCfis,
+        ),
+      );
 
       const overlapTokens = Math.floor(currentTokens * config.overlapRatio);
-      const overlapResult = getOverlapSegments(currentTexts, segments, i, overlapTokens, segmentIndices);
+      const overlapResult = getOverlapSegments(
+        currentTexts,
+        segments,
+        i,
+        overlapTokens,
+        segmentIndices,
+      );
       currentTexts = overlapResult.texts;
       currentTokens = overlapResult.tokens;
       startCfi = overlapResult.startCfi;
@@ -94,16 +106,18 @@ export function chunkContent(
   }
 
   if (currentTokens >= config.minTokens || (currentTexts.length > 0 && chunks.length === 0)) {
-    chunks.push(createChunkFromSegments(
-      currentTexts.join("\n\n"),
-      bookId,
-      chapterIndex,
-      chapterTitle,
-      chunks.length,
-      startCfi,
-      endCfi,
-      currentCfis,
-    ));
+    chunks.push(
+      createChunkFromSegments(
+        currentTexts.join("\n\n"),
+        bookId,
+        chapterIndex,
+        chapterTitle,
+        chunks.length,
+        startCfi,
+        endCfi,
+        currentCfis,
+      ),
+    );
   }
 
   return chunks;
@@ -154,9 +168,10 @@ function getOverlapSegments(
 
   // Use the tracked segment indices to get the correct CFI
   const actualSegIdx = segmentIndices[overlapStartIdx];
-  const startCfi = actualSegIdx !== undefined && segments[actualSegIdx]
-    ? segments[actualSegIdx].cfi
-    : (segments[0]?.cfi || "");
+  const startCfi =
+    actualSegIdx !== undefined && segments[actualSegIdx]
+      ? segments[actualSegIdx].cfi
+      : segments[0]?.cfi || "";
 
   return {
     texts: overlapTexts,

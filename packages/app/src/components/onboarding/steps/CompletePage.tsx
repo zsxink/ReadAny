@@ -1,5 +1,5 @@
-import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "react-i18next";
 
 import { OnboardingLayout } from "../OnboardingLayout";
 
@@ -16,7 +16,11 @@ export function CompletePage({ onNext, onPrev, step, totalSteps }: any) {
           <Button variant="ghost" onClick={onPrev}>
             {t("common.back", "Back")}
           </Button>
-          <Button onClick={onNext} size="lg" className="rounded-full px-10 py-6 text-lg tracking-wide shadow-xl shadow-primary/30 group bg-primary hover:bg-primary/90 text-primary-foreground transform transition-transform hover:scale-105">
+          <Button
+            onClick={onNext}
+            size="lg"
+            className="rounded-full px-10 py-6 text-lg tracking-wide shadow-xl shadow-primary/30 group bg-primary hover:bg-primary/90 text-primary-foreground transform transition-transform hover:scale-105"
+          >
             {t("onboarding.complete.start", "Start Reading")}
             <span className="ml-2 group-hover:translate-x-1 transition-transform">→</span>
           </Button>
@@ -31,7 +35,7 @@ export function CompletePage({ onNext, onPrev, step, totalSteps }: any) {
           <p className="text-muted-foreground leading-relaxed">
             {t(
               "onboarding.complete.desc",
-              "Everything is configured. You can now start adding books, discussing them with AI, and translating texts seamlessly."
+              "Everything is configured. You can now start adding books, discussing them with AI, and translating texts seamlessly.",
             )}
           </p>
         </div>

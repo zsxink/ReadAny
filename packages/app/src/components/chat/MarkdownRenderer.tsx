@@ -1,3 +1,4 @@
+import type { CitationPart } from "@readany/core/types/message";
 /**
  * MarkdownRenderer — renders AI markdown responses with:
  * - GitHub Flavored Markdown (tables, strikethrough, task lists, autolinks)
@@ -5,16 +6,24 @@
  * - Mermaid diagrams via beautiful-mermaid (synchronous SVG rendering)
  */
 import { renderMermaidSVG } from "beautiful-mermaid";
-import { Check, Copy, ArrowUpRight, Download, Maximize2, Minimize2, RotateCcw } from "lucide-react";
-import React, { useMemo, useState, useRef, useCallback, memo, createContext, useContext, useEffect } from "react";
+import * as d3 from "d3";
+import { ArrowUpRight, Check, Copy, Download, Maximize2, Minimize2, RotateCcw } from "lucide-react";
+import React, {
+  useMemo,
+  useState,
+  useRef,
+  useCallback,
+  memo,
+  createContext,
+  useContext,
+  useEffect,
+} from "react";
+import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
 import Markdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
-import type { CitationPart } from "@readany/core/types/message";
-import { useTranslation } from "react-i18next";
-import { createPortal } from "react-dom";
 import { toast } from "sonner";
-import * as d3 from "d3";
 
 const CitationContext = createContext<{
   citations?: CitationPart[];
@@ -28,7 +37,7 @@ const MermaidBlock = memo(function MermaidBlock({ code }: { code: string }) {
   const fullscreenSvgRef = useRef<HTMLDivElement>(null);
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const fullscreenZoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
-  
+
   const svg = useMemo(() => {
     try {
       const rendered = renderMermaidSVG(code, {
@@ -52,7 +61,7 @@ const MermaidBlock = memo(function MermaidBlock({ code }: { code: string }) {
           line, path:not(.node):not(.cluster) {
             stroke: var(--foreground) !important;
           }
-        </style>`
+        </style>`,
       );
     } catch (err) {
       return null;
@@ -72,52 +81,59 @@ const MermaidBlock = memo(function MermaidBlock({ code }: { code: string }) {
     }
   }, [code]);
 
-  const setupZoom = useCallback((container: HTMLDivElement | null, zoomBehavior: React.MutableRefObject<d3.ZoomBehavior<SVGSVGElement, unknown> | null>) => {
-    if (!container) return;
-    
-    const svgElement = container.querySelector("svg");
-    if (!svgElement) return;
+  const setupZoom = useCallback(
+    (
+      container: HTMLDivElement | null,
+      zoomBehavior: React.MutableRefObject<d3.ZoomBehavior<SVGSVGElement, unknown> | null>,
+    ) => {
+      if (!container) return;
 
-    const viewBox = svgElement.getAttribute("viewBox");
-    const width = svgElement.getAttribute("width");
-    const height = svgElement.getAttribute("height");
-    
-    svgElement.style.width = "100%";
-    svgElement.style.height = "100%";
-    svgElement.style.cursor = "grab";
-    svgElement.removeAttribute("width");
-    svgElement.removeAttribute("height");
-    
-    if (!viewBox && width && height) {
-      svgElement.setAttribute("viewBox", `0 0 ${width} ${height}`);
-    }
-    
-    let contentG = svgElement.querySelector(".mermaid-content") as SVGGElement | null;
-    if (!contentG) {
-      const newG = document.createElementNS("http://www.w3.org/2000/svg", "g") as SVGGElement;
-      newG.classList.add("mermaid-content");
-      
-      const children = Array.from(svgElement.childNodes);
-      for (const child of children) {
-        if (child.nodeName !== "style" && child !== newG) {
-          newG.appendChild(child);
-        }
+      const svgElement = container.querySelector("svg");
+      if (!svgElement) return;
+
+      const viewBox = svgElement.getAttribute("viewBox");
+      const width = svgElement.getAttribute("width");
+      const height = svgElement.getAttribute("height");
+
+      svgElement.style.width = "100%";
+      svgElement.style.height = "100%";
+      svgElement.style.cursor = "grab";
+      svgElement.removeAttribute("width");
+      svgElement.removeAttribute("height");
+
+      if (!viewBox && width && height) {
+        svgElement.setAttribute("viewBox", `0 0 ${width} ${height}`);
       }
-      svgElement.appendChild(newG);
-      contentG = newG;
-    }
 
-    d3.select(svgElement).on(".zoom", null);
+      let contentG = svgElement.querySelector(".mermaid-content") as SVGGElement | null;
+      if (!contentG) {
+        const newG = document.createElementNS("http://www.w3.org/2000/svg", "g") as SVGGElement;
+        newG.classList.add("mermaid-content");
 
-    const zoom = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.1, 10])
-      .on("zoom", (event) => {
-        contentG!.setAttribute("transform", String(event.transform));
-      });
-    
-    d3.select(svgElement).call(zoom);
-    zoomBehavior.current = zoom;
-  }, []);
+        const children = Array.from(svgElement.childNodes);
+        for (const child of children) {
+          if (child.nodeName !== "style" && child !== newG) {
+            newG.appendChild(child);
+          }
+        }
+        svgElement.appendChild(newG);
+        contentG = newG;
+      }
+
+      d3.select(svgElement).on(".zoom", null);
+
+      const zoom = d3
+        .zoom<SVGSVGElement, unknown>()
+        .scaleExtent([0.1, 10])
+        .on("zoom", (event) => {
+          contentG!.setAttribute("transform", String(event.transform));
+        });
+
+      d3.select(svgElement).call(zoom);
+      zoomBehavior.current = zoom;
+    },
+    [],
+  );
 
   useEffect(() => {
     if (svg && svgRef.current) {
@@ -144,9 +160,12 @@ const MermaidBlock = memo(function MermaidBlock({ code }: { code: string }) {
     const container = expanded ? fullscreenSvgRef.current : svgRef.current;
     const zoomBehavior = expanded ? fullscreenZoomRef.current : zoomRef.current;
     const svgElement = container?.querySelector("svg");
-    
+
     if (svgElement && zoomBehavior) {
-      d3.select(svgElement).transition().duration(300).call(zoomBehavior.transform, d3.zoomIdentity);
+      d3.select(svgElement)
+        .transition()
+        .duration(300)
+        .call(zoomBehavior.transform, d3.zoomIdentity);
     }
   }, [expanded]);
 
@@ -155,15 +174,18 @@ const MermaidBlock = memo(function MermaidBlock({ code }: { code: string }) {
     if (!svgElement) return;
 
     const clonedSvg = svgElement.cloneNode(true) as SVGSVGElement;
-    
+
     const g = clonedSvg.querySelector("g");
     if (g) {
       g.setAttribute("transform", "translate(0,0) scale(1)");
     }
-    
-    const allElements = clonedSvg.querySelectorAll('*');
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    
+
+    const allElements = clonedSvg.querySelectorAll("*");
+    let minX = Number.POSITIVE_INFINITY,
+      minY = Number.POSITIVE_INFINITY,
+      maxX = Number.NEGATIVE_INFINITY,
+      maxY = Number.NEGATIVE_INFINITY;
+
     allElements.forEach((el) => {
       if (el instanceof SVGGraphicsElement) {
         try {
@@ -177,44 +199,46 @@ const MermaidBlock = memo(function MermaidBlock({ code }: { code: string }) {
         } catch (e) {}
       }
     });
-    
-    if (minX === Infinity) {
-      const originalViewBox = svgElement.getAttribute('viewBox')?.split(/\s+/).map(Number) || [0, 0, 800, 600];
+
+    if (minX === Number.POSITIVE_INFINITY) {
+      const originalViewBox = svgElement.getAttribute("viewBox")?.split(/\s+/).map(Number) || [
+        0, 0, 800, 600,
+      ];
       minX = originalViewBox[0];
       minY = originalViewBox[1];
       maxX = originalViewBox[0] + originalViewBox[2];
       maxY = originalViewBox[1] + originalViewBox[3];
     }
-    
+
     const padding = 10;
     const contentX = minX - padding;
     const contentY = minY - padding;
     const contentWidth = maxX - minX + padding * 2;
     const contentHeight = maxY - minY + padding * 2;
-    
-    clonedSvg.setAttribute('viewBox', `${contentX} ${contentY} ${contentWidth} ${contentHeight}`);
-    clonedSvg.setAttribute('width', String(contentWidth));
-    clonedSvg.setAttribute('height', String(contentHeight));
-    
-    clonedSvg.style.width = '';
-    clonedSvg.style.height = '';
-    
+
+    clonedSvg.setAttribute("viewBox", `${contentX} ${contentY} ${contentWidth} ${contentHeight}`);
+    clonedSvg.setAttribute("width", String(contentWidth));
+    clonedSvg.setAttribute("height", String(contentHeight));
+
+    clonedSvg.style.width = "";
+    clonedSvg.style.height = "";
+
     const computedStyle = window.getComputedStyle(svgElement);
-    const bgColor = computedStyle.getPropertyValue('--background') || 'white';
-    const fgColor = computedStyle.getPropertyValue('--foreground') || '#333';
-    
+    const bgColor = computedStyle.getPropertyValue("--background") || "white";
+    const fgColor = computedStyle.getPropertyValue("--foreground") || "#333";
+
     const bgRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
     bgRect.setAttribute("x", String(contentX));
     bgRect.setAttribute("y", String(contentY));
     bgRect.setAttribute("width", String(contentWidth));
     bgRect.setAttribute("height", String(contentHeight));
-    bgRect.setAttribute("fill", bgColor.trim() || 'white');
+    bgRect.setAttribute("fill", bgColor.trim() || "white");
     clonedSvg.insertBefore(bgRect, clonedSvg.firstChild);
-    
+
     let svgData = new XMLSerializer().serializeToString(clonedSvg);
-    svgData = svgData.replace(/var\(--background\)/g, bgColor.trim() || 'white');
-    svgData = svgData.replace(/var\(--foreground\)/g, fgColor.trim() || '#333');
-    svgData = svgData.replace(/var\(--muted\)/g, '#888');
+    svgData = svgData.replace(/var\(--background\)/g, bgColor.trim() || "white");
+    svgData = svgData.replace(/var\(--foreground\)/g, fgColor.trim() || "#333");
+    svgData = svgData.replace(/var\(--muted\)/g, "#888");
 
     const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
     const svgUrl = URL.createObjectURL(svgBlob);
@@ -226,7 +250,7 @@ const MermaidBlock = memo(function MermaidBlock({ code }: { code: string }) {
     downloadLink.click();
     document.body.removeChild(downloadLink);
     URL.revokeObjectURL(svgUrl);
-    
+
     toast.success(t("common.downloadSuccess", "图表已下载"));
   }, [expanded, t]);
 
@@ -290,7 +314,7 @@ const MermaidBlock = memo(function MermaidBlock({ code }: { code: string }) {
             </div>
           </div>
         </div>,
-        document.body
+        document.body,
       )
     : null;
 
@@ -298,7 +322,9 @@ const MermaidBlock = memo(function MermaidBlock({ code }: { code: string }) {
     <>
       <div className="group relative overflow-hidden">
         <div className="flex items-center justify-between px-1 py-1">
-          <span className="text-xs text-muted-foreground">{t("mermaid.title", "Mermaid 图表")}</span>
+          <span className="text-xs text-muted-foreground">
+            {t("mermaid.title", "Mermaid 图表")}
+          </span>
           <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
             <button
               type="button"
@@ -375,10 +401,7 @@ const StaticCode = memo(function StaticCode({
   // Inline code (no language class, no newlines)
   if (!lang && !text.includes("\n")) {
     return (
-      <code
-        className="rounded-md bg-muted px-1.5 py-0.5 text-[0.85em] font-mono"
-        {...props}
-      >
+      <code className="rounded-md bg-muted px-1.5 py-0.5 text-[0.85em] font-mono" {...props}>
         {children}
       </code>
     );
@@ -422,7 +445,11 @@ const StaticCode = memo(function StaticCode({
   );
 });
 
-const StaticLink = memo(function StaticLink({ href, children, ...props }: React.ComponentProps<"a">) {
+const StaticLink = memo(function StaticLink({
+  href,
+  children,
+  ...props
+}: React.ComponentProps<"a">) {
   return (
     <a
       href={href}
@@ -436,7 +463,10 @@ const StaticLink = memo(function StaticLink({ href, children, ...props }: React.
   );
 });
 
-const StaticTable = memo(function StaticTable({ children, ...props }: React.ComponentProps<"table">) {
+const StaticTable = memo(function StaticTable({
+  children,
+  ...props
+}: React.ComponentProps<"table">) {
   return (
     <div className="my-3 overflow-x-auto rounded-lg border">
       <table className="min-w-full" {...props}>
@@ -475,7 +505,10 @@ const CitationLi = memo(function CitationLi({ children, ...props }: React.Compon
   return <li {...props}>{processCitationText(children, citations, onCitationClick)}</li>;
 });
 
-const CitationStrong = memo(function CitationStrong({ children, ...props }: React.ComponentProps<"strong">) {
+const CitationStrong = memo(function CitationStrong({
+  children,
+  ...props
+}: React.ComponentProps<"strong">) {
   const { citations, onCitationClick } = useContext(CitationContext);
   return <strong {...props}>{processCitationText(children, citations, onCitationClick)}</strong>;
 });
@@ -485,9 +518,14 @@ const CitationEm = memo(function CitationEm({ children, ...props }: React.Compon
   return <em {...props}>{processCitationText(children, citations, onCitationClick)}</em>;
 });
 
-const CitationBlockquote = memo(function CitationBlockquote({ children, ...props }: React.ComponentProps<"blockquote">) {
+const CitationBlockquote = memo(function CitationBlockquote({
+  children,
+  ...props
+}: React.ComponentProps<"blockquote">) {
   const { citations, onCitationClick } = useContext(CitationContext);
-  return <blockquote {...props}>{processCitationText(children, citations, onCitationClick)}</blockquote>;
+  return (
+    <blockquote {...props}>{processCitationText(children, citations, onCitationClick)}</blockquote>
+  );
 });
 
 const CitationH1 = memo(function CitationH1({ children, ...props }: React.ComponentProps<"h1">) {
@@ -555,7 +593,7 @@ const rehypePlugins = [rehypeHighlight];
 function processCitationText(
   children: React.ReactNode,
   citations?: CitationPart[],
-  onCitationClick?: (citation: CitationPart) => void
+  onCitationClick?: (citation: CitationPart) => void,
 ): React.ReactNode {
   if (!citations || citations.length === 0) {
     return children;
@@ -568,9 +606,9 @@ function processCitationText(
       return parts.map((part, i) => {
         const match = part.match(/\[(\d+)\]/);
         if (match) {
-          const num = parseInt(match[1]);
+          const num = Number.parseInt(match[1]);
           // Look up by explicit citationIndex first, fall back to array position
-          const citation = citations.find(c => c.citationIndex === num) ?? citations[num - 1];
+          const citation = citations.find((c) => c.citationIndex === num) ?? citations[num - 1];
           if (citation) {
             return (
               <button

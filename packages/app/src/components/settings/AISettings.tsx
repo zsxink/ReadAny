@@ -9,10 +9,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-/**
- * AISettings — multi-endpoint, multi-provider AI configuration
- * Supports OpenAI-compatible, Anthropic Claude, Google Gemini
- */
 import { useSettingsStore } from "@/stores/settings-store";
 import type { AIEndpoint, AIProviderType } from "@readany/core/types";
 import { Loader2, Plus, RefreshCw, Trash2, X } from "lucide-react";
@@ -24,27 +20,50 @@ function createEndpointId(): string {
 }
 
 /** Default base URLs per provider */
-const PROVIDER_DEFAULTS: Record<AIProviderType, { baseUrl: string; placeholder: string; keyPlaceholder: string }> = {
-  openai: { baseUrl: "https://api.openai.com/v1", placeholder: "https://api.openai.com/v1", keyPlaceholder: "sk-..." },
-  anthropic: { baseUrl: "", placeholder: "https://api.anthropic.com", keyPlaceholder: "sk-ant-..." },
-  google: { baseUrl: "", placeholder: "https://generativelanguage.googleapis.com", keyPlaceholder: "AIza..." },
-  deepseek: { baseUrl: "https://api.deepseek.com", placeholder: "https://api.deepseek.com", keyPlaceholder: "sk-..." },
+const PROVIDER_DEFAULTS: Record<
+  AIProviderType,
+  { baseUrl: string; placeholder: string; keyPlaceholder: string }
+> = {
+  openai: {
+    baseUrl: "https://api.openai.com/v1",
+    placeholder: "https://api.openai.com/v1",
+    keyPlaceholder: "sk-...",
+  },
+  anthropic: {
+    baseUrl: "",
+    placeholder: "https://api.anthropic.com",
+    keyPlaceholder: "sk-ant-...",
+  },
+  google: {
+    baseUrl: "",
+    placeholder: "https://generativelanguage.googleapis.com",
+    keyPlaceholder: "AIza...",
+  },
+  deepseek: {
+    baseUrl: "https://api.deepseek.com",
+    placeholder: "https://api.deepseek.com",
+    keyPlaceholder: "sk-...",
+  },
 };
 
 function EndpointCard({
   endpoint,
   isActive,
+  isExpanded,
   onUpdate,
   onRemove,
   onFetchModels,
   onSetActive,
+  onToggleExpand,
 }: {
   endpoint: AIEndpoint;
   isActive: boolean;
+  isExpanded: boolean;
   onUpdate: (id: string, updates: Partial<AIEndpoint>) => void;
   onRemove: (id: string) => void;
   onFetchModels: (id: string) => void;
   onSetActive: (id: string) => void;
+  onToggleExpand: () => void;
 }) {
   const { t } = useTranslation();
   const [newModelName, setNewModelName] = useState("");
@@ -77,160 +96,220 @@ function EndpointCard({
 
   return (
     <div
-      className={`rounded-lg border p-3 space-y-3 transition-colors ${
+      className={`rounded-lg border transition-colors ${
         isActive ? "border-primary/50 bg-primary/5" : "border-border bg-muted/30"
       }`}
     >
-      {/* Header: name + active toggle + delete */}
-      <div className="flex items-center gap-2">
-        <Input
-          value={endpoint.name}
-          onChange={(e) => onUpdate(endpoint.id, { name: e.target.value })}
-          placeholder={t("settings.ai_endpointNamePlaceholder")}
-          className="h-8 text-sm font-medium flex-1"
-        />
-        {!isActive && (
-          <Button variant="outline" size="sm" className="h-7 text-xs shrink-0" onClick={() => onSetActive(endpoint.id)}>
-            {t("settings.ai_activeEndpoint")}
-          </Button>
-        )}
-        {isActive && (
-          <span className="text-xs text-primary font-medium px-2 shrink-0">✓ Active</span>
-        )}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
-          onClick={() => onRemove(endpoint.id)}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-
-      {/* Provider selector */}
-      <div>
-        <label className="mb-1 block text-xs text-muted-foreground">{t("settings.ai_provider")}</label>
-        <Select
-          value={endpoint.provider || "openai"}
-          onValueChange={(v) => {
-            const provider = v as AIProviderType;
-            const defaults = PROVIDER_DEFAULTS[provider];
-            onUpdate(endpoint.id, {
-              provider,
-              baseUrl: defaults.baseUrl,
-              models: [],
-              modelsFetched: false,
-            });
-          }}
-        >
-          <SelectTrigger className="h-8 text-sm">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="openai">{t("settings.ai_provider_openai")}</SelectItem>
-            <SelectItem value="anthropic">{t("settings.ai_provider_anthropic")}</SelectItem>
-            <SelectItem value="google">{t("settings.ai_provider_google")}</SelectItem>
-            <SelectItem value="deepseek">{t("settings.ai_provider_deepseek")}</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* API Key */}
-      <div>
-        <label className="mb-1 block text-xs text-muted-foreground">{t("settings.ai_apiKey")}</label>
-        <PasswordInput
-          value={endpoint.apiKey}
-          onChange={(e) => onUpdate(endpoint.id, { apiKey: e.target.value })}
-          placeholder={PROVIDER_DEFAULTS[endpoint.provider || "openai"].keyPlaceholder}
-          className="h-8 text-sm"
-        />
-      </div>
-
-      {/* Base URL */}
-      <div>
-        <label className="mb-1 block text-xs text-muted-foreground">
-          {endpoint.provider === "openai" ? t("settings.ai_baseUrl") : t("settings.ai_baseUrlOptional")}
-        </label>
-        <Input
-          value={endpoint.baseUrl}
-          onChange={(e) => onUpdate(endpoint.id, { baseUrl: e.target.value })}
-          placeholder={PROVIDER_DEFAULTS[endpoint.provider || "openai"].placeholder}
-          className="h-8 text-sm"
-        />
-      </div>
-
-      {/* Fetch models */}
-      <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 text-xs gap-1"
-          disabled={!endpoint.apiKey || endpoint.modelsFetching}
-          onClick={() => onFetchModels(endpoint.id)}
-        >
-          {endpoint.modelsFetching ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <RefreshCw className="h-3 w-3" />
-          )}
-          {endpoint.modelsFetching ? t("settings.ai_fetchingModels") : t("settings.ai_fetchModels")}
-        </Button>
-        <span className="text-xs text-muted-foreground">
-          {endpoint.models.length > 0
-            ? t("settings.ai_modelsLoaded", { count: endpoint.models.length })
-            : ""}
-        </span>
-      </div>
-
-      {/* Models list + manual add */}
-      <div>
-        <label className="mb-1.5 block text-xs text-muted-foreground">{t("settings.ai_modelsList")}</label>
-
-        {/* Manual add input */}
-        <div className="flex items-center gap-1.5 mb-2">
-          <Input
-            value={newModelName}
-            onChange={(e) => setNewModelName(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={t("settings.ai_addModelPlaceholder")}
-            className="h-7 text-xs flex-1"
-          />
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs gap-1 shrink-0"
-            disabled={!newModelName.trim()}
-            onClick={handleAddModel}
-          >
-            <Plus className="h-3 w-3" />
-            {t("settings.ai_addModel")}
-          </Button>
-        </div>
-
-        {/* Model tags */}
-        {endpoint.models.length > 0 ? (
-          <div className="flex flex-wrap gap-1.5">
-            {endpoint.models.map((model) => (
-              <span
-                key={model}
-                className="inline-flex items-center gap-1 rounded-md bg-background border px-2 py-0.5 text-xs text-foreground"
-              >
-                {model}
-                <button
-                  type="button"
-                  className="text-muted-foreground hover:text-destructive transition-colors"
-                  onClick={() => handleRemoveModel(model)}
-                  title={t("settings.ai_removeModel")}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            ))}
+      {/* Clickable Header */}
+      <div
+        className="flex items-center gap-2 p-3 cursor-pointer hover:bg-muted/50"
+        onClick={onToggleExpand}
+        onKeyUp={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onToggleExpand();
+          }
+        }}
+        tabIndex={0}
+        role="button"
+        aria-expanded={isExpanded}
+      >
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium truncate">
+              {endpoint.name || t("common.unnamed", "未命名")}
+            </span>
+            {isActive && (
+              <span className="text-xs text-primary font-medium shrink-0">✓ Active</span>
+            )}
           </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">{t("settings.ai_noModels")}</p>
-        )}
+          <span className="text-xs text-muted-foreground truncate block">
+            {endpoint.provider} • {endpoint.models.length} {t("settings.ai_models", "模型")}
+          </span>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {!isActive && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSetActive(endpoint.id);
+              }}
+            >
+              {t("settings.ai_activeEndpoint")}
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove(endpoint.id);
+            }}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+          <span className="text-muted-foreground text-sm">{isExpanded ? "▲" : "▼"}</span>
+        </div>
       </div>
+
+      {/* Collapsible Content */}
+      {isExpanded && (
+        <div className="p-3 pt-0 space-y-3 border-t border-border/50">
+          {/* Provider selector */}
+          <div>
+            <label
+              htmlFor={`provider-${endpoint.id}`}
+              className="mb-1 block text-xs text-muted-foreground"
+            >
+              {t("settings.ai_provider")}
+            </label>
+            <Select
+              value={endpoint.provider || "openai"}
+              onValueChange={(v) => {
+                const provider = v as AIProviderType;
+                const defaults = PROVIDER_DEFAULTS[provider];
+                onUpdate(endpoint.id, {
+                  provider,
+                  baseUrl: defaults.baseUrl,
+                  models: [],
+                  modelsFetched: false,
+                });
+              }}
+            >
+              <SelectTrigger className="h-8 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="openai">{t("settings.ai_provider_openai")}</SelectItem>
+                <SelectItem value="anthropic">{t("settings.ai_provider_anthropic")}</SelectItem>
+                <SelectItem value="google">{t("settings.ai_provider_google")}</SelectItem>
+                <SelectItem value="deepseek">{t("settings.ai_provider_deepseek")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* API Key */}
+          <div>
+            <label
+              htmlFor={`apiKey-${endpoint.id}`}
+              className="mb-1 block text-xs text-muted-foreground"
+            >
+              {t("settings.ai_apiKey")}
+            </label>
+            <PasswordInput
+              id={`apiKey-${endpoint.id}`}
+              value={endpoint.apiKey}
+              onChange={(e) => onUpdate(endpoint.id, { apiKey: e.target.value })}
+              placeholder={PROVIDER_DEFAULTS[endpoint.provider || "openai"].keyPlaceholder}
+              className="h-8 text-sm"
+            />
+          </div>
+
+          {/* Base URL */}
+          <div>
+            <label
+              htmlFor={`baseUrl-${endpoint.id}`}
+              className="mb-1 block text-xs text-muted-foreground"
+            >
+              {endpoint.provider === "openai"
+                ? t("settings.ai_baseUrl")
+                : t("settings.ai_baseUrlOptional")}
+            </label>
+            <Input
+              id={`baseUrl-${endpoint.id}`}
+              value={endpoint.baseUrl}
+              onChange={(e) => onUpdate(endpoint.id, { baseUrl: e.target.value })}
+              placeholder={PROVIDER_DEFAULTS[endpoint.provider || "openai"].placeholder}
+              className="h-8 text-sm"
+            />
+          </div>
+
+          {/* Fetch models */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs gap-1"
+              disabled={!endpoint.apiKey || endpoint.modelsFetching}
+              onClick={() => onFetchModels(endpoint.id)}
+            >
+              {endpoint.modelsFetching ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3 w-3" />
+              )}
+              {endpoint.modelsFetching
+                ? t("settings.ai_fetchingModels")
+                : t("settings.ai_fetchModels")}
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              {endpoint.models.length > 0
+                ? t("settings.ai_modelsLoaded", { count: endpoint.models.length })
+                : ""}
+            </span>
+          </div>
+
+          {/* Models list + manual add */}
+          <div>
+            <label
+              htmlFor={`newModel-${endpoint.id}`}
+              className="mb-1.5 block text-xs text-muted-foreground"
+            >
+              {t("settings.ai_modelsList")}
+            </label>
+
+            {/* Manual add input */}
+            <div className="flex items-center gap-1.5 mb-2">
+              <Input
+                id={`newModel-${endpoint.id}`}
+                value={newModelName}
+                onChange={(e) => setNewModelName(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={t("settings.ai_addModelPlaceholder")}
+                className="h-7 text-xs flex-1"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1 shrink-0"
+                disabled={!newModelName.trim()}
+                onClick={handleAddModel}
+              >
+                <Plus className="h-3 w-3" />
+                {t("settings.ai_addModel")}
+              </Button>
+            </div>
+
+            {/* Model tags */}
+            {endpoint.models.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {endpoint.models.map((model) => (
+                  <span
+                    key={model}
+                    className="inline-flex items-center gap-1 rounded-md bg-background border px-2 py-0.5 text-xs text-foreground"
+                  >
+                    {model}
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-destructive transition-colors"
+                      onClick={() => handleRemoveModel(model)}
+                      title={t("settings.ai_removeModel")}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">{t("settings.ai_noModels")}</p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -249,6 +328,7 @@ export function AISettings() {
   } = useSettingsStore();
 
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const activeEndpoint = aiConfig.endpoints.find((ep) => ep.id === aiConfig.activeEndpointId);
 
@@ -293,7 +373,12 @@ export function AISettings() {
             <h2 className="text-sm font-medium text-foreground">{t("settings.ai_endpoints")}</h2>
             <p className="text-xs text-muted-foreground mt-0.5">{t("settings.ai_desc")}</p>
           </div>
-          <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={handleAddEndpoint}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs gap-1"
+            onClick={handleAddEndpoint}
+          >
             <Plus className="h-3 w-3" />
             {t("settings.ai_addEndpoint")}
           </Button>
@@ -301,24 +386,26 @@ export function AISettings() {
 
         <div className="space-y-3">
           {aiConfig.endpoints.length === 0 && (
-            <p className="text-xs text-muted-foreground text-center py-4">{t("settings.ai_noEndpoints")}</p>
+            <p className="text-xs text-muted-foreground text-center py-4">
+              {t("settings.ai_noEndpoints")}
+            </p>
           )}
           {aiConfig.endpoints.map((ep) => (
             <EndpointCard
               key={ep.id}
               endpoint={ep}
               isActive={ep.id === aiConfig.activeEndpointId}
+              isExpanded={expandedId === ep.id}
               onUpdate={updateEndpoint}
               onRemove={removeEndpoint}
               onFetchModels={handleFetchModels}
               onSetActive={setActiveEndpoint}
+              onToggleExpand={() => setExpandedId(expandedId === ep.id ? null : ep.id)}
             />
           ))}
         </div>
 
-        {fetchError && (
-          <p className="mt-2 text-xs text-destructive">{fetchError}</p>
-        )}
+        {fetchError && <p className="mt-2 text-xs text-destructive">{fetchError}</p>}
       </section>
 
       {/* Active Model Selection */}

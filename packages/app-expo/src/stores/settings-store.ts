@@ -4,7 +4,7 @@
 import type { AIConfig, AIEndpoint, ReadSettings } from "@readany/core/types";
 import type { TranslationConfig, TranslationTargetLang } from "@readany/core/types/translation";
 import { create } from "zustand";
-import { withPersist, saveSecure, loadSecure, deleteSecure } from "./persist";
+import { deleteSecure, loadSecure, saveSecure, withPersist } from "./persist";
 
 export interface SettingsState {
   readSettings: ReadSettings;
@@ -110,7 +110,7 @@ export const useSettingsStore = create<SettingsState>()(
     // Load API keys from secure storage and merge with current endpoints
     const loadApiKeys = async () => {
       const state = get();
-      
+
       // 如果已经加载过，不再重复加载
       if (state._apiKeysLoaded) {
         return;
@@ -120,9 +120,9 @@ export const useSettingsStore = create<SettingsState>()(
         state.aiConfig.endpoints.map(async (ep) => {
           const apiKey = await loadSecure(getApiKeyStorageKey(ep.id));
           return { ...ep, apiKey: apiKey || "" };
-        })
+        }),
       );
-      
+
       set({
         aiConfig: { ...state.aiConfig, endpoints: endpointsWithKeys },
         _apiKeysLoaded: true,
@@ -164,7 +164,10 @@ export const useSettingsStore = create<SettingsState>()(
         set((state) => ({
           aiConfig: {
             ...state.aiConfig,
-            endpoints: [...state.aiConfig.endpoints, { ...endpoint, apiKey: endpoint.apiKey || "" }],
+            endpoints: [
+              ...state.aiConfig.endpoints,
+              { ...endpoint, apiKey: endpoint.apiKey || "" },
+            ],
           },
         }));
       },
@@ -289,7 +292,7 @@ export const useSettingsStore = create<SettingsState>()(
         // Delete all API keys from secure storage
         const state = get();
         await Promise.all(
-          state.aiConfig.endpoints.map((ep) => deleteSecure(getApiKeyStorageKey(ep.id)))
+          state.aiConfig.endpoints.map((ep) => deleteSecure(getApiKeyStorageKey(ep.id))),
         );
         set({
           readSettings: defaultReadSettings,

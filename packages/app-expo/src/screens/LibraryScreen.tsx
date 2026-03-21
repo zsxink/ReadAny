@@ -5,7 +5,6 @@ import {
   ArrowUpAZIcon,
   CheckIcon,
   ClockIcon,
-  DatabaseIcon,
   EditIcon,
   PlusIcon,
   SearchIcon,
@@ -23,13 +22,13 @@ import {
   fontWeight,
   radius,
   useColors,
-  withOpacity,
   useTheme,
+  withOpacity,
 } from "@/styles/theme";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { getPlatformService } from "@readany/core/services";
 import { onLibraryChanged } from "@readany/core/events/library-events";
+import { getPlatformService } from "@readany/core/services";
 import type { Book, SortField } from "@readany/core/types";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
@@ -229,7 +228,6 @@ export function LibraryScreen() {
         t("library.importComplete", "导入完成"),
         t("library.importedCount", {
           count: files.length,
-          defaultValue: `成功导入 ${files.length} 本书`,
         }),
       );
     } catch (err) {
@@ -411,10 +409,20 @@ export function LibraryScreen() {
                   }}
                   activeOpacity={0.7}
                 >
-                  <SearchIcon size={18} color={showSearch ? colors.primary : colors.mutedForeground} />
+                  <SearchIcon
+                    size={18}
+                    color={showSearch ? colors.primary : colors.mutedForeground}
+                  />
                 </TouchableOpacity>
 
-                <Animated.View style={{ flex: 1, opacity: searchAnim, flexDirection: "row", alignItems: "center" }}>
+                <Animated.View
+                  style={{
+                    flex: 1,
+                    opacity: searchAnim,
+                    flexDirection: "row",
+                    alignItems: "center",
+                  }}
+                >
                   <TextInput
                     ref={searchInputRef}
                     style={s.searchInputInline}
@@ -555,10 +563,7 @@ export function LibraryScreen() {
         {/* Empty state */}
         {isLoaded && books.length === 0 && (
           <View style={s.emptyWrap}>
-            <Image
-              source={isDark ? BOOK_DARK_PNG : BOOK_PNG}
-              style={{ width: 160, height: 160 }}
-            />
+            <Image source={isDark ? BOOK_DARK_PNG : BOOK_PNG} style={{ width: 160, height: 160 }} />
             <Text style={s.emptyTitle}>{t("library.empty", "暂无书籍")}</Text>
             <Text style={s.emptyHint}>{t("library.emptyHint", "导入电子书开始阅读之旅")}</Text>
             <TouchableOpacity style={s.emptyImportBtn} onPress={handleImport} activeOpacity={0.8}>

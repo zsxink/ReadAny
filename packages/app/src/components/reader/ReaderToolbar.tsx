@@ -1,19 +1,24 @@
 import { Button } from "@/components/ui/button";
-import type { TOCItem } from "./FoliateViewer";
-import { useAppStore } from "@/stores/app-store";
-import { useReaderStore } from "@/stores/reader-store";
-import { useNotebookStore } from "@/stores/notebook-store";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAnnotationStore } from "@/stores/annotation-store";
-import { ArrowLeft, Bookmark, List, MessageSquare, NotebookPen, Search, Settings, Volume2, Undo } from "lucide-react";
-import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+import { useAppStore } from "@/stores/app-store";
+import { useNotebookStore } from "@/stores/notebook-store";
+import { useReaderStore } from "@/stores/reader-store";
 import { generateId } from "@readany/core/utils";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+  ArrowLeft,
+  Bookmark,
+  List,
+  MessageSquare,
+  NotebookPen,
+  Search,
+  Settings,
+  Undo,
+  Volume2,
+} from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import type { TOCItem } from "./FoliateViewer";
 
 interface ReaderToolbarProps {
   tabId: string;
@@ -67,9 +72,7 @@ export function ReaderToolbar({
 
   const currentCfi = tab?.currentCfi || "";
   const bookId = tab?.bookId || "";
-  const existingBookmark = bookmarks.find(
-    (b) => b.bookId === bookId && b.cfi === currentCfi,
-  );
+  const existingBookmark = bookmarks.find((b) => b.bookId === bookId && b.cfi === currentCfi);
   const isBookmarked = !!existingBookmark;
 
   const handleToggleBookmark = () => {

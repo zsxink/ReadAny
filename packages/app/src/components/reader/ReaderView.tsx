@@ -1,3 +1,4 @@
+import { ChatPanel } from "@/components/chat/ChatPanel";
 /**
  * ReaderView — main reader page component.
  *
@@ -13,41 +14,44 @@
  * - Rendering the FoliateViewer and surrounding UI (toolbar, footer, panels)
  */
 import { ReadSettingsPanel } from "@/components/settings/ReadSettings";
-import { ChatPanel } from "@/components/chat/ChatPanel";
 import { useReadingSession } from "@/hooks/use-reading-session";
+import { useResizablePanel } from "@/hooks/use-resizable-panel";
 import { DocumentLoader } from "@/lib/reader/document-loader";
 import type { BookDoc, BookFormat } from "@/lib/reader/document-loader";
 import { isFixedLayoutFormat } from "@/lib/reader/document-loader";
-import type { RelocateDetail, TOCItem, BookSelection, FoliateViewerHandle } from "./FoliateViewer";
-import { FoliateViewer } from "./FoliateViewer";
-import { throttle } from "@readany/core/utils/throttle";
 import { useAnnotationStore } from "@/stores/annotation-store";
 import { useAppStore } from "@/stores/app-store";
 import { useLibraryStore } from "@/stores/library-store";
+import { useNotebookStore } from "@/stores/notebook-store";
 import { useReaderStore } from "@/stores/reader-store";
 import { useSettingsStore } from "@/stores/settings-store";
-import { useNotebookStore } from "@/stores/notebook-store";
-import type { HighlightColor, CitationPart } from "@readany/core/types";
+import { useTTSStore } from "@/stores/tts-store";
+import type { CitationPart, HighlightColor } from "@readany/core/types";
+import { throttle } from "@readany/core/utils/throttle";
 import { X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { BookSelection, FoliateViewerHandle, RelocateDetail, TOCItem } from "./FoliateViewer";
+import { FoliateViewer } from "./FoliateViewer";
 import { FooterBar } from "./FooterBar";
 import { NotebookPanel } from "./NotebookPanel";
 import { ReaderToolbar } from "./ReaderToolbar";
+import { ResizeHandle } from "./ResizeHandle";
 import { SearchBar } from "./SearchBar";
 import { SelectionPopover } from "./SelectionPopover";
 import { TOCPanel } from "./TOCPanel";
 import { TranslationPopover } from "./TranslationPopover";
-import { ResizeHandle } from "./ResizeHandle";
-import { useResizablePanel } from "@/hooks/use-resizable-panel";
-import { useTTSStore } from "@/stores/tts-store";
 
 // --- Tauri file loading ---
 async function loadFileAsBlob(filePath: string): Promise<Blob> {
   // Resolve relative paths (e.g., "books/{id}.epub") to absolute paths
   let resolvedPath = filePath;
-  if (!filePath.startsWith("/") && !filePath.startsWith("file://") &&
-      !filePath.startsWith("asset://") && !filePath.startsWith("http")) {
+  if (
+    !filePath.startsWith("/") &&
+    !filePath.startsWith("file://") &&
+    !filePath.startsWith("asset://") &&
+    !filePath.startsWith("http")
+  ) {
     const { appDataDir, join } = await import("@tauri-apps/api/path");
     const appData = await appDataDir();
     resolvedPath = await join(appData, filePath);
@@ -543,14 +547,14 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
             left: r.left - containerRect.left,
             right: r.right - containerRect.left,
           }));
-          
+
           // Find the topmost rect (smallest top value)
-          const topmostRect = containerRelativeRects.reduce((min, r) => 
-            r.top < min.top ? r : min
+          const topmostRect = containerRelativeRects.reduce((min, r) =>
+            r.top < min.top ? r : min,
           );
           // Find the bottommost rect (largest bottom value)
-          const bottommostRect = containerRelativeRects.reduce((max, r) => 
-            r.bottom > max.bottom ? r : max
+          const bottommostRect = containerRelativeRects.reduce((max, r) =>
+            r.bottom > max.bottom ? r : max,
           );
 
           const firstTop = topmostRect.top;
@@ -566,10 +570,10 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
 
           // Calculate potential positions above and below
           const toolbarHeight = controlsVisible ? 44 : 0;
-          
+
           // Position above selection (y is the top of popover)
           const yAbove = firstTop - popoverH - gap;
-          // Position below selection (y is the top of popover)  
+          // Position below selection (y is the top of popover)
           const yBelow = lastBottom + gap;
 
           // Check if positions are valid (within visible container area)
@@ -920,12 +924,14 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     const results: Array<{ cfi: string; excerpt: string }> = [];
     try {
       for await (const result of gen) {
-        const r = result as {
-          cfi?: string;
-          excerpt?: string;
-          progress?: number;
-          subitems?: Array<{ cfi: string; excerpt: string }>;
-        } | undefined;
+        const r = result as
+          | {
+              cfi?: string;
+              excerpt?: string;
+              progress?: number;
+              subitems?: Array<{ cfi: string; excerpt: string }>;
+            }
+          | undefined;
         if (!r) continue;
 
         if (r.subitems) {
@@ -990,7 +996,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     }
 
     if (citation.cfi.startsWith("page:")) {
-      const pageNum = parseInt(citation.cfi.split(":")[1], 10);
+      const pageNum = Number.parseInt(citation.cfi.split(":")[1], 10);
       if (!isNaN(pageNum)) {
         try {
           foliateRef.current?.goToIndex(pageNum - 1);

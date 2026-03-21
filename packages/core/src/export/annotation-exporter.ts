@@ -1,3 +1,4 @@
+import { getPlatformService } from "../services/platform";
 /**
  * Annotation Exporter — export highlights and notes in multiple formats
  * Supports: Markdown, JSON, Obsidian (with frontmatter), Notion (clipboard-friendly)
@@ -5,7 +6,6 @@
  * Cross-platform: uses IPlatformService for file download and clipboard operations.
  */
 import type { Book, Highlight, Note } from "../types";
-import { getPlatformService } from "../services/platform";
 
 export type ExportFormat = "markdown" | "json" | "obsidian" | "notion";
 
@@ -268,9 +268,7 @@ export class AnnotationExporter {
     options: Partial<ExportOptions> = {},
   ): string {
     const opts = { ...DEFAULT_OPTIONS, ...options };
-    const nonEmpty = booksData.filter(
-      (d) => d.highlights.length > 0 || d.notes.length > 0,
-    );
+    const nonEmpty = booksData.filter((d) => d.highlights.length > 0 || d.notes.length > 0);
 
     if (opts.format === "json") {
       return JSON.stringify(

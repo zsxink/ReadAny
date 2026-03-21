@@ -4,7 +4,6 @@ import type { TFunction } from "i18next";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  type GestureResponderEvent,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -15,7 +14,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { LoaderIcon, PlusIcon, Trash2Icon, XIcon } from "../../components/ui/Icon";
+import { LoaderIcon, MinusIcon, PlusIcon, Trash2Icon, XIcon } from "../../components/ui/Icon";
 import { PasswordInput } from "../../components/ui/PasswordInput";
 import {
   type ThemeColors,
@@ -281,23 +280,6 @@ export default function AISettingsScreen() {
   } = useSettingsStore();
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const sliderTrackRef = useRef<View>(null);
-
-  const activeEndpoint = aiConfig.endpoints.find((ep) => ep.id === aiConfig.activeEndpointId);
-
-  const handleSliderTouch = useCallback(
-    (event: GestureResponderEvent) => {
-      sliderTrackRef.current?.measure((x, y, width, height, pageX, pageY) => {
-        const touchX = event.nativeEvent.pageX;
-        const relativeX = touchX - pageX;
-        const ratio = Math.max(0, Math.min(1, relativeX / width));
-        // Round to nearest 0.1
-        const value = Math.round(ratio * 10) / 10;
-        updateAIConfig({ temperature: value });
-      });
-    },
-    [updateAIConfig],
-  );
 
   const handleAddEndpoint = useCallback(async () => {
     await addEndpoint({
@@ -340,7 +322,11 @@ export default function AISettingsScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={["top"]}
     >
-      <SettingsHeader title={t("settings.ai_title", "AI 设置")} subtitle={t("settings.realtimeHint")} right={addButton} />
+      <SettingsHeader
+        title={t("settings.ai_title", "AI 设置")}
+        subtitle={t("settings.realtimeHint")}
+        right={addButton}
+      />
 
       <KeyboardAvoidingView
         style={styles.keyboardView}
@@ -351,6 +337,11 @@ export default function AISettingsScreen() {
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={true}
+          alwaysBounceVertical={false}
+          scrollEventThrottle={16}
+          overScrollMode="never"
+          bounces={true}
         >
           {/* Endpoints */}
           {aiConfig.endpoints.map((ep) => {
@@ -410,66 +401,117 @@ export default function AISettingsScreen() {
 
             <View style={styles.paramRow}>
               <Text style={styles.paramLabel}>Temperature</Text>
-              <Text style={styles.paramValue}>{aiConfig.temperature.toFixed(1)}</Text>
-            </View>
-            <View style={styles.sliderContainer}>
-              <View
-                ref={sliderTrackRef}
-                style={styles.sliderTrack}
-                onStartShouldSetResponder={() => true}
-                onResponderGrant={handleSliderTouch}
-                onResponderMove={handleSliderTouch}
-              >
-                <View style={[styles.sliderRange, { width: `${aiConfig.temperature * 100}%` }]} />
-              </View>
-              <View style={styles.sliderMarks}>
-                {[0, 0.5, 1].map((v) => (
-                  <TouchableOpacity
-                    key={v}
-                    style={styles.sliderMark}
-                    onPress={() => updateAIConfig({ temperature: v })}
-                    hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-                  >
-                    <View
-                      style={[
-                        styles.sliderDot,
-                        Math.abs(aiConfig.temperature - v) < 0.05 && styles.sliderDotActive,
-                      ]}
-                    />
-                    <Text style={styles.sliderLabel}>{v}</Text>
-                  </TouchableOpacity>
-                ))}
+              <View style={styles.stepperContainer}>
+                <TouchableOpacity
+                  style={styles.stepperBtn}
+                  onPress={() => {
+                    const newValue = Math.max(0, aiConfig.temperature - 0.1);
+                    updateAIConfig({ temperature: Math.round(newValue * 10) / 10 });
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <MinusIcon size={16} color={colors.foreground} />
+                </TouchableOpacity>
+                <TextInput
+                  style={styles.stepperInput}
+                  value={String(aiConfig.temperature)}
+                  onChangeText={(v) => {
+                    const num = Number.parseFloat(v);
+                    if (!Number.isNaN(num) && num >= 0 && num <= 1) {
+                      updateAIConfig({ temperature: num });
+                    }
+                  }}
+                  keyboardType="decimal-pad"
+                  placeholder="0.0 - 1.0"
+                  textAlign="center"
+                />
+                <TouchableOpacity
+                  style={styles.stepperBtn}
+                  onPress={() => {
+                    const newValue = Math.min(1, aiConfig.temperature + 0.1);
+                    updateAIConfig({ temperature: Math.round(newValue * 10) / 10 });
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <PlusIcon size={16} color={colors.foreground} />
+                </TouchableOpacity>
               </View>
             </View>
 
             <View style={[styles.paramRow, { marginTop: spacing.md }]}>
               <Text style={styles.paramLabel}>Max Tokens</Text>
-              <TextInput
-                style={styles.paramInput}
-                value={String(aiConfig.maxTokens)}
-                onChangeText={(v) => {
-                  const num = Number.parseInt(v, 10);
-                  if (!isNaN(num) && num > 0) {
-                    updateAIConfig({ maxTokens: num });
-                  }
-                }}
-                keyboardType="number-pad"
-              />
+              <View style={styles.stepperContainer}>
+                <TouchableOpacity
+                  style={styles.stepperBtn}
+                  onPress={() => {
+                    const newValue = Math.max(1024, aiConfig.maxTokens - 1024);
+                    updateAIConfig({ maxTokens: newValue });
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <MinusIcon size={16} color={colors.foreground} />
+                </TouchableOpacity>
+                <TextInput
+                  style={styles.stepperInput}
+                  value={String(aiConfig.maxTokens)}
+                  onChangeText={(v) => {
+                    const num = Number.parseInt(v, 10);
+                    if (!Number.isNaN(num) && num > 0) {
+                      updateAIConfig({ maxTokens: num });
+                    }
+                  }}
+                  keyboardType="number-pad"
+                  textAlign="center"
+                />
+                <TouchableOpacity
+                  style={styles.stepperBtn}
+                  onPress={() => {
+                    const newValue = Math.min(32768, aiConfig.maxTokens + 1024);
+                    updateAIConfig({ maxTokens: newValue });
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <PlusIcon size={16} color={colors.foreground} />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <View style={[styles.paramRow, { marginTop: spacing.md }]}>
               <Text style={styles.paramLabel}>{t("settings.ai_slidingWindow", "上下文窗口")}</Text>
-              <TextInput
-                style={styles.paramInput}
-                value={String(aiConfig.slidingWindowSize)}
-                onChangeText={(v) => {
-                  const num = Number.parseInt(v, 10);
-                  if (!isNaN(num) && num > 0) {
-                    updateAIConfig({ slidingWindowSize: num });
-                  }
-                }}
-                keyboardType="number-pad"
-              />
+              <View style={styles.stepperContainer}>
+                <TouchableOpacity
+                  style={styles.stepperBtn}
+                  onPress={() => {
+                    const newValue = Math.max(1024, aiConfig.slidingWindowSize - 1024);
+                    updateAIConfig({ slidingWindowSize: newValue });
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <MinusIcon size={16} color={colors.foreground} />
+                </TouchableOpacity>
+                <TextInput
+                  style={styles.stepperInput}
+                  value={String(aiConfig.slidingWindowSize)}
+                  onChangeText={(v) => {
+                    const num = Number.parseInt(v, 10);
+                    if (!Number.isNaN(num) && num > 0) {
+                      updateAIConfig({ slidingWindowSize: num });
+                    }
+                  }}
+                  keyboardType="number-pad"
+                  textAlign="center"
+                />
+                <TouchableOpacity
+                  style={styles.stepperBtn}
+                  onPress={() => {
+                    const newValue = Math.min(32768, aiConfig.slidingWindowSize + 1024);
+                    updateAIConfig({ slidingWindowSize: newValue });
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <PlusIcon size={16} color={colors.foreground} />
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </ScrollView>
@@ -754,44 +796,29 @@ const makeStyles = (colors: ThemeColors) =>
       textAlign: "right",
     },
 
-    sliderContainer: {
-      marginTop: spacing.md,
-      paddingBottom: spacing.lg,
-    },
-    sliderTrack: {
-      height: 4,
-      backgroundColor: colors.muted,
-      borderRadius: radius.full,
-      overflow: "hidden",
-    },
-    sliderRange: {
-      height: 4,
-      backgroundColor: colors.primary,
-      borderRadius: radius.full,
-    },
-    sliderMarks: {
+    stepperContainer: {
       flexDirection: "row",
-      justifyContent: "space-between",
-      marginTop: spacing.sm,
-    },
-    sliderMark: {
       alignItems: "center",
-      gap: 4,
+      gap: spacing.sm,
     },
-    sliderDot: {
-      width: 12,
-      height: 12,
-      borderRadius: 6,
-      borderWidth: 2,
+    stepperBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: radius.md,
+      borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.background,
+      alignItems: "center",
+      justifyContent: "center",
     },
-    sliderDotActive: {
-      borderColor: colors.primary,
-      backgroundColor: colors.primary,
-    },
-    sliderLabel: {
-      fontSize: fontSize.xs,
-      color: colors.mutedForeground,
+    stepperInput: {
+      width: 60,
+      height: 32,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+      fontSize: fontSize.sm,
+      color: colors.foreground,
     },
   });

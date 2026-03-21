@@ -1,11 +1,11 @@
+import { evictBlobCache } from "@/components/reader/ReaderView";
 /**
  * TabBar — draggable tab bar (sageread style: compact h-8, Home icon pinned left, drag region)
  * No react-router navigation — tab switching is purely state-driven.
  */
 import { type Tab, useAppStore } from "@/stores/app-store";
-import { useReaderStore } from "@/stores/reader-store";
 import { useLibraryStore } from "@/stores/library-store";
-import { evictBlobCache } from "@/components/reader/ReaderView";
+import { useReaderStore } from "@/stores/reader-store";
 import { BookOpen, Home, MessageSquare, NotebookPen, X } from "lucide-react";
 
 const TAB_ICONS: Record<string, React.ElementType> = {
@@ -50,10 +50,7 @@ export function TabBar() {
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
     >
       {/* macOS traffic light spacing + Home icon */}
-      <div
-        className="flex h-full shrink-0 items-center"
-        style={{ paddingLeft: 68 }}
-      >
+      <div className="flex h-full shrink-0 items-center" style={{ paddingLeft: 68 }}>
         <button
           type="button"
           className="flex items-center justify-center rounded-md p-1 text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800"
@@ -65,7 +62,11 @@ export function TabBar() {
       </div>
 
       {/* Tabs */}
-      <div className="flex h-full flex-1 items-center gap-0.5 overflow-x-auto px-1" data-tauri-drag-region style={{ WebkitAppRegion: "drag" } as React.CSSProperties}>
+      <div
+        className="flex h-full flex-1 items-center gap-0.5 overflow-x-auto px-1"
+        data-tauri-drag-region
+        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+      >
         {readerTabs.map((tab) => (
           <TabItem
             key={tab.id}

@@ -151,8 +151,7 @@
     height: 100%;
   }
 
-  :is(.linkAnnotation, .buttonWidgetAnnotation.pushButton):not(.hasBorder)
-    > a:hover {
+  :is(.linkAnnotation, .buttonWidgetAnnotation.pushButton):not(.hasBorder) > a:hover {
     opacity: 0.2;
     background-color: rgb(255 255 0);
   }
@@ -317,8 +316,8 @@
   .popup {
     background-color: rgb(255 255 153);
     color: black;
-    box-shadow: 0 calc(2px * var(--total-scale-factor))
-      calc(5px * var(--total-scale-factor)) rgb(136 136 136);
+    box-shadow: 0 calc(2px * var(--total-scale-factor)) calc(5px * var(--total-scale-factor))
+      rgb(136 136 136);
     border-radius: calc(2px * var(--total-scale-factor));
     outline: 1.5px solid rgb(255 255 74);
     padding: calc(6px * var(--total-scale-factor));

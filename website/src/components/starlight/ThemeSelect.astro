@@ -5,27 +5,27 @@ try {
 } catch {
   // Fallback: detect locale from URL path
   const pathname = Astro.url.pathname;
-  if (pathname.includes('/zh/') || pathname.startsWith('/ReadAny/zh/')) {
-    locale = 'zh';
+  if (pathname.includes("/zh/") || pathname.startsWith("/ReadAny/zh/")) {
+    locale = "zh";
   } else {
     locale = undefined;
   }
 }
 
 const themeLabels = {
-  light: locale === 'zh' ? '浅色' : 'Light',
-  dark: locale === 'zh' ? '深色' : 'Dark',
-  sepia: locale === 'zh' ? '护眼' : 'Sepia',
+  light: locale === "zh" ? "浅色" : "Light",
+  dark: locale === "zh" ? "深色" : "Dark",
+  sepia: locale === "zh" ? "护眼" : "Sepia",
 };
 
 const themes = [
-  { value: 'light', label: themeLabels.light, icon: 'sun' },
-  { value: 'dark', label: themeLabels.dark, icon: 'moon' },
-  { value: 'sepia', label: themeLabels.sepia, icon: 'book-open' },
+  { value: "light", label: themeLabels.light, icon: "sun" },
+  { value: "dark", label: themeLabels.dark, icon: "moon" },
+  { value: "sepia", label: themeLabels.sepia, icon: "book-open" },
 ];
 
-const ariaLabel = locale === 'zh' ? '切换主题' : 'Toggle theme';
-const title = locale === 'zh' ? '更改主题' : 'Change theme';
+const ariaLabel = locale === "zh" ? "切换主题" : "Toggle theme";
+const title = locale === "zh" ? "更改主题" : "Change theme";
 ---
 
 <div class="theme-select-container">

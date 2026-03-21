@@ -25,19 +25,38 @@ export function ContextPopover() {
 
   return (
     <div className="relative" ref={popoverRef}>
-      <button type="button" onClick={() => setOpen(!open)} className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs text-neutral-600 transition-colors hover:bg-muted">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs text-neutral-600 transition-colors hover:bg-muted"
+      >
         <BookOpen className="size-3.5" />
-        <span>{selectedBooks.length > 0 ? t("chat.booksCount", { count: selectedBooks.length }) : t("chat.context")}</span>
+        <span>
+          {selectedBooks.length > 0
+            ? t("chat.booksCount", { count: selectedBooks.length })
+            : t("chat.context")}
+        </span>
       </button>
       {open && (
         <div className="absolute right-0 top-full z-50 mt-2 w-64 rounded-xl border bg-background p-1.5 shadow-lg">
-          <p className="mb-1 px-2 py-1 text-xs font-medium text-muted-foreground">{t("chat.selectBooksForContext")}</p>
+          <p className="mb-1 px-2 py-1 text-xs font-medium text-muted-foreground">
+            {t("chat.selectBooksForContext")}
+          </p>
           <div className="max-h-60 overflow-y-auto">
             {books.map((book) => {
               const isSelected = selectedBooks.includes(book.id);
               return (
-                <button key={book.id} type="button" onClick={() => isSelected ? removeSelectedBook(book.id) : addSelectedBook(book.id)} className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted">
-                  <div className={`flex size-4 shrink-0 items-center justify-center rounded border ${isSelected ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>
+                <button
+                  key={book.id}
+                  type="button"
+                  onClick={() =>
+                    isSelected ? removeSelectedBook(book.id) : addSelectedBook(book.id)
+                  }
+                  className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted"
+                >
+                  <div
+                    className={`flex size-4 shrink-0 items-center justify-center rounded border ${isSelected ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}
+                  >
                     {isSelected && <Check className="size-3" />}
                   </div>
                   <span className="truncate text-foreground">{book.meta.title}</span>
@@ -45,7 +64,11 @@ export function ContextPopover() {
               );
             })}
           </div>
-          {books.length === 0 && <p className="px-2 py-6 text-center text-xs text-muted-foreground">{t("chat.noBooksInLibrary")}</p>}
+          {books.length === 0 && (
+            <p className="px-2 py-6 text-center text-xs text-muted-foreground">
+              {t("chat.noBooksInLibrary")}
+            </p>
+          )}
         </div>
       )}
     </div>

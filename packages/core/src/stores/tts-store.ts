@@ -11,9 +11,9 @@
  * (e.g. React Native) can override via `setTTSPlayerFactories()`.
  */
 import { create } from "zustand";
-import type { TTSConfig, ITTSPlayer } from "../tts/types";
+import { BrowserTTSPlayer, DashScopeTTSPlayer, EdgeTTSPlayer } from "../tts/tts-players";
+import type { ITTSPlayer, TTSConfig } from "../tts/types";
 import { DEFAULT_TTS_CONFIG } from "../tts/types";
-import { BrowserTTSPlayer, EdgeTTSPlayer, DashScopeTTSPlayer } from "../tts/tts-players";
 import { withPersist } from "./persist";
 
 export type TTSPlayState = "stopped" | "playing" | "paused" | "loading";

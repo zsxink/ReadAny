@@ -1,11 +1,12 @@
+import { MermaidView } from "@/components/common/MermaidView";
 import { fontSize as fs, radius, useColors } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
-import * as Clipboard from "expo-clipboard";
-import { useCallback, useMemo, ReactNode, Fragment } from "react";
-import { StyleSheet, View, Text, TouchableOpacity } from "react-native";
-import Markdown, { RenderRules, ASTNode } from "react-native-markdown-display";
-import { MermaidView } from "@/components/common/MermaidView";
 import type { CitationPart } from "@readany/core/types/message";
+import * as Clipboard from "expo-clipboard";
+import { Fragment, type ReactNode, useMemo } from "react";
+import { useTranslation } from "react-i18next";
+import { Text, TouchableOpacity, View } from "react-native";
+import Markdown, { type RenderRules, type ASTNode } from "react-native-markdown-display";
 
 interface MarkdownRendererProps {
   content: string;
@@ -15,22 +16,29 @@ interface MarkdownRendererProps {
   onCitationClick?: (citation: CitationPart) => void;
 }
 
-function CodeBlockWithCopy({ code, style, colors }: { code: string; style: any; colors: ThemeColors }) {
+function CodeBlockWithCopy({
+  code,
+  style,
+  colors,
+}: { code: string; style: any; colors: ThemeColors }) {
+  const { t } = useTranslation();
   return (
     <View style={style}>
-      <TouchableOpacity 
+      <TouchableOpacity
         onPress={() => Clipboard.setStringAsync(code)}
-        style={{ 
-          position: 'absolute', 
-          top: 8, 
-          right: 8, 
+        style={{
+          position: "absolute",
+          top: 8,
+          right: 8,
           padding: 4,
           backgroundColor: colors.card,
           borderRadius: 4,
           zIndex: 10,
         }}
       >
-        <Text style={{ fontSize: 12, color: colors.mutedForeground }}>复制</Text>
+        <Text style={{ fontSize: 12, color: colors.mutedForeground }}>
+          {t("common.copy", "复制")}
+        </Text>
       </TouchableOpacity>
       <Text style={style}>{code}</Text>
     </View>
@@ -39,26 +47,28 @@ function CodeBlockWithCopy({ code, style, colors }: { code: string; style: any; 
 
 function getCodeLanguage(node: ASTNode): string {
   if ((node as any).sourceInfo) {
-    return String((node as any).sourceInfo).toLowerCase().trim();
+    return String((node as any).sourceInfo)
+      .toLowerCase()
+      .trim();
   }
-  
+
   if (node.attributes?.lang) {
     return String(node.attributes.lang).toLowerCase().trim();
   }
-  
+
   if (node.attributes?.className) {
     const className = node.attributes.className;
     if (Array.isArray(className)) {
-      const langClass = className.find((c: string) => c.startsWith('language-'));
+      const langClass = className.find((c: string) => c.startsWith("language-"));
       if (langClass) {
-        return langClass.replace('language-', '').toLowerCase().trim();
+        return langClass.replace("language-", "").toLowerCase().trim();
       }
-    } else if (typeof className === 'string') {
-      return className.replace('language-', '').toLowerCase().trim();
+    } else if (typeof className === "string") {
+      return className.replace("language-", "").toLowerCase().trim();
     }
   }
-  
-  return '';
+
+  return "";
 }
 
 function CitationLink({
@@ -110,7 +120,7 @@ function renderTextWithCitations(
   text: string,
   citations: CitationPart[] | undefined,
   onCitationClick: ((citation: CitationPart) => void) | undefined,
-  colors: ThemeColors
+  colors: ThemeColors,
 ): React.ReactNode[] {
   if (!citations || citations.length === 0) {
     return [<Fragment key="0">{text}</Fragment>];
@@ -122,8 +132,8 @@ function renderTextWithCitations(
   parts.forEach((part, i) => {
     const match = part.match(/\[(\d+)\]/);
     if (match) {
-      const num = parseInt(match[1]);
-      const citation = citations.find(c => c.citationIndex === num) ?? citations[num - 1];
+      const num = Number.parseInt(match[1]);
+      const citation = citations.find((c) => c.citationIndex === num) ?? citations[num - 1];
       if (citation) {
         result.push(
           <CitationLink
@@ -132,7 +142,7 @@ function renderTextWithCitations(
             citation={citation}
             onCitationClick={onCitationClick}
             colors={colors}
-          />
+          />,
         );
         return;
       }
@@ -145,12 +155,12 @@ function renderTextWithCitations(
   return result;
 }
 
-export function MarkdownRenderer({ 
-  content, 
-  isStreaming, 
+export function MarkdownRenderer({
+  content,
+  isStreaming,
   styleOverrides,
   citations,
-  onCitationClick 
+  onCitationClick,
 }: MarkdownRendererProps) {
   const colors = useColors();
   const baseStyles = makeMarkdownStyles(colors);
@@ -158,57 +168,48 @@ export function MarkdownRenderer({
   // This ensures custom styles (like tooltip dark background) are not overridden
   const styles = styleOverrides || baseStyles;
 
-  const rules = useMemo<RenderRules>(() => ({
-    fence: (node: ASTNode, children: ReactNode[], parentNodes: ASTNode[], style: any) => {
-      const code = node.content || '';
-      const lang = getCodeLanguage(node);
-      
-      if (lang === 'mermaid') {
+  const rules = useMemo<RenderRules>(
+    () => ({
+      fence: (node: ASTNode, children: ReactNode[], parentNodes: ASTNode[], style: any) => {
+        const code = node.content || "";
+        const lang = getCodeLanguage(node);
+
+        if (lang === "mermaid") {
+          return <MermaidView key={node.key} chart={code} />;
+        }
+
+        return <CodeBlockWithCopy key={node.key} code={code} style={style.fence} colors={colors} />;
+      },
+      code_block: (node: ASTNode, children: ReactNode[], parentNodes: ASTNode[], style: any) => {
+        const code = node.content || "";
+        const lang = getCodeLanguage(node);
+
+        if (lang === "mermaid") {
+          return <MermaidView key={node.key} chart={code} />;
+        }
+
         return (
-          <MermaidView key={node.key} chart={code} />
+          <CodeBlockWithCopy key={node.key} code={code} style={style.code_block} colors={colors} />
         );
-      }
-      
-      return (
-        <CodeBlockWithCopy 
-          key={node.key} 
-          code={code} 
-          style={style.fence} 
-          colors={colors} 
-        />
-      );
-    },
-    code_block: (node: ASTNode, children: ReactNode[], parentNodes: ASTNode[], style: any) => {
-      const code = node.content || '';
-      const lang = getCodeLanguage(node);
-      
-      if (lang === 'mermaid') {
-        return (
-          <MermaidView key={node.key} chart={code} />
-        );
-      }
-      
-      return (
-        <CodeBlockWithCopy 
-          key={node.key} 
-          code={code} 
-          style={style.code_block} 
-          colors={colors} 
-        />
-      );
-    },
-    text: (node: ASTNode, children: ReactNode[], parentNodes: ASTNode[], style: any) => {
-      const text = node.content || '';
-      if (citations && citations.length > 0 && /\[\d+\]/.test(text)) {
+      },
+      text: (node: ASTNode, children: ReactNode[], parentNodes: ASTNode[], style: any) => {
+        const text = node.content || "";
+        if (citations && citations.length > 0 && /\[\d+\]/.test(text)) {
+          return (
+            <Text key={node.key} style={style}>
+              {renderTextWithCitations(text, citations, onCitationClick, colors)}
+            </Text>
+          );
+        }
         return (
           <Text key={node.key} style={style}>
-            {renderTextWithCitations(text, citations, onCitationClick, colors)}
+            {text}
           </Text>
         );
-      }
-      return <Text key={node.key} style={style}>{text}</Text>;
-    },
-  }), [colors, citations, onCitationClick]);
+      },
+    }),
+    [colors, citations, onCitationClick],
+  );
 
   return (
     <View>

@@ -2,7 +2,7 @@
  * Translation Types for internal use
  */
 
-import type { TranslatorName, TranslationTargetLang } from "../types/translation";
+import type { TranslationTargetLang, TranslatorName } from "../types/translation";
 
 // Re-export for convenience
 export type { TranslatorName, TranslationTargetLang } from "../types/translation";

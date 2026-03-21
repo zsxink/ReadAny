@@ -168,7 +168,11 @@ export const aiProvider: TranslationProvider = {
   name: "ai",
   label: "AI",
   translate: async (texts, sourceLang, targetLang, config) => {
-    const { apiKey, baseUrl, model } = config as { apiKey?: string; baseUrl?: string; model?: string };
+    const { apiKey, baseUrl, model } = config as {
+      apiKey?: string;
+      baseUrl?: string;
+      model?: string;
+    };
     return aiTranslate(texts, sourceLang, targetLang, apiKey || "", baseUrl || "", model || "");
   },
 };

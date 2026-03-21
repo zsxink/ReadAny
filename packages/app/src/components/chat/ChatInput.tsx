@@ -2,20 +2,20 @@
  * ChatInput — sageread-style rounded card input with deep thinking option
  * Supports attached context quotes that display as chips above the textarea.
  */
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { Send, Brain, Quote, Square, X, EyeOff } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import type { AttachedQuote } from "@readany/core/types";
+import { Brain, EyeOff, Quote, Send, Square, X } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { AttachedQuote } from "@readany/core/types";
 export type { AttachedQuote };
 
 interface ChatInputProps {
-  onSend: (content: string, deepThinking?: boolean, spoilerFree?: boolean, quotes?: AttachedQuote[]) => void;
+  onSend: (
+    content: string,
+    deepThinking?: boolean,
+    spoilerFree?: boolean,
+    quotes?: AttachedQuote[],
+  ) => void;
   onStop?: () => void;
   isStreaming?: boolean;
   disabled?: boolean;

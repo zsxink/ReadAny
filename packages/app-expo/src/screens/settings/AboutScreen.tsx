@@ -1,3 +1,5 @@
+import { getPlatformService } from "@readany/core/services";
+import { type UpdateCheckResult, checkForUpdate } from "@readany/core/update";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -11,8 +13,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { getPlatformService } from "@readany/core/services";
-import { checkForUpdate, type UpdateCheckResult } from "@readany/core/update";
 import {
   type ThemeColors,
   fontSize,
@@ -52,7 +52,9 @@ export default function AboutScreen() {
 
     // Auto-check (throttled to once per day by the checker)
     platform.getAppVersion().then((v) => {
-      checkForUpdate(v, platform).then(setUpdateResult).catch(() => {});
+      checkForUpdate(v, platform)
+        .then(setUpdateResult)
+        .catch(() => {});
     });
   }, []);
 
@@ -64,10 +66,7 @@ export default function AboutScreen() {
       const result = await checkForUpdate(v, platform, true);
       setUpdateResult(result);
       if (!result.hasUpdate) {
-        Alert.alert(
-          t("settings.upToDate"),
-          t("settings.upToDate"),
-        );
+        Alert.alert(t("settings.upToDate"), t("settings.upToDate"));
       } else if (result.release) {
         Alert.alert(
           t("settings.updateAvailable"),
@@ -86,10 +85,7 @@ export default function AboutScreen() {
         );
       }
     } catch {
-      Alert.alert(
-        t("settings.updateError"),
-        t("settings.updaterCheckFailed"),
-      );
+      Alert.alert(t("settings.updateError"), t("settings.updaterCheckFailed"));
     } finally {
       setChecking(false);
     }
@@ -125,9 +121,7 @@ export default function AboutScreen() {
           >
             {checking && <ActivityIndicator size="small" color={colors.primaryForeground} />}
             <Text style={styles.updateBtnText}>
-              {checking
-                ? t("settings.updateChecking")
-                : t("settings.checkUpdate")}
+              {checking ? t("settings.updateChecking") : t("settings.checkUpdate")}
             </Text>
           </TouchableOpacity>
           {updateResult?.hasUpdate && updateResult.release && (

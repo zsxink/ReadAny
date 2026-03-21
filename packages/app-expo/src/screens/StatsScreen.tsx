@@ -16,9 +16,9 @@ import {
   withOpacity,
 } from "@/styles/theme";
 import { useNavigation } from "@react-navigation/native";
+import { getPlatformService } from "@readany/core/services";
 import { readingStatsService } from "@readany/core/stats";
 import type { DailyStats, OverallStats, PeriodBookStats, TrendPoint } from "@readany/core/stats";
-import { getPlatformService } from "@readany/core/services";
 /**
  * StatsScreen — Full reading stats page matching Tauri mobile MobileStatsPage.
  * Features: stats cards, heatmap/bar chart toggle, trend chart, period book list,
@@ -37,7 +37,16 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Svg, { Defs, G, Line, LinearGradient, Path, Rect, Stop, Text as SvgText } from "react-native-svg";
+import Svg, {
+  Defs,
+  G,
+  Line,
+  LinearGradient,
+  Path,
+  Rect,
+  Stop,
+  Text as SvgText,
+} from "react-native-svg";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 
@@ -102,7 +111,13 @@ function StatCard({
 
 function FullHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
   const colors = useColors();
-  const [selectedDay, setSelectedDay] = useState<{ date: string; time: number; weekIdx: number; dayIdx: number } | null>(null);
+  const { t, i18n } = useTranslation();
+  const [selectedDay, setSelectedDay] = useState<{
+    date: string;
+    time: number;
+    weekIdx: number;
+    dayIdx: number;
+  } | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const CELL = 10;
   const GAP = 2;
@@ -139,7 +154,12 @@ function FullHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
       }
 
       if (month !== lastMonth) {
-        mLabels.push({ label: `${month + 1}月`, col: weekIdx });
+        mLabels.push({
+          label: new Intl.DateTimeFormat(i18n.language, { month: "short" }).format(
+            new Date(2024, month, 1),
+          ),
+          col: weekIdx,
+        });
         lastMonth = month;
       }
 
@@ -149,7 +169,7 @@ function FullHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
     if (currentWeek.length > 0) weeksArr.push(currentWeek);
 
     return { weeks: weeksArr, monthLabels: mLabels };
-  }, [dailyStats]);
+  }, [dailyStats, i18n.language]);
 
   // Fixed threshold color mapping matching Tauri's getHeatColor
   const getColor = (minutes: number) => {
@@ -165,7 +185,11 @@ function FullHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
     return `${d.getMonth() + 1}/${d.getDate()}`;
   };
 
-  const handleCellPress = (day: { date: string; time: number }, weekIdx: number, dayIdx: number) => {
+  const handleCellPress = (
+    day: { date: string; time: number },
+    weekIdx: number,
+    dayIdx: number,
+  ) => {
     if (selectedDay?.date === day.date) {
       setSelectedDay(null);
     } else {
@@ -178,28 +202,28 @@ function FullHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
   const getTooltipStyle = () => {
     if (!selectedDay || containerWidth === 0) return null;
     const { weekIdx, dayIdx } = selectedDay;
-    
+
     const firstWeekPadding = weeks[0]?.[0]?.dayOfWeek || 0;
     const paddingOffset = weekIdx === 0 ? firstWeekPadding * UNIT : 0;
-    
+
     const cellX = weekIdx * UNIT + CELL / 2;
     const cellY = paddingOffset + dayIdx * UNIT + CELL / 2;
-    
+
     let left = cellX - TOOLTIP_WIDTH / 2;
     let top = cellY - TOOLTIP_HEIGHT - 8;
-    
+
     // Boundary detection
     if (left < 4) left = 4;
     if (left + TOOLTIP_WIDTH > containerWidth - 4) left = containerWidth - TOOLTIP_WIDTH - 4;
     if (top < 4) top = cellY + CELL + 4; // Show below if no space above
-    
+
     return { left, top };
   };
 
   const tooltipStyle = getTooltipStyle();
 
   return (
-    <View 
+    <View
       style={{ position: "relative" }}
       onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
     >
@@ -273,8 +297,16 @@ function FullHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
             elevation: 3,
           }}
         >
-          <Text style={{ fontSize: 12, color: colors.cardForeground, fontWeight: "500", textAlign: "center" }}>
-            {formatDisplayDate(selectedDay.date)} {selectedDay.time > 0 ? formatTime(selectedDay.time) : "无阅读"}
+          <Text
+            style={{
+              fontSize: 12,
+              color: colors.cardForeground,
+              fontWeight: "500",
+              textAlign: "center",
+            }}
+          >
+            {formatDisplayDate(selectedDay.date)}{" "}
+            {selectedDay.time > 0 ? formatTime(selectedDay.time) : t("stats.noReading", "无阅读")}
           </Text>
         </View>
       )}
@@ -293,6 +325,7 @@ function BarChart({
 }) {
   const colors = useColors();
   const s = makeStyles(colors);
+  const { t } = useTranslation();
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const maxVal = Math.max(1, ...data.map((d) => d.value));
   const BAR_HEIGHT = 140;
@@ -306,15 +339,26 @@ function BarChart({
   if (data.length === 0) {
     return (
       <View style={s.barChartEmpty}>
-        <Text style={s.barChartEmptyText}>暂无数据</Text>
+        <Text style={s.barChartEmptyText}>{t("stats.noData", "暂无数据")}</Text>
       </View>
     );
   }
 
   return (
-    <TouchableOpacity activeOpacity={1} onPress={() => setSelectedIdx(null)} style={[s.barChartWrap, { flexDirection: "row" }]}>
+    <TouchableOpacity
+      activeOpacity={1}
+      onPress={() => setSelectedIdx(null)}
+      style={[s.barChartWrap, { flexDirection: "row" }]}
+    >
       {/* Y axis */}
-      <View style={{ width: Y_AXIS_WIDTH, height: BAR_HEIGHT + 20, justifyContent: "space-between", paddingRight: 4 }}>
+      <View
+        style={{
+          width: Y_AXIS_WIDTH,
+          height: BAR_HEIGHT + 20,
+          justifyContent: "space-between",
+          paddingRight: 4,
+        }}
+      >
         {yTicks.map((tick, i) => (
           <Text key={i} style={{ fontSize: 8, color: colors.mutedForeground, textAlign: "right" }}>
             {tick.label}
@@ -372,7 +416,14 @@ function BarChart({
             elevation: 3,
           }}
         >
-          <Text style={{ fontSize: 12, color: colors.cardForeground, fontWeight: "500", textAlign: "center" }}>
+          <Text
+            style={{
+              fontSize: 12,
+              color: colors.cardForeground,
+              fontWeight: "500",
+              textAlign: "center",
+            }}
+          >
             {formatTime(data[selectedIdx].value)}
           </Text>
         </View>
@@ -473,7 +524,9 @@ function TrendChart({ data }: { data: TrendPoint[] }) {
                     textAnchor="end"
                     alignmentBaseline="middle"
                   >
-                    {tick.value < 60 ? `${Math.round(tick.value)}m` : `${(tick.value / 60).toFixed(1)}h`}
+                    {tick.value < 60
+                      ? `${Math.round(tick.value)}m`
+                      : `${(tick.value / 60).toFixed(1)}h`}
                   </SvgText>
                 </G>
               ))}
@@ -636,7 +689,7 @@ type ChartMode = "week" | "month";
 export default function StatsScreen() {
   const colors = useColors();
   const s = makeStyles(colors);
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const nav = useNavigation();
   const saveCurrentSession = useReadingSessionStore((s) => s.saveCurrentSession);
 
@@ -780,11 +833,17 @@ export default function StatsScreen() {
       const fmt = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`;
       return `${fmt(chartDate)} – ${fmt(end)}`;
     }
-    return `${chartDate.getFullYear()}年${chartDate.getMonth() + 1}月`;
-  }, [chartDate, chartMode]);
+    return new Intl.DateTimeFormat(i18n.language, { year: "numeric", month: "long" }).format(
+      chartDate,
+    );
+  }, [chartDate, chartMode, i18n.language]);
 
   const barChartData = useMemo(() => {
-    const dayNames = ["一", "二", "三", "四", "五", "六", "日"];
+    const weekdayFormatter = new Intl.DateTimeFormat(i18n.language, { weekday: "short" });
+    const dayNames = Array.from({ length: 7 }, (_, i) => {
+      const date = new Date(2024, 0, 1 + i); // 2024-01-01 is Monday
+      return weekdayFormatter.format(date);
+    });
     if (chartMode === "week") {
       return chartData.map((d, i) => ({
         label: dayNames[i] || d.date.slice(5),
@@ -795,7 +854,7 @@ export default function StatsScreen() {
       label: String(new Date(d.date).getDate()),
       value: d.totalTime,
     }));
-  }, [chartData, chartMode]);
+  }, [chartData, chartMode, i18n.language]);
 
   const booksRead = overallStats?.totalBooks ?? 0;
   const totalTime = overallStats ? formatTime(overallStats.totalReadingTime) : "0m";
@@ -957,8 +1016,7 @@ export default function StatsScreen() {
               </View>
               <View style={s.streakInfo}>
                 <Text style={s.streakLabel}>
-                  {t("stats.longestStreak", { days: overallStats.longestStreak }) ||
-                    `最长连续阅读 ${overallStats.longestStreak} 天`}
+                  {t("stats.longestStreak", { days: overallStats.longestStreak })}
                 </Text>
                 <Text style={s.streakDesc}>
                   {t("stats.longestStreakDesc", "历史最长连续阅读记录")}

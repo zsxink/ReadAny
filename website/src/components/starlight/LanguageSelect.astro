@@ -1,15 +1,13 @@
 ---
-import { languages, defaultLang } from '../../i18n/ui'
-
 const locale = Astro.locals.starlightRoute?.locale;
-const currentLang = locale || 'en';
+const currentLang = locale || "en";
 
 // Compute localized URL for each language
 function getLocalizedHref(targetCode: string): string {
   const pathname = Astro.url.pathname;
-  if (targetCode === 'en') {
+  if (targetCode === "en") {
     // Remove locale prefix: /ReadAny/zh/support/foo/ -> /ReadAny/support/foo/
-    return pathname.replace(/^\/ReadAny\/[a-z]{2}\//, '/ReadAny/');
+    return pathname.replace(/^\/ReadAny\/[a-z]{2}\//, "/ReadAny/");
   } else {
     // Add locale prefix: /ReadAny/support/foo/ -> /ReadAny/zh/support/foo/
     // If already has a locale prefix, replace it

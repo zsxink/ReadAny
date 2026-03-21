@@ -1,3 +1,4 @@
+import { create } from "zustand";
 /**
  * Vector Model Store — manages embedding/vector model configurations
  * Supports:
@@ -5,7 +6,6 @@
  * - Built-in local models via Transformers.js (downloaded & cached automatically)
  */
 import type { VectorModelConfig } from "../types";
-import { create } from "zustand";
 import { withPersist } from "./persist";
 
 /** Status of a built-in model download */
@@ -68,71 +68,67 @@ function sanitizeBuiltinStates(
 
 export const useVectorModelStore = create<VectorModelState>()(
   withPersist("vector-model", (set, get, _api) => ({
-  vectorModels: [],
-  selectedVectorModelId: null,
-  vectorModelEnabled: true,
-  vectorModelMode: "builtin",
-  selectedBuiltinModelId: null,
-  builtinModelStates: {},
+    vectorModels: [],
+    selectedVectorModelId: null,
+    vectorModelEnabled: true,
+    vectorModelMode: "builtin",
+    selectedBuiltinModelId: null,
+    builtinModelStates: {},
 
-  setVectorModelEnabled: (vectorModelEnabled) => set({ vectorModelEnabled }),
-  setVectorModelMode: (vectorModelMode) => set({ vectorModelMode }),
+    setVectorModelEnabled: (vectorModelEnabled) => set({ vectorModelEnabled }),
+    setVectorModelMode: (vectorModelMode) => set({ vectorModelMode }),
 
-  // --- Remote models ---
-  addVectorModel: (model) => {
-    const { vectorModels } = get();
-    set({ vectorModels: [...vectorModels, model] });
-  },
+    // --- Remote models ---
+    addVectorModel: (model) => {
+      const { vectorModels } = get();
+      set({ vectorModels: [...vectorModels, model] });
+    },
 
-  updateVectorModel: (id, updates) => {
-    const { vectorModels } = get();
-    set({
-      vectorModels: vectorModels.map((m) =>
-        m.id === id ? { ...m, ...updates } : m,
-      ),
-    });
-  },
+    updateVectorModel: (id, updates) => {
+      const { vectorModels } = get();
+      set({
+        vectorModels: vectorModels.map((m) => (m.id === id ? { ...m, ...updates } : m)),
+      });
+    },
 
-  deleteVectorModel: (id) => {
-    const { vectorModels, selectedVectorModelId } = get();
-    const newModels = vectorModels.filter((m) => m.id !== id);
-    const newSelected = selectedVectorModelId === id ? null : selectedVectorModelId;
-    set({ vectorModels: newModels, selectedVectorModelId: newSelected });
-  },
+    deleteVectorModel: (id) => {
+      const { vectorModels, selectedVectorModelId } = get();
+      const newModels = vectorModels.filter((m) => m.id !== id);
+      const newSelected = selectedVectorModelId === id ? null : selectedVectorModelId;
+      set({ vectorModels: newModels, selectedVectorModelId: newSelected });
+    },
 
-  setSelectedVectorModelId: (selectedVectorModelId) =>
-    set({ selectedVectorModelId }),
+    setSelectedVectorModelId: (selectedVectorModelId) => set({ selectedVectorModelId }),
 
-  getSelectedVectorModel: () => {
-    const { vectorModels, selectedVectorModelId } = get();
-    return vectorModels.find((m) => m.id === selectedVectorModelId) || null;
-  },
+    getSelectedVectorModel: () => {
+      const { vectorModels, selectedVectorModelId } = get();
+      return vectorModels.find((m) => m.id === selectedVectorModelId) || null;
+    },
 
-  // --- Builtin models ---
-  setSelectedBuiltinModelId: (selectedBuiltinModelId) =>
-    set({ selectedBuiltinModelId }),
+    // --- Builtin models ---
+    setSelectedBuiltinModelId: (selectedBuiltinModelId) => set({ selectedBuiltinModelId }),
 
-  updateBuiltinModelState: (id, state) =>
-    set((s) => ({
-      builtinModelStates: {
-        ...s.builtinModelStates,
-        [id]: { ...s.builtinModelStates[id], ...state } as BuiltinModelState,
-      },
-    })),
+    updateBuiltinModelState: (id, state) =>
+      set((s) => ({
+        builtinModelStates: {
+          ...s.builtinModelStates,
+          [id]: { ...s.builtinModelStates[id], ...state } as BuiltinModelState,
+        },
+      })),
 
-  // --- Computed ---
-  hasVectorCapability: () => {
-    const { vectorModelEnabled, vectorModelMode } = get();
-    if (!vectorModelEnabled) return false;
-    if (vectorModelMode === "builtin") {
-      const { selectedBuiltinModelId, builtinModelStates } = get();
-      if (!selectedBuiltinModelId) return false;
-      return builtinModelStates[selectedBuiltinModelId]?.status === "ready";
-    }
-    const selected = get().getSelectedVectorModel();
-    return selected != null;
-  },
-})),
+    // --- Computed ---
+    hasVectorCapability: () => {
+      const { vectorModelEnabled, vectorModelMode } = get();
+      if (!vectorModelEnabled) return false;
+      if (vectorModelMode === "builtin") {
+        const { selectedBuiltinModelId, builtinModelStates } = get();
+        if (!selectedBuiltinModelId) return false;
+        return builtinModelStates[selectedBuiltinModelId]?.status === "ready";
+      }
+      const selected = get().getSelectedVectorModel();
+      return selected != null;
+    },
+  })),
 );
 
 // After rehydration, sanitize builtin model states (reset interrupted downloads)

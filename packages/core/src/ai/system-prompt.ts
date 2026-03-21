@@ -71,12 +71,20 @@ function buildToolsSection(skills: Skill[], isVectorized: boolean): string {
 
   // General tools (always available)
   tools.push("### General Tools (always available)");
-  tools.push("- **listBooks**: List books in the library with search/status filters (params: reasoning, search, status, limit)");
-  tools.push("- **searchAllHighlights**: Get highlights across all books (params: reasoning, days, limit)");
-  tools.push("- **searchAllNotes**: Get notes across all books (params: reasoning, days, bookTitle, limit)");
+  tools.push(
+    "- **listBooks**: List books in the library with search/status filters (params: reasoning, search, status, limit)",
+  );
+  tools.push(
+    "- **searchAllHighlights**: Get highlights across all books (params: reasoning, days, limit)",
+  );
+  tools.push(
+    "- **searchAllNotes**: Get notes across all books (params: reasoning, days, bookTitle, limit)",
+  );
   tools.push("- **getReadingStats**: Get reading statistics (params: reasoning, days)");
   tools.push("- **getSkills**: Query available skills/SOPs for guidance (params: reasoning, task)");
-  tools.push("- **mindmap**: Generate an interactive mindmap visualization (params: reasoning, title, markdown)");
+  tools.push(
+    "- **mindmap**: Generate an interactive mindmap visualization (params: reasoning, title, markdown)",
+  );
 
   // Context tools (always available when reading a book)
   tools.push("");
@@ -172,7 +180,7 @@ function buildWorkflowSection(isVectorized: boolean): string {
   steps.push("   - Each citation registers a verifiable source");
   steps.push("");
   steps.push("2. **Reference citations using [1], [2], [3] format** in your response:");
-  steps.push("   - Example: \"The author argues that...[1] and later explains...[2]\"");
+  steps.push('   - Example: "The author argues that...[1] and later explains...[2]"');
   steps.push("   - Each [N] corresponds to a registered citation");
   steps.push("   - Users can click [N] to jump to the exact location");
   steps.push("");
@@ -186,22 +194,46 @@ function buildWorkflowSection(isVectorized: boolean): string {
   steps.push("   - ❌ Your own analysis (but cite the content you're analyzing)");
   steps.push("");
   steps.push("4. **Citation workflow with CFI:**");
-  steps.push("   - Step 1: Use ragSearch or other tools to retrieve content (results include 'cfi' field)");
+  steps.push(
+    "   - Step 1: Use ragSearch or other tools to retrieve content (results include 'cfi' field)",
+  );
   steps.push("   - Step 2: Extract chapterTitle, chapterIndex, and **CFI** from tool results");
-  steps.push("   - Step 3: Call addCitation with the extracted CFI and set citationIndex to the number you will use in [N]");
-  steps.push("   - Step 4: Write your response using [1], [2] to reference citations — each must match the citationIndex you set");
-  steps.push("   - **Example**: ragSearch returns {cfi: 'epubcfi(/6/52!/4...)', ...} → pass this exact CFI to addCitation");
-  steps.push("   - **Example**: summarize returns {chunks: [{cfi: '...', content: '...'}]} → extract CFI from the chunk containing your quoted text");
+  steps.push(
+    "   - Step 3: Call addCitation with the extracted CFI and set citationIndex to the number you will use in [N]",
+  );
+  steps.push(
+    "   - Step 4: Write your response using [1], [2] to reference citations — each must match the citationIndex you set",
+  );
+  steps.push(
+    "   - **Example**: ragSearch returns {cfi: 'epubcfi(/6/52!/4...)', ...} → pass this exact CFI to addCitation",
+  );
+  steps.push(
+    "   - **Example**: summarize returns {chunks: [{cfi: '...', content: '...'}]} → extract CFI from the chunk containing your quoted text",
+  );
   steps.push("");
-  steps.push("**This is MANDATORY for academic integrity and user trust. Never skip citations for book content.**");
+  steps.push(
+    "**This is MANDATORY for academic integrity and user trust. Never skip citations for book content.**",
+  );
   steps.push("");
   steps.push("### Tool-Calling Discipline (CRITICAL)");
-  steps.push("- **NEVER call the same tool repeatedly with similar/identical arguments.** If ragSearch(\"人物\") returned results, DO NOT call ragSearch(\"人物介绍\"), ragSearch(\"人物关系\") etc. Use the results you already have.");
-  steps.push("- **When a tool returns `content` + `instruction` fields**: the `content` IS your data. Read it, follow the `instruction` to analyze it, then write your answer. Do NOT call more tools to \"find more\".");
-  steps.push("- **Each tool call must have a distinct purpose.** Good: ragToc → summarize(chapter 1) → summarize(chapter 2). Bad: ragSearch(\"主题\") → ragSearch(\"主要主题\") → ragSearch(\"书的主题\").");
-  steps.push("- If a tool returns enough information to answer (even partially), STOP calling tools and answer with what you have.");
-  steps.push("- If a tool returns no results or an error, tell the user honestly. Do NOT retry with rephrased queries.");
-  steps.push("- For multi-step tasks (e.g. \"summarize each chapter\"), you MAY call tools many times — but each call must target a DIFFERENT chapter/scope. Never repeat the same query.");
+  steps.push(
+    '- **NEVER call the same tool repeatedly with similar/identical arguments.** If ragSearch("人物") returned results, DO NOT call ragSearch("人物介绍"), ragSearch("人物关系") etc. Use the results you already have.',
+  );
+  steps.push(
+    '- **When a tool returns `content` + `instruction` fields**: the `content` IS your data. Read it, follow the `instruction` to analyze it, then write your answer. Do NOT call more tools to "find more".',
+  );
+  steps.push(
+    '- **Each tool call must have a distinct purpose.** Good: ragToc → summarize(chapter 1) → summarize(chapter 2). Bad: ragSearch("主题") → ragSearch("主要主题") → ragSearch("书的主题").',
+  );
+  steps.push(
+    "- If a tool returns enough information to answer (even partially), STOP calling tools and answer with what you have.",
+  );
+  steps.push(
+    "- If a tool returns no results or an error, tell the user honestly. Do NOT retry with rephrased queries.",
+  );
+  steps.push(
+    '- For multi-step tasks (e.g. "summarize each chapter"), you MAY call tools many times — but each call must target a DIFFERENT chapter/scope. Never repeat the same query.',
+  );
   steps.push("");
   steps.push("### Content Rules");
   steps.push("- **NEVER fabricate** quotes, chapter content, or details from your own knowledge");
@@ -211,7 +243,12 @@ function buildWorkflowSection(isVectorized: boolean): string {
   return steps.join("\n");
 }
 
-function buildConstraintsSection(language: string, spoilerFree?: boolean, book?: Book | null, semanticContext?: SemanticContext | null): string {
+function buildConstraintsSection(
+  language: string,
+  spoilerFree?: boolean,
+  book?: Book | null,
+  semanticContext?: SemanticContext | null,
+): string {
   const lines = [
     "## Response Guidelines",
     `- Respond in ${language || "the same language as the user"}`,
@@ -243,20 +280,36 @@ function buildConstraintsSection(language: string, spoilerFree?: boolean, book?:
     const chapter = semanticContext?.currentChapter || "unknown";
     lines.push("");
     lines.push("### Spoiler-Free Mode (ACTIVE)");
-    lines.push(`The reader is currently at **${progress}%** of the book, reading **"${chapter}"**.`);
-    lines.push("Everything **after** this chapter/position is considered FUTURE CONTENT and must be protected.");
+    lines.push(
+      `The reader is currently at **${progress}%** of the book, reading **"${chapter}"**.`,
+    );
+    lines.push(
+      "Everything **after** this chapter/position is considered FUTURE CONTENT and must be protected.",
+    );
     lines.push("");
     lines.push("**Absolute rules:**");
-    lines.push("1. **NEVER reveal** plot events, character fates, twists, deaths, relationships, or any narrative developments that occur after the reader's current position.");
-    lines.push("2. **NEVER use tools** (ragSearch, ragContext, summarize, extractEntities, findQuotes, compareSections) to retrieve or analyze content from chapters beyond the current reading position. If a tool call would target a later chapter, DO NOT make that call.");
-    lines.push("3. **If the user explicitly asks about later content** (e.g., \"What happens in Chapter 5?\", \"How does the book end?\", \"Does X character die?\"), **politely decline**: explain that you want to protect their reading experience, and suggest they keep reading.");
-    lines.push("4. **When uncertain** whether something is a spoiler, err on the side of caution — refuse rather than risk revealing future content.");
+    lines.push(
+      "1. **NEVER reveal** plot events, character fates, twists, deaths, relationships, or any narrative developments that occur after the reader's current position.",
+    );
+    lines.push(
+      "2. **NEVER use tools** (ragSearch, ragContext, summarize, extractEntities, findQuotes, compareSections) to retrieve or analyze content from chapters beyond the current reading position. If a tool call would target a later chapter, DO NOT make that call.",
+    );
+    lines.push(
+      '3. **If the user explicitly asks about later content** (e.g., "What happens in Chapter 5?", "How does the book end?", "Does X character die?"), **politely decline**: explain that you want to protect their reading experience, and suggest they keep reading.',
+    );
+    lines.push(
+      "4. **When uncertain** whether something is a spoiler, err on the side of caution — refuse rather than risk revealing future content.",
+    );
     lines.push("");
     lines.push("**What you CAN still discuss freely:**");
-    lines.push("- Content from chapters the reader has already read (up to and including the current chapter)");
+    lines.push(
+      "- Content from chapters the reader has already read (up to and including the current chapter)",
+    );
     lines.push("- General themes, writing style, literary techniques, and author background");
     lines.push("- The reader's own highlights and notes");
-    lines.push("- Factual/contextual information that isn't from the book itself (historical background, etc.)");
+    lines.push(
+      "- Factual/contextual information that isn't from the book itself (historical background, etc.)",
+    );
   }
 
   return lines.join("\n");

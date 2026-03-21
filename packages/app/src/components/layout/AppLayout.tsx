@@ -19,15 +19,15 @@ import { ChatPage as ChatPageComponent } from "@/components/chat/ChatPage";
 import { CommandPalette } from "@/components/command-palette/CommandPalette";
 import { HomePage } from "@/components/home/HomePage";
 import { NotesPage } from "@/components/notes/NotesPage";
+import { OnboardingModal } from "@/components/onboarding/OnboardingModal";
 import { ReaderView, evictBlobCache } from "@/components/reader/ReaderView";
 import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { ReadingStatsPanel } from "@/components/stats/ReadingStatsPanel";
-import { OnboardingModal } from "@/components/onboarding/OnboardingModal";
 import SkillsPage from "@/pages/Skills";
 import { useAppStore } from "@/stores/app-store";
-import { useSettingsStore } from "@readany/core/stores/settings-store";
 import { useLibraryStore } from "@/stores/library-store";
 import { useReaderStore } from "@/stores/reader-store";
+import { useSettingsStore } from "@readany/core/stores/settings-store";
 import { BookOpen } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -146,10 +146,7 @@ export function AppLayout() {
           return next;
         });
 
-        console.log(
-          `[AppLayout] Hibernated ${toHibernate.length} idle tab(s):`,
-          toHibernate,
-        );
+        console.log(`[AppLayout] Hibernated ${toHibernate.length} idle tab(s):`, toHibernate);
       }
     };
 
@@ -265,9 +262,7 @@ function HibernatedPlaceholder({
       <div className="flex flex-col items-center gap-1.5">
         <h3 className="max-w-xs truncate text-sm font-medium text-foreground">{title}</h3>
         {progress != null && progress > 0 && (
-          <p className="text-xs text-muted-foreground">
-            {Math.round(progress * 100)}%
-          </p>
+          <p className="text-xs text-muted-foreground">{Math.round(progress * 100)}%</p>
         )}
         <p className="text-xs text-muted-foreground">
           {t("reader.hibernated") || "Tab was hibernated to save memory"}

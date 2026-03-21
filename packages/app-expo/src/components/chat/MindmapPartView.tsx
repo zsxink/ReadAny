@@ -28,44 +28,13 @@ const NODE_GAP = 8;
 export function MindmapPartView({ part }: MindmapPartViewProps) {
   const colors = useColors();
 
-  const parseMarkdownToTree = useCallback((markdown: string): MindmapNode => {
-    const lines = markdown.split("\n").filter((line) => line.trim());
-    const root: MindmapNode = {
-      id: "root",
-      text: part.title || "Mindmap",
-      level: 0,
-      children: [],
-      x: 0,
-      y: 0,
-      width: 0,
-      height: NODE_HEIGHT,
-    };
-
-    const stack: MindmapNode[] = [root];
-    let nodeCounter = 0;
-
-    lines.forEach((line) => {
-      const headingMatch = line.match(/^(#{1,6})\s+(.+)/);
-      const bulletMatch = line.match(/^(\s*)-\s+(.+)/);
-
-      let level: number;
-      let text: string;
-
-      if (headingMatch) {
-        level = headingMatch[1].length;
-        text = headingMatch[2].trim();
-      } else if (bulletMatch) {
-        const indent = bulletMatch[1].length;
-        level = Math.floor(indent / 2) + 7;
-        text = bulletMatch[2].trim();
-      } else {
-        return;
-      }
-
-      const node: MindmapNode = {
-        id: `node-${nodeCounter++}`,
-        text,
-        level,
+  const parseMarkdownToTree = useCallback(
+    (markdown: string): MindmapNode => {
+      const lines = markdown.split("\n").filter((line) => line.trim());
+      const root: MindmapNode = {
+        id: "root",
+        text: part.title || "Mindmap",
+        level: 0,
         children: [],
         x: 0,
         y: 0,
@@ -73,18 +42,52 @@ export function MindmapPartView({ part }: MindmapPartViewProps) {
         height: NODE_HEIGHT,
       };
 
-      while (stack.length > 1 && stack[stack.length - 1].level >= level) {
-        stack.pop();
-      }
+      const stack: MindmapNode[] = [root];
+      let nodeCounter = 0;
 
-      stack[stack.length - 1].children.push(node);
-      stack.push(node);
-    });
+      lines.forEach((line) => {
+        const headingMatch = line.match(/^(#{1,6})\s+(.+)/);
+        const bulletMatch = line.match(/^(\s*)-\s+(.+)/);
 
-    return root;
-  }, [part.title]);
+        let level: number;
+        let text: string;
 
-  const calculateLayout = useCallback((node: MindmapNode, startY: number = 0): number => {
+        if (headingMatch) {
+          level = headingMatch[1].length;
+          text = headingMatch[2].trim();
+        } else if (bulletMatch) {
+          const indent = bulletMatch[1].length;
+          level = Math.floor(indent / 2) + 7;
+          text = bulletMatch[2].trim();
+        } else {
+          return;
+        }
+
+        const node: MindmapNode = {
+          id: `node-${nodeCounter++}`,
+          text,
+          level,
+          children: [],
+          x: 0,
+          y: 0,
+          width: 0,
+          height: NODE_HEIGHT,
+        };
+
+        while (stack.length > 1 && stack[stack.length - 1].level >= level) {
+          stack.pop();
+        }
+
+        stack[stack.length - 1].children.push(node);
+        stack.push(node);
+      });
+
+      return root;
+    },
+    [part.title],
+  );
+
+  const calculateLayout = useCallback((node: MindmapNode, startY = 0): number => {
     if (node.children.length === 0) {
       node.y = startY;
       return startY + NODE_HEIGHT + NODE_GAP;
@@ -102,7 +105,7 @@ export function MindmapPartView({ part }: MindmapPartViewProps) {
     return currentY;
   }, []);
 
-  const assignPositions = useCallback((node: MindmapNode, depth: number = 0) => {
+  const assignPositions = useCallback((node: MindmapNode, depth = 0) => {
     node.x = depth * LEVEL_GAP + NODE_PADDING;
     node.children.forEach((child) => {
       assignPositions(child, depth + 1);
@@ -159,7 +162,7 @@ export function MindmapPartView({ part }: MindmapPartViewProps) {
           >
             {node.text.length > 15 ? node.text.slice(0, 15) + "..." : node.text}
           </SvgText>
-        </G>
+        </G>,
       );
 
       node.children.forEach((child) => {
@@ -172,14 +175,14 @@ export function MindmapPartView({ part }: MindmapPartViewProps) {
             y2={child.y + NODE_HEIGHT / 2}
             stroke={colors.border}
             strokeWidth={1.5}
-          />
+          />,
         );
         elements.push(...renderNode(child, depth + 1));
       });
 
       return elements;
     },
-    [colors]
+    [colors],
   );
 
   return (

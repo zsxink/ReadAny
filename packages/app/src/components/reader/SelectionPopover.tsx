@@ -1,12 +1,21 @@
+import type { HighlightColor } from "@readany/core/types";
+import { HIGHLIGHT_COLORS, HIGHLIGHT_COLOR_HEX } from "@readany/core/types";
+import { cn } from "@readany/core/utils";
+import {
+  Check,
+  Copy,
+  Highlighter,
+  Languages,
+  NotebookPen,
+  Sparkles,
+  Trash2,
+  Volume2,
+} from "lucide-react";
 /**
  * SelectionPopover — popover on text selection with highlight colors
  */
 import { useState } from "react";
-import { Check, Copy, Highlighter, Languages, NotebookPen, Sparkles, Trash2, Volume2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { cn } from "@readany/core/utils";
-import type { HighlightColor } from "@readany/core/types";
-import { HIGHLIGHT_COLORS, HIGHLIGHT_COLOR_HEX } from "@readany/core/types";
 
 interface SelectionPopoverProps {
   position: { x: number; y: number };
@@ -46,7 +55,7 @@ export function SelectionPopover({
   const handleHighlightClick = () => {
     // PDF doesn't support highlighting
     if (isPdf) return;
-    
+
     if (annotated) {
       // For existing annotation, toggle color picker
       setShowColors(!showColors);
@@ -65,10 +74,10 @@ export function SelectionPopover({
   };
 
   const buttons = [
-    { 
-      icon: Highlighter, 
-      label: isPdf ? t("reader.highlightNotSupportedPdf") : t("reader.highlight"), 
-      onClick: handleHighlightClick, 
+    {
+      icon: Highlighter,
+      label: isPdf ? t("reader.highlightNotSupportedPdf") : t("reader.highlight"),
+      onClick: handleHighlightClick,
       isHighlight: true,
       disabled: isPdf,
     },
@@ -81,7 +90,13 @@ export function SelectionPopover({
 
   // For existing annotations, add delete button
   if (annotated) {
-    buttons.push({ icon: Trash2, label: t("common.delete"), onClick: onRemoveHighlight, isHighlight: false, disabled: false });
+    buttons.push({
+      icon: Trash2,
+      label: t("common.delete"),
+      onClick: onRemoveHighlight,
+      isHighlight: false,
+      disabled: false,
+    });
   }
 
   return (
@@ -109,7 +124,7 @@ export function SelectionPopover({
           ))}
         </div>
       )}
-      
+
       {/* Main action buttons */}
       <div className="flex items-center gap-0.5 rounded-lg border border-border bg-background p-1 shadow-lg">
         {buttons.map((btn) => (
@@ -117,11 +132,11 @@ export function SelectionPopover({
             key={btn.label}
             className={cn(
               "flex h-8 w-8 items-center justify-center rounded-md transition-colors",
-              btn.disabled 
-                ? "cursor-not-allowed opacity-40" 
-                : "hover:bg-muted",
+              btn.disabled ? "cursor-not-allowed opacity-40" : "hover:bg-muted",
               btn.isHighlight && showColors && !isPdf && "bg-muted",
-              btn.icon === Trash2 && !btn.disabled && "hover:bg-destructive/10 hover:text-destructive",
+              btn.icon === Trash2 &&
+                !btn.disabled &&
+                "hover:bg-destructive/10 hover:text-destructive",
             )}
             title={btn.label}
             onClick={btn.disabled ? undefined : btn.onClick}

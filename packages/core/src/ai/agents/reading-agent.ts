@@ -1,3 +1,6 @@
+import { AIMessage, HumanMessage } from "@langchain/core/messages";
+import type { BaseMessage } from "@langchain/core/messages";
+import { z } from "zod";
 /**
  * Reading Agent — AI-powered reading assistant using LangGraph ReAct agent
  *
@@ -9,9 +12,6 @@
  * 5. System prompt from system-prompt.ts
  */
 import type { AIConfig, Book, SemanticContext, Skill } from "../../types";
-import { AIMessage, HumanMessage } from "@langchain/core/messages";
-import type { BaseMessage } from "@langchain/core/messages";
-import { z } from "zod";
 import { createChatModel } from "../llm-provider";
 import { buildSystemPrompt } from "../system-prompt";
 import type { ToolDefinition, ToolParameter } from "../tool-types";
@@ -108,7 +108,16 @@ export async function* streamReadingAgent(
   userInput: string,
   history: Array<{ role: "user" | "assistant"; content: string; reasoning?: string }> = [],
 ): AsyncGenerator<AgentStreamEvent> {
-  const { aiConfig, book, semanticContext, enabledSkills, isVectorized, deepThinking, spoilerFree, getAvailableTools } = options;
+  const {
+    aiConfig,
+    book,
+    semanticContext,
+    enabledSkills,
+    isVectorized,
+    deepThinking,
+    spoilerFree,
+    getAvailableTools,
+  } = options;
 
   try {
     // Create chat model
@@ -139,10 +148,8 @@ export async function* streamReadingAgent(
     // Build input messages (history + user input, without system — handled by agent prompt)
     // For DeepSeek reasoner, we must include reasoning_content in assistant messages
     // to avoid 400 errors during multi-turn tool-calling conversations.
-    const activeEndpoint = aiConfig.endpoints.find(
-      (e) => e.id === aiConfig.activeEndpointId,
-    );
-    const isDeepSeek = 
+    const activeEndpoint = aiConfig.endpoints.find((e) => e.id === aiConfig.activeEndpointId);
+    const isDeepSeek =
       activeEndpoint?.provider === "deepseek" ||
       activeEndpoint?.baseUrl?.includes("deepseek") ||
       aiConfig.activeModel?.toLowerCase().includes("deepseek") ||
@@ -300,7 +307,10 @@ export async function* streamReadingAgent(
               }
               let args: Record<string, unknown>;
               try {
-                args = (typeof tc.args === "string" ? JSON.parse(tc.args) : tc.args) as Record<string, unknown>;
+                args = (typeof tc.args === "string" ? JSON.parse(tc.args) : tc.args) as Record<
+                  string,
+                  unknown
+                >;
               } catch {
                 args = {};
               }

@@ -1,58 +1,55 @@
 ---
-import Layout from '../layouts/Layout.astro'
-import Header from '../components/Header.astro'
-import Footer from '../components/Footer.astro'
-import { useTranslations, defaultLang } from '../i18n/utils'
+import { defaultLang, useTranslations } from "../i18n/utils";
 
-const lang = defaultLang
-const t = useTranslations(lang)
+const lang = defaultLang;
+const t = useTranslations(lang);
 
 const categories = [
   {
     icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`,
-    title: 'Getting Started',
+    title: "Getting Started",
     items: [
-      { label: 'Quick Start', href: '/ReadAny/support/getting-started/' },
-      { label: 'Installation Guide', href: '/ReadAny/support/installation/' },
-      { label: 'Import Books', href: '/ReadAny/support/import-books/' },
-    ]
+      { label: "Quick Start", href: "/ReadAny/support/getting-started/" },
+      { label: "Installation Guide", href: "/ReadAny/support/installation/" },
+      { label: "Import Books", href: "/ReadAny/support/import-books/" },
+    ],
   },
   {
     icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`,
-    title: 'Reading & Notes',
+    title: "Reading & Notes",
     items: [
-      { label: 'Reading Basics', href: '/ReadAny/support/reading/basics/' },
-      { label: 'Annotations & Highlights', href: '/ReadAny/support/reading/annotations/' },
-      { label: 'Eye-Care Themes', href: '/ReadAny/support/reading/themes/' },
-      { label: 'Text-to-Speech (TTS)', href: '/ReadAny/support/reading/tts/' },
-    ]
+      { label: "Reading Basics", href: "/ReadAny/support/reading/basics/" },
+      { label: "Annotations & Highlights", href: "/ReadAny/support/reading/annotations/" },
+      { label: "Eye-Care Themes", href: "/ReadAny/support/reading/themes/" },
+      { label: "Text-to-Speech (TTS)", href: "/ReadAny/support/reading/tts/" },
+    ],
   },
   {
     icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
-    title: 'AI Features',
+    title: "AI Features",
     items: [
-      { label: 'AI Chat Analysis', href: '/ReadAny/support/ai/chat/' },
-      { label: 'Semantic Search', href: '/ReadAny/support/ai/semantic-search/' },
-      { label: 'Configure AI Providers', href: '/ReadAny/support/ai/providers/' },
-    ]
+      { label: "AI Chat Analysis", href: "/ReadAny/support/ai/chat/" },
+      { label: "Semantic Search", href: "/ReadAny/support/ai/semantic-search/" },
+      { label: "Configure AI Providers", href: "/ReadAny/support/ai/providers/" },
+    ],
   },
   {
     icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>`,
-    title: 'Sync & Export',
+    title: "Sync & Export",
     items: [
-      { label: 'WebDAV Sync', href: '/ReadAny/support/sync/webdav/' },
-      { label: 'Export Notes', href: '/ReadAny/support/sync/export-notes/' },
-    ]
+      { label: "WebDAV Sync", href: "/ReadAny/support/sync/webdav/" },
+      { label: "Export Notes", href: "/ReadAny/support/sync/export-notes/" },
+    ],
   },
   {
     icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
-    title: 'FAQ',
+    title: "FAQ",
     items: [
-      { label: 'Frequently Asked Questions', href: '/ReadAny/support/faq/' },
-      { label: 'Report a Bug / Suggestion', href: 'https://github.com/codedogQBY/ReadAny/issues' },
-    ]
+      { label: "Frequently Asked Questions", href: "/ReadAny/support/faq/" },
+      { label: "Report a Bug / Suggestion", href: "https://github.com/codedogQBY/ReadAny/issues" },
+    ],
   },
-]
+];
 ---
 
 <Layout title="Help Center - ReadAny" description="ReadAny Help Center. Find the answers you need quickly.">

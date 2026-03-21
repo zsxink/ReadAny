@@ -7,12 +7,12 @@
  * All Tauri imports are dynamic so the module graph stays clean in SSR/test contexts.
  */
 import type {
-  IPlatformService,
-  IDatabase,
-  IWebSocket,
   FilePickerOptions,
-  WebSocketOptions,
+  IDatabase,
+  IPlatformService,
+  IWebSocket,
   UpdateInfo,
+  WebSocketOptions,
 } from "@readany/core/services";
 
 /** Adapter: wraps Tauri SQL plugin instance as IDatabase */
@@ -82,9 +82,7 @@ export class TauriPlatformService implements IPlatformService {
     // eagerly imported since this file is only loaded in Tauri context.
     // We lazy-cache it on first call.
     if (!this._convertFileSrc) {
-      throw new Error(
-        "convertFileSrc not ready. Call initSync() first or use the async version.",
-      );
+      throw new Error("convertFileSrc not ready. Call initSync() first or use the async version.");
     }
     return this._convertFileSrc(path);
   }
@@ -95,6 +93,13 @@ export class TauriPlatformService implements IPlatformService {
   async initSync(): Promise<void> {
     const { convertFileSrc } = await import("@tauri-apps/api/core");
     this._convertFileSrc = convertFileSrc;
+  }
+
+  // ---- Language / Locale ----
+
+  async getLocale(): Promise<string> {
+    // Use browser's navigator.language API (works in Tauri webview)
+    return navigator.language || "en-US";
   }
 
   // ---- File picker ----
@@ -124,10 +129,7 @@ export class TauriPlatformService implements IPlatformService {
     return tauriFetch(url, options);
   }
 
-  async createWebSocket(
-    url: string,
-    options?: WebSocketOptions,
-  ): Promise<IWebSocket> {
+  async createWebSocket(url: string, options?: WebSocketOptions): Promise<IWebSocket> {
     const WebSocket = (await import("@tauri-apps/plugin-websocket")).default;
     const ws = await WebSocket.connect(url, {
       headers: options?.headers,
@@ -230,11 +232,7 @@ export class TauriPlatformService implements IPlatformService {
 
   // ---- File sharing / download ----
 
-  async shareOrDownloadFile(
-    content: string,
-    filename: string,
-    mimeType: string,
-  ): Promise<void> {
+  async shareOrDownloadFile(content: string, filename: string, mimeType: string): Promise<void> {
     const blob = new Blob([content], { type: `${mimeType};charset=utf-8` });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -247,5 +245,88 @@ export class TauriPlatformService implements IPlatformService {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     }, 100);
+  }
+
+  // ---- LAN Sync ----
+
+  async getLocalIP(): Promise<string> {
+    // Try WebRTC approach
+    const webrtcIP = await this.getLocalIPViaWebRTC();
+    if (webrtcIP) return webrtcIP;
+
+    // Fallback: try to fetch from a service that echoes our IP
+    // This won't give us the local IP, but at least we can try
+    return "";
+  }
+
+  private async getLocalIPViaWebRTC(): Promise<string> {
+    return new Promise((resolve) => {
+      let resolved = false;
+      const pc = new RTCPeerConnection({
+        iceServers: [],
+      });
+
+      pc.createDataChannel("");
+
+      pc.createOffer()
+        .then((offer) => pc.setLocalDescription(offer))
+        .catch(() => {
+          if (!resolved) {
+            resolved = true;
+            resolve("");
+          }
+        });
+
+      pc.onicecandidate = (event) => {
+        if (!event?.candidate || resolved) return;
+
+        const candidate = event.candidate.candidate;
+        const ipMatch = candidate.match(/(\d+\.\d+\.\d+\.\d+)/);
+        if (ipMatch) {
+          const ip = ipMatch[1];
+          // Check for private IP ranges
+          if (
+            ip.startsWith("192.168.") ||
+            ip.startsWith("10.") ||
+            ip.startsWith("172.16.") ||
+            ip.startsWith("172.17.") ||
+            ip.startsWith("172.18.") ||
+            ip.startsWith("172.19.") ||
+            ip.startsWith("172.20.") ||
+            ip.startsWith("172.21.") ||
+            ip.startsWith("172.22.") ||
+            ip.startsWith("172.23.") ||
+            ip.startsWith("172.24.") ||
+            ip.startsWith("172.25.") ||
+            ip.startsWith("172.26.") ||
+            ip.startsWith("172.27.") ||
+            ip.startsWith("172.28.") ||
+            ip.startsWith("172.29.") ||
+            ip.startsWith("172.30.") ||
+            ip.startsWith("172.31.")
+          ) {
+            resolved = true;
+            pc.close();
+            resolve(ip);
+          }
+        }
+      };
+
+      pc.onicegatheringstatechange = () => {
+        if (pc.iceGatheringState === "complete" && !resolved) {
+          resolved = true;
+          pc.close();
+          resolve("");
+        }
+      };
+
+      setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          pc.close();
+          resolve("");
+        }
+      }, 5000);
+    });
   }
 }

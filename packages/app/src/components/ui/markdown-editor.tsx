@@ -1,30 +1,30 @@
+import { cn } from "@readany/core/utils";
+import Placeholder from "@tiptap/extension-placeholder";
+import { Markdown } from "@tiptap/markdown";
+import { EditorContent, useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import {
+  Bold,
+  Code,
+  Heading1,
+  Heading2,
+  Heading3,
+  Italic,
+  Link2,
+  List,
+  ListOrdered,
+  Minus,
+  Quote,
+  Redo2,
+  Strikethrough,
+  Undo2,
+} from "lucide-react";
 /**
  * MarkdownEditor — Refined WYSIWYG markdown editor
  * Editorial design with elegant toolbar and rich formatting support
  */
-import { useEffect, useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { useEditor, EditorContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import { Markdown } from "@tiptap/markdown";
-import Placeholder from "@tiptap/extension-placeholder";
-import {
-  Bold,
-  Italic,
-  Strikethrough,
-  List,
-  ListOrdered,
-  Code,
-  Link2,
-  Quote,
-  Minus,
-  Heading1,
-  Heading2,
-  Heading3,
-  Undo2,
-  Redo2,
-} from "lucide-react";
-import { cn } from "@readany/core/utils";
 
 interface MarkdownEditorProps {
   value: string;
@@ -81,7 +81,7 @@ export function MarkdownEditor({
           "prose-hr:border-border prose-hr:my-3",
           "prose-a:text-primary prose-a:no-underline hover:prose-a:underline",
           "prose-strong:font-semibold prose-strong:text-foreground",
-          "prose-em:text-foreground/90"
+          "prose-em:text-foreground/90",
         ),
       },
     },
@@ -130,12 +130,14 @@ export function MarkdownEditor({
   }
 
   return (
-    <div className={cn(
-      "group rounded-lg border border-border/60 bg-background overflow-hidden",
-      "focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/10 focus-within:ring-offset-1",
-      "transition-all duration-200",
-      className
-    )}>
+    <div
+      className={cn(
+        "group rounded-lg border border-border/60 bg-background overflow-hidden",
+        "focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/10 focus-within:ring-offset-1",
+        "transition-all duration-200",
+        className,
+      )}
+    >
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-0.5 border-b border-border/40 bg-muted/20 px-2 py-1.5">
         {/* History */}
@@ -259,8 +261,8 @@ export function MarkdownEditor({
       </div>
 
       {/* Editor Content */}
-      <EditorContent 
-        editor={editor} 
+      <EditorContent
+        editor={editor}
         className={cn(
           "max-h-[30vh] overflow-y-auto px-4 py-3",
           "[&_.ProseMirror]:outline-none",
@@ -268,8 +270,8 @@ export function MarkdownEditor({
           "[&_.is-editor-empty:first-child::before]:pointer-events-none",
           "[&_.is-editor-empty:first-child::before]:float-left",
           "[&_.is-editor-empty:first-child::before]:h-0",
-          "[&_.is-editor-empty:first-child::before]:text-[13px]"
-        )} 
+          "[&_.is-editor-empty:first-child::before]:text-[13px]",
+        )}
       />
     </div>
   );
@@ -298,7 +300,7 @@ function ToolbarButton({ onClick, isActive, disabled, title, children }: Toolbar
         "disabled:opacity-30 disabled:cursor-not-allowed",
         isActive
           ? "bg-primary/12 text-primary shadow-sm"
-          : "text-muted-foreground hover:bg-muted hover:text-foreground active:scale-95"
+          : "text-muted-foreground hover:bg-muted hover:text-foreground active:scale-95",
       )}
     >
       {children}
@@ -307,11 +309,7 @@ function ToolbarButton({ onClick, isActive, disabled, title, children }: Toolbar
 }
 
 function ToolbarGroup({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-0.5">
-      {children}
-    </div>
-  );
+  return <div className="flex items-center gap-0.5">{children}</div>;
 }
 
 function ToolbarDivider() {

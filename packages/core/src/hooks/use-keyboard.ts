@@ -1,8 +1,8 @@
+import { useCallback, useEffect } from "react";
 /**
  * useKeyboard — keyboard shortcut registration with tab isolation + input filtering
  */
 import { DEFAULT_BINDINGS, type KeyBinding, findAction } from "../reader/keyboard";
-import { useCallback, useEffect } from "react";
 
 type ActionHandler = (action: string) => void;
 

@@ -1,5 +1,4 @@
 import type { TTSConfig } from "@readany/core/tts";
-import type { TTSPlayerFactories } from "@readany/core/stores";
 import * as Speech from "expo-speech";
 /**
  * TTS Store for React Native

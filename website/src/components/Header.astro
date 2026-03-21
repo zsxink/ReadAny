@@ -1,25 +1,22 @@
 ---
-import { languages, defaultLang } from '../i18n/ui'
-import ThemeSelect from './starlight/ThemeSelect.astro'
+import { defaultLang, type languages } from "../i18n/ui";
 
 interface Props {
-  lang?: keyof typeof languages
-  t: (key: string) => string
+  lang?: keyof typeof languages;
+  t: (key: string) => string;
 }
 
-const { lang = defaultLang, t } = Astro.props
-const homeHref = lang === 'en' ? '/ReadAny/' : `/ReadAny/${lang}/`
+const { lang = defaultLang, t } = Astro.props;
+const homeHref = lang === "en" ? "/ReadAny/" : `/ReadAny/${lang}/`;
 
-const supportHref = lang === 'en'
-  ? '/ReadAny/support/'
-  : `/ReadAny/${lang}/support/`
+const supportHref = lang === "en" ? "/ReadAny/support/" : `/ReadAny/${lang}/support/`;
 
 const navItems = [
-  { href: '#features', label: t('nav.features') },
-  { href: '#download', label: t('nav.download') },
-  { href: '#community', label: t('nav.community') },
-  { href: supportHref, label: t('nav.support') },
-]
+  { href: "#features", label: t("nav.features") },
+  { href: "#download", label: t("nav.download") },
+  { href: "#community", label: t("nav.community") },
+  { href: supportHref, label: t("nav.support") },
+];
 ---
 
 <header class="site-header">

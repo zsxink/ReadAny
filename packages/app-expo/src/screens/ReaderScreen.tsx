@@ -1,25 +1,24 @@
+import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import { SelectionPopover } from "@/components/reader/SelectionPopover";
 import { TTSControls } from "@/components/reader/TTSControls";
 import { TranslationPanel } from "@/components/reader/TranslationPanel";
 import {
+  BookmarkFilledIcon,
+  BookmarkIcon,
+  CheckIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  CheckIcon,
   EditIcon,
   MessageSquareIcon,
   NotebookPenIcon,
   SearchIcon,
-  Undo2Icon,
+  Trash2Icon,
   Volume2Icon,
   XIcon,
-  BookmarkIcon,
-  BookmarkFilledIcon,
-  Trash2Icon,
 } from "@/components/ui/Icon";
-import { useReaderBridge } from "@/hooks/use-reader-bridge";
-import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
+import { useReaderBridge } from "@/hooks/use-reader-bridge";
 import type { RelocateEvent, SelectionEvent } from "@/hooks/use-reader-bridge";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import {
@@ -33,9 +32,9 @@ import { useTheme } from "@/styles/ThemeContext";
 import { type ThemeColors, fontSize, fontWeight, radius, useColors } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { readingContextService } from "@readany/core/ai/reading-context-service";
+import { useReadingSession } from "@readany/core/hooks/use-reading-session";
 import { getPlatformService } from "@readany/core/services";
 import type { TOCItem } from "@readany/core/types";
-import { useReadingSession } from "@readany/core/hooks/use-reading-session";
 import { generateId } from "@readany/core/utils";
 import { Asset } from "expo-asset";
 import * as FileSystem from "expo-file-system/legacy";
@@ -49,6 +48,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Dimensions,
   KeyboardAvoidingView,
@@ -61,7 +61,6 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  Alert,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
@@ -76,11 +75,11 @@ const SCREEN_HEIGHT = Dimensions.get("window").height;
 const CONTROLS_TIMEOUT = 4000;
 
 const FONT_THEMES = [
-  { id: "default", labelKey: "reader.fontThemeDefault", fallback: "默认" },
-  { id: "classic", labelKey: "reader.fontThemeClassic", fallback: "经典" },
-  { id: "modern", labelKey: "reader.fontThemeModern", fallback: "现代" },
-  { id: "elegant", labelKey: "reader.fontThemeElegant", fallback: "优雅" },
-  { id: "literary", labelKey: "reader.fontThemeLiterary", fallback: "文学" },
+  { id: "default", labelKey: "reader.fontThemeDefault", fallback: "System" },
+  { id: "classic", labelKey: "reader.fontThemeClassic", fallback: "Classic" },
+  { id: "modern", labelKey: "reader.fontThemeModern", fallback: "Modern" },
+  { id: "elegant", labelKey: "reader.fontThemeElegant", fallback: "Elegant" },
+  { id: "literary", labelKey: "reader.fontThemeLiterary", fallback: "Literary" },
 ];
 
 // ──────────────────────────── Settings Icon (Gear) ────────────────────────────
@@ -282,10 +281,18 @@ export function ReaderScreen({ route, navigation }: Props) {
   const locationHistoryRef = useRef<string[]>([]);
   const lastNavigatedCfiRef = useRef<string | undefined>(undefined);
 
-  const { } = useReadingSessionStore(); // Removed startSession and stopSession
+  const {} = useReadingSessionStore(); // Removed startSession and stopSession
   const { sendEvent } = useReadingSession(bookId); // Added useReadingSession hook
   const { books, updateBook } = useLibraryStore();
-  const { addHighlight, removeHighlight, loadAnnotations, highlights, bookmarks, addBookmark, removeBookmark } = useAnnotationStore();
+  const {
+    addHighlight,
+    removeHighlight,
+    loadAnnotations,
+    highlights,
+    bookmarks,
+    addBookmark,
+    removeBookmark,
+  } = useAnnotationStore();
   const ttsPlay = useTTSStore((s) => s.play);
   const ttsStop = useTTSStore((s) => s.stop);
   const ttsSetOnEnd = useTTSStore((s) => s.setOnEnd);
@@ -326,7 +333,15 @@ export function ReaderScreen({ route, navigation }: Props) {
         }
       }, 500);
     }
-  }, [currentCfi, bookId, isBookmarked, existingBookmark, currentChapter, removeBookmark, addBookmark]);
+  }, [
+    currentCfi,
+    bookId,
+    isBookmarked,
+    existingBookmark,
+    currentChapter,
+    removeBookmark,
+    addBookmark,
+  ]);
 
   // Load reader HTML asset
   useEffect(() => {
@@ -354,6 +369,14 @@ export function ReaderScreen({ route, navigation }: Props) {
     },
     onLoaded: () => {
       setLoading(false);
+      const settings = useSettingsStore.getState().readSettings;
+      bridge.applySettings({
+        fontSize: settings.fontSize,
+        lineHeight: settings.lineHeight,
+        paragraphSpacing: settings.paragraphSpacing,
+        fontTheme: settings.fontTheme,
+        viewMode: settings.viewMode,
+      });
     },
     onRelocate: (detail: RelocateEvent) => {
       if (detail.fraction != null) setProgress(detail.fraction);
@@ -703,7 +726,12 @@ export function ReaderScreen({ route, navigation }: Props) {
       const updates: Record<string, number | string> = {};
       updates[key] = value;
       updateReadSettings(updates);
-      bridge.applySettings(updates);
+      // Pass all current settings to bridge to avoid resetting other values
+      const currentSettings = useSettingsStore.getState().readSettings;
+      bridge.applySettings({
+        ...currentSettings,
+        ...updates,
+      });
     },
     [bridge, updateReadSettings],
   );
@@ -783,7 +811,10 @@ export function ReaderScreen({ route, navigation }: Props) {
   const handleTTSReplay = useCallback(async () => {
     console.log("[ReaderScreen] handleTTSReplay called");
     const text = await bridgeRef.current?.getVisibleText();
-    console.log("[ReaderScreen] getVisibleText result:", text ? `"${text.substring(0, 50)}..." (${text.length} chars)` : "empty");
+    console.log(
+      "[ReaderScreen] getVisibleText result:",
+      text ? `"${text.substring(0, 50)}..." (${text.length} chars)` : "empty",
+    );
     if (text && text.trim()) {
       ttsContinuousRef.current = true;
       ttsSetOnEnd(handleTTSPageEnd);
@@ -816,7 +847,10 @@ export function ReaderScreen({ route, navigation }: Props) {
       <SafeAreaView style={[s.container, { backgroundColor: colors.background }]}>
         <View style={s.loadingWrap}>
           <Text style={s.errorText}>{error}</Text>
-          <TouchableOpacity style={s.backButton} onPress={() => navigation.reset({ routes: [{ name: "Tabs" }] })}>
+          <TouchableOpacity
+            style={s.backButton}
+            onPress={() => navigation.reset({ routes: [{ name: "Tabs" }] })}
+          >
             <Text style={s.backButtonText}>{t("common.back", "返回")}</Text>
           </TouchableOpacity>
         </View>
@@ -837,8 +871,7 @@ export function ReaderScreen({ route, navigation }: Props) {
 
   const percent = Math.round(progress * 100);
 
-  const isPanelOpen =
-    showTOC || showSettings || showSearch || showNotebook || showTranslation;
+  const isPanelOpen = showTOC || showSettings || showSearch || showNotebook || showTranslation;
 
   return (
     <View style={[s.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
@@ -918,10 +951,10 @@ export function ReaderScreen({ route, navigation }: Props) {
           existingHighlight={
             highlights.find((h) => h.cfi === selection.cfi)
               ? {
-                id: highlights.find((h) => h.cfi === selection.cfi)!.id,
-                color: highlights.find((h) => h.cfi === selection.cfi)!.color,
-                note: highlights.find((h) => h.cfi === selection.cfi)!.note,
-              }
+                  id: highlights.find((h) => h.cfi === selection.cfi)!.id,
+                  color: highlights.find((h) => h.cfi === selection.cfi)!.color,
+                  note: highlights.find((h) => h.cfi === selection.cfi)!.note,
+                }
               : null
           }
           onRemoveHighlight={() => {
@@ -951,10 +984,7 @@ export function ReaderScreen({ route, navigation }: Props) {
             style={[
               s.noteTooltip,
               {
-                left: Math.max(
-                  12,
-                  Math.min(noteTooltip.position.x - 150, SCREEN_WIDTH - 312),
-                ),
+                left: Math.max(12, Math.min(noteTooltip.position.x - 150, SCREEN_WIDTH - 312)),
                 ...(noteTooltip.position.selectionTop > 220
                   ? { bottom: SCREEN_HEIGHT - noteTooltip.position.selectionTop + 8 }
                   : { top: noteTooltip.position.selectionBottom + 12 }),
@@ -989,7 +1019,10 @@ export function ReaderScreen({ route, navigation }: Props) {
         <Animated.View style={[s.bottomToolbar, { transform: [{ translateY: toolbarAnim }] }]}>
           <View style={[s.bottomToolbarGlass, { marginBottom: insets.bottom + 4 }]}>
             <View style={s.toolbarRow}>
-              <TouchableOpacity style={s.toolbarBtn} onPress={() => navigation.reset({ routes: [{ name: "Tabs" }] })}>
+              <TouchableOpacity
+                style={s.toolbarBtn}
+                onPress={() => navigation.reset({ routes: [{ name: "Tabs" }] })}
+              >
                 <ChevronLeftIcon size={20} color="#fff" />
               </TouchableOpacity>
               <TouchableOpacity
@@ -1178,7 +1211,10 @@ export function ReaderScreen({ route, navigation }: Props) {
                 ]}
                 onPress={() => setTocActiveTab("toc")}
               >
-                <ListIcon size={14} color={tocActiveTab === "toc" ? colors.primary : colors.mutedForeground} />
+                <ListIcon
+                  size={14}
+                  color={tocActiveTab === "toc" ? colors.primary : colors.mutedForeground}
+                />
                 <Text
                   style={[
                     s.tocTabText,
@@ -1203,7 +1239,9 @@ export function ReaderScreen({ route, navigation }: Props) {
                 <Text
                   style={[
                     s.tocTabText,
-                    { color: tocActiveTab === "bookmarks" ? colors.primary : colors.mutedForeground },
+                    {
+                      color: tocActiveTab === "bookmarks" ? colors.primary : colors.mutedForeground,
+                    },
                   ]}
                 >
                   {t("bookmarks.title", "书签")}
@@ -1251,7 +1289,10 @@ export function ReaderScreen({ route, navigation }: Props) {
                       {bm.chapterTitle || t("common.unnamed")}
                     </Text>
                     {bm.label ? (
-                      <Text style={[s.bookmarkSnippet, { color: colors.mutedForeground }]} numberOfLines={2}>
+                      <Text
+                        style={[s.bookmarkSnippet, { color: colors.mutedForeground }]}
+                        numberOfLines={2}
+                      >
                         {bm.label}
                       </Text>
                     ) : null}
@@ -1277,9 +1318,7 @@ export function ReaderScreen({ route, navigation }: Props) {
           ) : (
             <View style={s.notebookPlaceholder}>
               <BookmarkIcon size={32} color={`${colors.mutedForeground}60`} />
-              <Text style={s.notebookPlaceholderText}>
-                {t("bookmarks.empty", "暂无书签")}
-              </Text>
+              <Text style={s.notebookPlaceholderText}>{t("bookmarks.empty", "暂无书签")}</Text>
               <Text style={[s.notebookPlaceholderText, { fontSize: fontSize.xs, opacity: 0.6 }]}>
                 {t("bookmarks.emptyHint", "使用工具栏的书签按钮来标记页面")}
               </Text>
@@ -1662,16 +1701,56 @@ const noteTooltipMdStyles = {
   body: { color: TOOLTIP_FG, fontSize: 13, lineHeight: 19 },
   text: { color: TOOLTIP_FG, fontSize: 13, lineHeight: 19 },
   paragraph: { color: TOOLTIP_FG, fontSize: 13, lineHeight: 19, marginBottom: 4, marginTop: 0 },
-  heading1: { color: "#fff", fontSize: 15, fontWeight: "600" as const, marginBottom: 4, marginTop: 4 },
-  heading2: { color: "#fff", fontSize: 14, fontWeight: "600" as const, marginBottom: 3, marginTop: 3 },
-  heading3: { color: "#fff", fontSize: 13, fontWeight: "600" as const, marginBottom: 2, marginTop: 2 },
+  heading1: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "600" as const,
+    marginBottom: 4,
+    marginTop: 4,
+  },
+  heading2: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600" as const,
+    marginBottom: 3,
+    marginTop: 3,
+  },
+  heading3: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600" as const,
+    marginBottom: 2,
+    marginTop: 2,
+  },
   strong: { fontWeight: "700" as const, color: "#fff" },
   em: { fontStyle: "italic" as const, color: "#e2e8f0" },
   link: { color: "#60a5fa" },
-  code_inline: { backgroundColor: "rgba(255,255,255,0.1)", color: TOOLTIP_FG, fontSize: 14, fontFamily: "Menlo" },
-  code_block: { backgroundColor: "rgba(0,0,0,0.3)", color: TOOLTIP_FG, fontSize: 14, fontFamily: "Menlo", padding: 8 },
-  fence: { backgroundColor: "rgba(0,0,0,0.3)", color: TOOLTIP_FG, fontSize: 14, fontFamily: "Menlo", padding: 8 },
-  blockquote: { borderLeftWidth: 2, borderLeftColor: TOOLTIP_MUTED, paddingLeft: 10, backgroundColor: "transparent" },
+  code_inline: {
+    backgroundColor: "rgba(255,255,255,0.1)",
+    color: TOOLTIP_FG,
+    fontSize: 14,
+    fontFamily: "Menlo",
+  },
+  code_block: {
+    backgroundColor: "rgba(0,0,0,0.3)",
+    color: TOOLTIP_FG,
+    fontSize: 14,
+    fontFamily: "Menlo",
+    padding: 8,
+  },
+  fence: {
+    backgroundColor: "rgba(0,0,0,0.3)",
+    color: TOOLTIP_FG,
+    fontSize: 14,
+    fontFamily: "Menlo",
+    padding: 8,
+  },
+  blockquote: {
+    borderLeftWidth: 2,
+    borderLeftColor: TOOLTIP_MUTED,
+    paddingLeft: 10,
+    backgroundColor: "transparent",
+  },
   bullet_list: { marginVertical: 2 },
   ordered_list: { marginVertical: 2 },
   list_item: { marginBottom: 2, flexDirection: "row" as const },

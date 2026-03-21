@@ -4,8 +4,8 @@
  */
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAutoSync } from "@/hooks/use-sync";
-import { setSyncAdapter } from "@readany/core/sync";
 import { DesktopSyncAdapter } from "@/lib/sync/sync-adapter-desktop";
+import { setSyncAdapter } from "@readany/core/sync";
 import { Toaster } from "sonner";
 
 // Register the desktop sync adapter once at module load

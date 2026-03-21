@@ -22,12 +22,14 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { rnSessionEventSource } from "@/hooks";
-import { setSessionEventSource } from "@readany/core/hooks/use-reading-session";
 import { setStreamingFetch } from "@readany/core/ai/llm-provider";
 import { initDatabase } from "@readany/core/db/database";
-import { initI18nLanguage } from "@readany/core/i18n";
+import { setSessionEventSource } from "@readany/core/hooks/use-reading-session";
+import { i18nReady, initI18nLanguage } from "@readany/core/i18n";
+import i18n from "@readany/core/i18n";
 import { setPlatformService } from "@readany/core/services";
 import { setSyncAdapter } from "@readany/core/sync";
+import { I18nextProvider } from "react-i18next";
 
 import { ExpoPlatformService } from "@/lib/platform/expo-platform-service";
 import { MobileSyncAdapter } from "@/lib/sync/sync-adapter-mobile";
@@ -49,13 +51,22 @@ export default function App() {
       // 3. Initialize database (create tables)
       await initDatabase();
 
-      // 4. Register RN-specific adapters
+      // 4. Wait for i18n to be ready
+      try {
+        await i18nReady;
+        console.log("[App] i18n initialized successfully");
+      } catch (error) {
+        console.error("[App] i18n initialization failed:", error);
+        // Continue anyway, i18n will use default language
+      }
+
+      // 5. Register RN-specific adapters
       setSessionEventSource(rnSessionEventSource);
 
-      // 5. Restore persisted language
+      // 6. Restore persisted language
       await initI18nLanguage();
 
-      // 6. Inject streaming-compatible fetch for AI calls
+      // 7. Inject streaming-compatible fetch for AI calls
       const { fetch: expoFetch } = await import("expo/fetch");
       setStreamingFetch(expoFetch as typeof globalThis.fetch);
 
@@ -80,9 +91,11 @@ export default function App() {
   }
 
   return (
-    <ThemeProvider>
-      <AppInner />
-    </ThemeProvider>
+    <I18nextProvider i18n={i18n}>
+      <ThemeProvider>
+        <AppInner />
+      </ThemeProvider>
+    </I18nextProvider>
   );
 }
 

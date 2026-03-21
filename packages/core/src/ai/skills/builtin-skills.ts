@@ -1,6 +1,6 @@
 /**
  * Built-in Skills Definition
- * 
+ *
  * Skills are specialized AI capabilities that can be enabled/disabled by users.
  * Each skill follows a structured prompt format:
  * - Role definition

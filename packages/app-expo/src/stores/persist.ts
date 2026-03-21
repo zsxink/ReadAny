@@ -84,7 +84,7 @@ export function withPersist<T extends object>(
 ): StateCreator<T> {
   return (set, get, api) => {
     let persistLoaded = false;
-    
+
     const wrappedSet = ((partial: unknown, replace?: boolean) => {
       if (replace) {
         (set as (state: T, replace: true) => void)(partial as T, true);
@@ -99,7 +99,7 @@ export function withPersist<T extends object>(
       }
     }) as typeof set;
     const state = creator(wrappedSet, get, api);
-    
+
     // Load persisted data and notify when done
     loadFromFS<T>(key).then((persisted) => {
       if (persisted) {
@@ -110,11 +110,11 @@ export function withPersist<T extends object>(
       }
       persistLoaded = true;
       // Dispatch event to notify that persist is loaded
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('persist:loaded', { detail: { key } }));
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("persist:loaded", { detail: { key } }));
       }
     });
-    
+
     return state;
   };
 }

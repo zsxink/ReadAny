@@ -1,5 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
 import type { IVectorDB, VectorRecord, VectorSearchResult } from "@readany/core/rag/vector-db";
+import { invoke } from "@tauri-apps/api/core";
 
 interface TauriVectorRecord {
   id: string;
@@ -15,13 +15,13 @@ interface TauriVectorSearchResult {
 
 export class TauriVectorDB implements IVectorDB {
   private readyPromise: Promise<void> | null = null;
-  private isInitialized: boolean = false;
+  private isInitialized = false;
 
   constructor() {
     this.readyPromise = this.waitForReady();
   }
 
-  private async waitForReady(maxRetries: number = 10, delayMs: number = 500): Promise<void> {
+  private async waitForReady(maxRetries = 10, delayMs = 500): Promise<void> {
     for (let i = 0; i < maxRetries; i++) {
       try {
         await invoke("vector_get_stats");

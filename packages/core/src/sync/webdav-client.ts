@@ -55,10 +55,12 @@ export class WebDavClient {
       const response = await platform.fetch(url, {
         method,
         headers,
-        body: options.body,
+        body: options.body as BodyInit | undefined,
       });
       const elapsed = Date.now() - startTime;
-      console.log(`[WebDAV] ${method} ${url} completed in ${elapsed}ms (status: ${response.status})`);
+      console.log(
+        `[WebDAV] ${method} ${url} completed in ${elapsed}ms (status: ${response.status})`,
+      );
       return response;
     } catch (error) {
       const elapsed = Date.now() - startTime;
@@ -75,9 +77,7 @@ export class WebDavClient {
       contentType: "application/xml",
     });
     if (!resp.ok && resp.status !== 207) {
-      throw new Error(
-        `WebDAV ping failed: ${resp.status} ${resp.statusText}`,
-      );
+      throw new Error(`WebDAV ping failed: ${resp.status} ${resp.statusText}`);
     }
   }
 
@@ -96,9 +96,7 @@ export class WebDavClient {
     const resp = await this.request("MKCOL", path);
     // 201 Created, 405 Already Exists — both OK
     if (!resp.ok && resp.status !== 405) {
-      throw new Error(
-        `WebDAV MKCOL failed for ${path}: ${resp.status} ${resp.statusText}`,
-      );
+      throw new Error(`WebDAV MKCOL failed for ${path}: ${resp.status} ${resp.statusText}`);
     }
   }
 
@@ -124,9 +122,7 @@ export class WebDavClient {
       contentType,
     });
     if (!resp.ok) {
-      throw new Error(
-        `WebDAV PUT failed for ${path}: ${resp.status} ${resp.statusText}`,
-      );
+      throw new Error(`WebDAV PUT failed for ${path}: ${resp.status} ${resp.statusText}`);
     }
   }
 
@@ -139,9 +135,7 @@ export class WebDavClient {
   async get(path: string): Promise<Uint8Array> {
     const resp = await this.request("GET", path);
     if (!resp.ok) {
-      throw new Error(
-        `WebDAV GET failed for ${path}: ${resp.status} ${resp.statusText}`,
-      );
+      throw new Error(`WebDAV GET failed for ${path}: ${resp.status} ${resp.statusText}`);
     }
     const buffer = await resp.arrayBuffer();
     return new Uint8Array(buffer);
@@ -165,9 +159,7 @@ export class WebDavClient {
     const resp = await this.request("DELETE", path);
     // 204 No Content or 404 Not Found — both OK for delete
     if (!resp.ok && resp.status !== 404) {
-      throw new Error(
-        `WebDAV DELETE failed for ${path}: ${resp.status} ${resp.statusText}`,
-      );
+      throw new Error(`WebDAV DELETE failed for ${path}: ${resp.status} ${resp.statusText}`);
     }
   }
 
@@ -190,9 +182,7 @@ export class WebDavClient {
     });
     if (!resp.ok && resp.status !== 207) {
       if (resp.status === 404) return [];
-      throw new Error(
-        `WebDAV PROPFIND failed for ${path}: ${resp.status} ${resp.statusText}`,
-      );
+      throw new Error(`WebDAV PROPFIND failed for ${path}: ${resp.status} ${resp.statusText}`);
     }
     const xml = await resp.text();
     return parsePropfindResponse(xml, path);
@@ -217,15 +207,11 @@ export class WebDavClient {
  * Parse a PROPFIND multistatus XML response.
  * Uses regex-based parsing — no DOM parser needed since the XML structure is predictable.
  */
-function parsePropfindResponse(
-  xml: string,
-  basePath: string,
-): DavResource[] {
+function parsePropfindResponse(xml: string, basePath: string): DavResource[] {
   const resources: DavResource[] = [];
 
   // Split by <D:response> or <d:response> boundaries (case-insensitive)
-  const responseRegex =
-    /<(?:D|d):response[^>]*>([\s\S]*?)<\/(?:D|d):response>/gi;
+  const responseRegex = /<(?:D|d):response[^>]*>([\s\S]*?)<\/(?:D|d):response>/gi;
   let match: RegExpExecArray | null;
   while ((match = responseRegex.exec(xml)) !== null) {
     const block = match[1];
@@ -244,7 +230,7 @@ function parsePropfindResponse(
       href: decodeURIComponent(href),
       name: filenameFromHref(href),
       isCollection,
-      contentLength: contentLengthStr ? parseInt(contentLengthStr, 10) : undefined,
+      contentLength: contentLengthStr ? Number.parseInt(contentLengthStr, 10) : undefined,
       lastModified: lastModified || undefined,
       etag: etag || undefined,
     });
@@ -259,14 +245,8 @@ function parsePropfindResponse(
 }
 
 /** Extract text content of an XML tag (case-insensitive, supports D: and d: namespace prefix) */
-function extractTagContent(
-  xml: string,
-  localName: string,
-): string | null {
-  const regex = new RegExp(
-    `<(?:D|d):${localName}[^>]*>([^<]*)<\\/(?:D|d):${localName}>`,
-    "i",
-  );
+function extractTagContent(xml: string, localName: string): string | null {
+  const regex = new RegExp(`<(?:D|d):${localName}[^>]*>([^<]*)<\\/(?:D|d):${localName}>`, "i");
   const match = regex.exec(xml);
   return match ? match[1].trim() : null;
 }

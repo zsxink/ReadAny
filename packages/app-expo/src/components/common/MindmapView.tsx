@@ -1,10 +1,11 @@
-import { useColors } from "@/styles/theme";
-import { useCallback, useMemo, useRef, useState } from "react";
-import { View, StyleSheet, TouchableOpacity, Text, ActivityIndicator } from "react-native";
-import WebView from "react-native-webview";
 import { Download, RotateCcw } from "@/components/ui/Icon";
+import { useColors } from "@/styles/theme";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import WebView from "react-native-webview";
 
 interface MindmapViewProps {
   markdown: string;
@@ -13,10 +14,10 @@ interface MindmapViewProps {
 
 const generateHtml = (markdown: string, colors: any) => {
   const escapedMarkdown = markdown
-    .replace(/\\/g, '\\\\')
-    .replace(/`/g, '\\`')
-    .replace(/\$/g, '\\$');
-  
+    .replace(/\\/g, "\\\\")
+    .replace(/`/g, "\\`")
+    .replace(/\$/g, "\\$");
+
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -128,6 +129,7 @@ const generateHtml = (markdown: string, colors: any) => {
 
 export function MindmapView({ markdown, title }: MindmapViewProps) {
   const colors = useColors();
+  const { t } = useTranslation();
   const webviewRef = useRef<WebView>(null);
   const [loading, setLoading] = useState(true);
 
@@ -154,32 +156,35 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
     `);
   }, []);
 
-  const onMessage = useCallback(async (event: any) => {
-    try {
-      const data = JSON.parse(event.nativeEvent.data);
-      if (data.type === 'loaded') {
-        setLoading(false);
-      } else if (data.type === 'error') {
-        console.error('Mindmap error:', data.message);
-        setLoading(false);
-      } else if (data.type === 'svg') {
-        const filename = `${title || 'mindmap'}.svg`;
-        const filepath = `${FileSystem.documentDirectory}${filename}`;
-        await FileSystem.writeAsStringAsync(filepath, data.content);
-        await Sharing.shareAsync(filepath, { mimeType: 'image/svg+xml' });
+  const onMessage = useCallback(
+    async (event: any) => {
+      try {
+        const data = JSON.parse(event.nativeEvent.data);
+        if (data.type === "loaded") {
+          setLoading(false);
+        } else if (data.type === "error") {
+          console.error("Mindmap error:", data.message);
+          setLoading(false);
+        } else if (data.type === "svg") {
+          const filename = `${title || "mindmap"}.svg`;
+          const filepath = `${FileSystem.documentDirectory}${filename}`;
+          await FileSystem.writeAsStringAsync(filepath, data.content);
+          await Sharing.shareAsync(filepath, { mimeType: "image/svg+xml" });
+        }
+      } catch (e) {
+        console.error("WebView message error:", e);
       }
-    } catch (e) {
-      console.error('WebView message error:', e);
-    }
-  }, [title]);
+    },
+    [title],
+  );
 
-  const displayTitle = title && title.length > 20 ? title.slice(0, 20) + '...' : title;
+  const displayTitle = title && title.length > 20 ? title.slice(0, 20) + "..." : title;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.card, borderColor: colors.border }]}>
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
         <Text style={[styles.title, { color: colors.foreground }]} numberOfLines={1}>
-          {displayTitle || '思维导图'}
+          {displayTitle || t("mindmap.title", "思维导图")}
         </Text>
         <View style={styles.controls}>
           <TouchableOpacity onPress={handleReset} style={styles.button}>
@@ -191,7 +196,7 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
           </TouchableOpacity>
         </View>
       </View>
-      
+
       <View style={styles.webviewContainer}>
         {loading && (
           <View style={[styles.loading, { backgroundColor: colors.card }]}>
@@ -206,16 +211,16 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
           onMessage={onMessage}
           scrollEnabled={false}
           bounces={false}
-          originWhitelist={['*']}
+          originWhitelist={["*"]}
           javaScriptEnabled={true}
           domStorageEnabled={true}
           mixedContentMode="compatibility"
         />
       </View>
-      
+
       <View style={[styles.footer, { borderTopColor: colors.border }]}>
         <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-          双指缩放 · 拖动移动 · 点击节点展开/收起
+          {t("mindmap.zoomHintMindmap", "双指缩放 · 拖动移动 · 点击节点展开/收起")}
         </Text>
       </View>
     </View>
@@ -226,25 +231,25 @@ const styles = StyleSheet.create({
   container: {
     borderRadius: 8,
     borderWidth: 1,
-    overflow: 'hidden',
+    overflow: "hidden",
     marginVertical: 8,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderBottomWidth: 1,
   },
   title: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: "500",
     flex: 1,
   },
   controls: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
   },
   button: {
@@ -258,16 +263,16 @@ const styles = StyleSheet.create({
   },
   webviewContainer: {
     height: 300,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   webview: {
     flex: 1,
-    backgroundColor: 'transparent',
+    backgroundColor: "transparent",
   },
   loading: {
     ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   footer: {
     paddingHorizontal: 12,

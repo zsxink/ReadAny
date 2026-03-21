@@ -1,22 +1,22 @@
+import { i18nReady } from "@readany/core/i18n";
+import { initI18nLanguage } from "@readany/core/i18n";
 /**
  * Entry point — mount React app + beforeunload protection
  */
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
-import { i18nReady } from "@readany/core/i18n";
-import { initI18nLanguage } from "@readany/core/i18n";
 import "./styles/globals.css";
-import { useLibraryStore } from "./stores/library-store";
-import { flushAllWrites } from "./stores/persist";
-import { setPlatformService } from "@readany/core/services";
-import { TauriPlatformService } from "./lib/platform/tauri-platform-service";
+import { setEmbeddingWorkerFactory } from "@readany/core/ai";
+import { BUILTIN_EMBEDDING_MODELS } from "@readany/core/ai/builtin-embedding-models";
 import { onLibraryChanged } from "@readany/core/events/library-events";
 import { setVectorDB } from "@readany/core/rag";
+import { setPlatformService } from "@readany/core/services";
+import { TauriPlatformService } from "./lib/platform/tauri-platform-service";
 import { TauriVectorDB } from "./lib/tauri-vector-db";
+import { useLibraryStore } from "./stores/library-store";
+import { flushAllWrites } from "./stores/persist";
 import { useVectorModelStore } from "./stores/vector-model-store";
-import { BUILTIN_EMBEDDING_MODELS } from "@readany/core/ai/builtin-embedding-models";
-import { setEmbeddingWorkerFactory } from "@readany/core/ai";
 
 // Register platform service before any database/core operations
 const tauriPlatform = new TauriPlatformService();
@@ -28,10 +28,7 @@ setPlatformService(tauriPlatform);
 // import.meta.url is available inside the worker (needed by @huggingface/transformers / onnxruntime-web)
 setEmbeddingWorkerFactory(
   () =>
-    new Worker(
-      new URL("@readany/core/ai/embedding-worker", import.meta.url),
-      { type: "module" },
-    ),
+    new Worker(new URL("@readany/core/ai/embedding-worker", import.meta.url), { type: "module" }),
 );
 
 // Set vector database reference (initialized in Rust setup)
@@ -47,9 +44,7 @@ console.log("[VectorDB] TauriVectorDB reference set");
     let dimension: number | undefined;
 
     if (vectorModelMode === "builtin" && selectedBuiltinModelId) {
-      const model = BUILTIN_EMBEDDING_MODELS.find(
-        (m) => m.id === selectedBuiltinModelId,
-      );
+      const model = BUILTIN_EMBEDDING_MODELS.find((m) => m.id === selectedBuiltinModelId);
       dimension = model?.dimension;
     } else if (vectorModelMode === "remote") {
       const remoteModel = getSelectedVectorModel();

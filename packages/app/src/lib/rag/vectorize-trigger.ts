@@ -1,3 +1,5 @@
+import { useLibraryStore } from "@/stores/library-store";
+import { useVectorModelStore } from "@/stores/vector-model-store";
 /**
  * Vectorize Trigger — app-layer adapter that bridges platform-specific
  * concerns (Zustand stores, book file extraction) with the core vectorization pipeline.
@@ -5,12 +7,10 @@
  * Re-exports the core types for convenience.
  */
 import {
-  triggerVectorizeBook as coreTriggerVectorizeBook,
   type VectorizeStatusCallback,
   type VectorizeTriggerConfig,
+  triggerVectorizeBook as coreTriggerVectorizeBook,
 } from "@readany/core/rag";
-import { useLibraryStore } from "@/stores/library-store";
-import { useVectorModelStore } from "@/stores/vector-model-store";
 import { extractBookChapters } from "./book-extractor";
 
 export type { VectorizeStatusCallback };
@@ -26,8 +26,12 @@ export async function triggerVectorizeBook(
 ): Promise<void> {
   // Resolve relative paths (e.g., "books/{id}.epub") to absolute paths
   let resolvedPath = filePath;
-  if (!filePath.startsWith("/") && !filePath.startsWith("file://") &&
-      !filePath.startsWith("asset://") && !filePath.startsWith("http")) {
+  if (
+    !filePath.startsWith("/") &&
+    !filePath.startsWith("file://") &&
+    !filePath.startsWith("asset://") &&
+    !filePath.startsWith("http")
+  ) {
     const { appDataDir, join } = await import("@tauri-apps/api/path");
     const appData = await appDataDir();
     resolvedPath = await join(appData, filePath);
@@ -60,11 +64,5 @@ export async function triggerVectorizeBook(
   const chapters = await extractBookChapters(resolvedPath);
 
   // Delegate to core
-  await coreTriggerVectorizeBook(
-    bookId,
-    chapters,
-    config,
-    callbacks,
-    onProgress,
-  );
+  await coreTriggerVectorizeBook(bookId, chapters, config, callbacks, onProgress);
 }

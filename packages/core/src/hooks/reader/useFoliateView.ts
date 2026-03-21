@@ -51,8 +51,6 @@ export interface FoliateView extends HTMLElement {
  * wrappedFoliateView — wraps a raw <foliate-view> element
  * to add any necessary patches or extensions.
  */
-export function wrappedFoliateView(
-  el: HTMLElement,
-): FoliateView {
+export function wrappedFoliateView(el: HTMLElement): FoliateView {
   return el as unknown as FoliateView;
 }
