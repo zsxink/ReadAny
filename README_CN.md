@@ -309,7 +309,10 @@ pnpm tauri build
 
 <p align="center">
   <a href="https://github.com/codedogQBY/ReadAny/discussions">💬 讨论区</a> •
-  <a href="https://github.com/codedogQBY/ReadAny/issues">🐛 问题反馈</a> •
-  小红书群（即将上线） •
-  微信群（即将上线）
+  <a href="https://github.com/codedogQBY/ReadAny/issues">🐛 问题反馈</a>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/小红书群.jpg" width="200" alt="小红书群">
+  <img src="docs/screenshots/微信群.jpg" width="200" alt="微信群">
 </p>

@@ -5,6 +5,7 @@
 
 import { getPlatformService } from "../services/platform";
 import { getSyncAdapter } from "./sync-adapter";
+import { SYNC_SCHEMA_VERSION, REMOTE_MANIFEST } from "./sync-types";
 import { type LANQRData, createLANQRData, generatePairCode } from "./lan-backend";
 import type { ISyncBackend, RemoteFile } from "./sync-backend";
 
@@ -14,13 +15,32 @@ import type { ISyncBackend, RemoteFile } from "./sync-backend";
  */
 class LocalFsBackend implements ISyncBackend {
   readonly type = "lan" as const;
-  private appDataDir: string | null = null;
 
   private async getDataDir(): Promise<string> {
-    if (this.appDataDir) return this.appDataDir;
     const adapter = getSyncAdapter();
-    this.appDataDir = await adapter.getAppDataDir();
-    return this.appDataDir;
+    return await adapter.getAppDataDir();
+  }
+
+  private async mapVirtualPath(path: string): Promise<string> {
+    const adapter = getSyncAdapter();
+    const dataDir = await this.getDataDir();
+    
+    // Remote structure:
+    // /readany/data/readany.db -> local readany.db
+    // /readany/data/manifest.json -> local manifest.json
+    // /readany/data/file/* -> local file/*
+    // /readany/data/cover/* -> local cover/*
+
+    if (path === "/readany/data/readany.db") {
+      return await adapter.getDatabasePath();
+    }
+    
+    if (path.startsWith("/readany/data/")) {
+      const subPath = path.substring("/readany/data/".length);
+      return adapter.joinPath(dataDir, subPath);
+    }
+
+    return adapter.joinPath(dataDir, path);
   }
 
   async testConnection(): Promise<boolean> { return true; }
@@ -28,14 +48,43 @@ class LocalFsBackend implements ISyncBackend {
 
   async put(path: string, data: Uint8Array): Promise<void> {
     const platform = getPlatformService();
-    const dataDir = await this.getDataDir();
-    await platform.writeFile(dataDir + "/" + path, data);
+    const resolvedPath = await this.mapVirtualPath(path);
+    const dir = resolvedPath.substring(0, resolvedPath.lastIndexOf("/"));
+    if (dir) {
+      const adapter = getSyncAdapter();
+      await adapter.ensureDir(dir);
+    }
+    await platform.writeFile(resolvedPath, data);
   }
 
   async get(path: string): Promise<Uint8Array> {
     const platform = getPlatformService();
-    const dataDir = await this.getDataDir();
-    return platform.readFile(dataDir + "/" + path);
+    const adapter = getSyncAdapter();
+    const resolvedPath = await this.mapVirtualPath(path);
+    
+    if (!(await adapter.fileExists(resolvedPath))) {
+      // Synthesize manifest if it's missing on the server device
+      if (path === REMOTE_MANIFEST) {
+        const manifest = {
+          lastModifiedAt: Date.now(),
+          uploadedBy: await adapter.getDeviceName(),
+          appVersion: await adapter.getAppVersion(),
+          schemaVersion: SYNC_SCHEMA_VERSION,
+        };
+        return new TextEncoder().encode(JSON.stringify(manifest));
+      }
+
+      const err = new Error("File not found");
+      (err as any).statusCode = 404;
+      throw err;
+    }
+    
+    try {
+      return await platform.readFile(resolvedPath);
+    } catch (e) {
+      console.error(`[LAN Server] Failed to read file ${resolvedPath}:`, e);
+      throw e;
+    }
   }
 
   async getJSON<T>(path: string): Promise<T | null> {
@@ -51,30 +100,36 @@ class LocalFsBackend implements ISyncBackend {
 
   async listDir(path: string): Promise<RemoteFile[]> {
     const adapter = getSyncAdapter();
-    const dataDir = await this.getDataDir();
-    const fullPath = dataDir + "/" + path;
+    const resolvedPath = await this.mapVirtualPath(path);
     try {
-      const names = await adapter.listFiles(fullPath);
-      return names.map((name) => ({
-        name,
-        path: path + "/" + name,
-        size: 0,
-        lastModified: 0,
-        isDirectory: false,
-      }));
-    } catch { return []; }
+      if (!(await adapter.fileExists(resolvedPath))) return [];
+      const names = await adapter.listFiles(resolvedPath);
+      return names.map((name) => {
+        const childVirtualPath = path.endsWith("/") ? path + name : path + "/" + name;
+        return {
+          name,
+          path: childVirtualPath,
+          size: 0,
+          lastModified: 0,
+          isDirectory: false,
+        };
+      });
+    } catch (e) {
+      console.warn(`[LAN Server] Failed to list dir ${resolvedPath}:`, e);
+      return [];
+    }
   }
 
   async delete(path: string): Promise<void> {
     const platform = getPlatformService();
-    const dataDir = await this.getDataDir();
-    await platform.deleteFile(dataDir + "/" + path);
+    const resolvedPath = await this.mapVirtualPath(path);
+    await platform.deleteFile(resolvedPath);
   }
 
   async exists(path: string): Promise<boolean> {
     const adapter = getSyncAdapter();
-    const dataDir = await this.getDataDir();
-    return adapter.fileExists(dataDir + "/" + path);
+    const resolvedPath = await this.mapVirtualPath(path);
+    return adapter.fileExists(resolvedPath);
   }
 
   async getDisplayName(): Promise<string> { return "Local Filesystem"; }
@@ -248,34 +303,43 @@ export class LANServer {
       return { status: 403, body: new TextEncoder().encode("Forbidden") };
     }
 
-    // Ping endpoint — no backend required
-    if (method === "GET" && path === "/ping") {
-      return { status: 200, body: new TextEncoder().encode("pong") };
-    }
-
-    if (!this.backend) {
-      return { status: 503, body: new TextEncoder().encode("Service Unavailable") };
-    }
-
     try {
+      // Ping endpoint — no backend required
+      if (method === "GET" && path === "/ping") {
+        return { status: 200, body: new TextEncoder().encode("pong") };
+      }
+
+      if (!this.backend) {
+        return { status: 503, body: new TextEncoder().encode("Service Unavailable") };
+      }
+
       // File download
       if (method === "GET" && path.startsWith("/file/")) {
-        const filePath = path.substring(6); // Remove "/file/" prefix
-        const data = await this.backend.get(filePath);
-        return {
-          status: 200,
-          body: data,
-          headers: {
-            "Content-Type": "application/octet-stream",
-            "Content-Length": String(data.length),
-          },
-        };
+        const virtualPath = path.substring(5); // Remove "/file" prefix (keep leading slash)
+        try {
+          const data = await this.backend.get(virtualPath);
+          return {
+            status: 200,
+            body: data,
+            headers: {
+              "Content-Type": "application/octet-stream",
+              "Content-Length": String(data.length),
+            },
+          };
+        } catch (e) {
+          const error = e instanceof Error ? e.message : String(e);
+          const statusCode = (e as any).statusCode || 500;
+          if (statusCode === 404 || error.includes("File not found")) {
+             return { status: 404, body: new TextEncoder().encode("Not Found") };
+          }
+          throw e;
+        }
       }
 
       // Directory listing
       if (method === "GET" && path.startsWith("/list/")) {
-        const dirPath = path.substring(6); // Remove "/list/" prefix
-        const files = await this.backend.listDir(dirPath);
+        const virtualPath = path.substring(5); // Remove "/list" prefix (keep leading slash)
+        const files = await this.backend.listDir(virtualPath);
         const body = new TextEncoder().encode(JSON.stringify(files));
         return {
           status: 200,
@@ -288,8 +352,8 @@ export class LANServer {
 
       // File exists check
       if (method === "HEAD" && path.startsWith("/exists/")) {
-        const filePath = path.substring(8); // Remove "/exists/" prefix
-        const exists = await this.backend.exists(filePath);
+        const virtualPath = path.substring(7); // Remove "/exists" prefix (keep leading slash)
+        const exists = await this.backend.exists(virtualPath);
         return { status: exists ? 200 : 404 };
       }
 
