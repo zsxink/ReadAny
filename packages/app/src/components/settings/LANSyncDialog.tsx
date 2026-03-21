@@ -12,6 +12,7 @@ import {
  */
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { QRCodeSVG } from "qrcode.react";
 
 interface LANSyncDialogProps {
   open: boolean;
@@ -227,17 +228,23 @@ export function LANSyncDialog({ open, onClose, mode }: LANSyncDialogProps) {
             {qrData && (
               <div className="flex flex-col items-center space-y-3">
                 <div className="rounded-lg bg-white p-4">
-                  <div className="h-48 w-48 bg-gray-100 flex items-center justify-center text-xs text-gray-500">
-                    {t("settings.syncLANQRPlaceholder")}
-                  </div>
+                  <QRCodeSVG
+                    value={JSON.stringify(qrData)}
+                    size={192}
+                    level="L"
+                    includeMargin={false}
+                  />
                 </div>
                 <div className="text-center">
                   <p className="text-sm font-medium">{t("settings.syncLANPairCode")}</p>
                   <p className="text-2xl font-mono tracking-widest">{qrData.pairCode}</p>
                 </div>
-                <div className="text-center text-xs text-muted-foreground">
+                <div className="text-center text-xs text-muted-foreground mt-2 space-y-1">
                   <p>
-                    {t("settings.syncLANAddress")}: {qrData.ip}:{qrData.port}
+                    {t("settings.syncLANIP")}: <span className="font-mono text-foreground">{qrData.ip}</span>
+                  </p>
+                  <p>
+                    {t("settings.syncLANPort")}: <span className="font-mono text-foreground">{qrData.port}</span>
                   </p>
                 </div>
                 <p className="text-xs text-muted-foreground text-center">

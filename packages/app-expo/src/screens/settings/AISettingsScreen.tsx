@@ -444,7 +444,7 @@ export default function AISettingsScreen() {
                 <TouchableOpacity
                   style={styles.stepperBtn}
                   onPress={() => {
-                    const newValue = Math.max(1024, aiConfig.maxTokens - 1024);
+                    const newValue = Math.max(256, aiConfig.maxTokens - 256);
                     updateAIConfig({ maxTokens: newValue });
                   }}
                   activeOpacity={0.7}
@@ -466,7 +466,7 @@ export default function AISettingsScreen() {
                 <TouchableOpacity
                   style={styles.stepperBtn}
                   onPress={() => {
-                    const newValue = Math.min(32768, aiConfig.maxTokens + 1024);
+                    const newValue = Math.min(32768, aiConfig.maxTokens + 256);
                     updateAIConfig({ maxTokens: newValue });
                   }}
                   activeOpacity={0.7}
@@ -482,7 +482,7 @@ export default function AISettingsScreen() {
                 <TouchableOpacity
                   style={styles.stepperBtn}
                   onPress={() => {
-                    const newValue = Math.max(1024, aiConfig.slidingWindowSize - 1024);
+                    const newValue = Math.max(1, aiConfig.slidingWindowSize - 1);
                     updateAIConfig({ slidingWindowSize: newValue });
                   }}
                   activeOpacity={0.7}
@@ -504,7 +504,7 @@ export default function AISettingsScreen() {
                 <TouchableOpacity
                   style={styles.stepperBtn}
                   onPress={() => {
-                    const newValue = Math.min(32768, aiConfig.slidingWindowSize + 1024);
+                    const newValue = Math.min(100, aiConfig.slidingWindowSize + 1);
                     updateAIConfig({ slidingWindowSize: newValue });
                   }}
                   activeOpacity={0.7}

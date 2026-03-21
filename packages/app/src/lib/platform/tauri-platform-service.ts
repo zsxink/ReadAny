@@ -337,4 +337,67 @@ export class TauriPlatformService implements IPlatformService {
       }, 5000);
     });
   }
+
+  async startLANServer(
+    port: number,
+    handler: (
+      method: string,
+      path: string,
+      headers: Record<string, string>,
+    ) => Promise<{ status: number; body?: Uint8Array; headers?: Record<string, string> }>,
+  ): Promise<{ port: number; server: unknown }> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const { listen } = await import("@tauri-apps/api/event");
+
+    const boundPort = await invoke<number>("start_lan_server", { port });
+    
+    // Listen for HTTP requests coming from the Rust Axum server
+    const unlisten = await listen<any>("lan-request", async (event) => {
+      const { req_id, method, path, headers } = event.payload;
+      try {
+        const response = await handler(method, path, headers);
+        
+        // encode body to base64
+        let resBodyBase64: string | null = null;
+        if (response.body) {
+           resBodyBase64 = this.arrayBufferToBase64(response.body);
+        }
+
+        await invoke("lan_server_respond", { 
+           reqId: req_id, 
+           payload: { 
+             status: response.status, 
+             headers: response.headers || {}, 
+             body_base64: resBodyBase64 
+           } 
+        });
+      } catch (e) {
+        console.error("LAN Sync Handler Error:", e);
+        await invoke("lan_server_respond", { 
+          reqId: req_id, 
+          payload: { status: 500, headers: {}, body_base64: null } 
+        });
+      }
+    });
+
+    return { port: boundPort, server: unlisten };
+  }
+
+  async stopLANServer(server: unknown): Promise<void> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("stop_lan_server");
+    if (typeof server === "function") {
+      server(); // call unlisten
+    }
+  }
+
+  private arrayBufferToBase64(buffer: ArrayBuffer | Uint8Array): string {
+    let binary = "";
+    const bytes = new Uint8Array(buffer);
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  }
 }

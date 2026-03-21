@@ -54,17 +54,11 @@ pub async fn sync_hash_file(path: String) -> Result<String, String> {
 }
 
 /// Get the local IP address of this machine.
-/// Uses a UDP socket trick: connect to a public IP and read back the local address.
+/// Uses the local-ip-address crate which safely queries network interfaces.
 #[tauri::command]
 pub fn get_local_ip() -> Result<String, String> {
-    use std::net::UdpSocket;
-    let socket =
-        UdpSocket::bind("0.0.0.0:0").map_err(|e| format!("Failed to bind socket: {}", e))?;
-    socket
-        .connect("8.8.8.8:80")
-        .map_err(|e| format!("Failed to connect socket: {}", e))?;
-    let addr = socket
-        .local_addr()
-        .map_err(|e| format!("Failed to get local addr: {}", e))?;
-    Ok(addr.ip().to_string())
+    match local_ip_address::local_ip() {
+        Ok(ip) => Ok(ip.to_string()),
+        Err(e) => Err(format!("Failed to get local IP: {}", e)),
+    }
 }

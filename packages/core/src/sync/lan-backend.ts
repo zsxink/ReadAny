@@ -46,10 +46,15 @@ export class LANBackend implements ISyncBackend {
     this.deviceName = deviceName;
   }
 
+  private getFetchFn() {
+    const platform = getPlatformService();
+    return platform.fetch ? platform.fetch.bind(platform) : globalThis.fetch.bind(globalThis);
+  }
+
   async testConnection(): Promise<boolean> {
     try {
-      const platform = getPlatformService();
-      const response = await platform.fetch(`${this.serverUrl}/ping`, {
+      const fetchFn = this.getFetchFn();
+      const response = await fetchFn(`${this.serverUrl}/ping`, {
         method: "GET",
         headers: {
           "X-Pair-Code": this.pairCode,
@@ -70,8 +75,8 @@ export class LANBackend implements ISyncBackend {
   }
 
   async get(path: string): Promise<Uint8Array> {
-    const platform = getPlatformService();
-    const response = await platform.fetch(`${this.serverUrl}/file${path}`, {
+    const fetchFn = this.getFetchFn();
+    const response = await fetchFn(`${this.serverUrl}/file${path}`, {
       method: "GET",
       headers: {
         "X-Pair-Code": this.pairCode,
@@ -103,8 +108,8 @@ export class LANBackend implements ISyncBackend {
   }
 
   async listDir(path: string): Promise<RemoteFile[]> {
-    const platform = getPlatformService();
-    const response = await platform.fetch(`${this.serverUrl}/list${path}`, {
+    const fetchFn = this.getFetchFn();
+    const response = await fetchFn(`${this.serverUrl}/list${path}`, {
       method: "GET",
       headers: {
         "X-Pair-Code": this.pairCode,
@@ -125,8 +130,8 @@ export class LANBackend implements ISyncBackend {
 
   async exists(path: string): Promise<boolean> {
     try {
-      const platform = getPlatformService();
-      const response = await platform.fetch(`${this.serverUrl}/exists${path}`, {
+      const fetchFn = this.getFetchFn();
+      const response = await fetchFn(`${this.serverUrl}/exists${path}`, {
         method: "HEAD",
         headers: {
           "X-Pair-Code": this.pairCode,

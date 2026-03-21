@@ -513,7 +513,7 @@ export function AISettings() {
           <Slider
             min={2}
             max={30}
-            step={2}
+            step={1}
             value={[aiConfig.slidingWindowSize ?? 8]}
             onValueChange={([v]) => updateAIConfig({ slidingWindowSize: v })}
           />

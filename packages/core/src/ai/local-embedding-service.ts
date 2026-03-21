@@ -1,157 +1,165 @@
 /**
- * Local Embedding Service — runs embedding models via a Web Worker
- * to avoid blocking the main thread.
- *
- * Models are automatically downloaded from HuggingFace and cached by the browser.
+ * Local Embedding Service
+ * Supports interchangeable engines (WebWorker for Desktop, Native ONNX for Mobile).
  */
 import { BUILTIN_EMBEDDING_MODELS } from "./builtin-embedding-models";
 
-/** The singleton worker instance */
-let worker: Worker | null = null;
-let workerModelId: string | null = null;
-let requestCounter = 0;
-
-/** Injected factory for creating the Web Worker (platform-specific) */
-let workerFactory: (() => Worker) | null = null;
-
-/**
- * Set the factory function that creates an embedding Web Worker.
- * Must be called once from the platform layer before using local embeddings.
- *
- * Example (Vite / Tauri):
- *   setEmbeddingWorkerFactory(() =>
- *     new Worker(new URL("./embedding-worker.ts", import.meta.url), { type: "module" })
- *   );
- */
-export function setEmbeddingWorkerFactory(factory: () => Worker): void {
-  workerFactory = factory;
+export interface ILocalEmbeddingEngine {
+  init(): void | Promise<void>;
+  load(modelId: string, hfModelId: string, onProgress?: (p: number) => void): Promise<void>;
+  generate(modelId: string, texts: string[], onItemProgress?: (done: number, total: number) => void): Promise<number[][]>;
+  dispose(): Promise<void>;
+  clearCache(hfModelId: string): Promise<void>;
 }
 
-function getWorker(): Worker {
-  if (!worker) {
-    if (!workerFactory) {
-      throw new Error(
-        "Embedding worker factory not set. Call setEmbeddingWorkerFactory() from the platform layer first.",
-      );
-    }
-    worker = workerFactory();
+let activeEngine: ILocalEmbeddingEngine | null = null;
+let currentModelId: string | null = null;
+
+export function setLocalEmbeddingEngine(engine: ILocalEmbeddingEngine) {
+  activeEngine = engine;
+  activeEngine.init?.();
+}
+
+function getEngine(): ILocalEmbeddingEngine {
+  if (!activeEngine) {
+    throw new Error("Local embedding engine not set. Call setLocalEmbeddingEngine() early in your app lifecycle.");
   }
-  return worker!;
+  return activeEngine;
 }
 
-/**
- * Load (or reuse) an embedding model in the Web Worker.
- * First call downloads the model; subsequent calls are instant.
- */
-export function loadEmbeddingPipeline(
+export async function loadEmbeddingPipeline(
   builtinModelId: string,
   onProgress?: (progress: number) => void,
 ): Promise<void> {
   const model = BUILTIN_EMBEDDING_MODELS.find((m) => m.id === builtinModelId);
-  if (!model) return Promise.reject(new Error(`Unknown built-in model: ${builtinModelId}`));
+  if (!model) throw new Error(`Unknown built-in model: ${builtinModelId}`);
 
-  // Already loaded
-  if (workerModelId === builtinModelId) return Promise.resolve();
+  if (currentModelId === builtinModelId) return;
 
-  const w = getWorker();
-
-  return new Promise<void>((resolve, reject) => {
-    const handler = (e: MessageEvent) => {
-      const msg = e.data;
-      if (msg.type === "load:progress") {
-        onProgress?.(msg.progress);
-      } else if (msg.type === "load:done") {
-        workerModelId = builtinModelId;
-        w.removeEventListener("message", handler);
-        resolve();
-      } else if (msg.type === "load:error") {
-        w.removeEventListener("message", handler);
-        reject(new Error(msg.error));
-      }
-    };
-
-    w.addEventListener("message", handler);
-    w.postMessage({ type: "load", modelId: builtinModelId, hfModelId: model.hfModelId });
-  });
+  const engine = getEngine();
+  await engine.load(builtinModelId, model.hfModelId, onProgress);
+  currentModelId = builtinModelId;
 }
 
-/**
- * Generate embeddings for one or more texts using the loaded model (via Worker).
- * Returns an array of number arrays (one embedding per text).
- * Does NOT block the main thread.
- */
 export function generateLocalEmbeddings(
-  _builtinModelId: string,
+  builtinModelId: string,
   texts: string[],
   onItemProgress?: (done: number, total: number) => void,
 ): Promise<number[][]> {
-  const w = getWorker();
-  const requestId = `req-${++requestCounter}`;
-
-  return new Promise<number[][]>((resolve, reject) => {
-    const handler = (e: MessageEvent) => {
-      const msg = e.data;
-      if (msg.requestId !== requestId) return;
-
-      if (msg.type === "embed:progress") {
-        onItemProgress?.(msg.done, msg.total);
-      } else if (msg.type === "embed:done") {
-        w.removeEventListener("message", handler);
-        resolve(msg.embeddings);
-      } else if (msg.type === "embed:error") {
-        w.removeEventListener("message", handler);
-        reject(new Error(msg.error));
-      }
-    };
-
-    w.addEventListener("message", handler);
-    w.postMessage({ type: "embed", requestId, texts });
-  });
+  return getEngine().generate(builtinModelId, texts, onItemProgress);
 }
 
-/**
- * Dispose / unload the worker to free memory.
- */
-export async function disposeEmbeddingPipeline() {
-  if (worker) {
-    worker.postMessage({ type: "dispose" });
-    // Give time for cleanup, then terminate
-    setTimeout(() => {
-      worker?.terminate();
-      worker = null;
-      workerModelId = null;
-    }, 500);
+export async function disposeEmbeddingPipeline(): Promise<void> {
+  if (activeEngine) {
+    await activeEngine.dispose();
   }
+  currentModelId = null;
 }
 
-/**
- * Clear cached model files from browser storage.
- * This removes the downloaded ONNX model files so re-download is needed.
- */
-export function clearModelCache(builtinModelId: string): Promise<void> {
+export async function clearModelCache(builtinModelId: string): Promise<void> {
   const model = BUILTIN_EMBEDDING_MODELS.find((m) => m.id === builtinModelId);
-  if (!model) return Promise.reject(new Error(`Unknown built-in model: ${builtinModelId}`));
+  if (!model) throw new Error(`Unknown built-in model: ${builtinModelId}`);
 
-  const w = getWorker();
+  if (currentModelId === builtinModelId) {
+    currentModelId = null;
+  }
+  await getEngine().clearCache(model.hfModelId);
+}
 
-  // If this model is currently loaded, reset tracking
-  if (workerModelId === builtinModelId) {
-    workerModelId = null;
+// ------------------------------------------------------------------
+// Legacy WebWorker Wrapper (Used by Tauri / Browser)
+// ------------------------------------------------------------------
+
+export class WebWorkerEmbeddingEngine implements ILocalEmbeddingEngine {
+  private worker: Worker | null = null;
+  private workerFactory: () => Worker;
+  private requestCounter = 0;
+
+  constructor(workerFactory: () => Worker) {
+    this.workerFactory = workerFactory;
   }
 
-  return new Promise<void>((resolve, reject) => {
-    const handler = (e: MessageEvent) => {
-      const msg = e.data;
-      if (msg.type === "clearCache:done") {
-        w.removeEventListener("message", handler);
-        resolve();
-      } else if (msg.type === "clearCache:error") {
-        w.removeEventListener("message", handler);
-        reject(new Error(msg.error));
-      }
-    };
+  init() {
+    // Lazily initialized
+  }
 
-    w.addEventListener("message", handler);
-    w.postMessage({ type: "clearCache", hfModelId: model.hfModelId });
-  });
+  private getWorker(): Worker {
+    if (!this.worker) {
+      this.worker = this.workerFactory();
+    }
+    return this.worker;
+  }
+
+  load(modelId: string, hfModelId: string, onProgress?: (p: number) => void): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const w = this.getWorker();
+      const handler = (e: MessageEvent) => {
+        const msg = e.data;
+        if (msg.type === "load:progress") onProgress?.(msg.progress);
+        else if (msg.type === "load:done") {
+          w.removeEventListener("message", handler);
+          resolve();
+        } else if (msg.type === "load:error") {
+          w.removeEventListener("message", handler);
+          reject(new Error(msg.error));
+        }
+      };
+      w.addEventListener("message", handler);
+      w.postMessage({ type: "load", modelId, hfModelId });
+    });
+  }
+
+  generate(_modelId: string, texts: string[], onItemProgress?: (done: number, total: number) => void): Promise<number[][]> {
+    return new Promise((resolve, reject) => {
+      const w = this.getWorker();
+      const reqId = `req-${++this.requestCounter}`;
+      const handler = (e: MessageEvent) => {
+        const msg = e.data;
+        if (msg.requestId !== reqId) return;
+        if (msg.type === "embed:progress") onItemProgress?.(msg.done, msg.total);
+        else if (msg.type === "embed:done") {
+          w.removeEventListener("message", handler);
+          resolve(msg.embeddings);
+        } else if (msg.type === "embed:error") {
+          w.removeEventListener("message", handler);
+          reject(new Error(msg.error));
+        }
+      };
+      w.addEventListener("message", handler);
+      w.postMessage({ type: "embed", requestId: reqId, texts });
+    });
+  }
+
+  async dispose(): Promise<void> {
+    if (this.worker) {
+      this.worker.postMessage({ type: "dispose" });
+      setTimeout(() => {
+        this.worker?.terminate();
+        this.worker = null;
+      }, 500);
+    }
+  }
+
+  clearCache(hfModelId: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const w = this.getWorker();
+      const handler = (e: MessageEvent) => {
+        const msg = e.data;
+        if (msg.type === "clearCache:done") {
+          w.removeEventListener("message", handler);
+          resolve();
+        } else if (msg.type === "clearCache:error") {
+          w.removeEventListener("message", handler);
+          reject(new Error(msg.error));
+        }
+      };
+      w.addEventListener("message", handler);
+      w.postMessage({ type: "clearCache", hfModelId });
+    });
+  }
+}
+
+/** Legacy compat for existing app/src/main.tsx setups */
+export function setEmbeddingWorkerFactory(factory: () => Worker): void {
+  setLocalEmbeddingEngine(new WebWorkerEmbeddingEngine(factory));
 }

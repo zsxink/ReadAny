@@ -1,4 +1,5 @@
 import { getPlatformService } from "@readany/core/services";
+import QRCode from "react-native-qrcode-svg";
 import { useSyncStore } from "@readany/core/stores";
 import { type LANQRData, createLANBackend } from "@readany/core/sync/lan-backend";
 import { createLANServer } from "@readany/core/sync/lan-server";
@@ -691,13 +692,18 @@ export default function SyncSettingsScreen() {
                     {lanQrData && (
                       <View style={styles.lanQrSection}>
                         <View style={styles.lanQrPlaceholder}>
-                          <Text style={styles.lanQrText}>{t("settings.syncLANQRPlaceholder")}</Text>
+                          <QRCode value={JSON.stringify(lanQrData)} size={160} />
                         </View>
                         <Text style={styles.lanPairCodeLabel}>{t("settings.syncLANPairCode")}</Text>
                         <Text style={styles.lanPairCode}>{lanQrData.pairCode}</Text>
-                        <Text style={styles.lanAddress}>
-                          {lanQrData.ip}:{lanQrData.port}
-                        </Text>
+                        <View style={{ marginTop: 12, alignItems: "center", gap: 4 }}>
+                          <Text style={styles.lanAddress}>
+                            {t("settings.syncLANIP")}: <Text style={{ fontFamily: "SpaceMono_400Regular", color: colors.foreground }}>{lanQrData.ip}</Text>
+                          </Text>
+                          <Text style={styles.lanAddress}>
+                            {t("settings.syncLANPort")}: <Text style={{ fontFamily: "SpaceMono_400Regular", color: colors.foreground }}>{lanQrData.port}</Text>
+                          </Text>
+                        </View>
                       </View>
                     )}
 
@@ -1031,7 +1037,7 @@ const makeStyles = (colors: ThemeColors) =>
       fontWeight: fontWeight.medium,
       color: colors.foreground,
     },
-    fieldGroup: { gap: 4 },
+    fieldGroup: { gap: 6, marginBottom: 12 },
     fieldLabel: { fontSize: fontSize.sm, color: colors.mutedForeground },
     input: {
       borderRadius: radius.lg,

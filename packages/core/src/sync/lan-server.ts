@@ -4,8 +4,81 @@
  */
 
 import { getPlatformService } from "../services/platform";
+import { getSyncAdapter } from "./sync-adapter";
 import { type LANQRData, createLANQRData, generatePairCode } from "./lan-backend";
-import type { ISyncBackend } from "./sync-backend";
+import type { ISyncBackend, RemoteFile } from "./sync-backend";
+
+/**
+ * Local filesystem backend for the LAN server.
+ * Serves files from the device's own data directory for sync.
+ */
+class LocalFsBackend implements ISyncBackend {
+  readonly type = "lan" as const;
+  private appDataDir: string | null = null;
+
+  private async getDataDir(): Promise<string> {
+    if (this.appDataDir) return this.appDataDir;
+    const adapter = getSyncAdapter();
+    this.appDataDir = await adapter.getAppDataDir();
+    return this.appDataDir;
+  }
+
+  async testConnection(): Promise<boolean> { return true; }
+  async ensureDirectories(): Promise<void> {}
+
+  async put(path: string, data: Uint8Array): Promise<void> {
+    const platform = getPlatformService();
+    const dataDir = await this.getDataDir();
+    await platform.writeFile(dataDir + "/" + path, data);
+  }
+
+  async get(path: string): Promise<Uint8Array> {
+    const platform = getPlatformService();
+    const dataDir = await this.getDataDir();
+    return platform.readFile(dataDir + "/" + path);
+  }
+
+  async getJSON<T>(path: string): Promise<T | null> {
+    try {
+      const data = await this.get(path);
+      return JSON.parse(new TextDecoder().decode(data)) as T;
+    } catch { return null; }
+  }
+
+  async putJSON<T>(path: string, data: T): Promise<void> {
+    await this.put(path, new TextEncoder().encode(JSON.stringify(data)));
+  }
+
+  async listDir(path: string): Promise<RemoteFile[]> {
+    const adapter = getSyncAdapter();
+    const dataDir = await this.getDataDir();
+    const fullPath = dataDir + "/" + path;
+    try {
+      const names = await adapter.listFiles(fullPath);
+      return names.map((name) => ({
+        name,
+        path: path + "/" + name,
+        size: 0,
+        lastModified: 0,
+        isDirectory: false,
+      }));
+    } catch { return []; }
+  }
+
+  async delete(path: string): Promise<void> {
+    const platform = getPlatformService();
+    const dataDir = await this.getDataDir();
+    await platform.deleteFile(dataDir + "/" + path);
+  }
+
+  async exists(path: string): Promise<boolean> {
+    const adapter = getSyncAdapter();
+    const dataDir = await this.getDataDir();
+    return adapter.fileExists(dataDir + "/" + path);
+  }
+
+  async getDisplayName(): Promise<string> { return "Local Filesystem"; }
+}
 
 export type { LANQRData } from "./lan-backend";
 
@@ -114,6 +187,11 @@ export class LANServer {
       this.serverHandle = server;
       this.abortController = new AbortController();
 
+      // Attach local-fs backend automatically if caller didn't set one
+      if (!this.backend) {
+        this.backend = new LocalFsBackend();
+      }
+
       // Create QR data
       this.qrData = createLANQRData(localIp, this.port, this.deviceName, this.pairCode);
 
@@ -162,10 +240,17 @@ export class LANServer {
     path: string,
     headers: Record<string, string>,
   ): Promise<{ status: number; body?: Uint8Array; headers?: Record<string, string> }> {
-    // Verify pair code
-    const clientPairCode = headers["x-pair-code"];
+    // Verify pair code (headers may be lowercased by HTTP layer)
+    const pairCodeKey = Object.keys(headers).find(k => k.toLowerCase() === "x-pair-code");
+    const clientPairCode = pairCodeKey ? headers[pairCodeKey] : undefined;
     if (clientPairCode !== this.pairCode) {
+      console.warn(`[LAN Server] Pair code mismatch: got "${clientPairCode}", expected "${this.pairCode}"`);
       return { status: 403, body: new TextEncoder().encode("Forbidden") };
+    }
+
+    // Ping endpoint — no backend required
+    if (method === "GET" && path === "/ping") {
+      return { status: 200, body: new TextEncoder().encode("pong") };
     }
 
     if (!this.backend) {
@@ -173,11 +258,6 @@ export class LANServer {
     }
 
     try {
-      // Ping endpoint
-      if (method === "GET" && path === "/ping") {
-        return { status: 200, body: new TextEncoder().encode("pong") };
-      }
-
       // File download
       if (method === "GET" && path.startsWith("/file/")) {
         const filePath = path.substring(6); // Remove "/file/" prefix

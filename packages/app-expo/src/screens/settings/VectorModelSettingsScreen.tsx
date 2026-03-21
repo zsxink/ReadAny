@@ -7,7 +7,7 @@ import {
   XIcon,
 } from "@/components/ui/Icon";
 import { useVectorModelStore } from "@/stores/vector-model-store";
-import { type ThemeColors, fontSize, fontWeight, radius, useColors } from "@/styles/theme";
+import { type ThemeColors, fontSize, fontWeight, radius, useColors, withOpacity } from "@/styles/theme";
 import { useNavigation } from "@react-navigation/native";
 import { BUILTIN_EMBEDDING_MODELS } from "@readany/core/ai/builtin-embedding-models";
 import type { VectorModelConfig } from "@readany/core/types";
@@ -128,63 +128,68 @@ export default function VectorModelSettingsScreen() {
   );
 }
 
+import { clearModelCache, loadEmbeddingPipeline } from "@readany/core/ai/local-embedding-service";
+
 function BuiltinModelsSection() {
   const colors = useColors();
   const s = makeStyles(colors);
   const { t } = useTranslation();
-  const {
-    selectedBuiltinModelId,
-    builtinModelStates,
-    setSelectedBuiltinModelId,
-    updateBuiltinModelState,
-  } = useVectorModelStore();
+  
+  const { builtinModelStates, selectedBuiltinModelId, setSelectedBuiltinModelId } = useVectorModelStore();
+  const [clearingModelId, setClearingModelId] = useState<string | null>(null);
 
-  const handleLoadModel = useCallback(
-    async (modelId: string) => {
-      updateBuiltinModelState(modelId, { status: "downloading", progress: 0, error: undefined });
-      try {
-        const { loadEmbeddingPipeline } = await import("@readany/core/ai/local-embedding-service");
-        await loadEmbeddingPipeline(modelId, (progress: number) => {
-          updateBuiltinModelState(modelId, { progress });
-        });
-        updateBuiltinModelState(modelId, { status: "ready", progress: 100 });
-        setSelectedBuiltinModelId(modelId);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        updateBuiltinModelState(modelId, { status: "error", error: message });
-      }
-    },
-    [updateBuiltinModelState, setSelectedBuiltinModelId],
-  );
+  const handleSelect = useCallback((modelId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedBuiltinModelId(modelId);
+    }
+  }, [setSelectedBuiltinModelId]);
 
-  const handleSelect = useCallback(
-    async (modelId: string, checked: boolean) => {
-      if (!checked) {
-        setSelectedBuiltinModelId(null);
-        return;
+  const handleClearModel = useCallback(async (modelId: string) => {
+    try {
+      setClearingModelId(modelId);
+      await clearModelCache(modelId);
+      useVectorModelStore.getState().updateBuiltinModelState(modelId, { status: "idle", progress: 0 });
+      if (useVectorModelStore.getState().selectedBuiltinModelId === modelId) {
+        useVectorModelStore.getState().setSelectedBuiltinModelId(null);
       }
-      const state = builtinModelStates[modelId];
-      if (state?.status === "ready") {
-        setSelectedBuiltinModelId(modelId);
-      } else {
-        await handleLoadModel(modelId);
-      }
-    },
-    [builtinModelStates, setSelectedBuiltinModelId, handleLoadModel],
-  );
+    } catch (e) {
+      console.warn("Failed to clear cache:", e);
+    } finally {
+      setClearingModelId(null);
+    }
+  }, []);
+
+  const handleDownload = useCallback((modelId: string) => {
+    useVectorModelStore.getState().updateBuiltinModelState(modelId, { status: "downloading", progress: 0 });
+    loadEmbeddingPipeline(modelId, (progress) => {
+      useVectorModelStore.getState().updateBuiltinModelState(modelId, {
+        status: "downloading",
+        progress: Math.round(progress),
+      });
+    })
+      .then(() => {
+        useVectorModelStore.getState().updateBuiltinModelState(modelId, { status: "ready" });
+        useVectorModelStore.getState().setSelectedBuiltinModelId(modelId);
+      })
+      .catch((err) => {
+        console.warn("Model load error", err);
+        useVectorModelStore.getState().updateBuiltinModelState(modelId, { status: "error" });
+      });
+  }, []);
 
   return (
     <View style={s.section}>
       <Text style={s.sectionTitle}>{t("settings.vm_builtinModels", "内置模型")}</Text>
-      <Text style={s.sectionDesc}>{t("settings.vm_builtinDesc", "在设备上运行的嵌入模型")}</Text>
+      <Text style={s.sectionDesc}>{t("settings.vm_builtinDesc", "在设备上原生运行的嵌入模型")}</Text>
+      
       {BUILTIN_EMBEDDING_MODELS.map((model) => {
         const state = builtinModelStates[model.id];
-        const isSelected = selectedBuiltinModelId === model.id;
-        const isDownloading = state?.status === "downloading";
         const isReady = state?.status === "ready";
-
+        const isDownloading = state?.status === "downloading";
+        const isSelected = selectedBuiltinModelId === model.id;
+        
         return (
-          <View key={model.id} style={[s.modelCard, isSelected && s.modelCardActive]}>
+          <View key={model.id} style={[s.modelCard, isSelected && { borderColor: withOpacity(colors.primary, 0.5), backgroundColor: withOpacity(colors.primary, 0.05) }]}>
             <View style={s.modelCardTop}>
               <View style={s.modelInfo}>
                 <View style={s.modelNameRow}>
@@ -202,43 +207,48 @@ function BuiltinModelsSection() {
                   )}
                   {isReady && (
                     <View style={s.readyBadge}>
-                      <CheckIcon size={12} color={colors.emerald} />
+                      <CheckIcon size={12} color="#10b981" />
                       <Text style={s.readyText}>{t("settings.vm_loaded", "已加载")}</Text>
                     </View>
                   )}
                 </View>
               </View>
-              {isDownloading ? (
-                <View style={s.downloadingRow}>
-                  <ActivityIndicator size="small" color={colors.primary} />
-                  <Text style={s.downloadingText}>{state?.progress ?? 0}%</Text>
-                </View>
-              ) : isReady ? (
-                <View style={s.readyActions}>
-                  <TouchableOpacity style={s.clearBtn} onPress={() => {
-                    if (selectedBuiltinModelId === model.id) {
-                      setSelectedBuiltinModelId(null);
-                    }
-                    updateBuiltinModelState(model.id, { status: "idle", progress: 0, error: undefined });
-                  }}>
-                    <Trash2Icon size={12} color={colors.mutedForeground} />
-                    <Text style={s.clearBtnText}>{t("settings.vm_clearCache")}</Text>
+
+              <View style={s.cardActions}>
+                {isDownloading ? (
+                  <View style={s.downloadingRow}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                    <Text style={[s.downloadingText, { color: colors.mutedForeground }]}>{state?.progress ?? 0}%</Text>
+                  </View>
+                ) : isReady ? (
+                  <View style={s.readyActions}>
+                    <TouchableOpacity
+                      disabled={clearingModelId === model.id}
+                      onPress={() => handleClearModel(model.id)}
+                      style={s.iconBtn}
+                    >
+                      {clearingModelId === model.id ? (
+                        <ActivityIndicator size="small" color={colors.mutedForeground} />
+                      ) : (
+                        <Trash2Icon size={16} color={colors.mutedForeground} />
+                      )}
+                    </TouchableOpacity>
+                    <Switch
+                      value={isSelected}
+                      onValueChange={(val) => handleSelect(model.id, val)}
+                    />
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={[s.downloadBtn, { borderColor: colors.border }]}
+                    onPress={() => handleDownload(model.id)}
+                  >
+                    <Text style={[s.downloadBtnText, { color: colors.foreground }]}>
+                      {t("settings.vm_download", "下载")}
+                    </Text>
                   </TouchableOpacity>
-                  <Switch
-                    value={isSelected}
-                    onValueChange={(v) => handleSelect(model.id, v)}
-                    trackColor={{ false: colors.muted, true: colors.primary }}
-                    thumbColor={colors.card}
-                  />
-                </View>
-              ) : (
-                <TouchableOpacity
-                  style={s.downloadBtn}
-                  onPress={() => handleLoadModel(model.id)}
-                >
-                  <Text style={s.downloadBtnText}>{t("settings.vm_download", "下载")}</Text>
-                </TouchableOpacity>
-              )}
+                )}
+              </View>
             </View>
             <Text style={s.modelDesc}>
               {t(model.descriptionKey)} · {t(model.languagesKey)}
@@ -548,7 +558,8 @@ const makeStyles = (colors: ThemeColors) =>
     },
     modelCardActive: { borderColor: colors.primary, backgroundColor: colors.accent },
     modelCardTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-    modelInfo: { flex: 1, minWidth: 0 },
+    cardActions: { alignItems: "flex-end", justifyContent: "center" },
+    iconBtn: { padding: 4 },
     modelNameRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
     modelName: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.foreground },
     modelSize: { fontSize: 11, color: colors.mutedForeground },
@@ -592,7 +603,19 @@ const makeStyles = (colors: ThemeColors) =>
       fontWeight: fontWeight.medium,
       color: colors.primary,
     },
+    modelInfo: { flex: 1, minWidth: 0 },
     // Remote
+    desktopOnlyNotice: {
+      backgroundColor: withOpacity(colors.primary, 0.08),
+      borderRadius: radius.md,
+      padding: 10,
+      marginBottom: 4,
+    },
+    desktopOnlyText: {
+      fontSize: fontSize.xs,
+      color: colors.mutedForeground,
+      lineHeight: 18,
+    },
     remoteTitleRow: {
       flexDirection: "row",
       alignItems: "flex-start",
@@ -617,7 +640,6 @@ const makeStyles = (colors: ThemeColors) =>
       paddingVertical: 24,
     },
     remoteActions: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 8 },
-    iconBtn: { padding: 4 },
     // Form
     formCard: {
       backgroundColor: colors.card,

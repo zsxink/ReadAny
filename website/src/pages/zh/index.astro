@@ -3,10 +3,8 @@ import { useTranslations } from "../../i18n/utils";
 import Layout from "../../layouts/Layout.astro";
 import Header from "../../components/Header.astro";
 import Hero from "../../components/Hero.astro";
-import HowItWorks from "../../components/HowItWorks.astro";
-import Features from "../../components/Features.astro";
+import FeatureShowcase from "../../components/FeatureShowcase.astro";
 import UseCases from "../../components/UseCases.astro";
-import MobileShowcase from "../../components/MobileShowcase.astro";
 import TechStack from "../../components/TechStack.astro";
 import Download from "../../components/Download.astro";
 import FAQ from "../../components/FAQ.astro";
@@ -21,10 +19,8 @@ const t = useTranslations(lang);
   <Header lang={lang} t={t} />
   <main>
     <Hero t={t} />
-    <HowItWorks t={t} />
-    <Features t={t} />
+    <FeatureShowcase t={t} />
     <UseCases t={t} />
-    <MobileShowcase t={t} />
     <TechStack t={t} />
     <Download t={t} />
     <FAQ t={t} />

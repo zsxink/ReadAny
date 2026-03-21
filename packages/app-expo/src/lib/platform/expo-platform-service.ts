@@ -18,11 +18,12 @@ import type {
 } from "@readany/core/services";
 import * as Clipboard from "expo-clipboard";
 import Constants from "expo-constants";
+import * as Crypto from "expo-crypto";
+import * as DocumentPicker from "expo-document-picker";
 import { Directory, File, Paths } from "expo-file-system";
+import * as Network from "expo-network";
 import * as SecureStore from "expo-secure-store";
 import * as Sharing from "expo-sharing";
-
-import * as DocumentPicker from "expo-document-picker";
 
 /** Simple KV storage keys tracking (SecureStore doesn't have getAllKeys) */
 const KV_KEYS_INDEX = "__readany_kv_keys__";
@@ -342,10 +343,107 @@ export class ExpoPlatformService implements IPlatformService {
   // ---- LAN Sync ----
 
   async getLocalIP(): Promise<string> {
-    // React Native doesn't have a reliable built-in way to get local IP.
-    // Return empty to trigger manual IP input fallback in the UI.
-    // Could be enhanced later with expo-network or a native module.
-    return "";
+    try {
+      const ip = await Network.getIpAddressAsync();
+      return ip ?? "";
+    } catch {
+      return "";
+    }
+  }
+
+  async startLANServer(
+    port: number,
+    handler: (
+      method: string,
+      path: string,
+      headers: Record<string, string>,
+    ) => Promise<{ status: number; body?: Uint8Array; headers?: Record<string, string> }>,
+  ): Promise<{ port: number; server: unknown }> {
+    const isExpoGo = Constants.executionEnvironment === "storeClient" || Constants.appOwnership === "expo";
+    if (isExpoGo) {
+      throw new Error("由于需要底层原生 TCP 模块，局域网服务端不支持在原味 Expo Go 中运行。请使用自定义 Dev Client (expo run) 或桌面版进行互传。");
+    }
+
+    let TcpSocket: any;
+    let BufferMod: any;
+    try {
+      TcpSocket = (await import("react-native-tcp-socket")).default;
+      BufferMod = (await import("buffer")).Buffer;
+    } catch (e) {
+      throw new Error(`Native TCP Socket unavailable: ${e instanceof Error ? e.message : e}`);
+    }
+
+    return new Promise((resolve, reject) => {
+      const server = TcpSocket.createServer((socket: any) => {
+        let buffer = "";
+
+        socket.on("data", async (data: any) => {
+          buffer += data.toString();
+
+          const headerEnd = buffer.indexOf("\r\n\r\n");
+          if (headerEnd !== -1) {
+            const headerPart = buffer.slice(0, headerEnd);
+            const lines = headerPart.split("\r\n");
+            if (lines.length === 0) return;
+
+            const [method, path] = lines[0].split(" ");
+            
+            const reqHeaders: Record<string, string> = {};
+            for (let i = 1; i < lines.length; i++) {
+              const line = lines[i];
+              const colonPos = line.indexOf(":");
+              if (colonPos !== -1) {
+                const k = line.slice(0, colonPos).trim().toLowerCase();
+                const v = line.slice(colonPos + 1).trim();
+                reqHeaders[k] = v;
+              }
+            }
+
+            buffer = ""; // clear buffer
+
+            try {
+              const response = await handler(method, path, reqHeaders);
+              
+              let resHead = `HTTP/1.1 ${response.status} OK\r\n`;
+              if (response.headers) {
+                for (const [k, v] of Object.entries(response.headers)) {
+                  resHead += `${k}: ${v}\r\n`;
+                }
+              }
+              resHead += "Connection: close\r\n\r\n";
+              
+              socket.write(resHead);
+              if (response.body) {
+                socket.write(BufferMod.from(response.body));
+              }
+              socket.end();
+            } catch (err) {
+              console.error("TCP Sync handler Error:", err);
+              socket.write("HTTP/1.1 500 Internal Server Error\r\nConnection: close\r\n\r\n");
+              socket.end();
+            }
+          }
+        });
+
+        socket.on("error", (err: any) => {
+          console.warn("Socket error:", err);
+        });
+      });
+
+      server.on("error", (err: any) => {
+        reject(err);
+      });
+
+      server.listen({ port, host: "0.0.0.0" }, () => {
+        resolve({ port: (server.address() as any)?.port || port, server });
+      });
+    });
+  }
+
+  async stopLANServer(server: unknown): Promise<void> {
+    if (server && typeof (server as any).close === "function") {
+      (server as any).close();
+    }
   }
 }
 

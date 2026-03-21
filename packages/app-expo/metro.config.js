@@ -19,7 +19,8 @@ config.resolver.nodeModulesPaths = [
 config.resolver.sourceExts = [...config.resolver.sourceExts, "ts", "tsx"];
 
 // 4. Add .html to asset extensions so WebView can load local HTML files
-config.resolver.assetExts = [...config.resolver.assetExts, "html"];
+// Add .bin, .ort, .wasm for ONNX models
+config.resolver.assetExts = [...config.resolver.assetExts, "html", "bin", "ort", "wasm"];
 
 // 5. Configure SVG transformer
 const { transformerPath } = config.transformer;
@@ -62,6 +63,11 @@ const coreRedirects = {
 
 const originalResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  // Alias Transformers.js ONNX runtimes to react-native native module
+  if (moduleName.startsWith("onnxruntime-node") || moduleName.startsWith("onnxruntime-web")) {
+    return context.resolveRequest(context, "onnxruntime-react-native", platform);
+  }
+
   // Redirect Node built-in polyfills
   if (moduleRedirects[moduleName]) {
     return { type: "sourceFile", filePath: moduleRedirects[moduleName] };

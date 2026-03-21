@@ -24,6 +24,9 @@ pub fn run() {
             sync::commands::sync_integrity_check,
             sync::commands::sync_hash_file,
             sync::commands::get_local_ip,
+            sync::lan_server::start_lan_server,
+            sync::lan_server::stop_lan_server,
+            sync::lan_server::lan_server_respond,
             vector::vector_insert,
             vector::vector_delete_by_book,
             vector::vector_search,
@@ -35,6 +38,9 @@ pub fn run() {
             let app_handle = app.handle().clone();
             if let Err(e) = db::init_database_sync(&app_handle) {
                 eprintln!("[DB] Failed to initialize database: {}", e);
+            }
+            if let Err(e) = sync::lan_server::init(app) {
+                eprintln!("[LAN] Failed to initialize LAN server state: {}", e);
             }
             match vector::init_vector_db(&app_handle, 384) {
                 Ok(_) => println!("[VectorDB] Initialized successfully"),

@@ -5,6 +5,7 @@ import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { BUILTIN_EMBEDDING_MODELS } from "@readany/core/ai/builtin-embedding-models";
 import { loadEmbeddingPipeline } from "@readany/core/ai/local-embedding-service";
+import { useSettingsStore } from "@readany/core/stores/settings-store";
 import type { VectorModelConfig } from "@readany/core/types";
 import { Check, Cloud, Download, HardDrive, Plus, Trash2, X } from "lucide-react-native";
 import { useCallback, useState } from "react";
@@ -32,38 +33,20 @@ export function EmbeddingPage() {
   const insets = useSafeAreaInsets();
 
   const {
+    vectorModels,
     vectorModelMode,
     setVectorModelMode,
-    vectorModels,
-    builtinModelStates,
-    setSelectedBuiltinModelId,
-    setSelectedVectorModelId,
-    updateBuiltinModelState,
     addVectorModel,
     deleteVectorModel,
+    builtinModelStates,
+    updateBuiltinModelState,
+    setSelectedBuiltinModelId,
+    setSelectedVectorModelId,
   } = useVectorModelStore();
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [formData, setFormData] = useState({ name: "", url: "", modelId: "", apiKey: "" });
   const [testingId, setTestingId] = useState<string | null>(null);
-
-  const handleLoadModel = useCallback(
-    async (modelId: string) => {
-      updateBuiltinModelState(modelId, { status: "downloading", progress: 0, error: undefined });
-      setSelectedBuiltinModelId(modelId);
-      try {
-        await loadEmbeddingPipeline(modelId, (progress) => {
-          updateBuiltinModelState(modelId, { progress });
-        });
-        updateBuiltinModelState(modelId, { status: "ready", progress: 100 });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        updateBuiltinModelState(modelId, { status: "error", error: message });
-        setSelectedBuiltinModelId(null);
-      }
-    },
-    [updateBuiltinModelState, setSelectedBuiltinModelId],
-  );
 
   const handleAddModel = () => {
     if (!formData.name.trim() || !formData.url.trim() || !formData.modelId.trim()) return;
@@ -103,11 +86,30 @@ export function EmbeddingPage() {
     }
   };
 
+  // Default built-in model
   const model = BUILTIN_EMBEDDING_MODELS[0];
-  const state = builtinModelStates[model.id];
-  const isReady = state?.status === "ready";
-  const isDownloading = state?.status === "downloading";
-  const hasError = state?.status === "error";
+  const modelState = builtinModelStates[model.id];
+  const isReady = modelState?.status === "ready";
+  const isDownloading = modelState?.status === "downloading";
+  const downloadProgress = modelState?.progress ?? 0;
+
+  const handleDownloadBuiltin = () => {
+    updateBuiltinModelState(model.id, { status: "downloading", progress: 0 });
+    loadEmbeddingPipeline(model.id, (progress) => {
+      updateBuiltinModelState(model.id, {
+        status: "downloading",
+        progress: Math.round(progress),
+      });
+    })
+      .then(() => {
+        updateBuiltinModelState(model.id, { status: "ready" });
+        setSelectedBuiltinModelId(model.id);
+      })
+      .catch((err) => {
+        console.warn("Failed to load model:", err);
+        updateBuiltinModelState(model.id, { status: "error", error: String(err) });
+      });
+  };
 
   const handleNext = () => {
     navigation.navigate("Translation");
@@ -380,30 +382,37 @@ export function EmbeddingPage() {
                   <Text style={[styles.modelMeta, { color: colors.mutedForeground }]}>
                     {model.size}
                   </Text>
+                  <Text style={[styles.modelMeta, { color: colors.mutedForeground, marginTop: 4 }]}>
+                    {t(model.descriptionKey)}
+                  </Text>
                 </View>
                 {isReady ? (
                   <View style={styles.readyBadge}>
-                    <Check size={14} color="#10b981" />
+                    <Check size={16} color="#10b981" />
                     <Text style={styles.readyText}>{t("settings.vm_loaded", "Loaded")}</Text>
                   </View>
                 ) : isDownloading ? (
                   <View style={styles.progressWrap}>
                     <ActivityIndicator size="small" color={colors.primary} />
                     <Text style={[styles.progressText, { color: colors.primary }]}>
-                      {state.progress ?? 0}%
+                      {downloadProgress}%
                     </Text>
                   </View>
                 ) : (
                   <Pressable
                     style={[styles.downloadBtn, { backgroundColor: colors.primary }]}
-                    onPress={() => handleLoadModel(model.id)}
+                    onPress={handleDownloadBuiltin}
                   >
-                    <Download size={14} color="#fff" />
+                    <Download size={16} color="#fff" />
                     <Text style={styles.downloadText}>{t("settings.vm_download", "Download")}</Text>
                   </Pressable>
                 )}
               </View>
-              {hasError && <Text style={styles.errorText}>{state.error}</Text>}
+              {modelState?.status === "error" && (
+                <Text style={styles.errorText}>
+                  {t("onboarding.embedding.downloadError", "Failed to download model.")} {modelState.error}
+                </Text>
+              )}
             </View>
           )}
         </ScrollView>
