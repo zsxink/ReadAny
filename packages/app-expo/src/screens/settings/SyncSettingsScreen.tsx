@@ -785,6 +785,7 @@ export default function SyncSettingsScreen() {
                       style={[
                         styles.primaryBtn,
                         (lanConnectionState === "connecting" ||
+                          isBusy ||
                           !lanManualIP ||
                           !lanManualPort ||
                           !lanManualPairCode) &&
@@ -793,17 +794,58 @@ export default function SyncSettingsScreen() {
                       onPress={handleLanClientConnect}
                       disabled={
                         lanConnectionState === "connecting" ||
+                        isBusy ||
                         !lanManualIP ||
                         !lanManualPort ||
                         !lanManualPairCode
                       }
                     >
                       <Text style={styles.primaryBtnText}>
-                        {lanConnectionState === "connecting"
-                          ? t("settings.syncLANConnecting")
-                          : t("settings.syncLANConnect")}
+                        {isBusy
+                          ? t("settings.syncSyncing")
+                          : lanConnectionState === "connecting"
+                            ? t("settings.syncLANConnecting")
+                            : t("settings.syncLANConnect")}
                       </Text>
                     </TouchableOpacity>
+
+                    {isBusy && progress && (
+                      <View style={[styles.progressContainer, { marginTop: 12 }]}>
+                        <View style={styles.progressTrack}>
+                          {progress.phase === "database" ? (
+                            <Animated.View
+                              style={[styles.progressFill, { width: "100%", opacity: pulseAnim }]}
+                            />
+                          ) : (
+                            <View
+                              style={[
+                                styles.progressFill,
+                                {
+                                  width: `${progress.totalFiles > 0 ? Math.round((progress.completedFiles / progress.totalFiles) * 100) : 0}%`,
+                                },
+                              ]}
+                            />
+                          )}
+                        </View>
+                        <Text style={styles.progressText}>
+                          {progress.message || (progress.phase === "database"
+                            ? t("settings.syncProgressDatabase", {
+                                operation:
+                                  progress.operation === "upload"
+                                    ? t("settings.syncUploading")
+                                    : t("settings.syncDownloading"),
+                              })
+                            : t("settings.syncProgressFiles", {
+                                operation:
+                                  progress.operation === "upload"
+                                    ? t("settings.syncUploading")
+                                    : t("settings.syncDownloading"),
+                                completed: progress.completedFiles,
+                                total: progress.totalFiles,
+                              }))}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 )}
               </View>
@@ -837,7 +879,7 @@ export default function SyncSettingsScreen() {
           )}
 
           {/* Sync Status */}
-          {isConfigured && (
+          {(isConfigured || isBusy || lastSyncAt) && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>{t("settings.syncStatus")}</Text>
               <View style={styles.card}>

@@ -25,16 +25,26 @@ class LocalFsBackend implements ISyncBackend {
     const adapter = getSyncAdapter();
     const dataDir = await this.getDataDir();
     
-    // Remote structure:
+    // Remote structure mapping to local Desktop storage:
     // /readany/data/readany.db -> local readany.db
     // /readany/data/manifest.json -> local manifest.json
-    // /readany/data/file/* -> local file/*
-    // /readany/data/cover/* -> local cover/*
+    // /readany/data/file/* -> local books/*  (Note: Desktop uses 'books', sync uses 'file')
+    // /readany/data/cover/* -> local covers/* (Note: Desktop uses 'covers', sync uses 'cover')
 
     if (path === "/readany/data/readany.db") {
       return await adapter.getDatabasePath();
     }
     
+    if (path.startsWith("/readany/data/file")) {
+      const subPath = path.substring("/readany/data/file".length);
+      return adapter.joinPath(dataDir, "books", subPath);
+    }
+
+    if (path.startsWith("/readany/data/cover")) {
+      const subPath = path.substring("/readany/data/cover".length);
+      return adapter.joinPath(dataDir, "covers", subPath);
+    }
+
     if (path.startsWith("/readany/data/")) {
       const subPath = path.substring("/readany/data/".length);
       return adapter.joinPath(dataDir, subPath);
@@ -62,6 +72,24 @@ class LocalFsBackend implements ISyncBackend {
     const adapter = getSyncAdapter();
     const resolvedPath = await this.mapVirtualPath(path);
     
+    // Special handling for database to ensure consistency (snapshot via vacuum)
+    const dbPath = await adapter.getDatabasePath();
+    if (resolvedPath === dbPath) {
+      const tempDir = await adapter.getTempDir();
+      const snapshotPath = adapter.joinPath(tempDir, `sync_snapshot_${Date.now()}.db`);
+      try {
+        console.log(`[LAN Server] Creating DB snapshot for sync at ${snapshotPath}...`);
+        await adapter.vacuumInto(snapshotPath);
+        const data = await platform.readFile(snapshotPath);
+        await adapter.deleteFile(snapshotPath);
+        return data;
+      } catch (e) {
+        console.error(`[LAN Server] Failed to snapshot database:`, e);
+        // Fallback to direct read if vacuum fails (might be inconsistent but better than nothing)
+        return await platform.readFile(resolvedPath);
+      }
+    }
+
     if (!(await adapter.fileExists(resolvedPath))) {
       // Synthesize manifest if it's missing on the server device
       if (path === REMOTE_MANIFEST) {
