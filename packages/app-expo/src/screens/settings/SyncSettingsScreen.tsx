@@ -745,6 +745,20 @@ export default function SyncSettingsScreen() {
                   </View>
                 ) : (
                   <View style={styles.lanClientSection}>
+                    <TouchableOpacity
+                      style={[styles.outlineBtn, { marginBottom: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }]}
+                      onPress={handleScanQRCode}
+                    >
+                      <Scan size={20} color={colors.primary} />
+                      <Text style={styles.outlineBtnText}>{t("settings.syncLANScanQR")}</Text>
+                    </TouchableOpacity>
+
+                    <View style={styles.separator}>
+                      <View style={styles.separatorLine} />
+                      <Text style={styles.separatorText}>{t("settings.syncLANManual")}</Text>
+                      <View style={styles.separatorLine} />
+                    </View>
+
                     <View style={styles.fieldGroup}>
                       <Text style={styles.fieldLabel}>{t("settings.syncLANIP")}</Text>
                       <TextInput
