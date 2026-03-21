@@ -309,5 +309,7 @@ pnpm tauri build
 
 <p align="center">
   <a href="https://github.com/codedogQBY/ReadAny/discussions">💬 讨论区</a> •
-  <a href="https://github.com/codedogQBY/ReadAny/issues">🐛 问题反馈</a>
+  <a href="https://github.com/codedogQBY/ReadAny/issues">🐛 问题反馈</a> •
+  小红书群（即将上线） •
+  微信群（即将上线）
 </p>

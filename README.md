@@ -309,5 +309,7 @@ This project is open source under the GNU General Public License v3.0. You are f
 
 <p align="center">
   <a href="https://github.com/codedogQBY/ReadAny/discussions">💬 Discussions</a> •
-  <a href="https://github.com/codedogQBY/ReadAny/issues">🐛 Issues</a>
+  <a href="https://github.com/codedogQBY/ReadAny/issues">🐛 Issues</a> •
+  小红书群（即将上线） •
+  微信群（即将上线）
 </p>
