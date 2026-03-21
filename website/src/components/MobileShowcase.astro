@@ -12,10 +12,10 @@ const { t } = Astro.props;
       <!-- Text Content -->
       <div class="max-w-xl">
         <h2 class="text-3xl font-semibold tracking-tight mb-6">
-          Read Anywhere, Anytime
+          {t("mobile.title")}
         </h2>
         <p class="text-lg text-muted-foreground mb-8 leading-relaxed">
-          Take your library with you. ReadAny works seamlessly across all your devices - desktop, tablet, and mobile.
+          {t("mobile.desc")}
         </p>
         
         <div class="space-y-4">
@@ -26,8 +26,8 @@ const { t } = Astro.props;
               </svg>
             </div>
             <div>
-              <h3 class="font-semibold mb-1">Sync Across Devices</h3>
-              <p class="text-sm text-muted-foreground">Your reading progress, annotations, and settings sync automatically via WebDAV.</p>
+              <h3 class="font-semibold mb-1">{t("mobile.sync.title")}</h3>
+              <p class="text-sm text-muted-foreground">{t("mobile.sync.desc")}</p>
             </div>
           </div>
           
@@ -38,8 +38,8 @@ const { t } = Astro.props;
               </svg>
             </div>
             <div>
-              <h3 class="font-semibold mb-1">Offline Reading</h3>
-              <p class="text-sm text-muted-foreground">All your books are stored locally. Read without internet connection.</p>
+              <h3 class="font-semibold mb-1">{t("mobile.offline.title")}</h3>
+              <p class="text-sm text-muted-foreground">{t("mobile.offline.desc")}</p>
             </div>
           </div>
           
@@ -50,8 +50,8 @@ const { t } = Astro.props;
               </svg>
             </div>
             <div>
-              <h3 class="font-semibold mb-1">Mobile Optimized</h3>
-              <p class="text-sm text-muted-foreground">Touch-friendly interface with gestures for navigation and annotation.</p>
+              <h3 class="font-semibold mb-1">{t("mobile.optimized.title")}</h3>
+              <p class="text-sm text-muted-foreground">{t("mobile.optimized.desc")}</p>
             </div>
           </div>
         </div>

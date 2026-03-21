@@ -7,28 +7,28 @@ const { t } = Astro.props;
 
 const faqs = [
   {
-    question: "Is ReadAny free to use?",
-    answer: "Yes! ReadAny is completely free and open-source under the GPL-3.0 license. You can use all features without any cost or subscription.",
+    question: t("faq.q1"),
+    answer: t("faq.a1"),
   },
   {
-    question: "Which AI providers are supported?",
-    answer: "ReadAny supports OpenAI, Anthropic Claude, Google Gemini, Ollama, DeepSeek, and any custom OpenAI-compatible API. You can use your own API keys.",
+    question: t("faq.q2"),
+    answer: t("faq.a2"),
   },
   {
-    question: "Is my data private?",
-    answer: "Absolutely. All your books, annotations, and reading data are stored locally on your device. Nothing is sent to external servers unless you explicitly sync via WebDAV.",
+    question: t("faq.q3"),
+    answer: t("faq.a3"),
   },
   {
-    question: "What e-book formats are supported?",
-    answer: "ReadAny supports EPUB, PDF, MOBI, AZW, AZW3, FB2, FBZ, CBZ, and more. We're constantly adding support for additional formats.",
+    question: t("faq.q4"),
+    answer: t("faq.a4"),
   },
   {
-    question: "Can I sync across devices?",
-    answer: "Yes! ReadAny supports WebDAV sync, allowing you to sync your library, reading progress, and annotations across all your devices.",
+    question: t("faq.q5"),
+    answer: t("faq.a5"),
   },
   {
-    question: "How does the AI chat work?",
-    answer: "The AI chat understands your current reading context - your position in the book, selected text, and chapter information. It can answer questions, explain concepts, and help with summaries.",
+    question: t("faq.q6"),
+    answer: t("faq.a6"),
   },
 ];
 ---
@@ -37,10 +37,10 @@ const faqs = [
   <div class="mx-auto max-w-3xl px-6">
     <div class="text-center mb-12">
       <h2 class="text-3xl font-semibold tracking-tight">
-        Frequently Asked Questions
+        {t("faq.title")}
       </h2>
       <p class="mt-4 text-muted-foreground">
-        Everything you need to know about ReadAny
+        {t("faq.subtitle")}
       </p>
     </div>
 
@@ -69,13 +69,13 @@ const faqs = [
 
     <div class="mt-12 text-center">
       <p class="text-sm text-muted-foreground mb-4">
-        Still have questions?
+        {t("faq.more")}
       </p>
       <a 
         href="/ReadAny/support/" 
         class="inline-flex items-center justify-center rounded-full border border-border px-6 py-2.5 text-sm font-medium transition-colors hover:border-foreground/30 hover:bg-muted/50"
       >
-        Visit Help Center
+        {t("faq.help")}
       </a>
     </div>
   </div>

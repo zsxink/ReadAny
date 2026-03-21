@@ -8,26 +8,26 @@ const { t } = Astro.props;
 const steps = [
   {
     number: "01",
-    title: "Import Your Books",
-    description: "Drag and drop your e-books or import from cloud storage. Support for EPUB, PDF, MOBI, and more.",
+    title: t("howItWorks.step1.title"),
+    description: t("howItWorks.step1.desc"),
     icon: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>`,
   },
   {
     number: "02",
-    title: "Start Reading",
-    description: "Enjoy a distraction-free reading experience with customizable themes, fonts, and layouts.",
+    title: t("howItWorks.step2.title"),
+    description: t("howItWorks.step2.desc"),
     icon: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>`,
   },
   {
     number: "03",
-    title: "Chat with AI",
-    description: "Ask questions about your book content. AI understands context and provides intelligent answers.",
+    title: t("howItWorks.step3.title"),
+    description: t("howItWorks.step3.desc"),
     icon: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" /></svg>`,
   },
   {
     number: "04",
-    title: "Organize Knowledge",
-    description: "Highlight passages, take notes, and export to your favorite tools like Obsidian or Notion.",
+    title: t("howItWorks.step4.title"),
+    description: t("howItWorks.step4.desc"),
     icon: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>`,
   },
 ];
@@ -37,10 +37,10 @@ const steps = [
   <div class="mx-auto max-w-5xl px-6">
     <div class="text-center max-w-2xl mx-auto">
       <h2 class="text-3xl font-semibold tracking-tight">
-        How It Works
+        {t("howItWorks.title")}
       </h2>
       <p class="mt-4 text-muted-foreground">
-        From import to intelligent reading in four simple steps
+        {t("howItWorks.subtitle")}
       </p>
     </div>
 
