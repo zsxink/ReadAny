@@ -1,5 +1,5 @@
 const { getDefaultConfig } = require("expo/metro-config");
-const path = require("path");
+const path = require("node:path");
 
 const projectRoot = __dirname;
 const monorepoRoot = path.resolve(projectRoot, "../..");
@@ -15,14 +15,27 @@ config.resolver.nodeModulesPaths = [
   path.resolve(monorepoRoot, "node_modules"),
 ];
 
-// 3. Add support for TypeScript files
+// 3. Block large unused modules from being bundled
+config.resolver.blockList = [
+  /node_modules\/onnxruntime-node\/.*/,
+  /node_modules\/onnxruntime-web\/.*/,
+  /node_modules\/@pagefind\/.*/,
+  /node_modules\/pdfjs-dist\/.*/,
+  /node_modules\/mermaid\/.*/,
+  /node_modules\/lucide-react\/.*/,
+  /node_modules\/esbuild\/.*/,
+  /node_modules\/typescript\/.*/,
+  /node_modules\/@biomejs\/.*/,
+];
+
+// 4. Add support for TypeScript files
 config.resolver.sourceExts = [...config.resolver.sourceExts, "ts", "tsx"];
 
-// 4. Add .html to asset extensions so WebView can load local HTML files
+// 5. Add .html to asset extensions so WebView can load local HTML files
 // Add .bin, .ort, .wasm for ONNX models
 config.resolver.assetExts = [...config.resolver.assetExts, "html", "bin", "ort", "wasm"];
 
-// 5. Configure SVG transformer
+// 6. Configure SVG transformer
 const { transformerPath } = config.transformer;
 config.transformer = {
   ...config.transformer,
@@ -31,7 +44,7 @@ config.transformer = {
 config.resolver.assetExts = config.resolver.assetExts.filter((ext) => ext !== "svg");
 config.resolver.sourceExts = [...config.resolver.sourceExts, "svg"];
 
-// 5. Force all packages to use the same React instance from the monorepo root
+// 7. Force all packages to use the same React instance from the monorepo root
 // pnpm stores packages in node_modules/.pnpm/<package>@<version>/node_modules/<package>
 // IMPORTANT: react version must match react-native's renderer version (19.1.4)
 const reactPath = path.resolve(monorepoRoot, "node_modules/.pnpm/react@19.1.4/node_modules/react");
@@ -48,7 +61,7 @@ config.resolver.extraNodeModules = {
   "react-native": reactNativePath,
 };
 
-// 6. Override resolver to redirect modules that depend on Node.js built-ins
+// 8. Override resolver to redirect modules that depend on Node.js built-ins
 const moduleRedirects = {
   punycode: path.resolve(monorepoRoot, "node_modules/punycode/punycode.js"),
 };

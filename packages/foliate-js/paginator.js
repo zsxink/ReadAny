@@ -784,7 +784,7 @@ export class Paginator extends HTMLElement {
     return this.#container.getBoundingClientRect()[this.sideProp];
   }
   get viewSize() {
-    return this.#view.element.getBoundingClientRect()[this.sideProp];
+    return this.#view?.element?.getBoundingClientRect()[this.sideProp] ?? 0;
   }
   get start() {
     return Math.abs(this.#container[this.scrollProp]);
@@ -980,6 +980,7 @@ export class Paginator extends HTMLElement {
     await this.#scrollToPage(newPage + 1, reason);
   }
   #getVisibleRange() {
+    if (!this.#view) return null;
     if (this.scrolled)
       return getVisibleRange(
         this.#view.document,
@@ -992,6 +993,7 @@ export class Paginator extends HTMLElement {
   }
   #afterScroll(reason) {
     const range = this.#getVisibleRange();
+    if (!range) return;
     this.#lastVisibleRange = range;
     // don't set new anchor if relocation was to scroll to anchor
     if (reason !== "selection" && reason !== "navigation" && reason !== "anchor") this.#anchor = range;
@@ -1051,7 +1053,9 @@ export class Paginator extends HTMLElement {
         container.style.opacity = "1";
       }
     }
-    await this.scrollToAnchor((typeof anchor === "function" ? anchor(this.#view.document) : anchor) ?? 0, select);
+    if (this.#view) {
+      await this.scrollToAnchor((typeof anchor === "function" ? anchor(this.#view.document) : anchor) ?? 0, select);
+    }
     if (hasFocus) this.focusView();
   }
   #canGoToIndex(index) {
@@ -1170,17 +1174,19 @@ export class Paginator extends HTMLElement {
     } else $style.textContent = styles;
 
     // NOTE: needs `requestAnimationFrame` in Chromium
-    requestAnimationFrame(() => (this.#background.style.background = getBackground(this.#view.document)));
+    requestAnimationFrame(() => {
+      if (this.#view) this.#background.style.background = getBackground(this.#view.document);
+    });
 
     // needed because the resize observer doesn't work in Firefox
     this.#view?.document?.fonts?.ready?.then(() => this.#view.expand());
   }
   focusView() {
-    this.#view.document.defaultView.focus();
+    this.#view?.document?.defaultView?.focus();
   }
   destroy() {
     this.#observer.unobserve(this);
-    this.#view.destroy();
+    this.#view?.destroy();
     this.#view = null;
     this.sections[this.#index]?.unload?.();
     this.#mediaQuery.removeEventListener("change", this.#mediaQueryListener);

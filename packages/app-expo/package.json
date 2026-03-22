@@ -3,13 +3,19 @@
   "version": "1.0.0",
   "private": true,
   "main": "index.js",
+  "expo": {
+    "entryPoint": "./index.js"
+  },
   "scripts": {
+    "preinstall": "bash scripts/cleanup-unused-modules.sh || true",
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "prebuild": "expo prebuild",
     "build:reader": "node scripts/build-reader.js",
-    "lint": "biome check ."
+    "lint": "biome check .",
+    "eas:build:android": "eas build --platform android",
+    "eas:build:ios": "eas build --platform ios"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.712.0",

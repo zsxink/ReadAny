@@ -10,6 +10,8 @@
     "expo:ios": "pnpm --filter @readany/app-expo ios",
     "expo:android": "pnpm --filter @readany/app-expo android",
     "expo:prebuild": "pnpm --filter @readany/app-expo prebuild",
+    "eas:build:android": "cd packages/app-expo && eas build --platform android",
+    "eas:build:ios": "cd packages/app-expo && eas build --platform ios",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "version:check": "node scripts/bump-version.js --check",
