@@ -5,6 +5,9 @@
  * PDF:  title extracted from file name (pdfjs-dist not available in RN).
  *
  * Uses pako for Deflate decompression (Hermes does NOT support DecompressionStream).
+ *
+ * Optimized: only decompresses the 2-3 ZIP entries needed for metadata
+ * (container.xml, OPF, cover image) instead of the entire EPUB.
  */
 import pako from "pako";
 
@@ -18,27 +21,21 @@ export interface ExtractedMeta {
 // ─── EPUB extraction ────────────────────────────────────────────────
 
 export async function extractEpubMetadata(fileBytes: Uint8Array): Promise<ExtractedMeta> {
-  console.log(
-    `[extractEpubMetadata] Input bytes length: ${fileBytes.length}, type: ${fileBytes.constructor?.name}`,
-  );
-  const entries = await unzipRaw(fileBytes);
-  console.log(
-    `[extractEpubMetadata] Unzipped ${entries.length} entries: ${entries.map((e) => e.filename).join(", ")}`,
-  );
+  const buf = new Uint8Array(fileBytes);
+  const directory = parseZipDirectory(buf);
 
   // 1. Read container.xml to find OPF path
-  const containerXml = readTextEntry(entries, "META-INF/container.xml");
+  const containerXml = readTextFromZip(buf, directory, "META-INF/container.xml");
   if (!containerXml) {
     console.warn("[extractEpubMetadata] container.xml not found");
     return { title: "", author: "", coverBytes: null, coverMimeType: null };
   }
 
   const opfPath = parseAttribute(containerXml, "rootfile", "full-path") || "content.opf";
-  console.log(`[extractEpubMetadata] OPF path: ${opfPath}`);
   const opfDir = opfPath.includes("/") ? opfPath.substring(0, opfPath.lastIndexOf("/") + 1) : "";
 
   // 2. Read OPF and extract title / author
-  const opfXml = readTextEntry(entries, opfPath);
+  const opfXml = readTextFromZip(buf, directory, opfPath);
   if (!opfXml) {
     console.warn(`[extractEpubMetadata] OPF not found at: ${opfPath}`);
     return { title: "", author: "", coverBytes: null, coverMimeType: null };
@@ -47,23 +44,20 @@ export async function extractEpubMetadata(fileBytes: Uint8Array): Promise<Extrac
   const title = extractTagContent(opfXml, "dc:title") || extractTagContent(opfXml, "title") || "";
   const author =
     extractTagContent(opfXml, "dc:creator") || extractTagContent(opfXml, "creator") || "";
-  console.log(`[extractEpubMetadata] title="${title}", author="${author}"`);
 
-  // 3. Extract cover image
+  // 3. Extract cover image (only decompress the cover entry)
   let coverBytes: Uint8Array | null = null;
   let coverMimeType: string | null = null;
 
   try {
     const coverHref = findCoverHref(opfXml);
-    console.log(`[extractEpubMetadata] Cover href: ${coverHref}`);
     if (coverHref) {
       const decoded = decodeURIComponent(coverHref);
-      // Try multiple path variations (relative to OPF dir, absolute, etc.)
       const candidates = [opfDir + decoded, opfDir + coverHref, decoded, coverHref];
       for (const candidate of candidates) {
-        const entry = findEntry(entries, candidate);
-        if (entry) {
-          coverBytes = entry.data;
+        const data = readBytesFromZip(buf, directory, candidate);
+        if (data) {
+          coverBytes = data;
           coverMimeType = guessMimeType(candidate);
           break;
         }
@@ -104,19 +98,23 @@ export async function extractBookMetadata(
   }
 }
 
-// ─── Lightweight ZIP reader (supports Store + Deflate) ─────────────
+// ─── Lazy ZIP reader: parse directory first, decompress on demand ───
 
-interface ZipEntry {
+interface ZipDirectoryEntry {
   filename: string;
-  data: Uint8Array;
+  compressionMethod: number;
+  compressedSize: number;
+  uncompressedSize: number;
+  localHeaderOffset: number;
 }
 
-async function unzipRaw(input: Uint8Array): Promise<ZipEntry[]> {
-  // Normalize to a standard Uint8Array (some native modules may return subtypes)
-  const buf = new Uint8Array(input);
-  console.log(`[unzipRaw] Buffer size: ${buf.byteLength}, byteOffset: ${buf.byteOffset}`);
+/**
+ * Parse the ZIP central directory WITHOUT decompressing any entries.
+ * This is fast O(n) on entry count, with no decompression overhead.
+ */
+function parseZipDirectory(buf: Uint8Array): ZipDirectoryEntry[] {
   const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-  const entries: ZipEntry[] = [];
+  const entries: ZipDirectoryEntry[] = [];
 
   // Find End of Central Directory
   let eocdOffset = -1;
@@ -146,29 +144,13 @@ async function unzipRaw(input: Uint8Array): Promise<ZipEntry[]> {
 
     const filename = new TextDecoder().decode(buf.slice(pos + 46, pos + 46 + filenameLen));
 
-    // Read from local file header
-    if (localHeaderOffset + 30 <= buf.byteLength) {
-      const localFilenameLen = view.getUint16(localHeaderOffset + 26, true);
-      const localExtraLen = view.getUint16(localHeaderOffset + 28, true);
-      const dataStart = localHeaderOffset + 30 + localFilenameLen + localExtraLen;
-
-      if (compressionMethod === 0 && dataStart + compressedSize <= buf.byteLength) {
-        // Stored (no compression)
-        entries.push({
-          filename,
-          data: buf.slice(dataStart, dataStart + compressedSize),
-        });
-      } else if (compressionMethod === 8 && dataStart + compressedSize <= buf.byteLength) {
-        // Deflated — use DecompressionStream (available in RN Hermes)
-        try {
-          const compressed = buf.slice(dataStart, dataStart + compressedSize);
-          const decompressed = await decompressDeflateRaw(compressed);
-          entries.push({ filename, data: decompressed });
-        } catch {
-          // Skip entries that fail to decompress
-        }
-      }
-    }
+    entries.push({
+      filename,
+      compressionMethod,
+      compressedSize,
+      uncompressedSize,
+      localHeaderOffset,
+    });
 
     pos += 46 + filenameLen + extraLen + commentLen;
   }
@@ -176,29 +158,89 @@ async function unzipRaw(input: Uint8Array): Promise<ZipEntry[]> {
   return entries;
 }
 
-async function decompressDeflateRaw(data: Uint8Array): Promise<Uint8Array> {
-  return pako.inflateRaw(data);
+/**
+ * Decompress a single ZIP entry on demand.
+ */
+function decompressEntry(buf: Uint8Array, entry: ZipDirectoryEntry): Uint8Array | null {
+  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+
+  if (entry.localHeaderOffset + 30 > buf.byteLength) return null;
+
+  const localFilenameLen = view.getUint16(entry.localHeaderOffset + 26, true);
+  const localExtraLen = view.getUint16(entry.localHeaderOffset + 28, true);
+  const dataStart = entry.localHeaderOffset + 30 + localFilenameLen + localExtraLen;
+
+  if (entry.compressionMethod === 0) {
+    // Stored (no compression)
+    if (dataStart + entry.compressedSize > buf.byteLength) return null;
+    return buf.slice(dataStart, dataStart + entry.compressedSize);
+  }
+
+  if (entry.compressionMethod === 8) {
+    // Deflated
+    if (dataStart + entry.compressedSize > buf.byteLength) return null;
+    try {
+      const compressed = buf.slice(dataStart, dataStart + entry.compressedSize);
+      return pako.inflateRaw(compressed);
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Find a ZIP entry by name (case-insensitive fallback) and decompress it.
+ */
+function findAndDecompress(
+  buf: Uint8Array,
+  directory: ZipDirectoryEntry[],
+  path: string,
+): Uint8Array | null {
+  // Exact match first
+  let entry = directory.find((e) => e.filename === path);
+  if (!entry) {
+    // Case-insensitive fallback
+    const lower = path.toLowerCase();
+    entry = directory.find((e) => e.filename.toLowerCase() === lower);
+  }
+  if (!entry) return null;
+  return decompressEntry(buf, entry);
+}
+
+function readTextFromZip(
+  buf: Uint8Array,
+  directory: ZipDirectoryEntry[],
+  path: string,
+): string | null {
+  const data = findAndDecompress(buf, directory, path);
+  if (!data) return null;
+  return new TextDecoder().decode(data);
+}
+
+function readBytesFromZip(
+  buf: Uint8Array,
+  directory: ZipDirectoryEntry[],
+  path: string,
+): Uint8Array | null {
+  return findAndDecompress(buf, directory, path);
 }
 
 // ─── XML helpers (no DOMParser, regex-based) ────────────────────────
 
 function extractTagContent(xml: string, tagName: string): string {
-  // Match <tagName ...>content</tagName> (case-insensitive, handles namespaces)
   const escapedTag = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  // Match both <dc:title> and <title> patterns
   const regex = new RegExp(`<${escapedTag}[^>]*>([^<]*)</${escapedTag}>`, "i");
   const match = xml.match(regex);
   return match ? match[1].trim() : "";
 }
 
 function parseAttribute(xml: string, tagName: string, attrName: string): string | null {
-  // Use word boundary (\b) to avoid matching longer tag names (e.g. <rootfiles> when looking for <rootfile>)
-  // Also support self-closing tags like <rootfile ... />
   const tagRegex = new RegExp(`<${tagName}\\b([^>]*)/?>`, "i");
   const tagMatch = xml.match(tagRegex);
   if (!tagMatch) return null;
 
-  // Support both double and single quoted attribute values
   const attrRegex = new RegExp(`${attrName}\\s*=\\s*["']([^"']*)["']`, "i");
   const attrMatch = tagMatch[0].match(attrRegex);
   return attrMatch ? attrMatch[1] : null;
@@ -212,7 +254,6 @@ function parseAttribute(xml: string, tagName: string, attrName: string): string 
  * 4. Fallback: first image item
  */
 function findCoverHref(opfXml: string): string | null {
-  // Collect all <item> elements
   const itemRegex = /<item\b([^>]*)\/?>(?:<\/item>)?/gi;
   const items: Array<{ id: string; href: string; mediaType: string; properties: string }> = [];
   let m: RegExpExecArray | null;
@@ -273,22 +314,6 @@ function getAttr(attrsStr: string, name: string): string {
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────
-
-function readTextEntry(entries: ZipEntry[], path: string): string | null {
-  const entry = findEntry(entries, path);
-  if (!entry) return null;
-  return new TextDecoder().decode(entry.data);
-}
-
-function findEntry(entries: ZipEntry[], path: string): ZipEntry | null {
-  // Exact match
-  const exact = entries.find((e) => e.filename === path);
-  if (exact) return exact;
-
-  // Case-insensitive fallback
-  const lower = path.toLowerCase();
-  return entries.find((e) => e.filename.toLowerCase() === lower) || null;
-}
 
 function guessMimeType(path: string): string {
   const ext = path.split(".").pop()?.toLowerCase();
