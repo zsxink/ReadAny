@@ -154,6 +154,7 @@
     "vec_chunking": "Chunking...",
     "vec_indexing": "Indexing...",
     "vec_processing": "Processing...",
+    "vec_queued": "Queued",
     "manageTags": "Manage Tags"
   },
   "chat": {

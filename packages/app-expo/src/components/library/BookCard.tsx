@@ -1,4 +1,4 @@
-import { DatabaseIcon, HashIcon, Loader2Icon, Trash2Icon } from "@/components/ui/Icon";
+import { ClockIcon, DatabaseIcon, HashIcon, Loader2Icon, Trash2Icon } from "@/components/ui/Icon";
 import { type ThemeColors, fontSize, fontWeight, radius, useColors } from "@/styles/theme";
 import { getPlatformService } from "@readany/core/services";
 /**
@@ -61,6 +61,7 @@ interface BookCardProps {
   onManageTags?: (book: Book) => void;
   onVectorize?: (book: Book) => void;
   isVectorizing?: boolean;
+  isQueued?: boolean;
   vectorProgress?: { status: string; processedChunks: number; totalChunks: number } | null;
 }
 
@@ -71,6 +72,7 @@ export const BookCard = memo(function BookCard({
   onManageTags,
   onVectorize,
   isVectorizing,
+  isQueued,
   vectorProgress,
 }: BookCardProps) {
   const colors = useColors();
@@ -196,8 +198,20 @@ export const BookCard = memo(function BookCard({
                     ? `${vecPct}%`
                     : vectorProgress?.status === "indexing"
                       ? t("home.vec_indexing")
-                      : t("home.vec_processing")}
+                      : vectorProgress?.status === "completed"
+                        ? "✓"
+                        : vectorProgress?.status === "error"
+                          ? "✗"
+                          : t("home.vec_processing")}
               </Text>
+            </View>
+          )}
+
+          {/* Queued overlay */}
+          {isQueued && !isVectorizing && (
+            <View style={s.queuedOverlay}>
+              <ClockIcon size={20} color="#fff" />
+              <Text style={s.queuedOverlayText}>{t("home.vec_queued", "排队中")}</Text>
             </View>
           )}
 
@@ -505,6 +519,23 @@ const makeStyles = (colors: ThemeColors) =>
     vecOverlayText: {
       marginTop: 6,
       fontSize: 14,
+      fontWeight: fontWeight.medium,
+      color: "#fff",
+    },
+    queuedOverlay: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: "rgba(0,0,0,0.35)",
+      borderRadius: radius.sm,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    queuedOverlayText: {
+      marginTop: 4,
+      fontSize: 12,
       fontWeight: fontWeight.medium,
       color: "#fff",
     },

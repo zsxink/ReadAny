@@ -94,7 +94,9 @@ export function LibraryScreen() {
   const [editingTag, setEditingTag] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
 
-  // Vectorization state
+  // Vectorization queue state
+  const [vectorQueue, setVectorQueue] = useState<Book[]>([]);
+  const vectorQueueRef = useRef<Book[]>([]);
   const [vectorizingBookId, setVectorizingBookId] = useState<string | null>(null);
   const [vectorizingBookTitle, setVectorizingBookTitle] = useState("");
   const [vectorProgress, setVectorProgress] = useState<{
@@ -102,6 +104,7 @@ export function LibraryScreen() {
     processedChunks: number;
     totalChunks: number;
   } | null>(null);
+  const isProcessingRef = useRef(false);
 
   const extractorRef = useRef<ExtractorRef>(null);
 
@@ -250,10 +253,68 @@ export function LibraryScreen() {
     setNewTagInput("");
   }, []);
 
-  const handleVectorize = useCallback(
+  // Process a single book vectorization
+  const processOneBook = useCallback(
     async (book: Book) => {
-      if (vectorizingBookId) return;
+      setVectorizingBookId(book.id);
+      setVectorizingBookTitle(book.meta.title);
+      setVectorProgress({ status: "chunking", processedChunks: 0, totalChunks: 0 });
 
+      try {
+        if (!extractorRef.current) {
+          throw new Error("Extractor WebView not ready");
+        }
+
+        const platform = getPlatformService();
+        const appData = await platform.getAppDataDir();
+        const absPath = await platform.joinPath(appData, book.filePath);
+
+        const base64 = await FileSystem.readAsStringAsync(absPath, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+
+        const chapters = await extractorRef.current.extractChapters(base64, "application/epub+zip");
+        if (!chapters || chapters.length === 0) {
+          throw new Error("No chapters extracted from book");
+        }
+
+        await triggerVectorizeBook(book.id, book.filePath, chapters, (progress) => {
+          setVectorProgress(progress);
+        });
+
+        setVectorProgress({ status: "completed", processedChunks: 1, totalChunks: 1 });
+        await new Promise((resolve) => setTimeout(resolve, 800));
+      } catch (err) {
+        console.error(`[LibraryScreen] Vectorization failed for "${book.meta.title}":`, err);
+        setVectorProgress({ status: "error", processedChunks: 0, totalChunks: 0 });
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+    },
+    [],
+  );
+
+  // Process the vectorization queue serially
+  const processQueue = useCallback(async () => {
+    if (isProcessingRef.current) return;
+    isProcessingRef.current = true;
+
+    try {
+      while (vectorQueueRef.current.length > 0) {
+        const nextBook = vectorQueueRef.current[0]!;
+        vectorQueueRef.current = vectorQueueRef.current.slice(1);
+        setVectorQueue([...vectorQueueRef.current]);
+
+        await processOneBook(nextBook);
+      }
+    } finally {
+      isProcessingRef.current = false;
+      setVectorizingBookId(null);
+      setVectorProgress(null);
+    }
+  }, [processOneBook]);
+
+  const handleVectorize = useCallback(
+    (book: Book) => {
       // Check if vector model is configured
       const hasCapability = useVectorModelStore.getState().hasVectorCapability();
       if (!hasCapability) {
@@ -267,50 +328,19 @@ export function LibraryScreen() {
         return;
       }
 
-      setVectorizingBookId(book.id);
-      setVectorizingBookTitle(book.meta.title);
-      setVectorProgress(null);
+      // Don't add if already in queue or currently processing
+      const alreadyQueued = vectorQueueRef.current.some((b) => b.id === book.id);
+      if (alreadyQueued || vectorizingBookId === book.id) return;
 
-      try {
-        if (!extractorRef.current) {
-          throw new Error("Extractor WebView not ready");
-        }
+      vectorQueueRef.current = [...vectorQueueRef.current, book];
+      setVectorQueue([...vectorQueueRef.current]);
 
-        setVectorProgress({ status: "chunking", processedChunks: 0, totalChunks: 0 });
-
-        // 1. Get book file data
-        const platform = getPlatformService();
-        const appData = await platform.getAppDataDir();
-        const absPath = await platform.joinPath(appData, book.filePath);
-
-        const base64 = await FileSystem.readAsStringAsync(absPath, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-
-        // 2. Extract chapters via headless WebView
-        const chapters = await extractorRef.current.extractChapters(base64, "application/epub+zip");
-        if (!chapters || chapters.length === 0) {
-          throw new Error("No chapters extracted from book");
-        }
-
-        // 3. Trigger core vectorization pipeline
-        await triggerVectorizeBook(book.id, book.filePath, chapters, (progress) => {
-          setVectorProgress(progress);
-        });
-
-        setVectorProgress({ status: "completed", processedChunks: 1, totalChunks: 1 });
-      } catch (err) {
-        console.error("[LibraryScreen] Vectorization failed:", err);
-        setVectorProgress({ status: "error", processedChunks: 0, totalChunks: 0 });
-        Alert.alert(t("common.error", "错误"), t("library.vectorizeFailed", "向量化失败"));
-      } finally {
-        setTimeout(() => {
-          setVectorizingBookId(null);
-          setVectorProgress(null);
-        }, 2000);
+      // Start processing if not already running
+      if (!isProcessingRef.current) {
+        processQueue();
       }
     },
-    [vectorizingBookId, nav, t],
+    [nav, t, vectorizingBookId, processQueue],
   );
 
   const handleSortChange = useCallback(
@@ -349,11 +379,12 @@ export function LibraryScreen() {
           onManageTags={handleManageTags}
           onVectorize={handleVectorize}
           isVectorizing={vectorizingBookId === item.id}
+          isQueued={vectorQueue.some((b) => b.id === item.id)}
           vectorProgress={vectorizingBookId === item.id ? vectorProgress : null}
         />
       </View>
     ),
-    [handleOpen, removeBook, handleManageTags, handleVectorize, vectorizingBookId, vectorProgress],
+    [handleOpen, removeBook, handleManageTags, handleVectorize, vectorizingBookId, vectorQueue, vectorProgress],
   );
 
   return (

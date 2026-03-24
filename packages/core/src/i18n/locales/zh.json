@@ -152,6 +152,7 @@
     "vec_chunking": "分块中...",
     "vec_indexing": "入库中...",
     "vec_processing": "处理中...",
+    "vec_queued": "排队中",
     "manageTags": "管理标签"
   },
   "chat": {
