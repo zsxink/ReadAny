@@ -32,7 +32,7 @@ type AppTheme = "light" | "dark" | "sepia";
 
 const THEME_COLORS: Record<AppTheme, { bg: string; fg: string; link: string }> = {
   light: { bg: "#ffffff", fg: "#1a1a1a", link: "#2563eb" },
-  dark: { bg: "#1c1c1e", fg: "#e8e8ed", link: "#60a5fa" },
+  dark: { bg: "#121212", fg: "#f5f5f5", link: "#60a5fa" },
   sepia: { bg: "#f0e6d2", fg: "#3d2b1f", link: "#6b4c2a" },
 };
 
