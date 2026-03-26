@@ -44,6 +44,7 @@
       "identifier": "http:allow-fetch",
       "allow": [{ "url": "https://**" }]
     },
+    "single-instance:default",
     "websocket:default"
   ]
 }
