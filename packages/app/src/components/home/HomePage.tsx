@@ -33,7 +33,7 @@ export function HomePage() {
       const selected = await open({
         multiple: true,
         filters: [
-          { name: "Books", extensions: ["epub", "pdf", "mobi", "azw", "azw3", "fb2", "fbz", "txt"] },
+          { name: "Books", extensions: ["epub", "EPUB", "pdf", "PDF", "mobi", "MOBI", "azw", "AZW", "azw3", "AZW3", "fb2", "FB2", "fbz", "FBZ", "txt", "TXT"] },
         ],
       } as const);
       if (selected) {
