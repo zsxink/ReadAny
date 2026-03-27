@@ -47,6 +47,7 @@ export function useChapterTranslation(options: UseChapterTranslationOptions) {
   const [state, setState] = useState<ChapterTranslationState>({ status: "idle" });
   const abortRef = useRef<AbortController | null>(null);
   const autoRestoreAttemptedRef = useRef<string>("");
+  const startTranslationRef = useRef<() => void>(() => {});
 
   const translationConfig = useSettingsStore((s) => s.translationConfig);
   const aiConfig = useSettingsStore((s) => s.aiConfig);
@@ -126,6 +127,9 @@ export function useChapterTranslation(options: UseChapterTranslationOptions) {
     [translationConfig, aiConfig, bookId, sectionIndex, getParagraphs, injectTranslations],
   );
 
+  // Keep ref in sync so auto-restore effect doesn't depend on startTranslation identity
+  startTranslationRef.current = startTranslation;
+
   // ---- Cancel ---------------------------------------------------------------
   const cancelTranslation = useCallback(() => {
     abortRef.current?.abort();
@@ -160,7 +164,6 @@ export function useChapterTranslation(options: UseChapterTranslationOptions) {
   // ---- Auto-restore cached translations on section load -----------------------
   useEffect(() => {
     const key = `${bookId}_${sectionIndex}_${translationConfig.targetLang}`;
-    console.log("[ChapterTranslation] auto-restore check:", { ready, status: state.status, key, attempted: autoRestoreAttemptedRef.current });
     // Only attempt once per section+lang combo, and only when idle+ready
     if (!ready || state.status !== "idle" || autoRestoreAttemptedRef.current === key) return;
     autoRestoreAttemptedRef.current = key;
@@ -169,15 +172,14 @@ export function useChapterTranslation(options: UseChapterTranslationOptions) {
     // Small delay to ensure DOM is fully stable after navigation
     const timer = setTimeout(() => {
       isChapterFullyCached(bookId, sectionIndex, translationConfig.targetLang).then((cached) => {
-        console.log("[ChapterTranslation] cache check result:", { cached, cancelled, key });
         if (cached && !cancelled) {
-          startTranslation();
+          startTranslationRef.current();
         }
       }).catch(() => {});
     }, 300);
 
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [ready, bookId, sectionIndex, translationConfig.targetLang, state.status, startTranslation]);
+  }, [ready, bookId, sectionIndex, translationConfig.targetLang, state.status]);
 
   return { state, startTranslation, cancelTranslation, toggleOriginalVisible, toggleTranslationVisible, reset };
 }
