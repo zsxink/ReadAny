@@ -18,9 +18,12 @@ export function useAutoSync(onSyncComplete?: () => void) {
   const loadConfig = useSyncStore((s) => s.loadConfig);
   const status = useSyncStore((s) => s.status);
   const lastResult = useSyncStore((s) => s.lastResult);
+  const error = useSyncStore((s) => s.error);
   const statusRef = useRef(status);
   statusRef.current = status;
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastErrorRef = useRef<string | null>(null);
+  lastErrorRef.current = error;
 
   // Load config on mount
   useEffect(() => {
@@ -49,9 +52,15 @@ export function useAutoSync(onSyncComplete?: () => void) {
       return;
     }
 
+    // Don't auto-sync if last error was auth-related
+    if (lastErrorRef.current?.includes("connect") || lastErrorRef.current?.includes("Unauthorized")) {
+      console.log("[AutoSync] Skipping auto-sync due to connection/auth error");
+      return;
+    }
+
     // Delayed startup sync (10 seconds after mount)
     const startupTimer = setTimeout(() => {
-      if (statusRef.current === "idle") {
+      if (statusRef.current === "idle" && !lastErrorRef.current) {
         syncNow();
       }
     }, 10_000);
@@ -59,7 +68,8 @@ export function useAutoSync(onSyncComplete?: () => void) {
     // Periodic sync
     const intervalMs = (hasAutoSync(config) ? config.syncIntervalMins || 30 : 30) * 60 * 1000;
     timerRef.current = setInterval(() => {
-      if (statusRef.current === "idle") {
+      // Skip if there's an error (auth/connection issues)
+      if (statusRef.current === "idle" && !lastErrorRef.current) {
         syncNow();
       }
     }, intervalMs);

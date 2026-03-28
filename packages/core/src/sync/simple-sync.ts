@@ -226,6 +226,7 @@ export async function runSimpleSync(
 ): Promise<{ success: boolean; changes: number; error?: string }> {
   try {
     onProgress?.("准备同步...");
+    console.log("[SimpleSync] Starting sync...");
 
     // 1. Get last sync timestamp
     const lastSync = await getLastSyncTimestamp();
@@ -233,7 +234,9 @@ export async function runSimpleSync(
 
     // 2. Pull remote changes
     onProgress?.("获取远程变更...");
+    console.log("[SimpleSync] Downloading remote payload...");
     const remotePayload = await downloadPayload(backend);
+    console.log("[SimpleSync] Remote payload downloaded:", remotePayload ? "yes" : "no");
 
     if (remotePayload) {
       console.log(
@@ -242,9 +245,13 @@ export async function runSimpleSync(
 
       // Don't apply our own changes
       const localDeviceId = await getDeviceId();
+      console.log(`[SimpleSync] Local device ID: ${localDeviceId}`);
+      console.log(`[SimpleSync] Remote device ID: ${remotePayload.deviceId}`);
+
       if (remotePayload.deviceId !== localDeviceId) {
         // Apply remote changes
         onProgress?.("应用远程变更...");
+        console.log("[SimpleSync] Applying remote changes...");
         const result = await applyChanges(remotePayload);
         console.log(
           `[SimpleSync] Applied ${result.applied} changes, ${result.conflicts} conflicts`,
@@ -256,28 +263,35 @@ export async function runSimpleSync(
 
     // 3. Collect and push local changes
     onProgress?.("收集本地变更...");
+    console.log("[SimpleSync] Collecting local changes...");
     const localPayload = await collectChanges(lastSync);
+    console.log("[SimpleSync] Local changes collected");
+
     const changeCount = Object.values(localPayload.tables).reduce(
       (sum, t) => sum + t.records.length + t.deletedIds.length,
       0,
     );
+    console.log(`[SimpleSync] Change count: ${changeCount}`);
 
     if (changeCount > 0) {
       console.log(`[SimpleSync] Uploading ${changeCount} changes...`);
       onProgress?.(`上传 ${changeCount} 条变更...`);
       await uploadPayload(backend, localPayload);
+      console.log("[SimpleSync] Upload complete");
     } else {
       console.log("[SimpleSync] No local changes to upload");
     }
 
     // 4. Update last sync timestamp
+    console.log("[SimpleSync] Updating last sync timestamp...");
     await setLastSyncTimestamp(Date.now());
 
     onProgress?.("同步完成");
+    console.log("[SimpleSync] Sync complete!");
     return { success: true, changes: changeCount };
   } catch (e) {
     const error = e instanceof Error ? e.message : String(e);
     console.error("[SimpleSync] Sync failed:", error);
-    return { success: true, changes: 0, error };
+    return { success: false, changes: 0, error };
   }
 }

@@ -26,6 +26,9 @@ export class WebDavBackend implements ISyncBackend {
   }
 
   async ensureDirectories(): Promise<void> {
+    // Create directories for the new simple sync (JSON-based)
+    await this.client.ensureDirectory("/readany/sync");
+    // Legacy directories for file sync (if needed)
     await this.client.ensureDirectory(REMOTE_DATA);
     await this.client.mkcol(REMOTE_FILES);
     await this.client.mkcol(REMOTE_COVERS);

@@ -235,8 +235,19 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
       const connected = await backend.testConnection();
       if (!connected) {
-        throw new Error("Failed to connect to sync backend");
+        set({ status: "error", error: "无法连接到同步服务器，请检查网络和凭据", pendingDirection: null, progress: null });
+        return {
+          success: false,
+          direction: "none",
+          filesUploaded: 0,
+          filesDownloaded: 0,
+          durationMs: 0,
+          error: "无法连接到同步服务器，请检查网络和凭据",
+        };
       }
+
+      // Clear error on successful connection
+      set({ error: null });
 
       // Use new simplified sync (JSON-based)
       return await get().syncSimple(backend);
@@ -298,12 +309,20 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         });
       });
 
-      set({
-        status: "idle",
-        lastSyncAt: Date.now(),
-        error: result.error || null,
-        progress: null,
-      });
+      if (result.success) {
+        set({
+          status: "idle",
+          lastSyncAt: Date.now(),
+          error: null,
+          progress: null,
+        });
+      } else {
+        set({
+          status: "error",
+          error: result.error || "同步失败",
+          progress: null,
+        });
+      }
 
       return {
         success: result.success,
