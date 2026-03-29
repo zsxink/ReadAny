@@ -27,6 +27,7 @@ export interface UpdateInfo {
   version: string;
   notes?: string;
   date?: string;
+  downloadUrl?: string;
 }
 
 export interface IDatabase {
