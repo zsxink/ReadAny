@@ -112,6 +112,9 @@
     let searchGenerator = null;
     let searchResults = [];
     let searchIndex = 0;
+    // Track current theme colors and last renderer styles for theme injection
+    let currentThemeColors = { bg: '#1c1c1e', fg: '#e8e8ed', muted: '#7c7c82', primary: '#3b82f6' };
+    let lastRendererStyles = '';
 
     // Store user annotations for re-rendering on page change
     const userAnnotations = new Map();
@@ -527,7 +530,7 @@
         const lh = settings.lineHeight || 1.6;
         const ps = settings.paragraphSpacing || 8;
 
-        renderer.setStyles(`
+        const baseStyles = `
           html, body {
             font-family: ${fontFamily} !important;
             font-size: ${fSize}px !important;
@@ -539,8 +542,12 @@
           }
           p { margin-top: ${ps}px !important; margin-bottom: ${ps}px !important; }
           img, svg { max-width: 100% !important; height: auto !important; }
-          ::selection { background: rgba(59, 130, 246, 0.3) !important; }
-        `);
+        `;
+
+        // Save base styles and inject with current theme colors
+        lastRendererStyles = baseStyles;
+        const themedStyles = injectThemeIntoStyles(baseStyles, currentThemeColors.bg, currentThemeColors.fg, currentThemeColors.primary);
+        renderer.setStyles(themedStyles);
       }
 
       if (settings.pageMargin != null) {
@@ -562,16 +569,51 @@
     }
 
     function setThemeColors(colors) {
-      document.documentElement.style.setProperty('--bg', colors.background || '#1c1c1e');
-      document.documentElement.style.setProperty('--fg', colors.foreground || '#e8e8ed');
-      document.documentElement.style.setProperty('--muted', colors.muted || '#7c7c82');
-      document.documentElement.style.setProperty('--primary', colors.primary || '#3b82f6');
-      document.body.style.backgroundColor = colors.background || '#1c1c1e';
-      document.body.style.color = colors.foreground || '#e8e8ed';
+      const bg = colors.background || '#1c1c1e';
+      const fg = colors.foreground || '#e8e8ed';
+      const muted = colors.muted || '#7c7c82';
+      const primary = colors.primary || '#3b82f6';
+
+      // Store current theme colors globally for applySettings to use
+      currentThemeColors = { bg, fg, muted, primary };
+
+      document.documentElement.style.setProperty('--bg', bg);
+      document.documentElement.style.setProperty('--fg', fg);
+      document.documentElement.style.setProperty('--muted', muted);
+      document.documentElement.style.setProperty('--primary', primary);
+      document.body.style.backgroundColor = bg;
+      document.body.style.color = fg;
+
+      // Inject theme colors into iframe via renderer.setStyles
+      // This is critical for dark mode — without this, EPUB content stays black text
+      if (view && view.renderer && view.renderer.setStyles) {
+        const currentStyles = lastRendererStyles || '';
+        const themedStyles = injectThemeIntoStyles(currentStyles, bg, fg, primary);
+        view.renderer.setStyles(themedStyles);
+      }
+
       // Update search indicator color if view is ready
       if (view && view.setSearchIndicator) {
-        view.setSearchIndicator('outline', { color: colors.primary || '#3b82f6' });
+        view.setSearchIndicator('outline', { color: primary });
       }
+    }
+
+    // Helper: inject theme colors into a renderer styles string
+    function injectThemeIntoStyles(baseStyles, bg, fg, primary) {
+      // Remove any previous theme color rules we injected
+      const cleaned = baseStyles.replace(/\/\* __theme_colors__ \*\/[\s\S]*?\/\* __end_theme_colors__ \*\//g, '');
+      const themeBlock = `/* __theme_colors__ */
+html, body {
+  background-color: ${bg} !important;
+  color: ${fg} !important;
+}
+p, div, span, blockquote, li, dd, dt, h1, h2, h3, h4, h5, h6, td, th, caption, figcaption, label, a {
+  color: inherit !important;
+}
+a { color: ${primary} !important; }
+::selection { background: rgba(59, 130, 246, 0.3) !important; }
+/* __end_theme_colors__ */`;
+      return themeBlock + '\n' + cleaned;
     }
 
     // ─── Document styles ───
@@ -581,8 +623,12 @@
         img.style.height = 'auto';
       }
       const style = doc.createElement('style');
+      const { bg, fg, primary } = currentThemeColors;
       style.textContent = `
         * { -webkit-touch-callout: none !important; -webkit-user-select: text !important; user-select: text !important; }
+        html, body { background-color: ${bg} !important; color: ${fg} !important; }
+        p, div, span, blockquote, li, dd, dt, h1, h2, h3, h4, h5, h6, td, th, caption, figcaption, label { color: inherit !important; }
+        a { color: ${primary} !important; }
         ::selection { background: rgba(250, 204, 21, 0.4) !important; }
       `;
       doc.head.appendChild(style);
@@ -590,6 +636,10 @@
     }
 
     // ─── Tap detection ───
+    // Three-zone layout (inspired by readest):
+    //   Left 37.5%  → previous page
+    //   Center 25%  → toggle menu bar
+    //   Right 37.5% → next page
     function attachTapListener(doc) {
       if (doc.__readany_tap) return;
       doc.__readany_tap = true;
@@ -619,7 +669,17 @@
         const viewportX = e.clientX + iframeLeft;
         const normalizedX = ((viewportX % viewW) + viewW) % viewW;
 
-        if (normalizedX >= viewW * 0.25 && normalizedX <= viewW * 0.75) {
+        const centerStart = viewW * 0.375;
+        const centerEnd = viewW * 0.625;
+
+        if (normalizedX < centerStart) {
+          // Left zone → previous page
+          if (view) view.prev();
+        } else if (normalizedX > centerEnd) {
+          // Right zone → next page
+          if (view) view.next();
+        } else {
+          // Center zone → toggle menu
           postToRN('tap', {});
         }
       });

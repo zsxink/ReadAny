@@ -43,6 +43,7 @@ import { generateId } from "@readany/core/utils";
 import { throttle } from "@readany/core/utils/throttle";
 import { Asset } from "expo-asset";
 import * as FileSystem from "expo-file-system/legacy";
+import { setStatusBarHidden } from "expo-status-bar";
 /**
  * ReaderScreen — WebView-based reader with foliate-js engine.
  * Features: toolbar with back/notebook/chat/TTS/TOC/search/settings,
@@ -424,6 +425,14 @@ export function ReaderScreen({ route, navigation }: Props) {
     addBookmark,
   ]);
 
+  // Hide status bar for immersive reading on mount, restore on unmount
+  useEffect(() => {
+    setStatusBarHidden(true, "slide");
+    return () => {
+      setStatusBarHidden(false, "slide");
+    };
+  }, []);
+
   // Load reader HTML asset
   useEffect(() => {
     if (assetLoadedRef.current) return;
@@ -763,6 +772,8 @@ export function ReaderScreen({ route, navigation }: Props) {
   const toggleControls = useCallback(() => {
     const willShow = !showControls;
     setShowControls(willShow);
+    // Sync status bar with controls visibility for immersive reading
+    setStatusBarHidden(!willShow, "slide");
     Animated.spring(toolbarAnim, {
       toValue: willShow ? 0 : TOOLBAR_HIDE_OFFSET,
       useNativeDriver: true,
@@ -774,6 +785,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       if (controlsTimer.current) clearTimeout(controlsTimer.current);
       controlsTimer.current = setTimeout(() => {
         setShowControls(false);
+        setStatusBarHidden(true, "slide");
         Animated.spring(toolbarAnim, {
           toValue: TOOLBAR_HIDE_OFFSET,
           useNativeDriver: true,
@@ -1185,6 +1197,8 @@ export function ReaderScreen({ route, navigation }: Props) {
                 onPress={() => {
                   setShowSearch(true);
                   setShowControls(false);
+                  // Keep status bar visible for search bar at top
+                  setStatusBarHidden(false, "slide");
                   Animated.spring(toolbarAnim, {
                     toValue: TOOLBAR_HIDE_OFFSET,
                     useNativeDriver: true,
@@ -1303,6 +1317,7 @@ export function ReaderScreen({ route, navigation }: Props) {
                 setSearchIndex(0);
                 bridge.clearSearch();
                 setShowControls(true);
+                setStatusBarHidden(false, "slide");
                 Animated.spring(toolbarAnim, {
                   toValue: 0,
                   useNativeDriver: true,
