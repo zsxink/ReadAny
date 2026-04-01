@@ -163,23 +163,31 @@ export class ExpoPlatformService implements IPlatformService {
   // ---- Network ----
 
   async fetch(url: string, options?: FetchOptions): Promise<Response> {
-    const { allowInsecure, ...fetchOptions } = options ?? {};
+    const { allowInsecure, timeoutMs, ...fetchOptions } = options ?? {};
     const effectiveUrl = allowInsecure ? url.replace(/^https:\/\//i, "http://") : url;
     const method = fetchOptions?.method?.toUpperCase() || "GET";
 
     // Always use XHR for WebDAV to handle large binary files properly
     // React Native's fetch has issues with large arrayBuffer responses
-    return this._fetchWithXHR(effectiveUrl, fetchOptions);
+    const responseType = method === "GET" ? "arraybuffer" : "text";
+    const effectiveTimeoutMs = timeoutMs ?? (method === "GET" ? 120000 : 15000);
+    return this._fetchWithXHR(effectiveUrl, fetchOptions, responseType, effectiveTimeoutMs);
   }
 
-  private _fetchWithXHR(url: string, options?: RequestInit): Promise<Response> {
+  private _fetchWithXHR(
+    url: string,
+    options?: RequestInit,
+    responseType: XMLHttpRequestResponseType = "arraybuffer",
+    timeoutMs = 120000,
+  ): Promise<Response> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       const method = options?.method || "GET";
+      let settled = false;
 
       xhr.open(method, url, true);
-      xhr.responseType = "arraybuffer";
-      xhr.timeout = 120000; // 2 minute timeout for large file downloads
+      xhr.responseType = responseType;
+      xhr.timeout = timeoutMs;
 
       // Set headers
       if (options?.headers) {
@@ -189,9 +197,16 @@ export class ExpoPlatformService implements IPlatformService {
         }
       }
 
-      xhr.onload = () => {
+      const finalizeResponse = () => {
+        if (settled || xhr.readyState !== XMLHttpRequest.DONE) return;
+        settled = true;
         try {
-          const buffer = xhr.response as ArrayBuffer;
+          let textResponse = "";
+          if (typeof xhr.response === "string") {
+            textResponse = xhr.response;
+          } else if (responseType !== "arraybuffer") {
+            textResponse = typeof xhr.responseText === "string" ? xhr.responseText : "";
+          }
 
           // Create a Response-like object
           const response = {
@@ -200,6 +215,10 @@ export class ExpoPlatformService implements IPlatformService {
             ok: xhr.status >= 200 && xhr.status < 300,
             headers: new Headers(),
             text: async () => {
+              if (responseType !== "arraybuffer") {
+                return textResponse;
+              }
+              const buffer = xhr.response as ArrayBuffer;
               // Use chunked decoding for large buffers to avoid string length limits
               const CHUNK_SIZE = 65536; // 64KB chunks
               if (buffer.byteLength <= CHUNK_SIZE) {
@@ -221,7 +240,12 @@ export class ExpoPlatformService implements IPlatformService {
               const text = await response.text();
               return JSON.parse(text);
             },
-            arrayBuffer: async () => buffer,
+            arrayBuffer: async () => {
+              if (responseType === "arraybuffer") {
+                return xhr.response as ArrayBuffer;
+              }
+              return new TextEncoder().encode(textResponse).buffer;
+            },
           } as Response;
 
           resolve(response);
@@ -230,12 +254,20 @@ export class ExpoPlatformService implements IPlatformService {
         }
       };
 
+      xhr.onreadystatechange = finalizeResponse;
+      xhr.onload = finalizeResponse;
+      xhr.onloadend = finalizeResponse;
+
       xhr.onerror = () => {
+        if (settled) return;
+        settled = true;
         reject(new Error(`XHR request failed: ${method} ${url}`));
       };
 
       xhr.ontimeout = () => {
-        reject(new Error(`XHR request timeout (120s): ${method} ${url}`));
+        if (settled) return;
+        settled = true;
+        reject(new Error(`XHR request timeout (${timeoutMs}ms): ${method} ${url}`));
       };
 
       // Send request

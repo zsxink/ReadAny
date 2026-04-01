@@ -173,16 +173,21 @@ export default function SyncSettingsScreen() {
   const handleTest = useCallback(async () => {
     setTesting(true);
     setTestResult(null);
+    setTestError("");
     try {
+      let success = false;
       if (selectedBackend === "webdav") {
-        await testWebDavConnection(url, username, password, allowInsecure);
+        success = await testWebDavConnection(url, username, password, allowInsecure);
       } else if (selectedBackend === "s3") {
-        await testS3Connection(
+        success = await testS3Connection(
           { endpoint: s3Endpoint, region: s3Region, bucket: s3Bucket, accessKeyId: s3AccessKeyId },
           s3SecretAccessKey,
         );
       }
-      setTestResult("success");
+      setTestResult(success ? "success" : "error");
+      if (!success) {
+        setTestError(t("common.failed", "Failed"));
+      }
     } catch (e) {
       setTestResult("error");
       setTestError(String(e));
@@ -202,6 +207,7 @@ export default function SyncSettingsScreen() {
     s3SecretAccessKey,
     testWebDavConnection,
     testS3Connection,
+    t,
   ]);
 
   const handleSave = useCallback(async () => {

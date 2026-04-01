@@ -290,21 +290,23 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
   syncSimple: async (backend: ISyncBackend) => {
     const state = get();
-    if (state.status !== "idle") return null;
+    // syncSimple is usually entered right after a successful connection check,
+    // so allow both "idle" and "checking" as valid entry states.
+    if (state.status !== "idle" && state.status !== "checking") return null;
 
     set({ status: "syncing-files", error: null, progress: null });
 
     try {
       const { runSimpleSync } = await import("../sync/simple-sync");
 
-      const result = await runSimpleSync(backend, (message) => {
+      const result = await runSimpleSync(backend, (progress) => {
         set({
           progress: {
-            phase: "database",
-            operation: "upload",
+            phase: progress.phase,
+            operation: progress.operation,
             completedFiles: 0,
             totalFiles: 1,
-            message,
+            message: progress.message,
           },
         });
       });
@@ -313,12 +315,27 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         set({
           status: "idle",
           lastSyncAt: Date.now(),
+          lastResult: {
+            success: true,
+            direction: "upload",
+            filesUploaded: result.filesUploaded,
+            filesDownloaded: result.filesDownloaded,
+            durationMs: 0,
+          },
           error: null,
           progress: null,
         });
       } else {
         set({
           status: "error",
+          lastResult: {
+            success: false,
+            direction: "none",
+            filesUploaded: 0,
+            filesDownloaded: 0,
+            durationMs: 0,
+            error: result.error || "同步失败",
+          },
           error: result.error || "同步失败",
           progress: null,
         });
@@ -327,14 +344,26 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       return {
         success: result.success,
         direction: "upload" as const,
-        filesUploaded: result.changes,
-        filesDownloaded: 0,
+        filesUploaded: result.filesUploaded,
+        filesDownloaded: result.filesDownloaded,
         durationMs: 0,
         error: result.error,
       };
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);
-      set({ status: "error", error, progress: null });
+      set({
+        status: "error",
+        lastResult: {
+          success: false,
+          direction: "none",
+          filesUploaded: 0,
+          filesDownloaded: 0,
+          durationMs: 0,
+          error,
+        },
+        error,
+        progress: null,
+      });
       return {
         success: false,
         direction: "none" as const,

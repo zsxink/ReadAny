@@ -98,16 +98,32 @@ export function SyncSettings() {
   const handleTestWebDav = useCallback(async () => {
     setTesting(true);
     setTestResult(null);
+    setTestError("");
     try {
-      const success = await testWebDavConnection(webdavUrl, webdavUsername, webdavPassword, webdavAllowInsecure);
+      const success = await testWebDavConnection(
+        webdavUrl,
+        webdavUsername,
+        webdavPassword,
+        webdavAllowInsecure,
+      );
       setTestResult(success ? "success" : "error");
+      if (!success) {
+        setTestError(t("common.failed", "Failed"));
+      }
     } catch (e) {
       setTestResult("error");
       setTestError(String(e));
     } finally {
       setTesting(false);
     }
-  }, [webdavUrl, webdavUsername, webdavPassword, webdavAllowInsecure, testWebDavConnection]);
+  }, [
+    webdavUrl,
+    webdavUsername,
+    webdavPassword,
+    webdavAllowInsecure,
+    testWebDavConnection,
+    t,
+  ]);
 
   const handleSaveWebDav = useCallback(async () => {
     setSaving(true);
@@ -121,6 +137,7 @@ export function SyncSettings() {
   const handleTestS3 = useCallback(async () => {
     setTesting(true);
     setTestResult(null);
+    setTestError("");
     try {
       const success = await testS3Connection(
         {
@@ -133,6 +150,9 @@ export function SyncSettings() {
         s3SecretAccessKey,
       );
       setTestResult(success ? "success" : "error");
+      if (!success) {
+        setTestError(t("common.failed", "Failed"));
+      }
     } catch (e) {
       setTestResult("error");
       setTestError(String(e));
@@ -147,6 +167,7 @@ export function SyncSettings() {
     s3SecretAccessKey,
     s3PathStyle,
     testS3Connection,
+    t,
   ]);
 
   const handleSaveS3 = useCallback(async () => {

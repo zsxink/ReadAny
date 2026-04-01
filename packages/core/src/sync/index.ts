@@ -1,5 +1,5 @@
 export { WebDavClient } from "./webdav-client";
-export { determineSyncDirection, runSync, downloadBookFile } from "./sync-engine";
+export { determineSyncDirection, runSync, downloadBookFile, syncFiles } from "./sync-engine";
 export { runSimpleSync, collectChanges, applyChanges } from "./simple-sync";
 export { setSyncAdapter, getSyncAdapter } from "./sync-adapter";
 export type { ISyncAdapter } from "./sync-adapter";

@@ -107,6 +107,10 @@ export function LibraryScreen() {
   } | null>(null);
   const isProcessingRef = useRef(false);
 
+  // Download state
+  const [downloadingBookId, setDownloadingBookId] = useState<string | null>(null);
+  const [downloadingBookTitle, setDownloadingBookTitle] = useState("");
+
   const extractorRef = useRef<ExtractorRef>(null);
 
   const {
@@ -259,12 +263,19 @@ export function LibraryScreen() {
     async (book: Book) => {
       // Check if book needs to be downloaded (on-demand download)
       if (book.syncStatus === "remote") {
+        const bookTitle = book.meta.title || "未知书籍";
+        setDownloadingBookId(book.id);
+        setDownloadingBookTitle(bookTitle);
+        
         try {
           const { useSyncStore } = await import("@readany/core/stores/sync-store");
           const { downloadBookFile } = await import("@readany/core/sync");
+          const { updateBook } = await import("@readany/core/db/database");
 
           const syncStore = useSyncStore.getState();
           if (!syncStore.config) {
+            setDownloadingBookId(null);
+            setDownloadingBookTitle("");
             Alert.alert(t("common.error", "错误"), t("library.syncNotConfigured", "请先配置同步"));
             return;
           }
@@ -275,6 +286,8 @@ export function LibraryScreen() {
             syncStore.config.type === "webdav" ? "sync_webdav_password" : "sync_s3_secret_key";
           const password = await platform.kvGetItem(secretKey);
           if (!password) {
+            setDownloadingBookId(null);
+            setDownloadingBookTitle("");
             Alert.alert(
               t("common.error", "错误"),
               t("library.passwordNotFound", "未找到同步密码，请重新配置"),
@@ -282,35 +295,43 @@ export function LibraryScreen() {
             return;
           }
 
+          // Set downloading status and refresh UI
+          await updateBook(book.id, { syncStatus: "downloading" });
+          await loadBooks();
+
           // Create backend
           const { createSyncBackend } = await import("@readany/core/sync/sync-backend-factory");
           const backend = createSyncBackend(syncStore.config, password);
 
-          // Show downloading alert
-          Alert.alert(
-            t("library.downloading", "下载中"),
-            t("library.downloadingBook", "正在下载《{title}》...", { title: book.meta.title }),
-          );
-
           // Download book
           const success = await downloadBookFile(backend, book.id, book.filePath);
+
+          // Refresh book list to get updated syncStatus
+          await loadBooks();
 
           if (!success) {
             Alert.alert(t("common.error", "错误"), t("library.downloadFailed", "下载失败，请重试"));
             return;
           }
-
+          
           console.log(`[LibraryScreen] Book ${book.id} downloaded successfully`);
+          
+          // Navigate to reader after successful download
+          nav.navigate("Reader", { bookId: book.id });
         } catch (err) {
           console.error("Download failed:", err);
           Alert.alert(t("common.error", "错误"), t("library.downloadFailed", "下载失败，请重试"));
           return;
+        } finally {
+          setDownloadingBookId(null);
+          setDownloadingBookTitle("");
         }
+        return;
       }
 
       nav.navigate("Reader", { bookId: book.id });
     },
-    [nav, t],
+    [nav, t, loadBooks],
   );
 
   const handleManageTags = useCallback((book: Book) => {
@@ -663,6 +684,19 @@ export function LibraryScreen() {
           </View>
         )}
 
+        {/* Downloading banner */}
+        {downloadingBookId && (
+          <View style={s.downloadBanner}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <View style={s.downloadBannerInfo}>
+              <Text style={s.downloadBannerStatus}>{t("library.downloading", "下载中")}</Text>
+              <Text style={s.downloadBannerTitle} numberOfLines={1}>
+                {downloadingBookTitle}
+              </Text>
+            </View>
+          </View>
+        )}
+
         {/* Empty state */}
         {isLoaded && books.length === 0 && (
           <View style={s.emptyWrap}>
@@ -934,6 +968,24 @@ const makeStyles = (colors: ThemeColors) =>
       marginBottom: 12,
     },
     importBannerText: { fontSize: fontSize.xs, color: colors.primary },
+    // Download banner
+    downloadBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      backgroundColor: colors.muted + "0D",
+      borderRadius: radius.lg,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      marginBottom: 12,
+    },
+    downloadBannerInfo: { flex: 1, minWidth: 0 },
+    downloadBannerStatus: {
+      fontSize: fontSize.xs,
+      fontWeight: fontWeight.medium,
+      color: colors.primary,
+    },
+    downloadBannerTitle: { fontSize: 12, color: colors.mutedForeground, marginTop: 2 },
     // Vectorization banner
     vecBanner: {
       backgroundColor: colors.muted + "0D",

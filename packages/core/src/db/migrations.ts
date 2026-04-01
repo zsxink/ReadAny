@@ -31,6 +31,29 @@ const migrations: Migration[] = [
     description: "Add sync_status column to books for on-demand download",
     up: "ALTER TABLE books ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'local'",
   },
+  {
+    version: 5,
+    description: "Add updated_at column to chunks for sync",
+    up: `ALTER TABLE chunks ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;`,
+  },
+  {
+    version: 6,
+    description: "Create reading_sessions table in main DB for sync",
+    up: `
+      CREATE TABLE IF NOT EXISTS reading_sessions (
+        id TEXT PRIMARY KEY,
+        book_id TEXT NOT NULL,
+        started_at INTEGER NOT NULL,
+        ended_at INTEGER,
+        total_active_time INTEGER DEFAULT 0,
+        pages_read INTEGER DEFAULT 0,
+        state TEXT DEFAULT 'active',
+        updated_at INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_reading_sessions_book ON reading_sessions(book_id);
+    `,
+  },
 ];
 
 /** Run pending migrations */

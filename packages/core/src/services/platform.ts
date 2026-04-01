@@ -21,6 +21,8 @@ export interface WebSocketOptions {
 export interface FetchOptions extends RequestInit {
   /** When true, skip TLS certificate verification (for self-signed certs) */
   allowInsecure?: boolean;
+  /** Optional request timeout in milliseconds */
+  timeoutMs?: number;
 }
 
 export interface UpdateInfo {

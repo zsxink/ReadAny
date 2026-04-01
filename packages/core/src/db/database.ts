@@ -274,11 +274,26 @@ export async function initDatabase(): Promise<void> {
     )
   `);
 
+  await database.execute(`
+    CREATE TABLE IF NOT EXISTS reading_sessions (
+      id TEXT PRIMARY KEY,
+      book_id TEXT NOT NULL,
+      started_at INTEGER NOT NULL,
+      ended_at INTEGER,
+      total_active_time INTEGER DEFAULT 0,
+      pages_read INTEGER DEFAULT 0,
+      state TEXT DEFAULT 'active',
+      updated_at INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
+    )
+  `);
+
   // Create indexes
   await database.execute("CREATE INDEX IF NOT EXISTS idx_highlights_book ON highlights(book_id)");
   await database.execute("CREATE INDEX IF NOT EXISTS idx_notes_book ON notes(book_id)");
   await database.execute("CREATE INDEX IF NOT EXISTS idx_bookmarks_book ON bookmarks(book_id)");
   await database.execute("CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id)");
+  await database.execute("CREATE INDEX IF NOT EXISTS idx_reading_sessions_book ON reading_sessions(book_id)");
 
   // Migrations: add columns that may be missing from older schema versions
   try {
@@ -393,7 +408,7 @@ export async function initDatabase(): Promise<void> {
 
   dbInitialized = true;
 
-  // Also initialize the local database (chunks, reading_sessions)
+  // Also initialize the local database (chunks only)
   await initLocalDatabase();
 }
 export async function initLocalDatabase(): Promise<void> {
@@ -416,23 +431,8 @@ export async function initLocalDatabase(): Promise<void> {
     )
   `);
 
-  await database.execute(`
-    CREATE TABLE IF NOT EXISTS reading_sessions (
-      id TEXT PRIMARY KEY,
-      book_id TEXT NOT NULL,
-      started_at INTEGER NOT NULL,
-      ended_at INTEGER,
-      total_active_time INTEGER DEFAULT 0,
-      pages_read INTEGER DEFAULT 0,
-      state TEXT DEFAULT 'active'
-    )
-  `);
-
   // Create indexes
   await database.execute("CREATE INDEX IF NOT EXISTS idx_chunks_book ON chunks(book_id)");
-  await database.execute(
-    "CREATE INDEX IF NOT EXISTS idx_reading_sessions_book ON reading_sessions(book_id)",
-  );
 
   localDbInitialized = true;
 
@@ -440,7 +440,7 @@ export async function initLocalDatabase(): Promise<void> {
   await migrateDataToLocalDB();
 }
 
-/** Migrate chunks and reading_sessions from main DB to local DB (one-time) */
+/** Migrate chunks from main DB to local DB (one-time) */
 async function migrateDataToLocalDB(): Promise<void> {
   const mainDB = await getDB();
 
@@ -459,18 +459,10 @@ async function migrateDataToLocalDB(): Promise<void> {
 
   // Check if chunks table exists in main DB
   let hasChunksInMain = false;
-  let hasReadingSessionsInMain = false;
 
   try {
     await mainDB.select<{ id: string }>("SELECT id FROM chunks LIMIT 1");
     hasChunksInMain = true;
-  } catch {
-    // Table doesn't exist in main DB
-  }
-
-  try {
-    await mainDB.select<{ id: string }>("SELECT id FROM reading_sessions LIMIT 1");
-    hasReadingSessionsInMain = true;
   } catch {
     // Table doesn't exist in main DB
   }
@@ -495,26 +487,6 @@ async function migrateDataToLocalDB(): Promise<void> {
       await mainDB.execute("DROP TABLE IF EXISTS chunks");
     } catch {
       // Migration error — non-fatal, table may be partially migrated
-    }
-  }
-
-  // Migrate reading_sessions
-  if (hasReadingSessionsInMain) {
-    try {
-      const sessions = await mainDB.select<Record<string, unknown>>("SELECT id, book_id, started_at, ended_at, total_active_time, pages_read, state FROM reading_sessions");
-      for (const session of sessions) {
-        await localDB.execute(
-          "INSERT OR IGNORE INTO reading_sessions (id, book_id, started_at, ended_at, total_active_time, pages_read, state) VALUES (?, ?, ?, ?, ?, ?, ?)",
-          [
-            session.id, session.book_id, session.started_at, session.ended_at,
-            session.total_active_time, session.pages_read, session.state,
-          ],
-        );
-      }
-      // Drop from main DB
-      await mainDB.execute("DROP TABLE IF EXISTS reading_sessions");
-    } catch {
-      // Migration error — non-fatal
     }
   }
 
@@ -769,9 +741,11 @@ export async function deleteBook(id: string): Promise<void> {
   // Delete bookmarks
   await database.execute("DELETE FROM bookmarks WHERE book_id = ?", [id]);
 
-  // Delete reading sessions and chunks from local DB
+  // Delete reading sessions
+  await database.execute("DELETE FROM reading_sessions WHERE book_id = ?", [id]);
+
+  // Delete chunks from local DB
   const localDatabase = await getLocalDB();
-  await localDatabase.execute("DELETE FROM reading_sessions WHERE book_id = ?", [id]);
   await localDatabase.execute("DELETE FROM chunks WHERE book_id = ?", [id]);
 
   // Finally, delete the book itself
@@ -1320,7 +1294,7 @@ export async function insertMessage(message: Message): Promise<void> {
 // --- Reading Sessions ---
 
 export async function getReadingSessions(bookId: string): Promise<ReadingSession[]> {
-  const database = await getLocalDB();
+  const database = await getDB();
   const rows = await database.select<{
     id: string;
     book_id: string;
@@ -1345,7 +1319,7 @@ export async function getReadingSessionsByDateRange(
   startDate: Date,
   endDate: Date,
 ): Promise<ReadingSession[]> {
-  const database = await getLocalDB();
+  const database = await getDB();
   const rows = await database.select<{
     id: string;
     book_id: string;
@@ -1370,9 +1344,10 @@ export async function getReadingSessionsByDateRange(
 }
 
 export async function insertReadingSession(session: ReadingSession): Promise<void> {
-  const database = await getLocalDB();
+  const database = await getDB();
+  const now = Date.now();
   await database.execute(
-    "INSERT INTO reading_sessions (id, book_id, started_at, ended_at, total_active_time, pages_read, state) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO reading_sessions (id, book_id, started_at, ended_at, total_active_time, pages_read, state, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     [
       session.id,
       session.bookId,
@@ -1381,6 +1356,7 @@ export async function insertReadingSession(session: ReadingSession): Promise<voi
       session.totalActiveTime,
       session.pagesRead,
       session.state,
+      now,
     ],
   );
 }
@@ -1389,7 +1365,7 @@ export async function updateReadingSession(
   id: string,
   updates: Partial<ReadingSession>,
 ): Promise<void> {
-  const database = await getLocalDB();
+  const database = await getDB();
   const sets: string[] = [];
   const values: unknown[] = [];
 
@@ -1412,6 +1388,8 @@ export async function updateReadingSession(
 
   if (sets.length === 0) return;
 
+  sets.push("updated_at = ?");
+  values.push(Date.now());
   values.push(id);
   await database.execute(`UPDATE reading_sessions SET ${sets.join(", ")} WHERE id = ?`, values);
 }
@@ -1448,9 +1426,10 @@ export async function getChunks(bookId: string): Promise<Chunk[]> {
 
 export async function insertChunks(chunks: Chunk[]): Promise<void> {
   const database = await getLocalDB();
+  const now = Date.now();
   for (const chunk of chunks) {
     await database.execute(
-      "INSERT INTO chunks (id, book_id, chapter_index, chapter_title, content, token_count, start_cfi, end_cfi, segment_cfis, embedding) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO chunks (id, book_id, chapter_index, chapter_title, content, token_count, start_cfi, end_cfi, segment_cfis, embedding, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       [
         chunk.id,
         chunk.bookId,
@@ -1462,6 +1441,7 @@ export async function insertChunks(chunks: Chunk[]): Promise<void> {
         chunk.endCfi || null,
         chunk.segmentCfis ? JSON.stringify(chunk.segmentCfis) : null,
         serializeEmbedding(chunk.embedding),
+        now,
       ],
     );
   }

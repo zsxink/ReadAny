@@ -64,8 +64,8 @@ export function SyncPage() {
   const handleTest = async () => {
     setStatus("testing");
     try {
-      await testWebDavConnection(url, username, password);
-      setStatus("success");
+      const ok = await testWebDavConnection(url, username, password);
+      setStatus(ok ? "success" : "error");
     } catch {
       setStatus("error");
     }

@@ -38,6 +38,7 @@ export class WebDavClient {
       body?: string | Uint8Array | ArrayBuffer;
       headers?: Record<string, string>;
       contentType?: string;
+      timeoutMs?: number;
     } = {},
   ): Promise<Response> {
     const platform = getPlatformService();
@@ -59,6 +60,7 @@ export class WebDavClient {
         headers,
         body: options.body as BodyInit | undefined,
         allowInsecure: this.allowInsecure,
+        timeoutMs: options.timeoutMs,
       });
       const elapsed = Date.now() - startTime;
       console.log(
@@ -74,13 +76,25 @@ export class WebDavClient {
 
   /** Test if the server is reachable and credentials are valid */
   async ping(): Promise<void> {
-    const resp = await this.request("PROPFIND", "/", {
+    // Prefer OPTIONS for connectivity/auth checks because some servers (including
+    // our local test server after its backing data dir is deleted) may return 404
+    // for PROPFIND / even though the server is reachable and sync can recreate data.
+    const optionsResp = await this.request("OPTIONS", "/", {
+      timeoutMs: 10_000,
+    });
+    if (optionsResp.ok) {
+      return;
+    }
+
+    // Fall back to PROPFIND for servers that don't expose OPTIONS cleanly.
+    const propfindResp = await this.request("PROPFIND", "/", {
       headers: { Depth: "0" },
       body: '<?xml version="1.0"?><D:propfind xmlns:D="DAV:"><D:prop><D:resourcetype/></D:prop></D:propfind>',
       contentType: "application/xml",
+      timeoutMs: 10_000,
     });
-    if (!resp.ok && resp.status !== 207) {
-      throw new Error(`WebDAV ping failed: ${resp.status} ${resp.statusText}`);
+    if (!propfindResp.ok && propfindResp.status !== 207 && propfindResp.status !== 404) {
+      throw new Error(`WebDAV ping failed: ${propfindResp.status} ${propfindResp.statusText}`);
     }
   }
 
@@ -166,11 +180,20 @@ export class WebDavClient {
     }
   }
 
-  /** Check if a resource exists (HEAD) */
+  /** Check if a resource exists (try HEAD first, fallback to PROPFIND Depth 0) */
   async exists(path: string): Promise<boolean> {
     try {
       const resp = await this.request("HEAD", path);
-      return resp.ok;
+      if (resp.ok) return true;
+      if (resp.status === 405) {
+        const resp = await this.request("PROPFIND", path, {
+          headers: { Depth: "0" },
+          body: '<?xml version="1.0"?><D:propfind xmlns:D="DAV:"><D:prop><D:resourcetype/></D:prop></D:propfind>',
+          contentType: "application/xml",
+        });
+        return resp.ok || resp.status === 207;
+      }
+      return false;
     } catch {
       return false;
     }

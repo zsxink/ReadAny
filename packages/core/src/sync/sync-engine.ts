@@ -365,7 +365,7 @@ async function parallelLimit<T>(tasks: (() => Promise<T>)[], limit: number): Pro
  * Sync book files and covers between local and remote.
  * Files are downloaded in parallel (up to 8 concurrent downloads) for better performance.
  */
-async function syncFiles(
+export async function syncFiles(
   backend: ISyncBackend,
   onProgress?: (progress: import("./sync-types").SyncProgress) => void,
 ): Promise<{
@@ -386,19 +386,20 @@ async function syncFiles(
     file_path: string;
     file_hash: string;
     cover_url: string;
-  }>("SELECT id, file_path, file_hash, cover_url FROM books", []);
+    title: string;
+  }>("SELECT id, file_path, file_hash, cover_url, title FROM books", []);
 
   const appDataDir = await adapter.getAppDataDir();
 
   // --- Pre-compute all local paths and remote names ---
   type BookFileInfo = {
-    book: { id: string; file_path: string; file_hash: string; cover_url: string };
+    book: { id: string; file_path: string; file_hash: string; cover_url: string; title: string };
     localPath: string;
     remoteName: string;
     ext: string;
   };
   type CoverFileInfo = {
-    book: { id: string; cover_url: string };
+    book: { id: string; cover_url: string; title: string };
     coverLocalPath: string;
     coverRemoteName: string;
   };
@@ -449,24 +450,25 @@ async function syncFiles(
   const downloadTasks: (() => Promise<boolean>)[] = [];
 
   // --- Build book file tasks ---
-  for (const { localPath, remoteName } of bookFileInfos) {
+  for (const { book, localPath, remoteName } of bookFileInfos) {
     const localExists = localExistsMap.get(localPath) ?? false;
 
     // Upload if not on remote and exists locally
     if (!remoteFileNames.has(remoteName) && localExists) {
       uploadTasks.push(async () => {
         const taskStart = Date.now();
+        const bookTitle = book.title || "未知书籍";
         try {
-          console.log(`[Sync] 📤 Uploading book: ${remoteName}`);
+          console.log(`[Sync] 📤 Uploading book: ${bookTitle} (${remoteName})`);
           const data = await adapter.readFileBytes(localPath);
           const sizeMB = (data.length / 1024 / 1024).toFixed(2);
           await backend.put(`${REMOTE_FILES}/${remoteName}`, data);
           console.log(
-            `[Sync] ✓ Uploaded ${remoteName} (${sizeMB} MB) in ${Date.now() - taskStart}ms`,
+            `[Sync] ✓ Uploaded "${bookTitle}" (${sizeMB} MB) in ${Date.now() - taskStart}ms`,
           );
           return true;
         } catch (e) {
-          console.log(`[Sync] ✗ Failed to upload ${remoteName}: ${e}`);
+          console.log(`[Sync] ✗ Failed to upload "${bookTitle}": ${e}`);
           return false;
         }
       });
@@ -485,7 +487,8 @@ async function syncFiles(
       try {
         const { updateBook } = await import("../db/database");
         await updateBook(book.id, { syncStatus: "remote" });
-        console.log(`[Sync] Marked book ${book.id} as remote (on-demand download)`);
+        const bookTitle = book.title || "未知书籍";
+        console.log(`[Sync] Marked "${bookTitle}" as remote (on-demand download)`);
       } catch (e) {
         console.warn(`[Sync] Failed to mark book as remote: ${e}`);
       }
@@ -493,24 +496,25 @@ async function syncFiles(
   }
 
   // --- Build cover tasks ---
-  for (const { coverLocalPath, coverRemoteName } of coverFileInfos) {
+  for (const { book, coverLocalPath, coverRemoteName } of coverFileInfos) {
     const localExists = localExistsMap.get(coverLocalPath) ?? false;
 
     // Upload cover if not on remote
     if (!remoteCoverNames.has(coverRemoteName) && localExists) {
       uploadTasks.push(async () => {
         const taskStart = Date.now();
+        const bookTitle = book.title || "未知书籍";
         try {
-          console.log(`[Sync] 📤 Uploading cover: ${coverRemoteName}`);
+          console.log(`[Sync] 📤 Uploading cover: ${bookTitle} (${coverRemoteName})`);
           const data = await adapter.readFileBytes(coverLocalPath);
           const sizeKB = (data.length / 1024).toFixed(2);
           await backend.put(`${REMOTE_COVERS}/${coverRemoteName}`, data);
           console.log(
-            `[Sync] ✓ Uploaded ${coverRemoteName} (${sizeKB} KB) in ${Date.now() - taskStart}ms`,
+            `[Sync] ✓ Uploaded cover "${bookTitle}" (${sizeKB} KB) in ${Date.now() - taskStart}ms`,
           );
           return true;
         } catch (e) {
-          console.log(`[Sync] ✗ Failed to upload ${coverRemoteName}: ${e}`);
+          console.log(`[Sync] ✗ Failed to upload cover "${bookTitle}": ${e}`);
           return false;
         }
       });
@@ -520,19 +524,20 @@ async function syncFiles(
     if (!localExists && remoteCoverNames.has(coverRemoteName)) {
       downloadTasks.push(async () => {
         const taskStart = Date.now();
+        const bookTitle = book.title || "未知书籍";
         try {
-          console.log(`[Sync] 📥 Downloading cover: ${coverRemoteName}`);
+          console.log(`[Sync] 📥 Downloading cover: ${bookTitle} (${coverRemoteName})`);
           const data = await backend.get(`${REMOTE_COVERS}/${coverRemoteName}`);
           const sizeKB = (data.length / 1024).toFixed(2);
           const dir = coverLocalPath.substring(0, coverLocalPath.lastIndexOf("/"));
           if (dir) await adapter.ensureDir(dir);
           await adapter.writeFileBytes(coverLocalPath, data);
           console.log(
-            `[Sync] ✓ Downloaded ${coverRemoteName} (${sizeKB} KB) in ${Date.now() - taskStart}ms`,
+            `[Sync] ✓ Downloaded cover "${bookTitle}" (${sizeKB} KB) in ${Date.now() - taskStart}ms`,
           );
           return true;
         } catch (e) {
-          console.log(`[Sync] ✗ Failed to download ${coverRemoteName}: ${e}`);
+          console.log(`[Sync] ✗ Failed to download cover "${bookTitle}": ${e}`);
           return false;
         }
       });
@@ -725,6 +730,7 @@ export async function downloadBookFile(
   onProgress?: (progress: { downloaded: number; total: number }) => void,
 ): Promise<boolean> {
   const adapter = getSyncAdapter();
+  const { updateBook } = await import("../db/database");
 
   try {
     // Determine remote name
@@ -736,6 +742,7 @@ export async function downloadBookFile(
     const exists = await backend.exists(remotePath);
     if (!exists) {
       console.log(`[Sync] Book file not found on remote: ${remotePath}`);
+      await updateBook(bookId, { syncStatus: "remote" });
       return false;
     }
 
@@ -761,13 +768,13 @@ export async function downloadBookFile(
     onProgress?.({ downloaded: 100, total: 100 });
 
     // Update book sync status
-    const { updateBook } = await import("../db/database");
     await updateBook(bookId, { syncStatus: "local" });
 
     console.log(`[Sync] ✓ Book ${bookId} downloaded and marked as local`);
     return true;
   } catch (e) {
     console.error(`[Sync] Failed to download book ${bookId}:`, e);
+    await updateBook(bookId, { syncStatus: "remote" });
     return false;
   }
 }

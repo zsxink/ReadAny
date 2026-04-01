@@ -14,13 +14,14 @@ import type { ISyncBackend } from "./sync-backend";
 
 /** Tables included in sync, with their primary key and timestamp column */
 const SYNC_TABLES = [
-  { name: "books",      pk: "id", timestampCol: "updated_at" },
-  { name: "highlights", pk: "id", timestampCol: "updated_at" },
-  { name: "notes",      pk: "id", timestampCol: "updated_at" },
-  { name: "bookmarks",  pk: "id", timestampCol: "updated_at" },
-  { name: "threads",    pk: "id", timestampCol: "updated_at" },
-  { name: "messages",   pk: "id", timestampCol: "created_at" },
-  { name: "skills",     pk: "id", timestampCol: "updated_at" },
+  { name: "books",             pk: "id", timestampCol: "updated_at" },
+  { name: "highlights",        pk: "id", timestampCol: "updated_at" },
+  { name: "notes",             pk: "id", timestampCol: "updated_at" },
+  { name: "bookmarks",         pk: "id", timestampCol: "updated_at" },
+  { name: "threads",           pk: "id", timestampCol: "updated_at" },
+  { name: "messages",          pk: "id", timestampCol: "created_at" },
+  { name: "skills",            pk: "id", timestampCol: "updated_at" },
+  { name: "reading_sessions",  pk: "id", timestampCol: "updated_at" },
 ] as const;
 
 /** Remote directory for per-device sync files */
@@ -238,10 +239,10 @@ async function listRemoteDeviceFiles(
 
 export async function runSimpleSync(
   backend: ISyncBackend,
-  onProgress?: (message: string) => void,
-): Promise<{ success: boolean; changes: number; error?: string }> {
+  onProgress?: (progress: { phase: "database" | "files"; operation: "upload" | "download"; message: string }) => void,
+): Promise<{ success: boolean; changes: number; filesUploaded: number; filesDownloaded: number; error?: string }> {
   try {
-    onProgress?.("准备同步...");
+    onProgress?.({ phase: "database", operation: "upload", message: "准备同步..." });
 
     const lastSync = await getLastSyncTimestamp();
     const localDeviceId = await getDeviceId();
@@ -255,10 +256,11 @@ export async function runSimpleSync(
     }
 
     // 2. Pull and apply all other devices' changesets
-    onProgress?.("获取其他设备的变更...");
+    onProgress?.({ phase: "database", operation: "download", message: "获取其他设备的变更..." });
     const remoteFiles = await listRemoteDeviceFiles(backend);
 
     let totalApplied = 0;
+    let remoteSyncError: string | null = null;
     for (const { deviceId, path } of remoteFiles) {
       // Skip our own file
       if (deviceId === localDeviceId) continue;
@@ -267,53 +269,75 @@ export async function runSimpleSync(
         const payload = await backend.getJSON<DeviceSyncPayload>(path);
         if (!payload) continue;
 
-        // Only apply changes newer than our last sync
-        // (avoids re-applying already-seen changes on every sync)
-        if (payload.timestamp <= lastSync) {
-          onProgress?.(`跳过设备 ${deviceId.slice(0, 8)}（无新变更）`);
-          continue;
-        }
-
-        onProgress?.(`应用设备 ${deviceId.slice(0, 8)} 的变更...`);
+        onProgress?.({ phase: "database", operation: "download", message: `应用设备 ${deviceId.slice(0, 8)} 的变更...` });
         const result = await applyChanges(payload);
         totalApplied += result.applied;
       } catch (e) {
-        // Non-fatal: skip this device's file and continue
-        console.warn(`[SimpleSync] Failed to apply changes from device ${deviceId}:`, e);
+        const error = e instanceof Error ? e.message : String(e);
+        remoteSyncError = `Failed to apply changes from device ${deviceId}: ${error}`;
+        console.warn(`[SimpleSync] ${remoteSyncError}`);
+        break;
       }
     }
 
-    // 3. Collect and push local changes
-    onProgress?.("收集本地变更...");
-    const localPayload = await collectChanges(lastSync);
+    if (remoteSyncError) {
+      onProgress?.({ phase: "database", operation: "download", message: "同步中止：远端数据读取失败" });
+      return { success: false, changes: totalApplied, filesUploaded: 0, filesDownloaded: 0, error: remoteSyncError };
+    }
 
-    const changeCount = Object.values(localPayload.tables).reduce(
+    // 3. Collect and push local changes
+    onProgress?.({ phase: "database", operation: "upload", message: "收集本地变更..." });
+    const localDelta = await collectChanges(lastSync);
+    const snapshotPayload = await collectChanges(0);
+
+    const changeCount = Object.values(localDelta.tables).reduce(
       (sum, t) => sum + t.records.length + t.deletedIds.length,
       0,
     );
 
     if (changeCount > 0) {
-      onProgress?.(`上传 ${changeCount} 条变更...`);
-      await backend.putJSON(deviceSyncPath(localDeviceId), localPayload);
+      onProgress?.({ phase: "database", operation: "upload", message: `上传 ${changeCount} 条变更...` });
+      await backend.putJSON(deviceSyncPath(localDeviceId), snapshotPayload);
     } else {
-      // Still write our file to update the timestamp so other devices know we're current
-      // (only if we haven't written recently — avoid unnecessary writes)
+      // Keep a full snapshot on the server so devices that sync later can still
+      // bootstrap from this device even when there are no new local changes.
       const existing = await backend.getJSON<DeviceSyncPayload>(
         deviceSyncPath(localDeviceId),
       ).catch(() => null);
       if (!existing || now - existing.timestamp > 5 * 60 * 1000) {
-        await backend.putJSON(deviceSyncPath(localDeviceId), localPayload);
+        await backend.putJSON(deviceSyncPath(localDeviceId), snapshotPayload);
       }
     }
 
-    // 4. Update last sync timestamp
+    // 4. Sync book files and covers
+    let filesUploaded = 0;
+    let filesDownloaded = 0;
+    onProgress?.({ phase: "files", operation: "upload", message: "同步书籍和封面文件..." });
+    try {
+      const { syncFiles } = await import("./sync-engine");
+      const fileResult = await syncFiles(backend, (progress) => {
+        onProgress?.({
+          phase: "files",
+          operation: progress.operation,
+          message: progress.message || "同步文件...",
+        });
+      });
+      filesUploaded = fileResult.filesUploaded;
+      filesDownloaded = fileResult.filesDownloaded;
+      console.log(`[SimpleSync] File sync: ${filesUploaded} uploaded, ${filesDownloaded} downloaded`);
+    } catch (e) {
+      console.warn("[SimpleSync] File sync failed (non-fatal):", e);
+      // Don't fail the whole sync if file sync fails
+    }
+
+    // 5. Update last sync timestamp
     await setLastSyncTimestamp(now);
 
-    onProgress?.("同步完成");
-    return { success: true, changes: changeCount + totalApplied };
+    onProgress?.({ phase: "database", operation: "upload", message: "同步完成" });
+    return { success: true, changes: changeCount + totalApplied, filesUploaded, filesDownloaded };
   } catch (e) {
     const error = e instanceof Error ? e.message : String(e);
     console.error("[SimpleSync] Sync failed:", error);
-    return { success: false, changes: 0, error };
+    return { success: false, changes: 0, filesUploaded: 0, filesDownloaded: 0, error };
   }
 }
