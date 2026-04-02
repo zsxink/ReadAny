@@ -12,17 +12,27 @@
 import { ensureNoTransaction, getDB } from "../db/database";
 import type { ISyncBackend } from "./sync-backend";
 
+interface SyncTableConfig {
+  name: string;
+  pk: string;
+  timestampCol: string;
+  excludeColumns?: readonly string[];
+}
+
 /** Tables included in sync, with their primary key and timestamp column */
-const SYNC_TABLES = [
-  { name: "books",             pk: "id", timestampCol: "updated_at" },
+const SYNC_TABLES: SyncTableConfig[] = [
+  // is_vectorized and vectorize_progress are local-only (chunks live in readany_local.db)
+  { name: "books",             pk: "id", timestampCol: "updated_at", excludeColumns: ["is_vectorized", "vectorize_progress"] },
   { name: "highlights",        pk: "id", timestampCol: "updated_at" },
   { name: "notes",             pk: "id", timestampCol: "updated_at" },
   { name: "bookmarks",         pk: "id", timestampCol: "updated_at" },
   { name: "threads",           pk: "id", timestampCol: "updated_at" },
   { name: "messages",          pk: "id", timestampCol: "created_at" },
   { name: "skills",            pk: "id", timestampCol: "updated_at" },
+  { name: "tags",              pk: "id", timestampCol: "updated_at" },
+  { name: "book_tags",         pk: "id", timestampCol: "updated_at" },
   { name: "reading_sessions",  pk: "id", timestampCol: "updated_at" },
-] as const;
+];
 
 /** Remote directory for per-device sync files */
 const SYNC_DIR = "/readany/sync";
@@ -100,11 +110,28 @@ export async function collectChanges(since: number): Promise<DeviceSyncPayload> 
     tables: {},
   };
 
-  for (const { name, timestampCol } of SYNC_TABLES) {
-    const records = await db.select<Record<string, unknown>>(
-      `SELECT * FROM ${name} WHERE ${timestampCol} > ?`,
-      [since],
-    );
+  for (const { name, timestampCol, excludeColumns } of SYNC_TABLES) {
+    const exclude = excludeColumns ?? [];
+
+    // Build column list — SELECT * then strip excluded columns client-side,
+    // or use explicit column list when exclusions exist
+    let records: Record<string, unknown>[];
+    if (exclude.length > 0) {
+      const allRows = await db.select<Record<string, unknown>>(
+        `SELECT * FROM ${name} WHERE ${timestampCol} > ?`,
+        [since],
+      );
+      records = allRows.map((row) => {
+        const filtered = { ...row };
+        for (const col of exclude) delete filtered[col];
+        return filtered;
+      });
+    } else {
+      records = await db.select<Record<string, unknown>>(
+        `SELECT * FROM ${name} WHERE ${timestampCol} > ?`,
+        [since],
+      );
+    }
 
     let deletedIds: string[] = [];
     try {
@@ -147,6 +174,7 @@ export async function applyChanges(
       if (!tableInfo) continue;
 
       const { pk, timestampCol } = tableInfo;
+      const exclude = tableInfo.excludeColumns ?? [];
 
       // Apply upserts (last-write-wins by timestamp)
       for (const record of tableData.records) {
@@ -158,16 +186,21 @@ export async function applyChanges(
           [pkValue],
         );
 
+        // Strip locally-owned columns before upserting
+        const safeRecord = exclude.length > 0
+          ? Object.fromEntries(Object.entries(record).filter(([k]) => !exclude.includes(k)))
+          : record;
+
         if (existing.length > 0) {
           const localTs = existing[0][timestampCol] as number;
           if (remoteTs > localTs) {
-            await upsertRecord(db, tableName, record, pk);
+            await upsertRecord(db, tableName, safeRecord, pk);
             applied++;
           } else {
             skipped++;
           }
         } else {
-          await upsertRecord(db, tableName, record, pk);
+          await upsertRecord(db, tableName, safeRecord, pk);
           applied++;
         }
       }
@@ -249,10 +282,12 @@ export async function runSimpleSync(
     const now = Date.now();
 
     // 1. Ensure remote sync directory exists
+    onProgress?.("检查远程目录...");
     try {
       await backend.ensureDirectories();
-    } catch {
-      // Directory may already exist
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      throw new Error(`无法创建远程同步目录，请检查存储服务配置和权限：${msg}`);
     }
 
     // 2. Pull and apply all other devices' changesets
@@ -295,18 +330,23 @@ export async function runSimpleSync(
       0,
     );
 
-    if (changeCount > 0) {
-      onProgress?.({ phase: "database", operation: "upload", message: `上传 ${changeCount} 条变更...` });
-      await backend.putJSON(deviceSyncPath(localDeviceId), snapshotPayload);
-    } else {
-      // Keep a full snapshot on the server so devices that sync later can still
-      // bootstrap from this device even when there are no new local changes.
-      const existing = await backend.getJSON<DeviceSyncPayload>(
-        deviceSyncPath(localDeviceId),
-      ).catch(() => null);
-      if (!existing || now - existing.timestamp > 5 * 60 * 1000) {
+    try {
+      if (changeCount > 0) {
+        onProgress?.({ phase: "database", operation: "upload", message: `上传 ${changeCount} 条变更...` });
         await backend.putJSON(deviceSyncPath(localDeviceId), snapshotPayload);
+      } else {
+        // Keep a full snapshot on the server so devices that sync later can still
+        // bootstrap from this device even when there are no new local changes.
+        const existing = await backend.getJSON<DeviceSyncPayload>(
+          deviceSyncPath(localDeviceId),
+        ).catch(() => null);
+        if (!existing || now - existing.timestamp > 5 * 60 * 1000) {
+          await backend.putJSON(deviceSyncPath(localDeviceId), snapshotPayload);
+        }
       }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      throw new Error(`上传本地变更失败，请检查网络连接或存储服务权限：${msg}`);
     }
 
     // 4. Sync book files and covers

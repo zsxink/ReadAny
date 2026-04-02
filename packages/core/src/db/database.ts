@@ -221,15 +221,18 @@ export async function initDatabase(): Promise<void> {
   await database.execute(`
     CREATE TABLE IF NOT EXISTS tags (
       id TEXT PRIMARY KEY,
-      name TEXT NOT NULL UNIQUE
+      name TEXT NOT NULL UNIQUE,
+      updated_at INTEGER NOT NULL DEFAULT 0
     )
   `);
 
   await database.execute(`
     CREATE TABLE IF NOT EXISTS book_tags (
+      id TEXT PRIMARY KEY,
       book_id TEXT NOT NULL,
       tag_id TEXT NOT NULL,
-      PRIMARY KEY (book_id, tag_id),
+      updated_at INTEGER NOT NULL DEFAULT 0,
+      UNIQUE (book_id, tag_id),
       FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE,
       FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
     )
@@ -404,6 +407,39 @@ export async function initDatabase(): Promise<void> {
     );
   } catch {
     // Column already exists
+  }
+
+  // Migration 10: Add updated_at and id to tags/book_tags for sync; add updated_at to reading_sessions
+  try {
+    await database.execute("ALTER TABLE tags ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0");
+  } catch {
+    // Column already exists
+  }
+  try {
+    await database.execute("ALTER TABLE book_tags ADD COLUMN id TEXT");
+    // Backfill id for existing rows (book_id || '-' || tag_id as stable key)
+    await database.execute(
+      "UPDATE book_tags SET id = book_id || '-' || tag_id WHERE id IS NULL",
+    );
+  } catch {
+    // Column already exists
+  }
+  try {
+    await database.execute(
+      "ALTER TABLE book_tags ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",
+    );
+  } catch {
+    // Column already exists
+  }
+  try {
+    await database.execute(
+      "ALTER TABLE reading_sessions ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",
+    );
+    await database.execute(
+      "UPDATE reading_sessions SET updated_at = started_at WHERE updated_at = 0",
+    );
+  } catch {
+    // Column already exists or table doesn't exist yet
   }
 
   dbInitialized = true;
@@ -1390,6 +1426,8 @@ export async function updateReadingSession(
 
   sets.push("updated_at = ?");
   values.push(Date.now());
+
+
   values.push(id);
   await database.execute(`UPDATE reading_sessions SET ${sets.join(", ")} WHERE id = ?`, values);
 }
