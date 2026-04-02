@@ -7,7 +7,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./styles/globals.css";
-import { setEmbeddingWorkerFactory } from "@readany/core/ai";
+import { setEmbeddingWorkerFactory, setStreamingFetch } from "@readany/core/ai";
 import { BUILTIN_EMBEDDING_MODELS } from "@readany/core/ai/builtin-embedding-models";
 import { onLibraryChanged } from "@readany/core/events/library-events";
 import { setVectorDB } from "@readany/core/rag";
@@ -17,11 +17,15 @@ import { TauriVectorDB } from "./lib/tauri-vector-db";
 import { useLibraryStore } from "./stores/library-store";
 import { flushAllWrites } from "./stores/persist";
 import { useVectorModelStore } from "./stores/vector-model-store";
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 
 // Register platform service before any database/core operations
 const tauriPlatform = new TauriPlatformService();
 tauriPlatform.initSync().catch(console.error);
 setPlatformService(tauriPlatform);
+
+// Set Tauri fetch for streaming AI requests (avoids CORS issues)
+setStreamingFetch(tauriFetch as typeof globalThis.fetch);
 
 // Register embedding worker factory for Vite/Tauri
 // Must use `new URL(...)` + explicit `{ type: "module" }` so that
