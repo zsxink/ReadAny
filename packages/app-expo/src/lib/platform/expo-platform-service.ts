@@ -142,9 +142,54 @@ export class ExpoPlatformService implements IPlatformService {
 
   async loadDatabase(path: string): Promise<IDatabase> {
     const SQLite = await import("expo-sqlite");
-    // expo-sqlite uses db name, not full path
-    const dbName = path.replace(/^.*[\\/]/, "").replace("sqlite:", "");
-    const db = await SQLite.openDatabaseAsync(dbName);
+    const normalizedPath = path.replace("sqlite:", "");
+    const isExternalPath =
+      normalizedPath.includes("/") ||
+      normalizedPath.includes("\\") ||
+      normalizedPath.startsWith("file:");
+
+    if (!isExternalPath) {
+      const db = await SQLite.openDatabaseAsync(normalizedPath);
+
+      return {
+        async execute(sql: string, params?: unknown[]): Promise<void> {
+          await db.runAsync(sql, ...((params as (string | number | null)[]) ?? []));
+        },
+        async select<T>(sql: string, params?: unknown[]): Promise<T[]> {
+          const rows = await db.getAllAsync(sql, ...((params as (string | number | null)[]) ?? []));
+          return rows as T[];
+        },
+        async close(): Promise<void> {
+          await db.closeAsync();
+        },
+      };
+    }
+
+    const sqliteDirPath = `${Paths.document.uri.replace(/\/$/, "")}/SQLite`;
+    const sqliteDir = new Directory(sqliteDirPath);
+    if (!sqliteDir.exists) {
+      sqliteDir.create({ intermediates: true });
+    }
+
+    const tempDbName = `_external_${Date.now()}_${Math.random().toString(36).slice(2)}.db`;
+    const tempDbPath = `${sqliteDirPath}/${tempDbName}`;
+    const sourceFile = new File(path);
+    const tempFile = new File(tempDbPath);
+
+    if (tempFile.exists) {
+      tempFile.delete();
+    }
+    sourceFile.copy(tempFile);
+
+    let db: Awaited<ReturnType<typeof SQLite.openDatabaseAsync>>;
+    try {
+      db = await SQLite.openDatabaseAsync(tempDbName);
+    } catch (error) {
+      if (tempFile.exists) {
+        tempFile.delete();
+      }
+      throw error;
+    }
 
     return {
       async execute(sql: string, params?: unknown[]): Promise<void> {
@@ -155,7 +200,18 @@ export class ExpoPlatformService implements IPlatformService {
         return rows as T[];
       },
       async close(): Promise<void> {
-        await db.closeAsync();
+        try {
+          await db.closeAsync();
+        } finally {
+          const destinationFile = new File(path);
+          if (destinationFile.exists) {
+            destinationFile.delete();
+          }
+          tempFile.copy(destinationFile);
+          if (tempFile.exists) {
+            tempFile.delete();
+          }
+        }
       },
     };
   }

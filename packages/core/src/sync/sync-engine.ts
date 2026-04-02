@@ -3,7 +3,8 @@
  * Supports WebDAV, S3, and LAN sync through ISyncBackend interface.
  */
 
-import { getDB } from "../db/database";
+import { clearVectorizationFlagsWithoutLocalChunks, getDB } from "../db/database";
+import { getPlatformService } from "../services/platform";
 import { getSyncAdapter } from "./sync-adapter";
 import type { ISyncBackend } from "./sync-backend";
 import {
@@ -141,6 +142,15 @@ async function executeUpload(
     const vacuumStart = Date.now();
     await adapter.vacuumInto(snapshotPath);
     console.log(`[Sync] ✓ Snapshot created in ${Date.now() - vacuumStart}ms`);
+
+    const snapshotDb = await getPlatformService().loadDatabase(snapshotPath);
+    try {
+      await snapshotDb.execute(
+        "UPDATE books SET is_vectorized = 0, vectorize_progress = 0 WHERE is_vectorized != 0 OR vectorize_progress != 0",
+      );
+    } finally {
+      await snapshotDb.close();
+    }
 
     // 2. Read snapshot into memory
     const readStart = Date.now();
@@ -283,7 +293,9 @@ async function executeDownload(
     console.log("[Sync] Reopening database...");
     await adapter.reopenDatabase();
 
-    // 7. Verify reopened DB works
+    // 7. Clear any stale vectorization flags that refer to missing local chunks,
+    // then verify the reopened DB works.
+    await clearVectorizationFlagsWithoutLocalChunks();
     const db = await getDB();
     await db.select<unknown[]>("SELECT COUNT(*) as c FROM books", []);
 

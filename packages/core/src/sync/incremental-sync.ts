@@ -46,9 +46,21 @@ export interface SyncDelta {
   };
 }
 
+interface SyncTableConfig {
+  name: string;
+  pk: string;
+  timestampCol: string;
+  excludeColumns?: string[];
+}
+
 /** Tables that support incremental sync — matches database.ts Migration 7 syncTables */
-const SYNC_TABLES = [
-  { name: "books", pk: "id", timestampCol: "updated_at" },
+const SYNC_TABLES: SyncTableConfig[] = [
+  {
+    name: "books",
+    pk: "id",
+    timestampCol: "updated_at",
+    excludeColumns: ["is_vectorized", "vectorize_progress"],
+  },
   { name: "bookmarks", pk: "id", timestampCol: "updated_at" },
   { name: "highlights", pk: "id", timestampCol: "updated_at" },
   { name: "notes", pk: "id", timestampCol: "updated_at" },
@@ -113,11 +125,20 @@ export async function collectLocalChanges(since: number): Promise<SyncDelta> {
     tables: {},
   };
 
-  for (const { name, timestampCol } of SYNC_TABLES) {
+  for (const { name, timestampCol, excludeColumns } of SYNC_TABLES) {
     const rows = await db.select<Record<string, unknown>>(
       `SELECT * FROM ${name} WHERE ${timestampCol} > ?`,
       [since],
     );
+    const sanitizedRows = excludeColumns?.length
+      ? rows.map((row) => {
+          const nextRow = { ...row };
+          for (const column of excludeColumns) {
+            delete nextRow[column];
+          }
+          return nextRow;
+        })
+      : rows;
 
     // Query tombstones for this table
     let deletedIds: string[] = [];
@@ -134,7 +155,7 @@ export async function collectLocalChanges(since: number): Promise<SyncDelta> {
     if (rows.length > 0 || deletedIds.length > 0) {
       delta.tables[name as keyof typeof delta.tables] = {
         table: name,
-        records: rows,
+        records: sanitizedRows,
         deletedIds,
       };
     }

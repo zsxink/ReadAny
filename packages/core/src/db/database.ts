@@ -473,9 +473,18 @@ export async function initLocalDatabase(): Promise<void> {
       start_cfi TEXT,
       end_cfi TEXT,
       segment_cfis TEXT,
-      embedding BLOB
+      embedding BLOB,
+      updated_at INTEGER NOT NULL DEFAULT 0
     )
   `);
+
+  try {
+    await database.execute(
+      "ALTER TABLE chunks ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",
+    );
+  } catch {
+    // Column already exists on upgraded installs.
+  }
 
   // Create indexes
   await database.execute("CREATE INDEX IF NOT EXISTS idx_chunks_book ON chunks(book_id)");
@@ -1506,6 +1515,40 @@ export async function insertChunks(chunks: Chunk[]): Promise<void> {
 export async function deleteChunks(bookId: string): Promise<void> {
   const database = await getLocalDB();
   await database.execute("DELETE FROM chunks WHERE book_id = ?", [bookId]);
+}
+
+export async function clearVectorizationFlagsWithoutLocalChunks(): Promise<void> {
+  const database = await getDB();
+  const localDatabase = await getLocalDB();
+  const rows = await localDatabase.select<{ book_id: string }>(
+    "SELECT DISTINCT book_id FROM chunks",
+  );
+  const bookIds = rows.map((row) => row.book_id).filter((bookId) => !!bookId);
+
+  if (bookIds.length === 0) {
+    await database.execute(
+      "UPDATE books SET is_vectorized = 0, vectorize_progress = 0 WHERE is_vectorized != 0 OR vectorize_progress != 0",
+    );
+    return;
+  }
+
+  const batchSize = 400;
+  const clauses: string[] = [];
+  const params: string[] = [];
+
+  for (let index = 0; index < bookIds.length; index += batchSize) {
+    const batch = bookIds.slice(index, index + batchSize);
+    clauses.push(`id NOT IN (${batch.map(() => "?").join(", ")})`);
+    params.push(...batch);
+  }
+
+  await database.execute(
+    `UPDATE books
+     SET is_vectorized = 0, vectorize_progress = 0
+     WHERE (is_vectorized != 0 OR vectorize_progress != 0)
+       AND ${clauses.join(" AND ")}`,
+    params,
+  );
 }
 
 // --- Skills ---
