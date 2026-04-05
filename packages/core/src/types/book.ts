@@ -34,6 +34,7 @@ export interface Book {
 }
 
 export type ViewMode = "paginated" | "scroll";
+export type PaginatedLayout = "single" | "double";
 
 /** Font theme preset */
 export interface FontTheme {
@@ -50,6 +51,7 @@ export interface ViewSettings {
   lineHeight: number; // 1.2-2.5
   fontTheme: string; // FontTheme id
   viewMode: ViewMode;
+  paginatedLayout: PaginatedLayout;
   pageMargin: number; // px
   paragraphSpacing: number;
 }

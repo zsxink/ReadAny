@@ -218,9 +218,11 @@ interface ReaderViewProps {
 }
 
 export function ReaderView({ bookId, tabId }: ReaderViewProps) {
+  const TOOLBAR_PIN_STORAGE_KEY = "readany-reader-toolbar-pinned";
   const readerTab = useReaderStore((s) => s.tabs[tabId]);
   const appTab = useAppStore((s) => s.tabs.find((t) => t.id === tabId));
   const viewSettings = useSettingsStore((s) => s.readSettings);
+  const updateReadSettings = useSettingsStore((s) => s.updateReadSettings);
   const setProgress = useReaderStore((s) => s.setProgress);
   const setChapter = useReaderStore((s) => s.setChapter);
   const setSelectedText = useReaderStore((s) => s.setSelectedText);
@@ -403,6 +405,10 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   const [showChat, setShowChat] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showTTS, setShowTTS] = useState(false);
+  const [isToolbarPinned, setIsToolbarPinned] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(TOOLBAR_PIN_STORAGE_KEY) === "true";
+  });
 
   // Resizable panel widths
   const chatPanel = useResizablePanel({
@@ -437,6 +443,11 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     handleMouseEnter,
     handleMouseLeave,
   } = useAutoHideControls(containerRef, 2000, keepControlsVisible);
+  const toolbarVisible = controlsVisible || isToolbarPinned;
+
+  useEffect(() => {
+    window.localStorage.setItem(TOOLBAR_PIN_STORAGE_KEY, String(isToolbarPinned));
+  }, [isToolbarPinned]);
 
   // Throttled progress save
   const throttledSaveProgress = useRef(
@@ -448,6 +459,12 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       });
     }, 5000),
   ).current;
+
+  useEffect(() => {
+    if (viewSettings.viewMode === "scroll") {
+      updateReadSettings({ viewMode: "paginated" });
+    }
+  }, [viewSettings.viewMode, updateReadSettings]);
 
   // --- Load book on mount ---
   useEffect(() => {
@@ -675,7 +692,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
           x = Math.max(padding, Math.min(x, containerW - popoverW - padding));
 
           // Calculate potential positions above and below
-          const toolbarHeight = controlsVisible ? 44 : 0;
+          const toolbarHeight = toolbarVisible ? 44 : 0;
 
           // Position above selection (y is the top of popover)
           const yAbove = firstTop - popoverH - gap;
@@ -712,7 +729,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
         setSelectedText(tabId, "", null);
       }
     },
-    [tabId, setSelectedText, controlsVisible],
+    [tabId, setSelectedText, toolbarVisible],
   );
 
   // --- Navigation (for toolbar buttons) ---
@@ -1195,7 +1212,10 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
         )}
 
         {/* Content area — takes full remaining space */}
-        <div className="relative flex flex-1 overflow-hidden">
+        <div
+          className="relative flex flex-1 overflow-hidden transition-[padding] duration-300"
+          style={{ paddingTop: isToolbarPinned ? 40 : 0 }}
+        >
           {/* Reading area — FoliateViewer */}
           <div className="relative flex-1 overflow-hidden" ref={containerRef}>
             {bookDoc ? (
@@ -1303,7 +1323,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
           {/* Floating Toolbar — overlays content area */}
           <ReaderToolbar
             tabId={tabId}
-            isVisible={controlsVisible}
+            isVisible={toolbarVisible}
             onPrev={handleNavPrev}
             onNext={handleNavNext}
             tocItems={tocItems}
@@ -1322,6 +1342,8 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
             isChatOpen={showChat}
             isTTSActive={showTTS || ttsPlayState !== "stopped"}
             isFixedLayout={isFixedLayoutFormat(bookFormat)}
+            isPinned={isToolbarPinned}
+            onTogglePinned={() => setIsToolbarPinned((prev) => !prev)}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
             getPageSnippet={() => foliateRef.current?.getVisibleText() || ""}

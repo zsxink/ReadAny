@@ -37,6 +37,7 @@ const defaultReadSettings: ReadSettings = {
   lineHeight: 1.6,
   fontTheme: "classic",
   viewMode: "paginated",
+  paginatedLayout: "double",
   pageMargin: 40,
   paragraphSpacing: 16,
 };

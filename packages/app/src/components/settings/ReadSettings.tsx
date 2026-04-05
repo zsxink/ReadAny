@@ -1,6 +1,7 @@
 /**
  * ReadSettings — reading view settings using shadcn components
  */
+import { useEffect } from "react";
 import {
   Select,
   SelectContent,
@@ -17,6 +18,12 @@ export function ReadSettingsPanel() {
   const { t, i18n } = useTranslation();
   const { readSettings, updateReadSettings } = useSettingsStore();
 
+  useEffect(() => {
+    if (readSettings.viewMode === "scroll") {
+      updateReadSettings({ viewMode: "paginated" });
+    }
+  }, [readSettings.viewMode, updateReadSettings]);
+
   return (
     <div className="space-y-6 p-4 pt-3">
       <section className="rounded-lg bg-muted/60 p-4">
@@ -25,6 +32,24 @@ export function ReadSettingsPanel() {
         <p className="mb-4 text-xs text-muted-foreground/60">{t("settings.readingNotice")}</p>
 
         <div className="space-y-5">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-foreground">{t("settings.paginatedLayout")}</span>
+            <Select
+              value={readSettings.paginatedLayout ?? "double"}
+              onValueChange={(v) =>
+                updateReadSettings({ paginatedLayout: v as "single" | "double" })
+              }
+            >
+              <SelectTrigger className="w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="single">{t("settings.singlePage")}</SelectItem>
+                <SelectItem value="double">{t("settings.doublePage")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           {/* Font Theme */}
           <div className="flex items-center justify-between">
             <span className="text-sm text-foreground">{t("settings.fontTheme")}</span>

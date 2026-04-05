@@ -12,6 +12,7 @@ import {
   List,
   MessageSquare,
   NotebookPen,
+  Pin,
   Search,
   Settings,
   Undo,
@@ -43,6 +44,8 @@ interface ReaderToolbarProps {
   isChatOpen?: boolean;
   isTTSActive?: boolean;
   isFixedLayout?: boolean;
+  isPinned?: boolean;
+  onTogglePinned?: () => void;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
   getPageSnippet?: () => string;
@@ -69,6 +72,8 @@ export function ReaderToolbar({
   isChatOpen,
   isTTSActive,
   isFixedLayout = false,
+  isPinned = false,
+  onTogglePinned,
   onMouseEnter,
   onMouseLeave,
   getPageSnippet,
@@ -220,6 +225,15 @@ export function ReaderToolbar({
           title={t("reader.search")}
         >
           <Search className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={`h-7 w-7 ${isPinned ? "bg-primary/10 text-primary" : ""}`}
+          onClick={onTogglePinned}
+          title={isPinned ? t("reader.unpinToolbar") : t("reader.pinToolbar")}
+        >
+          <Pin className="h-3.5 w-3.5" />
         </Button>
         <Button
           variant="ghost"

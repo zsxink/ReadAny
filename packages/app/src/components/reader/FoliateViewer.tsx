@@ -1079,19 +1079,40 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
       appTheme,
     ]);
 
-    // --- Apply view mode changes ---
+    // --- Apply reflow layout changes ---
     useEffect(() => {
       const view = viewRef.current;
       if (!view?.renderer) return;
       // Fixed layout doesn't support scroll mode
       if (isFixedLayout) return;
 
-      if (viewSettings.viewMode === "scroll") {
-        view.renderer.setAttribute("flow", "scrolled");
-      } else {
-        view.renderer.removeAttribute("flow");
-      }
-    }, [viewSettings.viewMode, isFixedLayout]);
+      applyReflowLayoutSettings(view, viewSettings);
+    }, [viewSettings.viewMode, viewSettings.paginatedLayout, isFixedLayout]);
+
+    useEffect(() => {
+      const handleMessage = (event: MessageEvent) => {
+        const data = event.data;
+        if (data?.type !== "iframe-wheel" || data.bookKey !== bookKey) return;
+
+        const view = viewRef.current;
+        const renderer = view?.renderer;
+        if (!renderer?.scrolled || typeof renderer.scrollBy !== "function") return;
+
+        const lineHeight = 16;
+        const pageHeight =
+          typeof renderer.clientHeight === "number" && renderer.clientHeight > 0
+            ? renderer.clientHeight
+            : window.innerHeight;
+
+        const multiplier =
+          data.deltaMode === 1 ? lineHeight : data.deltaMode === 2 ? pageHeight : 1;
+
+        renderer.scrollBy((data.deltaX ?? 0) * multiplier, (data.deltaY ?? 0) * multiplier);
+      };
+
+      window.addEventListener("message", handleMessage);
+      return () => window.removeEventListener("message", handleMessage);
+    }, [bookKey]);
 
     return (
       <div
@@ -1145,14 +1166,10 @@ function applyRendererSettings(
     renderer.setAttribute("spread", "auto");
   } else {
     // Reflowable: columns, sizes, margins
-    renderer.setAttribute("max-column-count", "2");
     renderer.setAttribute("max-inline-size", "720px");
     renderer.setAttribute("max-block-size", "1440px");
     renderer.setAttribute("gap", "5%");
-
-    if (settings.viewMode === "scroll") {
-      renderer.setAttribute("flow", "scrolled");
-    }
+    applyReflowLayoutSettings(view, settings);
   }
 
   // Enable page turn animation
@@ -1160,6 +1177,22 @@ function applyRendererSettings(
 
   // Apply CSS styles (skip font overrides for fixed layout)
   applyRendererStyles(view, settings, isFixedLayout, theme);
+}
+
+function applyReflowLayoutSettings(view: FoliateView, settings: ViewSettings) {
+  const renderer = view.renderer;
+  if (!renderer) return;
+
+  renderer.setAttribute(
+    "max-column-count",
+    (settings.paginatedLayout ?? "double") === "single" ? "1" : "2",
+  );
+
+  if (settings.viewMode === "scroll") {
+    renderer.setAttribute("flow", "scrolled");
+  } else {
+    renderer.removeAttribute("flow");
+  }
 }
 
 /** Generate CSS string for renderer styles */

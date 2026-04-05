@@ -241,7 +241,9 @@
     "fontThemeModern": "Modern",
     "fontThemeElegant": "Elegant",
     "fontThemeLiterary": "Literary",
-    "goBackToPreviousLocation": "Go back to previous location"
+    "goBackToPreviousLocation": "Go back to previous location",
+    "pinToolbar": "Pin toolbar",
+    "unpinToolbar": "Unpin toolbar"
   },
   "translation": {
     "translateTo": "Translate to {{lang}}",
@@ -442,6 +444,9 @@
     "viewMode": "View Mode",
     "paginated": "Paginated",
     "scroll": "Scroll",
+    "paginatedLayout": "Page Layout",
+    "singlePage": "Single Page",
+    "doublePage": "Double Page",
     "ai_title": "AI Configuration",
     "ai_desc": "Configure AI endpoints and model settings",
     "ai_endpoints": "Endpoints",

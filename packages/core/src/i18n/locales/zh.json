@@ -239,7 +239,9 @@
     "fontThemeModern": "现代",
     "fontThemeElegant": "优雅",
     "fontThemeLiterary": "文学",
-    "goBackToPreviousLocation": "返回上一位置"
+    "goBackToPreviousLocation": "返回上一位置",
+    "pinToolbar": "固定工具栏",
+    "unpinToolbar": "取消固定工具栏"
   },
   "translation": {
     "translateTo": "翻译为 {{lang}}",
@@ -440,6 +442,9 @@
     "viewMode": "阅读模式",
     "paginated": "翻页",
     "scroll": "滚动",
+    "paginatedLayout": "分页布局",
+    "singlePage": "单页",
+    "doublePage": "双页",
     "ai_title": "AI 配置",
     "ai_desc": "配置 AI 端点和模型设置",
     "ai_endpoints": "端点列表",
