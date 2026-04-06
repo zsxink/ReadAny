@@ -80,8 +80,8 @@ export function UpdateDialog() {
         <Pressable style={s.card} onPress={() => {}}>
           {/* Version badge */}
           <View style={s.badgeRow}>
-            <View style={[s.badge, { backgroundColor: withOpacity(colors.emerald, 0.15) }]}>
-              <Text style={[s.badgeText, { color: colors.emerald }]}>
+            <View style={[s.badge, { backgroundColor: withOpacity(colors.primary, 0.12) }]}>
+              <Text style={[s.badgeText, { color: colors.primary }]}>
                 v{version}
               </Text>
             </View>
@@ -188,7 +188,7 @@ const makeStyles = (colors: ThemeColors) =>
       gap: spacing.sm,
     },
     primaryBtn: {
-      backgroundColor: colors.emerald,
+      backgroundColor: colors.primary,
       borderRadius: radius.xl,
       paddingVertical: 12,
       alignItems: "center",
@@ -196,7 +196,7 @@ const makeStyles = (colors: ThemeColors) =>
     primaryBtnText: {
       fontSize: fontSize.sm,
       fontWeight: fontWeight.semibold,
-      color: "#ffffff",
+      color: colors.primaryForeground,
     },
     secondaryBtn: {
       borderRadius: radius.xl,

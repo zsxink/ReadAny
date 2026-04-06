@@ -161,7 +161,11 @@ export function LANSyncDialog({ open, onClose, mode }: LANSyncDialogProps) {
       setConnectionState("connected");
 
       // LAN is a one-off import flow: pull the server snapshot and related files.
-      await syncWithBackend(backend);
+      const result = await syncWithBackend(backend);
+      if (!result || !result.success) {
+        throw new Error(result?.error || t("settings.syncLANConnectionFailed"));
+      }
+      setConnectionState("idle");
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

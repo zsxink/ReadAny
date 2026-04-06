@@ -348,9 +348,10 @@ export default function SyncSettingsScreen() {
               setLanConnectionState("connected");
               // LAN is a one-off import flow: pull the server snapshot and related files.
               const result = await syncWithBackend(backend);
-              if (result && !result.success) {
-                setLanError(result.error || t("settings.syncLANConnectionFailed"));
+              if (!result || !result.success) {
+                throw new Error(result?.error || t("settings.syncLANConnectionFailed"));
               }
+              setLanConnectionState("idle");
             } catch (e) {
               setLanError(e instanceof Error ? e.message : String(e));
               setLanConnectionState("error");
@@ -391,16 +392,30 @@ export default function SyncSettingsScreen() {
               text: t("common.confirm"),
               style: "destructive",
               onPress: () => {
-                setTimeout(() => {
-                  const url = `http://${qrData.ip}:${qrData.port}`;
-                  const deviceName = Constants.deviceName || "Mobile";
-                  const backend = createLANBackend(url, qrData.pairCode, deviceName);
-                  setLanConnectionState("connecting");
-                  setLanError("");
-                  syncWithBackend(backend).catch((err) => {
+                setTimeout(async () => {
+                  try {
+                    const url = `http://${qrData.ip}:${qrData.port}`;
+                    const deviceName = Constants.deviceName || "Mobile";
+                    const backend = createLANBackend(url, qrData.pairCode, deviceName);
+                    setLanConnectionState("connecting");
+                    setLanError("");
+
+                    const connected = await backend.testConnection();
+                    if (!connected) {
+                      throw new Error(t("settings.syncLANConnectionFailed"));
+                    }
+
+                    setLanConnectionState("connected");
+                    const result = await syncWithBackend(backend);
+                    if (!result || !result.success) {
+                      throw new Error(result?.error || t("settings.syncLANConnectionFailed"));
+                    }
+
+                    setLanConnectionState("idle");
+                  } catch (err) {
                     setLanConnectionState("error");
-                    setLanError(String(err));
-                  });
+                    setLanError(err instanceof Error ? err.message : String(err));
+                  }
                 }, 500);
               },
             },
