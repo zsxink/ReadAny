@@ -50,6 +50,16 @@ export const MessageSquareIcon = icon(() => (
   </>
 ));
 
+export const BotIcon = icon(() => (
+  <>
+    <Rect x="4" y="7" width="16" height="12" rx="4" />
+    <Path d="M12 3v4" />
+    <Path d="M8 12h.01" />
+    <Path d="M16 12h.01" />
+    <Path d="M9 16c.8.6 1.8 1 3 1s2.2-.4 3-1" />
+  </>
+));
+
 export const NotebookPenIcon = icon(() => (
   <>
     <Path d="M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4" />
@@ -179,6 +189,15 @@ export const Volume2Icon = icon(() => (
     <Path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z" />
     <Path d="M16 9a5 5 0 0 1 0 6" />
     <Path d="M19.364 18.364a9 9 0 0 0 0-12.728" />
+  </>
+));
+
+export const HeadphonesIcon = icon(() => (
+  <>
+    <Path d="M4 13a8 8 0 0 1 16 0" />
+    <Rect x="3" y="12" width="4" height="7" rx="2" />
+    <Rect x="17" y="12" width="4" height="7" rx="2" />
+    <Path d="M7 19v1a2 2 0 0 0 2 2h6" />
   </>
 ));
 

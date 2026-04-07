@@ -5,6 +5,7 @@ import { SelectionPopover } from "@/components/reader/SelectionPopover";
 import { TTSControls } from "@/components/reader/TTSControls";
 import { TranslationPanel } from "@/components/reader/TranslationPanel";
 import {
+  BotIcon,
   BookmarkFilledIcon,
   BookmarkIcon,
   CheckIcon,
@@ -12,12 +13,11 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   EditIcon,
+  HeadphonesIcon,
   LanguagesIcon,
-  MessageSquareIcon,
   NotebookPenIcon,
   SearchIcon,
   Trash2Icon,
-  Volume2Icon,
   XIcon,
 } from "@/components/ui/Icon";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
@@ -32,7 +32,14 @@ import {
   useTTSStore,
 } from "@/stores";
 import { useTheme } from "@/styles/ThemeContext";
-import { type ThemeColors, fontSize, fontWeight, radius, useColors } from "@/styles/theme";
+import {
+  type ThemeColors,
+  fontSize,
+  fontWeight,
+  radius,
+  useColors,
+  withOpacity,
+} from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { readingContextService } from "@readany/core/ai/reading-context-service";
 import { runWithDbRetry } from "@readany/core/db/write-retry";
@@ -60,6 +67,7 @@ import {
   Alert,
   Animated,
   Dimensions,
+  Easing,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -221,6 +229,10 @@ export function ReaderScreen({ route, navigation }: Props) {
   const { bookId, cfi, highlight: shouldHighlight } = route.params;
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
+  const isWideLayout = SCREEN_WIDTH >= 768;
+  const isIPadLayout = Platform.OS === "ios" && Platform.isPad;
+  const shouldToggleSystemStatusBar = !isIPadLayout;
+  const baseTopInset = Platform.OS === "ios" ? 20 : 24;
 
   // State
   const [loading, setLoading] = useState(true);
@@ -252,6 +264,9 @@ export function ReaderScreen({ route, navigation }: Props) {
   const [currentCfi, setCurrentCfi] = useState("");
   const [pageSnippet, setPageSnippet] = useState("");
   const [selection, setSelection] = useState<SelectionEvent | null>(null);
+  const [stableTopInset, setStableTopInset] = useState(() =>
+    Math.max(insets.top, isIPadLayout ? 24 : baseTopInset)
+  );
   const [noteViewHighlight, setNoteViewHighlight] = useState<{
     id: string;
     text: string;
@@ -300,7 +315,7 @@ export function ReaderScreen({ route, navigation }: Props) {
 
   const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const TOOLBAR_HIDE_OFFSET = 200;
+const TOOLBAR_HIDE_OFFSET = 100;
   const toolbarAnim = useRef(new Animated.Value(TOOLBAR_HIDE_OFFSET)).current;
   const readerPullAnim = useRef(new Animated.Value(0)).current;
   const lastCfiRef = useRef<string>("");
@@ -441,13 +456,30 @@ export function ReaderScreen({ route, navigation }: Props) {
     addBookmark,
   ]);
 
-  // Hide status bar for immersive reading on mount, restore on unmount
+  // Keep the reserved top inset stable even when the system status bar hides.
   useEffect(() => {
-    setStatusBarHidden(true, "slide");
+    if (!shouldToggleSystemStatusBar) {
+      setStatusBarHidden(false, "none");
+      return;
+    }
+    setStatusBarHidden(!showControls && !showSearch, "slide");
+  }, [showControls, showSearch, shouldToggleSystemStatusBar]);
+
+  useEffect(() => {
     return () => {
       setStatusBarHidden(false, "slide");
     };
   }, []);
+
+  useEffect(() => {
+    const nextInset = Math.max(insets.top, isIPadLayout ? 24 : baseTopInset);
+    setStableTopInset((prev) => {
+      if (isIPadLayout) {
+        return Math.max(prev, nextInset);
+      }
+      return nextInset;
+    });
+  }, [baseTopInset, insets.top, isIPadLayout]);
 
   // Load reader HTML asset
   useEffect(() => {
@@ -845,25 +877,22 @@ export function ReaderScreen({ route, navigation }: Props) {
   const toggleControls = useCallback(() => {
     const willShow = !showControls;
     setShowControls(willShow);
-    // Sync status bar with controls visibility for immersive reading
-    setStatusBarHidden(!willShow, "slide");
-    Animated.spring(toolbarAnim, {
+    Animated.timing(toolbarAnim, {
       toValue: willShow ? 0 : TOOLBAR_HIDE_OFFSET,
+      duration: 180,
+      easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
-      friction: 20,
-      tension: 100,
     }).start();
 
     if (willShow) {
       if (controlsTimer.current) clearTimeout(controlsTimer.current);
       controlsTimer.current = setTimeout(() => {
         setShowControls(false);
-        setStatusBarHidden(true, "slide");
-        Animated.spring(toolbarAnim, {
+        Animated.timing(toolbarAnim, {
           toValue: TOOLBAR_HIDE_OFFSET,
+          duration: 180,
+          easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
-          friction: 20,
-          tension: 100,
         }).start();
       }, CONTROLS_TIMEOUT);
     }
@@ -1063,7 +1092,35 @@ export function ReaderScreen({ route, navigation }: Props) {
     );
   }
 
+  const layoutTopInset = stableTopInset;
+  const topToolbarRowHeight = isWideLayout ? 62 : 48;
+  const bottomDockIconSize = isWideLayout ? 24 : 22;
+  const topToolbarIconSize = isWideLayout ? 24 : 22;
   const percent = Math.round(progress * 100);
+  const topControlsTranslate = toolbarAnim.interpolate({
+    inputRange: [0, TOOLBAR_HIDE_OFFSET],
+    outputRange: [0, -10],
+  });
+  const topControlsOpacity = toolbarAnim.interpolate({
+    inputRange: [0, TOOLBAR_HIDE_OFFSET * 0.5, TOOLBAR_HIDE_OFFSET],
+    outputRange: [1, 0.28, 0],
+  });
+  const bottomControlsTranslate = toolbarAnim.interpolate({
+    inputRange: [0, TOOLBAR_HIDE_OFFSET],
+    outputRange: [0, 12],
+  });
+  const bottomControlsOpacity = toolbarAnim.interpolate({
+    inputRange: [0, TOOLBAR_HIDE_OFFSET * 0.5, TOOLBAR_HIDE_OFFSET],
+    outputRange: [1, 0.28, 0],
+  });
+  const auxToolsTranslate = toolbarAnim.interpolate({
+    inputRange: [0, TOOLBAR_HIDE_OFFSET],
+    outputRange: [0, 14],
+  });
+  const auxToolsOpacity = toolbarAnim.interpolate({
+    inputRange: [0, TOOLBAR_HIDE_OFFSET * 0.55, TOOLBAR_HIDE_OFFSET],
+    outputRange: [1, 0.24, 0],
+  });
 
   const isPanelOpen = showTOC || showSettings || showSearch || showNotebook || showTranslation;
   const existingSelectionHighlight = selection
@@ -1081,7 +1138,7 @@ export function ReaderScreen({ route, navigation }: Props) {
           <WebView
             ref={bridge.webViewRef}
             source={{ uri: readerHtmlUri }}
-            style={[s.webview, { marginTop: insets.top + 24 }]}
+            style={[s.webview, { marginTop: layoutTopInset + 24 }]}
             pointerEvents={isPanelOpen ? "none" : "auto"}
             onMessage={bridge.handleMessage}
             onError={(e) => {
@@ -1114,8 +1171,8 @@ export function ReaderScreen({ route, navigation }: Props) {
         )}
 
         {/* ─── Top Info Bar (always visible) ─── */}
-        {!showSearch && (
-          <View style={[s.topInfoBar, { top: insets.top }]}>
+        {!showSearch && !showControls && (
+          <View style={[s.topInfoBar, { top: layoutTopInset }]}>
             <Text style={s.topInfoText} numberOfLines={1}>
               {currentChapter || bookTitle}
             </Text>
@@ -1129,6 +1186,65 @@ export function ReaderScreen({ route, navigation }: Props) {
 
       {/* ─── Bookmark Ribbon (top-right) ─── */}
       <BookmarkRibbon visible={isBookmarked} topOffset={0} />
+
+      {!showSearch && (
+        <Animated.View
+          pointerEvents={showControls ? "auto" : "none"}
+          style={[
+            s.topToolbar,
+            {
+              top: 0,
+              left: 0,
+              right: 0,
+              opacity: topControlsOpacity,
+              transform: [{ translateY: topControlsTranslate }],
+            },
+          ]}
+        >
+          <View
+            style={[
+              s.topToolbarBar,
+              {
+                paddingTop: layoutTopInset,
+                minHeight: layoutTopInset + topToolbarRowHeight,
+              },
+            ]}
+          >
+            <View
+              style={[
+                s.topToolbarRow,
+                {
+                  minHeight: topToolbarRowHeight,
+                  paddingLeft: insets.left + 12,
+                  paddingRight: insets.right + 16,
+                },
+              ]}
+            >
+              <View style={s.topToolbarSideSlot}>
+                <TouchableOpacity
+                  style={s.topToolbarBackBtn}
+                  onPress={() => navigation.reset({ routes: [{ name: "Tabs" }] })}
+                >
+                  <ChevronLeftIcon size={topToolbarIconSize} color={colors.foreground} />
+                </TouchableOpacity>
+              </View>
+              <View style={s.topToolbarTitleWrap}>
+                <Text style={s.topToolbarTitleText} numberOfLines={1}>
+                  {currentChapter || bookTitle}
+                </Text>
+              </View>
+              <View style={[s.topToolbarSideSlot, s.topToolbarMetaWrap]}>
+                <Text style={s.topToolbarMetaText}>
+                  {currentPage > 0 && totalPages > 0 ? `${currentPage}/${totalPages}` : `${percent}%`}
+                </Text>
+              </View>
+            </View>
+            <View style={s.topToolbarProgressTrack}>
+              <View style={[s.topToolbarProgressFill, { width: `${percent}%` }]} />
+            </View>
+          </View>
+        </Animated.View>
+      )}
 
       {/* Selection Popover */}
       {selection && (
@@ -1237,92 +1353,121 @@ export function ReaderScreen({ route, navigation }: Props) {
         </TouchableOpacity>
       )}
 
-      {/* ─── Bottom Toolbar (moved from top) ─── */}
       {!showSearch && (
-        <Animated.View style={[s.bottomToolbar, { transform: [{ translateY: toolbarAnim }] }]}>
-          <View style={[s.bottomToolbarGlass, { marginBottom: insets.bottom + 4 }]}>
-            <View style={s.toolbarRow}>
+        <Animated.View
+          pointerEvents={showControls ? "auto" : "none"}
+          style={[
+            s.floatingTools,
+            {
+              right: insets.right + 16,
+              bottom: insets.bottom + 110,
+              opacity: auxToolsOpacity,
+              transform: [{ translateY: auxToolsTranslate }],
+            },
+          ]}
+        >
+          <TouchableOpacity
+            style={[
+              s.floatingToolBtn,
+              (showChapterTranslation || chapterTranslation.state.status !== "idle") &&
+                s.floatingToolBtnActive,
+            ]}
+            onPress={() => setShowChapterTranslation(true)}
+          >
+            <LanguagesIcon size={18} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.floatingToolBtn, showTTS && s.floatingToolBtnActive]}
+            onPress={handleToggleTTS}
+          >
+            <HeadphonesIcon size={20} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={s.floatingToolBtn}
+            onPress={() => navigation.navigate("BookChat", { bookId })}
+          >
+            <BotIcon size={20} color="#fff" />
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+
+      {/* ─── Bottom Toolbar ─── */}
+      {!showSearch && (
+        <Animated.View
+          pointerEvents={showControls ? "auto" : "none"}
+          style={[
+            s.bottomToolbar,
+            {
+              left: 0,
+              right: 0,
+              opacity: bottomControlsOpacity,
+              transform: [{ translateY: bottomControlsTranslate }],
+            },
+          ]}
+        >
+          <View
+            style={[
+              s.bottomToolbarGlass,
+              {
+                paddingBottom: Math.max(insets.bottom, 8) + 6,
+                paddingLeft: insets.left + 18,
+                paddingRight: insets.right + 18,
+              },
+            ]}
+          >
+            <View style={s.bottomToolbarProgressTrack}>
+              <View style={[s.bottomToolbarProgressFill, { width: `${percent}%` }]} />
+            </View>
+            <View style={s.bottomDockRow}>
               <TouchableOpacity
-                style={s.toolbarBtn}
-                onPress={() => navigation.reset({ routes: [{ name: "Tabs" }] })}
+                style={s.bottomDockBtn}
+                onPress={() => {
+                  setTocActiveTab("toc");
+                  setShowTOC(true);
+                }}
               >
-                <ChevronLeftIcon size={20} color="#fff" />
+                <ListIcon size={bottomDockIconSize} color={colors.foreground} />
+                <Text style={s.bottomDockLabel}>{t("reader.toc", "目录")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={s.toolbarBtn}
-                onPress={() => navigation.navigate("FullScreenNotes", { bookId })}
-              >
-                <NotebookPenIcon size={18} color="#fff" />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.toolbarBtn, isBookmarked && s.toolbarBtnActive]}
+                style={[s.bottomDockBtn, isBookmarked && s.bottomDockBtnActive]}
                 onPress={handleToggleBookmark}
               >
                 {isBookmarked ? (
-                  <BookmarkFilledIcon size={18} color={colors.primary} />
+                  <BookmarkFilledIcon size={bottomDockIconSize} color={colors.primary} />
                 ) : (
-                  <BookmarkIcon size={18} color="#fff" />
+                  <BookmarkIcon size={bottomDockIconSize} color={colors.foreground} />
                 )}
+                <Text style={[s.bottomDockLabel, isBookmarked && s.bottomDockLabelActive]}>
+                  {t("reader.bookmarks", "书签")}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={s.toolbarBtn}
-                onPress={() => navigation.navigate("BookChat", { bookId })}
+                style={s.bottomDockBtn}
+                onPress={() => navigation.navigate("FullScreenNotes", { bookId })}
               >
-                <MessageSquareIcon size={18} color="#fff" />
-              </TouchableOpacity>
-              <TouchableOpacity style={s.toolbarBtn} onPress={() => setShowTOC(true)}>
-                <ListIcon size={18} color="#fff" />
+                <NotebookPenIcon size={bottomDockIconSize} color={colors.foreground} />
+                <Text style={s.bottomDockLabel}>{t("notes.title", "笔记")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[
-                  s.toolbarBtn,
-                  chapterTranslation.state.status !== "idle" && s.toolbarBtnActive,
-                ]}
-                onPress={() => setShowChapterTranslation(true)}
-              >
-                <LanguagesIcon
-                  size={18}
-                  color={chapterTranslation.state.status !== "idle" ? colors.primary : "#fff"}
-                />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={s.toolbarBtn}
+                style={s.bottomDockBtn}
                 onPress={() => {
                   setShowSearch(true);
                   setShowControls(false);
-                  // Keep status bar visible for search bar at top
-                  setStatusBarHidden(false, "slide");
-                  Animated.spring(toolbarAnim, {
+                  Animated.timing(toolbarAnim, {
                     toValue: TOOLBAR_HIDE_OFFSET,
+                    duration: 180,
+                    easing: Easing.out(Easing.cubic),
                     useNativeDriver: true,
-                    friction: 20,
-                    tension: 100,
                   }).start();
                 }}
               >
-                <SearchIcon size={18} color="#fff" />
+                <SearchIcon size={bottomDockIconSize} color={colors.foreground} />
+                <Text style={s.bottomDockLabel}>{t("reader.search", "搜索")}</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.toolbarBtn, showTTS && s.toolbarBtnActive]}
-                onPress={handleToggleTTS}
-              >
-                <Volume2Icon size={18} color={showTTS ? colors.primary : "#fff"} />
-              </TouchableOpacity>
-              <TouchableOpacity style={s.toolbarBtn} onPress={() => setShowSettings(true)}>
-                <SettingsIcon size={18} color="#fff" />
-              </TouchableOpacity>
-            </View>
-            <View style={s.footerSliderRow}>
-              <TouchableOpacity style={s.footerNavBtn} onPress={bridge.goLeft}>
-                <ChevronLeftIcon size={18} color="rgba(255,255,255,0.7)" />
-              </TouchableOpacity>
-              <View style={s.sliderWrap}>
-                <View style={s.sliderTrack}>
-                  <View style={[s.sliderFill, { width: `${percent}%` }]} />
-                </View>
-              </View>
-              <TouchableOpacity style={s.footerNavBtn} onPress={bridge.goRight}>
-                <ChevronRightIcon size={18} color="rgba(255,255,255,0.7)" />
+              <TouchableOpacity style={s.bottomDockBtn} onPress={() => setShowSettings(true)}>
+                <SettingsIcon size={bottomDockIconSize} color={colors.foreground} />
+                <Text style={s.bottomDockLabel}>{t("common.settings", "设置")}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1331,7 +1476,7 @@ export function ReaderScreen({ route, navigation }: Props) {
 
       {/* ─── Search Bar ─── */}
       {showSearch && (
-        <View style={[s.searchBarWrap, { paddingTop: insets.top }]}>
+        <View style={[s.searchBarWrap, { paddingTop: layoutTopInset }]}>
           <View style={s.searchBarRow}>
             <View style={s.searchInputWrap}>
               <SearchIcon size={16} color={colors.mutedForeground} />
@@ -1410,12 +1555,11 @@ export function ReaderScreen({ route, navigation }: Props) {
                 setSearchIndex(0);
                 bridge.clearSearch();
                 setShowControls(true);
-                setStatusBarHidden(false, "slide");
-                Animated.spring(toolbarAnim, {
+                Animated.timing(toolbarAnim, {
                   toValue: 0,
+                  duration: 180,
+                  easing: Easing.out(Easing.cubic),
                   useNativeDriver: true,
-                  friction: 20,
-                  tension: 100,
                 }).start();
               }}
             >
@@ -2062,19 +2206,156 @@ const makeStyles = (colors: ThemeColors) =>
       zIndex: 20,
     },
 
-    bottomToolbar: { position: "absolute", bottom: 0, left: 12, right: 12, zIndex: 30 },
-    bottomToolbarGlass: {
-      backgroundColor: "rgba(28, 28, 30, 0.85)",
-      borderRadius: 20,
-      paddingVertical: 8,
+    topToolbar: {
+      position: "absolute",
+      zIndex: 34,
+      left: 0,
+      right: 0,
+      top: 0,
+    },
+    topToolbarBar: {
+      backgroundColor: withOpacity(colors.background, 0.94),
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: withOpacity(colors.foreground, 0.1),
+    },
+    topToolbarRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    topToolbarBackBtn: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    topToolbarSideSlot: {
+      width: 68,
+      justifyContent: "center",
+      alignItems: "flex-start",
+    },
+    topToolbarSpacer: {
+      flex: 1,
+      minHeight: 44,
+    },
+    topToolbarTitleWrap: {
+      flex: 1,
+      minWidth: 0,
+      alignItems: "center",
+      justifyContent: "center",
       paddingHorizontal: 12,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: -4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 16,
-      elevation: 12,
-      borderWidth: 1,
-      borderColor: "rgba(255,255,255,0.1)",
+    },
+    topToolbarTitleText: {
+      fontSize: fontSize.sm,
+      color: colors.foreground,
+      fontWeight: fontWeight.medium,
+    },
+    topToolbarMetaWrap: {
+      width: 60,
+      alignItems: "flex-end",
+      justifyContent: "center",
+    },
+    topToolbarMetaText: {
+      fontSize: fontSize.sm,
+      color: colors.mutedForeground,
+      fontWeight: fontWeight.medium,
+    },
+    topToolbarRight: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 2,
+    },
+    topToolbarBtn: {
+      width: 40,
+      height: 40,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    topToolbarBtnActive: {
+      backgroundColor: withOpacity(colors.foreground, 0.06),
+    },
+    topToolbarProgressTrack: {
+      height: 2,
+      backgroundColor: withOpacity(colors.foreground, 0.08),
+      overflow: "hidden",
+    },
+    topToolbarProgressFill: {
+      height: "100%",
+      backgroundColor: withOpacity(colors.foreground, 0.48),
+    },
+
+    floatingTools: {
+      position: "absolute",
+      zIndex: 34,
+      gap: 10,
+      alignItems: "center",
+    },
+    floatingToolBtn: {
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "rgba(76, 82, 94, 0.88)",
+    },
+    floatingToolBtnActive: {
+      backgroundColor: "rgba(59, 130, 246, 0.9)",
+    },
+
+    bottomToolbar: {
+      position: "absolute",
+      bottom: 0,
+      zIndex: 30,
+      left: 0,
+      right: 0,
+    },
+    bottomToolbarGlass: {
+      backgroundColor: withOpacity(colors.background, 0.98),
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderColor: withOpacity(colors.foreground, 0.12),
+      paddingTop: 10,
+    },
+    bottomDockRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 2,
+    },
+    bottomDockBtn: {
+      flex: 1,
+      height: 54,
+      borderRadius: 10,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 4,
+      paddingTop: 4,
+    },
+    bottomDockBtnActive: {
+      backgroundColor: withOpacity(colors.foreground, 0.06),
+    },
+    bottomDockLabel: {
+      fontSize: fontSize.xs,
+      lineHeight: 14,
+      color: colors.mutedForeground,
+      fontWeight: fontWeight.medium,
+    },
+    bottomDockLabelActive: {
+      color: colors.primary,
+    },
+    bottomToolbarProgressTrack: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      height: 2,
+      backgroundColor: withOpacity(colors.foreground, 0.08),
+      overflow: "hidden",
+    },
+    bottomToolbarProgressFill: {
+      height: "100%",
+      backgroundColor: withOpacity(colors.foreground, 0.48),
+      borderRadius: 999,
     },
     toolbarRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
     toolbarBtn: {
@@ -2102,8 +2383,8 @@ const makeStyles = (colors: ThemeColors) =>
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
-      paddingHorizontal: 16,
-      paddingVertical: 4,
+      paddingHorizontal: 18,
+      paddingVertical: 6,
     },
     topInfoText: {
       flex: 1,

@@ -151,14 +151,16 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
 
   const addAnnotation = useCallback(
     (annotation: { value: string; type?: string; color?: string; note?: string }) => {
-      inject(`window.addAnnotation(${JSON.stringify(annotation)})`);
+      const msg = JSON.stringify({ type: "addAnnotation", annotation });
+      inject(`handleCommand(${msg})`);
     },
     [inject],
   );
 
   const removeAnnotation = useCallback(
     (annotation: { value: string }) => {
-      inject(`window.removeAnnotation(${JSON.stringify(annotation)})`);
+      const msg = JSON.stringify({ type: "removeAnnotation", annotation });
+      inject(`handleCommand(${msg})`);
     },
     [inject],
   );
