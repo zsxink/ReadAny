@@ -152,6 +152,7 @@
     let totalSections = 0;
     let currentThemeColors = { bg: '#1c1c1e', fg: '#e8e8ed', muted: '#7c7c82', primary: '#3b82f6' };
     let lastRendererStyles = '';
+    let currentViewMode = 'paginated';
     let tapNavigationInFlight = false;
     let tapNavigationResetTimer = null;
     let readerElement = null;
@@ -706,6 +707,7 @@
       }
 
       if (settings.viewMode) {
+        currentViewMode = settings.viewMode;
         if (settings.viewMode === 'scroll') {
           renderer.setAttribute('flow', 'scrolled');
           renderer.setAttribute('max-inline-size', '9999px');
@@ -898,7 +900,7 @@ a { color: ${primary} !important; }
       let lastTriggeredAt = 0;
 
       doc.addEventListener('touchstart', (e) => {
-        if (!view || e.touches.length !== 1) {
+        if (!view || e.touches.length !== 1 || currentViewMode === 'scroll') {
           pullState = null;
           return;
         }
