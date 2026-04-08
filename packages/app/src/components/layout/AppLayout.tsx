@@ -23,6 +23,7 @@ import { OnboardingModal } from "@/components/onboarding/OnboardingModal";
 import { ReaderView, evictBlobCache } from "@/components/reader/ReaderView";
 import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { ReadingStatsPanel } from "@/components/stats/ReadingStatsPanel";
+import { FloatingTTSBubble } from "@/components/tts/FloatingTTSBubble";
 import SkillsPage from "@/pages/Skills";
 import { useAppStore } from "@/stores/app-store";
 import { useLibraryStore } from "@/stores/library-store";
@@ -323,6 +324,7 @@ export function AppLayout() {
       </main>
       <SettingsDialog open={showSettings} onClose={() => setShowSettings(false)} />
       <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
+      <FloatingTTSBubble />
     </div>
   );
 }

@@ -440,6 +440,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   const ttsSetOnEnd = useTTSStore((s) => s.setOnEnd);
   const ttsCurrentChunkIndex = useTTSStore((s) => s.currentChunkIndex);
   const ttsTotalChunks = useTTSStore((s) => s.totalChunks);
+  const ttsSetCurrentBook = useTTSStore((s) => s.setCurrentBook);
 
   /** Whether TTS is in continuous reading mode (auto page-turn) */
   const ttsContinuousRef = useRef(false);
@@ -1014,10 +1015,11 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       setTtsLastText(normalized);
       ttsContinuousRef.current = false;
       ttsSetOnEnd(null);
+      ttsSetCurrentBook(book?.meta.title ?? "", readerTab?.chapterTitle ?? "", bookId);
       setShowTTS(true);
       ttsPlay(normalized);
     },
-    [ttsPlay, ttsSetOnEnd],
+    [ttsPlay, ttsSetOnEnd, ttsSetCurrentBook, book?.meta.title, readerTab?.chapterTitle, bookId],
   );
 
   const startPageTTS = useCallback(
@@ -1030,10 +1032,11 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       setTtsLastText(normalized);
       ttsContinuousRef.current = continuous;
       ttsSetOnEnd(continuous ? handleTTSPageEnd : null);
+      ttsSetCurrentBook(book?.meta.title ?? "", readerTab?.chapterTitle ?? "", bookId);
       setShowTTS(true);
       ttsPlay(normalized);
     },
-    [handleTTSPageEnd, ttsContinuousEnabled, ttsPlay, ttsSetOnEnd],
+    [handleTTSPageEnd, ttsContinuousEnabled, ttsPlay, ttsSetOnEnd, ttsSetCurrentBook, book?.meta.title, readerTab?.chapterTitle, bookId],
   );
 
   // TTS: toggle reading from current page with auto page-turn

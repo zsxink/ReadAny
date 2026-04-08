@@ -88,6 +88,12 @@ export interface TTSState {
   currentChunkIndex: number;
   /** Total number of chunks for the current text */
   totalChunks: number;
+  /** Title of the book currently being read (for floating bubble display) */
+  currentBookTitle: string;
+  /** Chapter title currently being read (for floating bubble display) */
+  currentChapterTitle: string;
+  /** Book ID currently being read (for navigation back to reader) */
+  currentBookId: string;
 
   // Actions
   play: (text: string) => void;
@@ -98,6 +104,8 @@ export interface TTSState {
   updateConfig: (updates: Partial<TTSConfig>) => void;
   setPlayState: (state: TTSPlayState) => void;
   setOnEnd: (cb: (() => void) | null) => void;
+  setCurrentBook: (title: string, chapter: string, bookId?: string) => void;
+  setChunkProgress: (index: number, total: number) => void;
 }
 
 export const useTTSStore = create<TTSState>()(
@@ -108,6 +116,9 @@ export const useTTSStore = create<TTSState>()(
     onEnd: null,
     currentChunkIndex: 0,
     totalChunks: 0,
+    currentBookTitle: "",
+    currentChapterTitle: "",
+    currentBookId: "",
 
     play: (text: string) => {
       const { config } = get();
@@ -203,5 +214,10 @@ export const useTTSStore = create<TTSState>()(
     setPlayState: (playState) => set({ playState }),
 
     setOnEnd: (cb) => set({ onEnd: cb }),
+
+    setCurrentBook: (title, chapter, bookId) =>
+      set({ currentBookTitle: title, currentChapterTitle: chapter, currentBookId: bookId ?? "" }),
+
+    setChunkProgress: (index, total) => set({ currentChunkIndex: index, totalChunks: total }),
   })),
 );
