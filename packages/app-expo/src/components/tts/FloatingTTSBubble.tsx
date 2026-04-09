@@ -17,6 +17,7 @@ import { fontSize, radius, useColors } from "@/styles/theme";
 import { pushRoute } from "@/lib/navigationRef";
 import { eventBus } from "@readany/core/utils/event-bus";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   Animated,
@@ -96,6 +97,25 @@ function BookOpenIcon({ size = 16, color = "#fff" }: { size?: number; color?: st
   );
 }
 
+function LyricsIcon({ size = 16, color = "#fff" }: { size?: number; color?: string }) {
+  return (
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <Path d="M5 7h14" />
+      <Path d="M5 12h14" />
+      <Path d="M5 17h10" />
+    </Svg>
+  );
+}
+
 // ─── Compact expanded player modal ───────────────────────────────────────────
 
 function TTSMiniPlayer({
@@ -107,6 +127,7 @@ function TTSMiniPlayer({
   onClose: () => void;
   anchorLayout: { left: number; top: number; size: number; screenWidth: number; screenHeight: number } | null;
 }) {
+  const { t } = useTranslation();
   const colors = useColors();
   const insets = useSafeAreaInsets();
 
@@ -127,7 +148,7 @@ function TTSMiniPlayer({
     onClose();
   }, [stop, onClose]);
 
-  const handleGoToReader = useCallback(() => {
+  const handleJumpToCurrentLocation = useCallback(() => {
     let handled = false;
     if (currentBookId && currentLocationCfi) {
       eventBus.emit("tts:jump-to-current", {
@@ -140,11 +161,32 @@ function TTSMiniPlayer({
     }
     if (!handled && currentLocationCfi && goToCfiFn) {
       goToCfiFn(currentLocationCfi);
-    } else if (!handled && currentBookId) {
+      onClose();
+      return;
+    }
+    if (!handled && currentBookId) {
       pushRoute("Reader", { bookId: currentBookId, cfi: currentLocationCfi || undefined });
     }
     onClose();
   }, [currentBookId, currentLocationCfi, goToCfiFn, onClose]);
+
+  const handleOpenLyricsPage = useCallback(() => {
+    if (!currentBookId) return;
+    let handled = false;
+    eventBus.emit("tts:open-lyrics-page", {
+      bookId: currentBookId,
+      respond: () => {
+        handled = true;
+      },
+    });
+    if (!handled) {
+      pushRoute("Reader", { bookId: currentBookId, cfi: currentLocationCfi || undefined });
+      setTimeout(() => {
+        eventBus.emit("tts:open-lyrics-page", { bookId: currentBookId });
+      }, 450);
+    }
+    onClose();
+  }, [currentBookId, currentLocationCfi, onClose]);
 
   const handlePlayPause = useCallback(() => {
     if (playState === "playing") {
@@ -199,7 +241,7 @@ function TTSMiniPlayer({
           : "已停止";
 
   const panelWidth = Math.min(388, Math.max(320, (anchorLayout?.screenWidth || 360) - 16));
-  const [panelHeight, setPanelHeight] = useState(144);
+  const [panelHeight, setPanelHeight] = useState(152);
   const [panelMeasured, setPanelMeasured] = useState(false);
   const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
   const anchor = anchorLayout ?? {
@@ -330,21 +372,34 @@ function TTSMiniPlayer({
           <TouchableOpacity
             style={[styles.miniPlayerStopBtn, { backgroundColor: colors.muted }]}
             onPress={handleStop}
+            accessibilityRole="button"
+            accessibilityLabel={t("tts.stop", "停止")}
           >
             <SquareIcon size={16} color={colors.foreground} />
           </TouchableOpacity>
 
-          {/* Go to reader */}
+          {!!currentBookId && <View style={[styles.miniPlayerDividerV, { backgroundColor: colors.border }]} />}
+
           {!!currentBookId && (
-            <>
-              <View style={[styles.miniPlayerDividerV, { backgroundColor: colors.border }]} />
-              <TouchableOpacity
-                style={[styles.miniPlayerGoBtn, { backgroundColor: colors.muted }]}
-                onPress={handleGoToReader}
-              >
-                <BookOpenIcon size={16} color={colors.foreground} />
-              </TouchableOpacity>
-            </>
+            <TouchableOpacity
+              style={[styles.miniPlayerGoBtn, { backgroundColor: colors.muted }]}
+              onPress={handleJumpToCurrentLocation}
+              accessibilityRole="button"
+              accessibilityLabel={t("tts.jumpToCurrentLocation")}
+            >
+              <BookOpenIcon size={16} color={colors.foreground} />
+            </TouchableOpacity>
+          )}
+
+          {!!currentBookId && (
+            <TouchableOpacity
+              style={[styles.miniPlayerGoBtn, { backgroundColor: colors.muted }]}
+              onPress={handleOpenLyricsPage}
+              accessibilityRole="button"
+              accessibilityLabel={t("tts.openLyricsPage", "跳到歌词页")}
+            >
+              <LyricsIcon size={16} color={colors.foreground} />
+            </TouchableOpacity>
           )}
         </View>
       </View>

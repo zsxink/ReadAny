@@ -16,12 +16,14 @@ import { useAppStore } from "@/stores/app-store";
 import { useLibraryStore } from "@/stores/library-store";
 import { useReaderStore } from "@/stores/reader-store";
 import { eventBus } from "@readany/core/utils/event-bus";
-import { Headphones, Pause, Play, Square, BookOpen, Loader2 } from "lucide-react";
+import { BookOpen, Headphones, Loader2, Pause, Play, ScrollText, Square } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 // ─── Main floating bubble ─────────────────────────────────────────────────────
 
 export function FloatingTTSBubble() {
+  const { t } = useTranslation();
   const playState = useTTSStore((s) => s.playState);
   const currentBookTitle = useTTSStore((s) => s.currentBookTitle);
   const currentChapterTitle = useTTSStore((s) => s.currentChapterTitle);
@@ -115,7 +117,21 @@ export function FloatingTTSBubble() {
     [stop],
   );
 
-  const handleGoToReader = useCallback(
+  const openReaderTab = useCallback(() => {
+    if (!currentBookId) return;
+    const book = books.find((b) => b.id === currentBookId);
+    addTab({
+      id: `reader-${currentBookId}`,
+      type: "reader",
+      title: book?.meta.title ?? "Book",
+      bookId: currentBookId,
+      initialCfi: currentLocationCfi || undefined,
+    });
+    setActiveTab(`reader-${currentBookId}`);
+    setShowPlayer(false);
+  }, [addTab, books, currentBookId, currentLocationCfi, setActiveTab]);
+
+  const handleJumpToCurrentLocation = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
       if (!currentBookId) return;
@@ -134,18 +150,32 @@ export function FloatingTTSBubble() {
         setShowPlayer(false);
         return;
       }
-      const book = books.find((b) => b.id === currentBookId);
-      addTab({
-        id: `reader-${currentBookId}`,
-        type: "reader",
-        title: book?.meta.title ?? "Book",
-        bookId: currentBookId,
-        initialCfi: currentLocationCfi || undefined,
-      });
-      setActiveTab(`reader-${currentBookId}`);
-      setShowPlayer(false);
+      openReaderTab();
     },
-    [currentBookId, currentLocationCfi, addTab, goToCfiFn, setActiveTab, books],
+    [currentBookId, currentLocationCfi, goToCfiFn, openReaderTab],
+  );
+
+  const handleOpenLyricsPage = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!currentBookId) return;
+      let handled = false;
+      eventBus.emit("tts:open-lyrics-page", {
+        bookId: currentBookId,
+        respond: () => {
+          handled = true;
+        },
+      });
+      if (handled) {
+        setShowPlayer(false);
+        return;
+      }
+      openReaderTab();
+      window.setTimeout(() => {
+        eventBus.emit("tts:open-lyrics-page", { bookId: currentBookId });
+      }, 350);
+    },
+    [currentBookId, openReaderTab],
   );
 
   const adjustRate = useCallback(
@@ -171,7 +201,7 @@ export function FloatingTTSBubble() {
     if (!bubbleEl) return;
     const rect = bubbleEl.getBoundingClientRect();
     const panelWidth = 288;
-    const panelHeight = 146;
+    const panelHeight = 152;
     const gap = 12;
     const viewportPadding = 16;
     const clamp = (value: number, min: number, max: number) =>
@@ -306,19 +336,30 @@ export function FloatingTTSBubble() {
               <Square className="h-4 w-4" />
             </button>
 
+            {!!currentBookId && <div className="mx-1 h-6 w-px bg-border" />}
+
             {!!currentBookId && (
-              <>
-                <div className="mx-1 h-6 w-px bg-border" />
-                <button
-                  type="button"
-                  onClick={handleGoToReader}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted text-foreground transition-colors hover:bg-muted/80"
-                  title="跳回阅读器"
-                >
-                  <BookOpen className="h-4 w-4" />
-                </button>
-              </>
+              <button
+                type="button"
+                onClick={handleJumpToCurrentLocation}
+                className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted text-foreground transition-colors hover:bg-muted/80"
+                title={t("tts.jumpToCurrentLocation")}
+              >
+                <BookOpen className="h-4 w-4" />
+              </button>
             )}
+
+            {!!currentBookId && (
+              <button
+                type="button"
+                onClick={handleOpenLyricsPage}
+                className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted text-foreground transition-colors hover:bg-muted/80"
+                title={t("tts.openLyricsPage", "跳到歌词页")}
+              >
+                <ScrollText className="h-4 w-4" />
+              </button>
+            )}
+
           </div>
         </div>
       )}

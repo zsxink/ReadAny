@@ -19,8 +19,13 @@ import {
   SkipForward,
   Square,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+
+interface TTSLyricSegment {
+  text: string;
+  cfi?: string | null;
+}
 
 interface TTSPageProps {
   visible: boolean;
@@ -35,17 +40,25 @@ interface TTSPageProps {
   totalPages: number;
   sourceLabel: string;
   continuousEnabled: boolean;
-  narrationSegments?: string[];
+  narrationSegments?: TTSLyricSegment[];
+  prevNarrationSegments?: TTSLyricSegment[];
   currentChunkIndex?: number;
   totalChunks?: number;
   onClose: () => void;
+  onReturnToReading?: () => void | Promise<void>;
   onReplay: () => void | Promise<void>;
   onPlayPause: () => void | Promise<void>;
   onStop: () => void;
   onAdjustRate: (delta: number) => void;
   onAdjustPitch: (delta: number) => void;
   onToggleContinuous: () => void;
-  onJumpToSegment?: (index: number) => void;
+  onJumpToSegment?: (offsetFromCurrent: number) => void;
+  onJumpToLyricSegment?: (
+    segment: { text: string; cfi?: string | null },
+    offsetFromCurrent: number,
+  ) => void | Promise<void>;
+  onLoadMoreAbove?: () => void | Promise<void>;
+  onLoadMoreBelow?: () => void | Promise<void>;
   onUpdateConfig?: (updates: Partial<TTSConfig>) => void;
   onPrevChapter?: () => void | Promise<void>;
   onNextChapter?: () => void | Promise<void>;
@@ -69,9 +82,11 @@ export function TTSPage({
   sourceLabel,
   continuousEnabled,
   narrationSegments,
+  prevNarrationSegments,
   currentChunkIndex = 0,
   totalChunks = 0,
   onClose,
+  onReturnToReading,
   onReplay,
   onPlayPause,
   onStop,
@@ -79,6 +94,9 @@ export function TTSPage({
   onAdjustPitch,
   onToggleContinuous,
   onJumpToSegment,
+  onJumpToLyricSegment,
+  onLoadMoreAbove,
+  onLoadMoreBelow,
   onUpdateConfig,
   onPrevChapter,
   onNextChapter,
@@ -87,20 +105,46 @@ export function TTSPage({
   const [voicePickerOpen, setVoicePickerOpen] = useState(false);
   const voiceAnchorRef = useRef<HTMLButtonElement>(null);
   const activeLyricRef = useRef<HTMLButtonElement | null>(null);
+  const loadMoreAboveLockRef = useRef(false);
+  const loadMoreBelowLockRef = useRef(false);
 
   const fallbackPreview = useMemo(() => buildNarrationPreview(currentText), [currentText]);
+  const prevCount =
+    prevNarrationSegments?.filter((segment) => segment.text.trim().length > 0).length ?? 0;
   const lyricSegments = useMemo(() => {
-    if (narrationSegments && narrationSegments.length > 0) {
-      return narrationSegments.filter(Boolean);
+    const keyCounts = new Map<string, number>();
+    const toLyricItem = (prefix: "prev" | "curr", segment: TTSLyricSegment, index: number) => {
+      const fallbackKey = segment.text.trim().slice(0, 32) || `line-${index}`;
+      const baseKey = segment.cfi ? `${prefix}:${segment.cfi}` : `${prefix}:${index}:${fallbackKey}`;
+      const occurrence = keyCounts.get(baseKey) ?? 0;
+      keyCounts.set(baseKey, occurrence + 1);
+      return {
+        id: `${baseKey}:${occurrence}`,
+        text: segment.text,
+        cfi: segment.cfi ?? null,
+      };
+    };
+
+    const previous = (prevNarrationSegments ?? [])
+      .filter((segment) => segment.text.trim().length > 0)
+      .map((segment, index) => toLyricItem("prev", segment, index));
+    const current = (narrationSegments ?? [])
+      .filter((segment) => segment.text.trim().length > 0)
+      .map((segment, index) => toLyricItem("curr", segment, index));
+
+    if (previous.length > 0 || current.length > 0) {
+      return [...previous, ...current];
     }
-    return currentText ? [currentText] : [];
-  }, [currentText, narrationSegments]);
+
+    return currentText ? [{ id: "fallback:current-text", text: currentText, cfi: null }] : [];
+  }, [currentText, narrationSegments, prevNarrationSegments]);
   const safeChunkIndex = lyricSegments.length
-    ? Math.max(0, Math.min(currentChunkIndex, lyricSegments.length - 1))
+    ? Math.max(0, Math.min(prevCount + currentChunkIndex, lyricSegments.length - 1))
     : 0;
-  const currentExcerpt = lyricSegments[safeChunkIndex] || fallbackPreview.currentExcerpt;
-  const nextExcerpt = lyricSegments[safeChunkIndex + 1] || fallbackPreview.nextExcerpt;
-  const supportingExcerpt = lyricSegments[safeChunkIndex - 1] || fallbackPreview.supportingExcerpt;
+  const currentExcerpt = lyricSegments[safeChunkIndex]?.text || fallbackPreview.currentExcerpt;
+  const nextExcerpt = lyricSegments[safeChunkIndex + 1]?.text || fallbackPreview.nextExcerpt;
+  const supportingExcerpt =
+    lyricSegments[safeChunkIndex - 1]?.text || fallbackPreview.supportingExcerpt;
 
   useEffect(() => {
     activeLyricRef.current?.scrollIntoView({
@@ -108,6 +152,36 @@ export function TTSPage({
       behavior: "smooth",
     });
   }, [safeChunkIndex, visible]);
+
+  const handleLyricPress = useCallback(
+    (segment: { text: string; cfi?: string | null }, index: number) => {
+      const offsetFromCurrent = index - prevCount;
+      if (onJumpToLyricSegment) {
+        onJumpToLyricSegment(segment, offsetFromCurrent);
+        return;
+      }
+      onJumpToSegment?.(offsetFromCurrent);
+    },
+    [onJumpToLyricSegment, onJumpToSegment, prevCount],
+  );
+
+  const triggerLoadMoreAbove = useCallback(() => {
+    if (!onLoadMoreAbove || loadMoreAboveLockRef.current) return;
+    loadMoreAboveLockRef.current = true;
+    onLoadMoreAbove();
+    window.setTimeout(() => {
+      loadMoreAboveLockRef.current = false;
+    }, 350);
+  }, [onLoadMoreAbove]);
+
+  const triggerLoadMoreBelow = useCallback(() => {
+    if (!onLoadMoreBelow || loadMoreBelowLockRef.current) return;
+    loadMoreBelowLockRef.current = true;
+    onLoadMoreBelow();
+    window.setTimeout(() => {
+      loadMoreBelowLockRef.current = false;
+    }, 350);
+  }, [onLoadMoreBelow]);
 
   const progressPct = clampProgress(readingProgress);
   const voiceLabel = getTTSVoiceLabel(config);
@@ -341,8 +415,22 @@ export function TTSPage({
             type="button"
             className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border/60 bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted"
             onClick={() => {
-              if (onJumpToSegment) onJumpToSegment(safeChunkIndex);
-              else onClose();
+              if (onReturnToReading) {
+                onReturnToReading();
+                return;
+              }
+              if (lyricSegments.length > 0) {
+                handleLyricPress(
+                  lyricSegments[safeChunkIndex] ?? { text: currentText, cfi: null },
+                  safeChunkIndex,
+                );
+                return;
+              }
+              if (onJumpToSegment) {
+                onJumpToSegment(safeChunkIndex - prevCount);
+                return;
+              }
+              onClose();
             }}
           >
             <ChevronLeft className="h-3.5 w-3.5" />
@@ -364,8 +452,20 @@ export function TTSPage({
 
         {/* ── Lyrics — sentence-aligned, like mobile/readest style ── */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-10 pb-2">
-          <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <div className="flex min-h-full flex-col justify-center py-16">
+          <div
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            onScroll={(event) => {
+              const el = event.currentTarget;
+              const distanceFromBottom = el.scrollHeight - (el.scrollTop + el.clientHeight);
+              if (el.scrollTop < 180) {
+                triggerLoadMoreAbove();
+              }
+              if (distanceFromBottom < 260) {
+                triggerLoadMoreBelow();
+              }
+            }}
+          >
+            <div className="flex min-h-full flex-col justify-center py-20">
               {supportingExcerpt ? (
                 <p className="mb-3 shrink-0 text-center text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground/65">
                   {t("tts.justRead")}
@@ -379,10 +479,10 @@ export function TTSPage({
                     const past = index < safeChunkIndex;
                     return (
                       <button
-                        key={`tts-line-${index}`}
+                        key={segment.id}
                         ref={active ? activeLyricRef : undefined}
                         type="button"
-                        onClick={() => onJumpToSegment?.(index)}
+                        onClick={() => handleLyricPress(segment, index)}
                         className={`block w-full rounded-xl px-4 py-2 text-center transition-colors ${
                           active
                             ? "bg-foreground/5 text-2xl font-bold leading-relaxed text-foreground"
@@ -391,7 +491,7 @@ export function TTSPage({
                               : "text-base font-medium leading-7 text-foreground/35"
                         }`}
                       >
-                        {segment}
+                        {segment.text}
                       </button>
                     );
                   })}

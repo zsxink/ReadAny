@@ -49,6 +49,8 @@ const defaultReadSettings: ReadSettings = {
   paginatedLayout: "double",
   pageMargin: 40,
   paragraphSpacing: 16,
+  showTopTitleProgress: true,
+  showBottomTimeBattery: true,
 };
 
 const defaultTranslationConfig: TranslationConfig = {

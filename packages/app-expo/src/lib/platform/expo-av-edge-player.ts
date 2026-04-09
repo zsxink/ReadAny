@@ -16,6 +16,8 @@ import { splitIntoChunks } from "@readany/core/tts";
 const CHUNK_MAX_CHARS = 500;
 
 export class ExpoAVEdgeTTSPlayer implements ITTSPlayer {
+  private static readonly BUFFER_SIZE = 4;
+
   onStateChange?: (state: "playing" | "paused" | "stopped") => void;
   onChunkChange?: (index: number, total: number) => void;
   onEnd?: () => void;
@@ -27,6 +29,9 @@ export class ExpoAVEdgeTTSPlayer implements ITTSPlayer {
   private _currentIndex = 0;
   private _config: TTSConfig | null = null;
   private _tempFiles: string[] = [];
+  private _prefetchBuffer = new Map<number, Promise<string>>();
+  private _producerIndex = 0;
+  private _producerWake: (() => void) | null = null;
 
   async speak(text: string | string[], config: TTSConfig): Promise<void> {
     await this._cleanup();
@@ -36,6 +41,9 @@ export class ExpoAVEdgeTTSPlayer implements ITTSPlayer {
     this._chunks = Array.isArray(text) ? text.filter(Boolean) : splitIntoChunks(text, CHUNK_MAX_CHARS);
     this._currentIndex = 0;
     this._tempFiles = [];
+    this._prefetchBuffer.clear();
+    this._producerIndex = 0;
+    this._runProducer();
 
     this.onStateChange?.("playing");
     await this._playChunk();
@@ -52,33 +60,11 @@ export class ExpoAVEdgeTTSPlayer implements ITTSPlayer {
     }
 
     const idx = this._currentIndex;
-    const chunk = this._chunks[idx];
-    const config = this._config!;
     this.onChunkChange?.(idx, this._chunks.length);
 
     let audioUri: string | null = null;
     try {
-      const voice = config.edgeVoice || "zh-CN-XiaoxiaoNeural";
-      const lang = voice.split("-").slice(0, 2).join("-");
-
-      const mp3Data = await fetchEdgeTTSAudio({
-        text: chunk,
-        voice,
-        lang,
-        rate: config.rate,
-        pitch: config.pitch,
-      });
-
-      if (this._stopped) return;
-
-      // Write MP3 to a temp file so expo-av can load it
-      const tmpName = `tts_chunk_${idx}_${Date.now()}.mp3`;
-      const tmpFile = new File(Paths.cache, tmpName);
-      audioUri = tmpFile.uri;
-      this._tempFiles.push(audioUri);
-
-      tmpFile.write(new Uint8Array(mp3Data));
-
+      audioUri = await this._getChunkFile(idx);
       if (this._stopped) return;
 
       const { sound } = await Audio.Sound.createAsync(
@@ -128,7 +114,9 @@ export class ExpoAVEdgeTTSPlayer implements ITTSPlayer {
         await this._playChunk();
       }
     } catch (err) {
-      console.error("[ExpoAVEdgeTTSPlayer] chunk error:", err);
+      if ((err as Error)?.message !== "aborted") {
+        console.error("[ExpoAVEdgeTTSPlayer] chunk error:", err);
+      }
       if (this._currentSound) {
         await this._currentSound.unloadAsync().catch(() => {});
         this._currentSound = null;
@@ -138,6 +126,8 @@ export class ExpoAVEdgeTTSPlayer implements ITTSPlayer {
         await this._playChunk();
       }
     } finally {
+      this._prefetchBuffer.delete(idx);
+      this._producerWake?.();
       // Clean up temp file
       if (audioUri) {
         try {
@@ -167,6 +157,8 @@ export class ExpoAVEdgeTTSPlayer implements ITTSPlayer {
     this._currentSound?.stopAsync().catch(() => {});
     this._currentSound?.unloadAsync().catch(() => {});
     this._currentSound = null;
+    this._prefetchBuffer.clear();
+    this._producerWake?.();
     this._cleanupTempFiles();
     this.onStateChange?.("stopped");
   }
@@ -178,7 +170,68 @@ export class ExpoAVEdgeTTSPlayer implements ITTSPlayer {
       await this._currentSound.unloadAsync().catch(() => {});
       this._currentSound = null;
     }
+    this._prefetchBuffer.clear();
+    this._producerWake?.();
     this._cleanupTempFiles();
+  }
+
+  private async _runProducer(): Promise<void> {
+    while (this._producerIndex < this._chunks.length) {
+      if (this._stopped) return;
+
+      while (this._prefetchBuffer.size >= ExpoAVEdgeTTSPlayer.BUFFER_SIZE) {
+        if (this._stopped) return;
+        await new Promise<void>((resolve) => {
+          this._producerWake = resolve;
+        });
+        this._producerWake = null;
+      }
+
+      if (this._stopped) return;
+
+      const index = this._producerIndex++;
+      const promise = this._fetchChunkFile(index);
+      promise.catch(() => {});
+      this._prefetchBuffer.set(index, promise);
+    }
+  }
+
+  private async _getChunkFile(index: number): Promise<string> {
+    while (!this._prefetchBuffer.has(index)) {
+      if (this._stopped) {
+        throw new Error("aborted");
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    }
+    const promise = this._prefetchBuffer.get(index);
+    if (!promise) {
+      return Promise.reject(new Error("aborted"));
+    }
+    return promise;
+  }
+
+  private async _fetchChunkFile(index: number): Promise<string> {
+    if (this._stopped) throw new Error("aborted");
+    const config = this._config!;
+    const voice = config.edgeVoice || "zh-CN-XiaoxiaoNeural";
+    const lang = voice.split("-").slice(0, 2).join("-");
+
+    const mp3Data = await fetchEdgeTTSAudio({
+      text: this._chunks[index],
+      voice,
+      lang,
+      rate: config.rate,
+      pitch: config.pitch,
+    });
+
+    if (this._stopped) throw new Error("aborted");
+
+    const tmpName = `tts_chunk_${index}_${Date.now()}.mp3`;
+    const tmpFile = new File(Paths.cache, tmpName);
+    const audioUri = tmpFile.uri;
+    this._tempFiles.push(audioUri);
+    tmpFile.write(new Uint8Array(mp3Data));
+    return audioUri;
   }
 
   private _cleanupTempFiles(): void {

@@ -148,7 +148,12 @@ export interface FoliateViewerHandle {
   getView: () => FoliateView | null;
   /** Get visible text on the current page for TTS */
   getVisibleText: () => string;
-  getVisibleTTSSegments: () => Promise<TTSSegmentDetail[]>;
+  getVisibleTTSSegments: (alignCfi?: string | null) => Promise<TTSSegmentDetail[]>;
+  getTTSSegmentContext: (
+    cfi: string,
+    before?: number,
+    after?: number,
+  ) => Promise<{ before: TTSSegmentDetail[]; after: TTSSegmentDetail[] }>;
   setTTSHighlight: (cfi: string | null, color?: string) => Promise<void>;
   /** Extract all paragraphs from current section for chapter translation */
   getChapterParagraphs: () => ChapterParagraph[];
@@ -302,7 +307,7 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
       return view.tts ?? null;
     }, []);
 
-    const getVisibleTTSSegments = useCallback(async (): Promise<TTSSegmentDetail[]> => {
+    const getVisibleTTSSegments = useCallback(async (alignCfi?: string | null): Promise<TTSSegmentDetail[]> => {
       const view = viewRef.current;
       const renderer = view?.renderer;
       const current = renderer?.getContents?.()?.[0];
@@ -328,18 +333,6 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
           rect.bottom > 0 &&
           rect.top < win.innerHeight
         );
-      };
-
-      const isRangeVisibleInReader = (range: Range) => {
-        try {
-          const rects = Array.from(range.getClientRects());
-          if (!rects.length) {
-            return isRectVisibleInReader(range.getBoundingClientRect());
-          }
-          return rects.some((rect) => isRectVisibleInReader(rect));
-        } catch {
-          return false;
-        }
       };
 
       // Require the START of the sentence range to be visible on the current page,
@@ -479,21 +472,29 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
             ) => Array<{ text?: string; cfi?: string }>;
           };
 
-      if (segments.length > 0 && tts) {
+      if ((segments.length > 0 || alignCfi) && tts) {
         try {
+          const alignTargetCfi = alignCfi || segments[0]?.cfi;
+          if (!alignTargetCfi) return segments;
           if (typeof tts.alignCfi === "function") {
-            tts.alignCfi(segments[0]!.cfi);
+            tts.alignCfi(alignTargetCfi);
           } else if (typeof (tts as { highlightCfi?: (cfi: string) => unknown }).highlightCfi === "function") {
-            (tts as { highlightCfi: (cfi: string) => unknown }).highlightCfi(segments[0]!.cfi);
+            (tts as { highlightCfi: (cfi: string) => unknown }).highlightCfi(alignTargetCfi);
           }
           const currentDetail =
             typeof tts.currentDetail === "function" ? tts.currentDetail() : null;
           const followingDetails =
             typeof tts.collectDetails === "function"
-              ? tts.collectDetails(Math.max(0, segments.length - (currentDetail ? 1 : 0)), {
-                  includeCurrent: false,
-                  offset: 1,
-                })
+              ? tts.collectDetails(
+                  Math.max(
+                    0,
+                    Math.max(segments.length, alignCfi ? 12 : segments.length) - (currentDetail ? 1 : 0),
+                  ),
+                  {
+                    includeCurrent: false,
+                    offset: 1,
+                  },
+                )
               : [];
           const alignedSegments = [currentDetail, ...(followingDetails || [])]
             .filter(
@@ -508,7 +509,14 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
               detail.text && arr.findIndex((item) => item.cfi === detail.cfi) === index,
             );
           if (alignedSegments.length > 0) {
-            return alignedSegments;
+            if (segments.length > 0) {
+              const visibleCfis = new Set(segments.map((segment) => segment.cfi));
+              const filtered = alignedSegments.filter((segment) => visibleCfis.has(segment.cfi));
+              if (filtered.length > 0) {
+                return filtered;
+              }
+            }
+            return alignCfi ? alignedSegments : segments;
           }
         } catch {
           // fall through to manual segments
@@ -517,6 +525,61 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
 
       return segments;
     }, [ensureDesktopTTS]);
+
+    const getTTSSegmentContext = useCallback(
+      async (
+        cfi: string,
+        before = 10,
+        after = 10,
+      ): Promise<{ before: TTSSegmentDetail[]; after: TTSSegmentDetail[] }> => {
+        const tts = await ensureDesktopTTS();
+        if (!tts || !cfi) return { before: [], after: [] };
+
+        try {
+          if (typeof tts.alignCfi === "function") {
+            tts.alignCfi(cfi);
+          } else if (typeof (tts as { highlightCfi?: (value: string) => unknown }).highlightCfi === "function") {
+            (tts as { highlightCfi: (value: string) => unknown }).highlightCfi(cfi);
+          }
+        } catch {
+          return { before: [], after: [] };
+        }
+
+        const normalize = (details: Array<{ text?: string; cfi?: string }>) => {
+          const seen = new Set<string>();
+          const result: TTSSegmentDetail[] = [];
+          for (const detail of details) {
+            if (!detail?.text || !detail?.cfi) continue;
+            const text = detail.text.replace(/\s+/g, " ").trim();
+            if (!text || detail.cfi === cfi || seen.has(detail.cfi)) continue;
+            seen.add(detail.cfi);
+            result.push({ text, cfi: detail.cfi });
+          }
+          return result;
+        };
+
+        const beforeDetails =
+          typeof tts.collectDetails === "function"
+            ? tts.collectDetails(Math.max(0, before), {
+                includeCurrent: false,
+                offset: -Math.max(0, before),
+              })
+            : [];
+        const afterDetails =
+          typeof tts.collectDetails === "function"
+            ? tts.collectDetails(Math.max(0, after), {
+                includeCurrent: false,
+                offset: 1,
+              })
+            : [];
+
+        return {
+          before: normalize(beforeDetails),
+          after: normalize(afterDetails),
+        };
+      },
+      [ensureDesktopTTS],
+    );
 
     // --- Imperative handle for parent ---
     useImperativeHandle(
@@ -690,6 +753,7 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
           }
         },
         getVisibleTTSSegments,
+        getTTSSegmentContext,
         setTTSHighlight: async (cfi: string | null, color?: string) => {
           ttsHighlightStateRef.current = {
             cfi,

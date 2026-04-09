@@ -18,6 +18,7 @@ const CHROMIUM_MAJOR_VERSION = "143";
 
 const WIN_EPOCH_OFFSET = 11644473600n; // BigInt
 const S_TO_NS = 1000000000n; // BigInt
+const EDGE_TTS_AUDIO_CACHE_LIMIT = 48;
 
 // ── Voice list ──
 const EDGE_TTS_VOICE_MAP: Record<string, string[]> = {
@@ -214,13 +215,43 @@ export interface EdgeTTSPayload {
   pitch: number;
 }
 
+const edgeTtsAudioCache = new Map<string, ArrayBuffer>();
+const edgeTtsInflightCache = new Map<string, Promise<ArrayBuffer>>();
+
+function getEdgeTTSPayloadKey(payload: EdgeTTSPayload): string {
+  return JSON.stringify([
+    payload.voice,
+    payload.lang,
+    payload.rate,
+    payload.pitch,
+    payload.text,
+  ]);
+}
+
+function cloneAudioBuffer(audioData: ArrayBuffer): ArrayBuffer {
+  return audioData.slice(0);
+}
+
+function touchEdgeTTSAudioCache(key: string, audioData: ArrayBuffer) {
+  if (edgeTtsAudioCache.has(key)) {
+    edgeTtsAudioCache.delete(key);
+  }
+  edgeTtsAudioCache.set(key, audioData);
+
+  while (edgeTtsAudioCache.size > EDGE_TTS_AUDIO_CACHE_LIMIT) {
+    const oldestKey = edgeTtsAudioCache.keys().next().value;
+    if (!oldestKey) break;
+    edgeTtsAudioCache.delete(oldestKey);
+  }
+}
+
 /**
  * Fetch audio from Edge TTS via IPlatformService.createWebSocket.
  * The platform service allows setting custom headers (User-Agent, Origin, Cookie)
  * that browser native WebSocket cannot set.
  * Returns the accumulated MP3 audio as an ArrayBuffer.
  */
-export async function fetchEdgeTTSAudio(payload: EdgeTTSPayload): Promise<ArrayBuffer> {
+async function fetchEdgeTTSAudioUncached(payload: EdgeTTSPayload): Promise<ArrayBuffer> {
   const platform = getPlatformService();
 
   const connectId = randomHex(16);
@@ -320,4 +351,31 @@ export async function fetchEdgeTTSAudio(payload: EdgeTTSPayload): Promise<ArrayB
       reject(new Error(`Edge TTS WebSocket error: ${error}`));
     }
   });
+}
+
+export async function fetchEdgeTTSAudio(payload: EdgeTTSPayload): Promise<ArrayBuffer> {
+  const cacheKey = getEdgeTTSPayloadKey(payload);
+  const cachedAudio = edgeTtsAudioCache.get(cacheKey);
+  if (cachedAudio) {
+    touchEdgeTTSAudioCache(cacheKey, cachedAudio);
+    return cloneAudioBuffer(cachedAudio);
+  }
+
+  const inflight = edgeTtsInflightCache.get(cacheKey);
+  if (inflight) {
+    return cloneAudioBuffer(await inflight);
+  }
+
+  const request = fetchEdgeTTSAudioUncached(payload)
+    .then((audioData) => {
+      const cachedCopy = audioData.slice(0);
+      touchEdgeTTSAudioCache(cacheKey, cachedCopy);
+      return cachedCopy;
+    })
+    .finally(() => {
+      edgeTtsInflightCache.delete(cacheKey);
+    });
+
+  edgeTtsInflightCache.set(cacheKey, request);
+  return cloneAudioBuffer(await request);
 }

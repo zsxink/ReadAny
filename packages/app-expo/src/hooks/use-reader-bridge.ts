@@ -39,6 +39,11 @@ export interface VisibleTTSSegment {
   cfi: string;
 }
 
+export interface VisibleTTSContext {
+  before: VisibleTTSSegment[];
+  after: VisibleTTSSegment[];
+}
+
 export interface ReaderBridgeCallbacks {
   onRelocate?: (detail: RelocateEvent) => void;
   onTocReady?: (items: TOCItem[]) => void;
@@ -74,6 +79,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
   const pendingVisibleTTSSegmentsResolveRef = useRef<((segments: VisibleTTSSegment[]) => void) | null>(
     null,
   );
+  const pendingTTSContextResolveRef = useRef<((context: VisibleTTSContext) => void) | null>(null);
   const pendingChapterParagraphsResolveRef = useRef<
     | ((
         paragraphs: Array<{ id: string; text: string; tagName: string }>,
@@ -266,7 +272,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
     });
   }, []);
 
-  const getVisibleTTSSegments = useCallback(() => {
+  const getVisibleTTSSegments = useCallback((alignCfi?: string | null) => {
     return new Promise<VisibleTTSSegment[]>((resolve) => {
       pendingVisibleTTSSegmentsResolveRef.current = resolve;
 
@@ -274,7 +280,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
         (function() {
           try {
             if (window.doGetVisibleTTSSegments) {
-              window.doGetVisibleTTSSegments();
+              window.doGetVisibleTTSSegments(${JSON.stringify(alignCfi || null)});
             } else {
               window.ReactNativeWebView.postMessage(JSON.stringify({type:'visibleTTSSegments',segments:[],error:'doGetVisibleTTSSegments not defined'}));
             }
@@ -289,6 +295,34 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
         if (pendingVisibleTTSSegmentsResolveRef.current === resolve) {
           pendingVisibleTTSSegmentsResolveRef.current = null;
           resolve([]);
+        }
+      }, 4000);
+    });
+  }, []);
+
+  const getTTSSegmentContext = useCallback((cfi: string, before = 10, after = 10) => {
+    return new Promise<VisibleTTSContext>((resolve) => {
+      pendingTTSContextResolveRef.current = resolve;
+
+      webViewRef.current?.injectJavaScript(`
+        (function() {
+          try {
+            if (window.doGetTTSSegmentContext) {
+              window.doGetTTSSegmentContext(${JSON.stringify(cfi)}, ${before}, ${after});
+            } else {
+              window.ReactNativeWebView.postMessage(JSON.stringify({type:'ttsSegmentContext',before:[],after:[],error:'doGetTTSSegmentContext not defined'}));
+            }
+          } catch(e) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({type:'ttsSegmentContext',before:[],after:[],error:String(e)}));
+          }
+        })();
+        true;
+      `);
+
+      setTimeout(() => {
+        if (pendingTTSContextResolveRef.current === resolve) {
+          pendingTTSContextResolveRef.current = null;
+          resolve({ before: [], after: [] });
         }
       }, 4000);
     });
@@ -531,6 +565,18 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
             pendingVisibleTTSSegmentsResolveRef.current = null;
           }
           break;
+        case "ttsSegmentContext":
+          if (pendingTTSContextResolveRef.current) {
+            if (msg.error) {
+              console.warn("[ReaderBridge] ttsSegmentContext error:", msg.error);
+            }
+            pendingTTSContextResolveRef.current({
+              before: msg.before || [],
+              after: msg.after || [],
+            });
+            pendingTTSContextResolveRef.current = null;
+          }
+          break;
         case "chapterParagraphs":
           console.log("[ChapterTranslation] Received chapterParagraphs:", JSON.stringify({
             count: msg.paragraphs?.length || 0,
@@ -586,6 +632,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       requestPageSnippet,
       getVisibleText,
       getVisibleTTSSegments,
+      getTTSSegmentContext,
       setTTSHighlight,
       flashHighlight,
       getChapterParagraphs,
@@ -615,6 +662,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       requestPageSnippet,
       getVisibleText,
       getVisibleTTSSegments,
+      getTTSSegmentContext,
       setTTSHighlight,
       getChapterParagraphs,
       injectChapterTranslations,

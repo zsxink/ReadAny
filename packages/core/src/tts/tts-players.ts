@@ -407,7 +407,7 @@ export class EdgeTTSPlayer implements ITTSPlayer {
   private producerIndex = 0;
   private producerWake: (() => void) | null = null;
   private chunkStartTimers = new Set<ReturnType<typeof setTimeout>>();
-  private static readonly BUFFER_SIZE = 3;
+  private static readonly BUFFER_SIZE = 4;
 
   onStateChange?: (state: "playing" | "paused" | "stopped") => void;
   onChunkChange?: (index: number, total: number) => void;
@@ -477,6 +477,7 @@ export class EdgeTTSPlayer implements ITTSPlayer {
         if (!this._playing || this.aborted) return;
         await this.decodeAndSchedule(audioData, i);
       } catch (err) {
+        if ((err as Error)?.message === "aborted") return;
         console.error("[Edge TTS] chunk error:", err);
       }
 
@@ -503,13 +504,8 @@ export class EdgeTTSPlayer implements ITTSPlayer {
 
       const idx = this.producerIndex++;
       const promise = fetchEdgeTTSAudio({ text: this.chunks[idx], ...base });
+      promise.catch(() => {});
       this.fetchBuffer.set(idx, promise);
-
-      try {
-        await promise;
-      } catch {
-        // Error will be handled by the consumer
-      }
     }
   }
 

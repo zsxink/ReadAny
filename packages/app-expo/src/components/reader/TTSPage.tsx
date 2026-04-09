@@ -17,11 +17,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
-  Animated,
   Dimensions,
-  FlatList,
   Image,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -29,6 +28,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
 
 // ── Dimensions ────────────────────────────────────────────────────────────────
@@ -324,12 +324,14 @@ interface TTSPageProps {
   totalPages: number;
   sourceLabel: string;
   continuousEnabled: boolean;
-  narrationSegments?: string[];
+  narrationSegments?: Array<{ text: string; cfi?: string | null }>;
   /** Sentences from the previously-read page, shown above current page sentences */
-  prevNarrationSegments?: string[];
+  prevNarrationSegments?: Array<{ text: string; cfi?: string | null }>;
+  currentSegmentCfi?: string | null;
   currentChunkIndex?: number;
   totalChunks?: number;
   onClose: () => void;
+  onReturnToReading?: () => void | Promise<void>;
   onReplay: () => void | Promise<void>;
   onPlayPause: () => void | Promise<void>;
   onStop: () => void;
@@ -342,6 +344,12 @@ interface TTSPageProps {
    * negative values mean a sentence from the previous page.
    */
   onJumpToSegment?: (offsetFromCurrent: number) => void;
+  onJumpToLyricSegment?: (
+    segment: { text: string; cfi?: string | null },
+    offsetFromCurrent: number,
+  ) => void | Promise<void>;
+  onLoadMoreAbove?: () => void | Promise<void>;
+  onLoadMoreBelow?: () => void | Promise<void>;
   onUpdateConfig?: (updates: Partial<TTSConfig>) => void;
   onPrevChapter?: () => void | Promise<void>;
   onNextChapter?: () => void | Promise<void>;
@@ -367,9 +375,11 @@ export function TTSPage({
   continuousEnabled,
   narrationSegments,
   prevNarrationSegments,
+  currentSegmentCfi,
   currentChunkIndex = 0,
   totalChunks = 0,
   onClose,
+  onReturnToReading,
   onReplay,
   onPlayPause,
   onStop,
@@ -377,22 +387,24 @@ export function TTSPage({
   onAdjustPitch,
   onToggleContinuous,
   onJumpToSegment,
+  onJumpToLyricSegment,
+  onLoadMoreAbove,
+  onLoadMoreBelow,
   onUpdateConfig,
   onPrevChapter,
   onNextChapter,
 }: TTSPageProps) {
   const colors = useColors();
+  const insets = useSafeAreaInsets();
   const { t } = useTranslation();
   const [voicePickerVisible, setVoicePickerVisible] = useState(false);
-  const lyricListRef = useRef<FlatList<string>>(null);
-
-  // Native horizontal paging ScrollView ref — no JS animation needed
-  const scrollRef = useRef<ScrollView>(null);
-
-  // 1.0 = playing (full size), 0.95 = paused (slightly contracted)
-  const playScaleAnim = useRef(new Animated.Value(1)).current;
-  // Tracks horizontal scroll offset — drives animated page-indicator pill
-  const scrollX = useRef(new Animated.Value(0)).current;
+  const lyricScrollRef = useRef<ScrollView>(null);
+  const lyricLayoutRef = useRef(new Map<number, { y: number; height: number }>());
+  const userScrollingRef = useRef(false);
+  const userScrollUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadMoreAboveLockRef = useRef(false);
+  const loadMoreBelowLockRef = useRef(false);
+  const autoScrollLockUntilRef = useRef(0);
 
   const fallbackPreview = useMemo(() => buildNarrationPreview(currentText), [currentText]);
 
@@ -405,30 +417,139 @@ export function TTSPage({
 
   // Number of prev-page sentences prepended to the list (only used in fallback mode)
   // Number of prev-page sentences prepended to the list
-  const prevCount = prevNarrationSegments ? prevNarrationSegments.filter(Boolean).length : 0;
+  const prevCount =
+    prevNarrationSegments?.filter((segment) => segment.text.trim().length > 0).length ?? 0;
   const lyricSegments = useMemo(() => {
-    const prev = prevNarrationSegments ? prevNarrationSegments.filter(Boolean) : [];
-    const curr = narrationSegments && narrationSegments.length > 0
-      ? narrationSegments.filter(Boolean)
-      : currentText ? [currentText] : [];
-    return [...prev, ...curr];
-  }, [currentText, narrationSegments, prevNarrationSegments]);
+    const keyCounts = new Map<string, number>();
+    const toLyricItem = (
+      prefix: "prev" | "curr",
+      segment: { text: string; cfi?: string | null },
+      index: number,
+    ) => {
+      const fallbackKey = segment.text.trim().slice(0, 32) || `line-${index}`;
+      const baseKey = segment.cfi ? `${prefix}:${segment.cfi}` : `${prefix}:${index}:${fallbackKey}`;
+      const occurrence = keyCounts.get(baseKey) ?? 0;
+      keyCounts.set(baseKey, occurrence + 1);
+      return {
+        id: `${baseKey}:${occurrence}`,
+        text: segment.text,
+        cfi: segment.cfi ?? null,
+      };
+    };
 
-  // safeChunkIndex is offset into the combined list where the active sentence lives
+    const prev = (prevNarrationSegments ?? [])
+      .filter((segment) => segment.text.trim().length > 0)
+      .map((segment, index) => toLyricItem("prev", segment, index));
+    const curr = (narrationSegments ?? [])
+      .filter((segment) => segment.text.trim().length > 0)
+      .map((segment, index) => toLyricItem("curr", segment, index));
+    if (prev.length > 0 || curr.length > 0) {
+      return [...prev, ...curr];
+    }
+    return currentText ? [{ id: "fallback:current-text", text: currentText, cfi: null }] : [];
+  }, [currentText, narrationSegments, prevNarrationSegments]);
+  const lyricSegmentIdsKey = useMemo(
+    () => lyricSegments.map((segment) => segment.id).join("|"),
+    [lyricSegments],
+  );
+
+  // Prefer the actual spoken segment CFI so lyric centering doesn't reset when
+  // the visible/current arrays are sliced or rebuilt around the current sentence.
   const safeChunkIndex = useMemo(() => {
     if (!lyricSegments.length) return 0;
-    return Math.max(0, Math.min(prevCount + currentChunkIndex, lyricSegments.length - 1));
-  }, [currentChunkIndex, lyricSegments.length, prevCount]);
-  const currentExcerpt = lyricSegments[safeChunkIndex] || fallbackPreview.currentExcerpt;
-  const nextExcerpt =
-    lyricSegments[safeChunkIndex + 1] || fallbackPreview.nextExcerpt;
-  const supportingExcerpt =
-    lyricSegments[safeChunkIndex - 1] || fallbackPreview.supportingExcerpt;
+    if (currentSegmentCfi) {
+      const currentIndex = lyricSegments.findIndex((segment) => segment.cfi === currentSegmentCfi);
+      if (currentIndex >= 0) {
+        return currentIndex;
+      }
+    }
+    const actualPrevCount = lyricSegments.filter((s) => s.id.startsWith("prev:")).length;
+    const prevCountStale = prevCount !== actualPrevCount;
+    if (prevCountStale) {
+      const cfiInCurr =
+        currentSegmentCfi && narrationSegments
+          ? narrationSegments.findIndex((s) => s.cfi === currentSegmentCfi)
+          : -1;
+      if (cfiInCurr >= 0) {
+        return Math.min(actualPrevCount + cfiInCurr, lyricSegments.length - 1);
+      }
+      return Math.min(actualPrevCount, lyricSegments.length - 1);
+    }
+    const fallback = prevCount + currentChunkIndex;
+    if (fallback < lyricSegments.length) {
+      return Math.max(0, fallback);
+    }
+    const cfiInCurr =
+      currentSegmentCfi && narrationSegments
+        ? narrationSegments.findIndex((s) => s.cfi === currentSegmentCfi)
+        : -1;
+    if (cfiInCurr >= 0) {
+      return prevCount + cfiInCurr;
+    }
+    return Math.max(0, Math.min(prevCount, lyricSegments.length - 1));
+  }, [currentChunkIndex, currentSegmentCfi, lyricSegments, narrationSegments, prevCount]);
+  const lyricCenterPadding = useMemo(
+    () => Math.max(40, Math.round(lyricAreaHeight / 2 - 32)),
+    [lyricAreaHeight],
+  );
+  const currentExcerpt = lyricSegments[safeChunkIndex]?.text || fallbackPreview.currentExcerpt;
+  const centerLyricIndex = useCallback(
+    (index: number, animated = true) => {
+      const layout = lyricLayoutRef.current.get(index);
+      if (layout) {
+        const targetOffset = Math.max(
+          0,
+          lyricCenterPadding + layout.y - (lyricAreaHeight - layout.height) / 2,
+        );
+        autoScrollLockUntilRef.current = Date.now() + (animated ? 800 : 250);
+        if (__DEV__) {
+          console.log("[TTSPage][lyrics] center", {
+            index,
+            animated,
+            layoutY: layout.y,
+            layoutHeight: layout.height,
+            lyricAreaHeight,
+            lyricCenterPadding,
+            targetOffset,
+          });
+        }
+        lyricScrollRef.current?.scrollTo({
+          y: targetOffset,
+          x: 0,
+          animated,
+        });
+        return;
+      }
+      const estimatedOffset = Math.max(
+        0,
+        lyricCenterPadding + index * 44 - lyricAreaHeight / 2 + 22,
+      );
+      autoScrollLockUntilRef.current = Date.now() + (animated ? 800 : 250);
+      if (__DEV__) {
+        console.log("[TTSPage][lyrics] center-estimated", {
+          index,
+          animated,
+          lyricAreaHeight,
+          lyricCenterPadding,
+          estimatedOffset,
+        });
+      }
+      lyricScrollRef.current?.scrollTo({
+        y: estimatedOffset,
+        x: 0,
+        animated,
+      });
+    },
+    [lyricAreaHeight, lyricCenterPadding],
+  );
 
   const pct = clampPct(readingProgress);
   const voiceLabel = getTTSVoiceLabel(config);
   const isPlaying = playState === "playing";
   const isLoading = playState === "loading";
+  const chromeTopInset = Platform.OS === "android" ? Math.max(insets.top, 6) : Math.max(insets.top, 10);
+  const chromeBottomInset =
+    Platform.OS === "android" ? Math.max(insets.bottom, 6) : Math.max(insets.bottom, 10);
 
   const stateLabel =
     playState === "loading"
@@ -451,28 +572,89 @@ export function TTSPage({
         ? "DashScope"
         : t("tts.browser");
 
-  // ── Play/pause cover pulse ─────────────────────────────────────────────────
-  useEffect(() => {
-    Animated.spring(playScaleAnim, {
-      toValue: isPlaying ? 1.0 : 0.95,
-      tension: 120,
-      friction: 14,
-      useNativeDriver: true,
-    }).start();
-  }, [isPlaying, playScaleAnim]);
+  const pendingCenterRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!visible || lyricSegments.length <= 1) return;
+    if (userScrollingRef.current) return;
     const targetIndex = Math.max(0, Math.min(safeChunkIndex, lyricSegments.length - 1));
-    const timer = setTimeout(() => {
-      lyricListRef.current?.scrollToIndex({
-        index: targetIndex,
-        animated: true,
-        viewPosition: 0.5,
+    if (__DEV__) {
+      console.log("[TTSPage][lyrics] active-changed", {
+        currentSegmentCfi,
+        currentChunkIndex,
+        safeChunkIndex: targetIndex,
+        lyricSegmentsLength: lyricSegments.length,
       });
-    }, 80);
-    return () => clearTimeout(timer);
-  }, [lyricSegments.length, safeChunkIndex, visible]);
+    }
+    if (lyricLayoutRef.current.has(targetIndex)) {
+      const timer = setTimeout(() => {
+        centerLyricIndex(targetIndex, true);
+      }, 80);
+      return () => clearTimeout(timer);
+    } else {
+      pendingCenterRef.current = targetIndex;
+    }
+  }, [centerLyricIndex, lyricSegments.length, safeChunkIndex, visible]);
+
+  useEffect(() => {
+    lyricLayoutRef.current.clear();
+    pendingCenterRef.current = null;
+  }, [lyricSegmentIdsKey]);
+
+  useEffect(() => {
+    return () => {
+      if (userScrollUnlockTimerRef.current) {
+        clearTimeout(userScrollUnlockTimerRef.current);
+      }
+    };
+  }, []);
+
+  const markUserScrolling = useCallback(() => {
+    userScrollingRef.current = true;
+    if (userScrollUnlockTimerRef.current) {
+      clearTimeout(userScrollUnlockTimerRef.current);
+      userScrollUnlockTimerRef.current = null;
+    }
+  }, []);
+
+  const releaseUserScrolling = useCallback(() => {
+    if (userScrollUnlockTimerRef.current) {
+      clearTimeout(userScrollUnlockTimerRef.current);
+    }
+    userScrollUnlockTimerRef.current = setTimeout(() => {
+      userScrollingRef.current = false;
+    }, 900);
+  }, []);
+
+  const handleLyricPress = useCallback(
+    (segment: { text: string; cfi?: string | null }, index: number) => {
+      const offsetFromCurrent = index - prevCount;
+      if (onJumpToLyricSegment) {
+        onJumpToLyricSegment(segment, offsetFromCurrent);
+        return;
+      }
+      onJumpToSegment?.(offsetFromCurrent);
+    },
+    [onJumpToLyricSegment, onJumpToSegment, prevCount],
+  );
+
+  const triggerLoadMoreAbove = useCallback(() => {
+    if (!onLoadMoreAbove || loadMoreAboveLockRef.current) return;
+    loadMoreAboveLockRef.current = true;
+    onLoadMoreAbove();
+    setTimeout(() => {
+      loadMoreAboveLockRef.current = false;
+    }, 350);
+  }, [onLoadMoreAbove]);
+
+  const triggerLoadMoreBelow = useCallback(() => {
+    if (!onLoadMoreBelow || loadMoreBelowLockRef.current) return;
+    loadMoreBelowLockRef.current = true;
+    onLoadMoreBelow();
+    setTimeout(() => {
+      loadMoreBelowLockRef.current = false;
+    }, 350);
+  }, [onLoadMoreBelow]);
 
   // ── PanResponder listener removed — replaced by native ScrollView paging ──
 
@@ -622,7 +804,11 @@ export function TTSPage({
         <TouchableOpacity
           style={s.returnBtn}
           onPress={() => {
-            onJumpToSegment?.(safeChunkIndex - prevCount);
+            if (onReturnToReading) {
+              onReturnToReading();
+              return;
+            }
+            handleLyricPress(lyricSegments[safeChunkIndex] ?? { text: currentText, cfi: null }, safeChunkIndex);
           }}
           activeOpacity={0.8}
         >
@@ -645,66 +831,18 @@ export function TTSPage({
     </View>
   );
 
-  // ── Animated page-indicator (pill slides between two dots) ───────────────────
-  // DOT_GAP = dot width (6) + gap (5) = 11 → pill translates over the two dots
-  const DOT_GAP = 11;
-  // Page 0: pill on left dot  → translateX = 0
-  // Page 1: pill on right dot → translateX = DOT_GAP
-  const pillTranslateX = scrollX.interpolate({
-    inputRange: [0, SW],
-    outputRange: [0, DOT_GAP],
-    extrapolate: "clamp",
-  });
-  // Left dot dims as pill leaves it (page 0→1)
-  const dot0Opacity = scrollX.interpolate({
-    inputRange: [0, SW],
-    outputRange: [1, 0.65],
-    extrapolate: "clamp",
-  });
-  // Right dot dims as pill leaves it (page 1→0)
-  const dot1Opacity = scrollX.interpolate({
-    inputRange: [0, SW],
-    outputRange: [0.65, 1],
-    extrapolate: "clamp",
-  });
-  // pill width morphs: 18 → 6 mid-swipe → 18 to show the squish-stretch feel
-  const pillWidth = scrollX.interpolate({
-    inputRange: [0, SW * 0.5, SW],
-    outputRange: [18, 8, 18],
-    extrapolate: "clamp",
-  });
-
-  const pageIndicatorJSX = (
-    <View style={s.iconBtn}>
-      {/*
-       * Container width = PILL_W(18) + GAP(5) + DOT(6) = 29px
-       * Dot centers are at x=9 (pill center on page 0) and x=9+11=20.
-       * Both dots are absolutely positioned so they're always visible
-       * behind the pill regardless of pill width.
-       */}
-      <View style={s.pageIndicator}>
-        {/* Left dot — behind pill on page 0 */}
-        <Animated.View style={[s.dot, s.dotAbs, { left: 6, opacity: dot0Opacity }]} />
-        {/* Right dot — behind pill on page 1 */}
-        <Animated.View style={[s.dot, s.dotAbs, { left: 17, opacity: dot1Opacity }]} />
-        {/* Animated pill floats above the dots */}
-        <Animated.View
-          style={[
-            s.dotPill,
-            {
-              width: pillWidth,
-              transform: [{ translateX: pillTranslateX }],
-            },
-          ]}
-        />
-      </View>
-    </View>
-  );
-
-  // ── Top bar — fixed above the pager ────────────────────────────────────────
+  // ── Top bar ────────────────────────────────────────────────────────────────
 
   const topBarJSX = (
-    <View style={s.topBar}>
+    <View
+      style={[
+        s.topBar,
+        {
+          paddingTop: chromeTopInset + (Platform.OS === "android" ? 8 : 10),
+          paddingBottom: Platform.OS === "android" ? 0 : 2,
+        },
+      ]}
+    >
       <TouchableOpacity style={s.iconBtn} onPress={onClose} activeOpacity={0.7}>
         <ChevronDownIcon size={22} color={colors.mutedForeground} />
       </TouchableOpacity>
@@ -712,147 +850,123 @@ export function TTSPage({
         <HeadphonesIcon size={10} color={colors.primary} />
         <Text style={s.statusTxt}>{stateLabel}</Text>
       </View>
-      {pageIndicatorJSX}
+      <View style={s.iconBtn} />
     </View>
   );
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen">
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="fullScreen"
+      statusBarTranslucent={Platform.OS === "android"}
+      navigationBarTranslucent={Platform.OS === "android"}
+      hardwareAccelerated={Platform.OS === "android"}
+    >
       <View style={s.screen}>
-        {/* Top bar is fixed — outside the horizontal pager */}
         {topBarJSX}
-
-        {/*
-         * Native horizontal paging — each child is exactly SW wide.
-         * The OS handles all gesture arbitration: vertical scrolls inside
-         * child Views are not confused with the horizontal page-swipe.
-         * decelerationRate="fast" gives the same snap feel as Apple Music.
-         */}
-        <ScrollView
-          ref={scrollRef}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          decelerationRate="fast"
-          bounces={false}
-          scrollEventThrottle={16}
-          style={s.pager}
-          contentContainerStyle={s.pagerContent}
-          onScroll={Animated.event(
-            [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-            { useNativeDriver: false },
-          )}
-        >
-
-          {/* ══════════════════════════════════════════════════════════════
-              PAGE 0 — COVER VIEW  (Spotify Now Playing / Apple Music)
-          ══════════════════════════════════════════════════════════════ */}
-          <View style={s.page}>
-
-            {/* Album art — animated scale pulse on play/pause */}
-            <View style={s.coverSection}>
-              {/* Ambient glow: shadow only — no background fill */}
-              <View style={s.glow} />
-              <Animated.View style={{ transform: [{ scale: playScaleAnim }] }}>
-                <View style={s.coverShadow}>
-                  <BookCoverImage
-                    coverUri={coverUri}
-                    bookTitle={bookTitle}
-                    chapterTitle={chapterTitle}
-                    width={COVER_W}
-                    height={COVER_H}
-                    borderRadius={radius.md}
-                    pct={pct}
-                    colors={colors}
-                    t={t}
-                  />
-                </View>
-              </Animated.View>
+        <View style={s.content}>
+          <View style={s.lyricHeaderRow}>
+            <View style={s.thumbShadowWrap}>
+              <BookCoverImage
+                coverUri={coverUri}
+                bookTitle={bookTitle}
+                chapterTitle={chapterTitle}
+                width={THUMB_W}
+                height={THUMB_H}
+                borderRadius={radius.sm ?? 6}
+                pct={pct}
+                colors={colors}
+                t={t}
+              />
             </View>
-
-            {/* Book title + chapter */}
-            <View style={s.bookInfo}>
-              <Text style={s.bookTitle} numberOfLines={1}>
+            <View style={s.lyricHeaderMeta}>
+              <Text style={s.lyricBookName} numberOfLines={2}>
                 {bookTitle || t("reader.untitled")}
               </Text>
-              <Text style={s.bookChapter} numberOfLines={1}>
+              <Text style={s.lyricChapterName} numberOfLines={1}>
                 {chapterTitle || t("tts.fromCurrentPage")}
               </Text>
             </View>
-
-            {progressBarJSX}
-            {controlsJSX}
-            {settingsJSX}
-
-            {/* Bottom: continuous toggle + engine/voice chips */}
-            <View style={s.bottom}>
-              {bottomStripJSX}
-            </View>
           </View>
 
-          {/* ══════════════════════════════════════════════════════════════
-              PAGE 1 — TEXT VIEW  (Apple Music karaoke style)
-          ══════════════════════════════════════════════════════════════ */}
-          <View style={s.page}>
-
-            {/* Thumbnail row: mini cover + book meta */}
-            <View style={s.lyricHeaderRow}>
-              <View style={s.thumbShadowWrap}>
-                <BookCoverImage
-                  coverUri={coverUri}
-                  bookTitle={bookTitle}
-                  chapterTitle={chapterTitle}
-                  width={THUMB_W}
-                  height={THUMB_H}
-                  borderRadius={radius.sm ?? 6}
-                  pct={pct}
-                  colors={colors}
-                  t={t}
-                />
-              </View>
-              <View style={s.lyricHeaderMeta}>
-                <Text style={s.lyricBookName} numberOfLines={2}>
-                  {bookTitle || t("reader.untitled")}
-                </Text>
-                <Text style={s.lyricChapterName} numberOfLines={1}>
-                  {chapterTitle || t("tts.fromCurrentPage")}
-                </Text>
-              </View>
-            </View>
-
-            {/* Sentence-aligned lyric list */}
-            <View style={s.lyricArea} onLayout={onLyricAreaLayout}>
-              {lyricSegments.length > 0 ? (
-                <FlatList
-                  ref={lyricListRef}
-                  data={lyricSegments}
-                  keyExtractor={(_, index) => `tts-line-${index}`}
-                  style={s.lyricList}
-                  contentContainerStyle={[
-                    s.lyricListContent,
-                    // Half the visible area as bottom padding so the last sentence
-                    // can always scroll to the vertical center — no empty gap.
-                    { paddingBottom: Math.round(lyricAreaHeight / 2) },
-                  ]}
-                  showsVerticalScrollIndicator={false}
-                  nestedScrollEnabled
-                  onScrollToIndexFailed={(info) => {
-                    setTimeout(() => {
-                      lyricListRef.current?.scrollToOffset({
-                        offset: Math.max(0, info.averageItemLength * info.index),
-                        animated: true,
+          <View style={s.lyricArea} onLayout={onLyricAreaLayout}>
+            {lyricSegments.length > 0 ? (
+              <ScrollView
+                ref={lyricScrollRef}
+                style={s.lyricList}
+                contentContainerStyle={[
+                  s.lyricListContent,
+                  {
+                    paddingTop: lyricCenterPadding,
+                    paddingBottom: lyricCenterPadding,
+                    minHeight: lyricAreaHeight + lyricCenterPadding * 2,
+                  },
+                ]}
+                showsVerticalScrollIndicator={false}
+                nestedScrollEnabled
+                onScrollBeginDrag={markUserScrolling}
+                onMomentumScrollBegin={markUserScrolling}
+                onScrollEndDrag={releaseUserScrolling}
+                onMomentumScrollEnd={releaseUserScrolling}
+                scrollEventThrottle={16}
+                onScroll={(event) => {
+                  const {
+                    contentOffset,
+                    contentSize,
+                    layoutMeasurement,
+                  } = event.nativeEvent;
+                  const distanceFromBottom =
+                    contentSize.height - (contentOffset.y + layoutMeasurement.height);
+                  const canAutoLoadMore =
+                    userScrollingRef.current && Date.now() > autoScrollLockUntilRef.current;
+                  if (canAutoLoadMore && contentOffset.y < 180) {
+                    if (__DEV__) {
+                      console.log("[TTSPage][lyrics] load-more-above", {
+                        offsetY: contentOffset.y,
                       });
-                    }, 120);
-                  }}
-                  renderItem={({ item, index }) => {
+                    }
+                    triggerLoadMoreAbove();
+                  }
+                  if (canAutoLoadMore && distanceFromBottom < 260) {
+                    if (__DEV__) {
+                      console.log("[TTSPage][lyrics] load-more-below", {
+                        distanceFromBottom,
+                      });
+                    }
+                    triggerLoadMoreBelow();
+                  }
+                }}
+              >
+                <View style={s.lyricInner}>
+                  {lyricSegments.map((item, index) => {
                     const active = index === safeChunkIndex;
                     const past = index < safeChunkIndex;
                     const isFirstCurrentSegment = prevCount > 0 && index === prevCount;
                     return (
-                      <>
+                      <View
+                        key={item.id}
+                        onLayout={(event) => {
+                          const { y, height } = event.nativeEvent.layout;
+                          lyricLayoutRef.current.set(index, { y, height });
+                          if (visible && index === safeChunkIndex && !userScrollingRef.current) {
+                            requestAnimationFrame(() => {
+                              centerLyricIndex(index, false);
+                            });
+                          } else if (pendingCenterRef.current === index && !userScrollingRef.current) {
+                            pendingCenterRef.current = null;
+                            requestAnimationFrame(() => {
+                              centerLyricIndex(index, true);
+                            });
+                          }
+                        }}
+                      >
+                        {isFirstCurrentSegment ? (
+                          <View style={s.lyricSectionDivider} />
+                        ) : null}
                         <Pressable
-                          style={s.lyricLinePressable}
-                          onPress={() => onJumpToSegment?.(index - prevCount)}
+                          style={[s.lyricLinePressable, active && s.lyricLinePressableActive]}
+                          onPress={() => handleLyricPress(item, index)}
                         >
                           <Text
                             style={[
@@ -861,36 +975,35 @@ export function TTSPage({
                               past && s.lyricLinePast,
                             ]}
                           >
-                            {item}
+                            {item.text}
                           </Text>
                         </Pressable>
-                      </>
-                    );
-                  }}
-                  ListFooterComponent={
-                    continuousEnabled && playState === "playing" && safeChunkIndex >= lyricSegments.length - 1 ? (
-                      <View style={s.lyricLoadingFooter}>
-                        <ActivityIndicator size="small" color={colors.mutedForeground} />
                       </View>
-                    ) : null
-                  }
-                />
-              ) : (
-                <Text style={s.lyricActive}>{currentExcerpt || t("tts.waitingText")}</Text>
-              )}
-            </View>
+                    );
+                  })}
 
-            {progressBarJSX}
-            {controlsJSX}
-            {settingsJSX}
-
-            {/* Bottom: continuous toggle + engine/voice chips */}
-            <View style={s.bottom}>
-              {bottomStripJSX}
-            </View>
+                  {continuousEnabled &&
+                  playState === "playing" &&
+                  safeChunkIndex >= lyricSegments.length - 1 ? (
+                    <View style={s.lyricLoadingFooter}>
+                      <ActivityIndicator size="small" color={colors.mutedForeground} />
+                    </View>
+                  ) : null}
+                </View>
+              </ScrollView>
+            ) : (
+              <Text style={s.lyricActive}>{currentExcerpt || t("tts.waitingText")}</Text>
+            )}
           </View>
 
-        </ScrollView>
+          {progressBarJSX}
+          {controlsJSX}
+          {settingsJSX}
+
+          <View style={[s.bottom, { paddingBottom: chromeBottomInset + 10 }]}>
+            {bottomStripJSX}
+          </View>
+        </View>
       </View>
 
       {/* ── Engine + Voice Picker Modal ────────────────────────────────────── */}
@@ -1059,6 +1172,10 @@ export function TTSPage({
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     screen: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    content: {
       flex: 1,
       backgroundColor: colors.background,
     },
@@ -1428,29 +1545,36 @@ const makeStyles = (colors: ThemeColors) =>
       alignSelf: "stretch",
     },
     lyricListContent: {
-      paddingTop: 40,
-      paddingBottom: 40,
+      justifyContent: "center",
+    },
+    lyricInner: {
+      gap: 8,
     },
     lyricLinePressable: {
-      paddingVertical: 8,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 18,
+    },
+    lyricLinePressableActive: {
+      backgroundColor: withOpacity(colors.foreground, 0.05),
     },
     lyricLine: {
-      fontSize: 15,
+      fontSize: 16,
       fontWeight: fontWeight.medium,
       color: colors.foreground,
       textAlign: "center",
-      lineHeight: 25,
-      opacity: 0.34,
+      lineHeight: 27,
+      opacity: 0.32,
     },
     lyricLineActive: {
-      fontSize: 18,
+      fontSize: 22,
       fontWeight: fontWeight.bold,
-      lineHeight: 28,
+      lineHeight: 34,
       opacity: 1,
-      color: colors.primary,
+      color: colors.foreground,
     },
     lyricLinePast: {
-      opacity: 0.56,
+      opacity: 0.58,
     },
     lyricContextLabel: {
       fontSize: 11,

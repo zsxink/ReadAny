@@ -24,6 +24,7 @@ type EventMap = {
   "vectorize:completed": { bookId: string; chunksCount: number };
   "vectorize:error": { bookId: string; error: string };
   "tts:jump-to-current": { bookId: string; cfi: string; respond?: () => void };
+  "tts:open-lyrics-page": { bookId: string; respond?: () => void };
 };
 
 type EventCallback<K extends keyof EventMap> = (data: EventMap[K]) => void;
