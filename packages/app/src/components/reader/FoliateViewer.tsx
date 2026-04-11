@@ -620,11 +620,12 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
           }
 
           try {
-            // Create a temporary highlight annotation with yellow color
+            const tempKey = `foliate-temp:${cfi}`;
+            // Create a temporary highlight annotation with blue color to match mobile TTS follow.
             const tempAnnotation = {
-              value: cfi,
+              value: tempKey,
               type: "highlight",
-              color: "yellow",
+              color: "blue",
             };
 
             console.log("[highlightCFITemporarily] Adding annotation:", tempAnnotation);
@@ -642,7 +643,7 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
             setTimeout(() => {
               console.log("[highlightCFITemporarily] Removing annotation for CFI:", cfi);
               try {
-                view.deleteAnnotation({ value: cfi });
+                view.deleteAnnotation({ value: tempKey });
                 console.log("[highlightCFITemporarily] Annotation removed successfully");
               } catch (deleteError) {
                 console.error("[highlightCFITemporarily] Error removing annotation:", deleteError);
@@ -1082,7 +1083,9 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
         violet: "rgba(167, 139, 250, 0.4)", // violet-400
       };
 
-      const hexColor = colorMap[color] || colorMap.yellow;
+      const normalizedColor = typeof color === "string" ? color.trim() : "";
+      const isCssColor = /^(#|rgb\(|rgba\(|hsl\(|hsla\()/i.test(normalizedColor);
+      const resolvedColor = colorMap[normalizedColor] || (isCssColor ? normalizedColor : colorMap.yellow);
 
       // Check writing mode for vertical text support
       let writingMode = "horizontal-tb";
@@ -1122,10 +1125,10 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
         cfisWithNotes.delete(annotation.value);
         // Draw regular highlight
         console.log("[drawAnnotationHandler] Calling draw(Overlayer.highlight) with:", {
-          hexColor,
+          resolvedColor,
           vertical,
         });
-        draw(Overlayer.highlight, { color: hexColor, vertical });
+        draw(Overlayer.highlight, { color: resolvedColor, vertical });
         console.log("[drawAnnotationHandler] draw() call completed");
       }
     }, []);
@@ -1213,6 +1216,8 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
           // Capture coordinates immediately (before setTimeout)
           const clientX = ev.clientX;
           const clientY = ev.clientY;
+          const screenX = ev.screenX;
+          const screenY = ev.screenY;
 
           setTimeout(() => {
             // If show-annotation handler already handled this click, skip
@@ -1255,6 +1260,8 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
                     bookKey,
                     clientX,
                     clientY,
+                    screenX,
+                    screenY,
                   },
                   "*",
                 );
@@ -1509,11 +1516,41 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
       return () => window.removeEventListener("message", handleMessage);
     }, [bookKey]);
 
+    const handleViewerShellClick = useCallback(
+      (event: {
+        target: EventTarget | null;
+        clientX: number;
+        clientY: number;
+        screenX: number;
+        screenY: number;
+      }) => {
+        const target = event.target as EventTarget | null;
+        const container = containerRef.current;
+        const view = viewRef.current;
+        if (!container) return;
+        if (target !== container && target !== view) return;
+
+        window.postMessage(
+          {
+            type: "viewer-single-click",
+            bookKey,
+            clientX: event.clientX,
+            clientY: event.clientY,
+            screenX: event.screenX,
+            screenY: event.screenY,
+          },
+          "*",
+        );
+      },
+      [bookKey],
+    );
+
     return (
       <div
         ref={containerRef}
         className="foliate-viewer h-full w-full focus:outline-none"
         tabIndex={-1}
+        onClick={handleViewerShellClick}
       >
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-background">
@@ -1561,9 +1598,13 @@ function applyRendererSettings(
     renderer.setAttribute("spread", "auto");
   } else {
     // Reflowable: columns, sizes, margins
-    renderer.setAttribute("max-inline-size", "720px");
+    const isSinglePage = (settings.paginatedLayout ?? "double") === "single";
+    const rendererWidth = Number(renderer.size || 0);
+    const singlePageInlineSize =
+      rendererWidth > 0 ? Math.round(Math.max(980, Math.min(rendererWidth * 0.94, 1600))) : 1280;
+    renderer.setAttribute("max-inline-size", isSinglePage ? `${singlePageInlineSize}px` : "760px");
     renderer.setAttribute("max-block-size", "1440px");
-    renderer.setAttribute("gap", "5%");
+    renderer.setAttribute("gap", isSinglePage ? "1.2%" : "4.5%");
     applyReflowLayoutSettings(view, settings);
   }
 

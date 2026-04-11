@@ -79,6 +79,10 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
   const pendingVisibleTTSSegmentsResolveRef = useRef<((segments: VisibleTTSSegment[]) => void) | null>(
     null,
   );
+  const lastTTSHighlightRef = useRef<{ cfi: string | null; color: string | null }>({
+    cfi: null,
+    color: null,
+  });
   const pendingTTSContextResolveRef = useRef<((context: VisibleTTSContext) => void) | null>(null);
   const pendingChapterParagraphsResolveRef = useRef<
     | ((
@@ -358,15 +362,22 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
   }, []);
 
   const setTTSHighlight = useCallback(
-    (cfi: string | null, color?: string) => {
+    (cfi: string | null, color?: string, force = false) => {
+      const nextColor = color || null;
+      if (
+        !force &&
+        lastTTSHighlightRef.current.cfi === cfi &&
+        lastTTSHighlightRef.current.color === nextColor
+      ) {
+        return;
+      }
+      lastTTSHighlightRef.current = { cfi, color: nextColor };
       if (!cfi) {
         webViewRef.current?.injectJavaScript(`
           (function() {
             try {
-              var prev = window.__ttsHighlightKey;
-              window.__ttsHighlightKey = null;
-              if (prev && window.__view) {
-                window.__view.deleteAnnotation({ value: prev }).catch(function(){});
+              if (window.clearTTSHighlight) {
+                window.clearTTSHighlight();
               }
             } catch(e) {}
           })();
@@ -374,25 +385,14 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
         `);
         return;
       }
-      // "foliate-tts:" prefix is natively supported by foliate-js:
-      // - resolveNavigation strips the prefix to get the CFI for positioning
-      // - overlayer key uses the prefixed value, so it never collides with user annotations
-      const keyStr = JSON.stringify("foliate-tts:" + cfi);
       const colorStr = JSON.stringify(color || null);
+      const cfiStr = JSON.stringify(cfi);
       webViewRef.current?.injectJavaScript(`
         (function() {
           try {
-            if (!window.__view && document.querySelector('foliate-view')) {
-              window.__view = document.querySelector('foliate-view');
+            if (window.setTTSHighlight) {
+              window.setTTSHighlight(${cfiStr}, ${colorStr});
             }
-            var v = window.__view;
-            if (!v) return;
-            var prev = window.__ttsHighlightKey;
-            window.__ttsHighlightKey = ${keyStr};
-            if (prev && prev !== ${keyStr}) {
-              v.deleteAnnotation({ value: prev }).catch(function(){});
-            }
-            v.addAnnotation({ value: ${keyStr}, type: 'tts-highlight', color: ${colorStr} }).catch(function(){});
           } catch(e) {}
         })();
         true;

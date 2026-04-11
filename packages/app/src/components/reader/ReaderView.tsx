@@ -139,6 +139,9 @@ async function loadAndParseBook(
 
 function useAutoHideControls(
   containerRef: React.RefObject<HTMLDivElement | null>,
+  bookKey: string,
+  onPrev?: () => void,
+  onNext?: () => void,
   delay = 2000,
   keepVisible = false,
 ) {
@@ -167,28 +170,61 @@ function useAutoHideControls(
   // Listen for iframe events
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      const data = event.data;
-      if (!containerRef.current) return;
+      void (async () => {
+        const data = event.data;
+        if (!containerRef.current) return;
+        if (data?.type !== "iframe-single-click" && data?.type !== "viewer-single-click") return;
+        if (data.bookKey !== bookKey) return;
 
-      // Handle single-click toggle
-      if (data?.type !== "iframe-single-click") return;
+        const viewRect = containerRef.current.getBoundingClientRect();
+        const viewWidth = viewRect.width;
 
-      console.log("[ReaderView] received iframe-single-click, current isVisible:");
-
-      setIsVisible((prev) => {
-        console.log("[ReaderView] prev:", prev, "-> new:", !prev);
-        if (prev) {
-          clearTimer();
-          return false;
+        let windowStartX = window.screenX;
+        if ("__TAURI_INTERNALS__" in window) {
+          try {
+            const { getCurrentWindow } = await import("@tauri-apps/api/window");
+            const position = await getCurrentWindow().outerPosition();
+            windowStartX = position.x;
+          } catch {
+            windowStartX = window.screenX;
+          }
         }
-        showAndScheduleHide();
-        return true;
-      });
+
+        const clickScreenX =
+          typeof data.screenX === "number"
+            ? data.screenX
+            : windowStartX + Number(data.clientX ?? 0);
+        const viewStartX = windowStartX + viewRect.left;
+        const centerStartX = viewStartX + viewWidth * 0.375;
+        const centerEndX = viewStartX + viewWidth * 0.625;
+        const viewCenterX = viewStartX + viewWidth / 2;
+
+        if (clickScreenX >= centerStartX && clickScreenX <= centerEndX) {
+          setIsVisible((prev) => {
+            if (prev) {
+              clearTimer();
+              return false;
+            }
+            showAndScheduleHide();
+            return true;
+          });
+          return;
+        }
+
+        clearTimer();
+        setIsVisible(false);
+
+        if (clickScreenX < viewCenterX) {
+          onPrev?.();
+        } else {
+          onNext?.();
+        }
+      })();
     };
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [containerRef, clearTimer, showAndScheduleHide]);
+  }, [bookKey, clearTimer, containerRef, onNext, onPrev, showAndScheduleHide]);
 
   // Mouse enter/leave handlers for toolbar area
   const handleMouseEnter = useCallback(() => {
@@ -466,6 +502,12 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     minWidth: 200,
     maxWidth: 600,
   });
+  const tocPanel = useResizablePanel({
+    storageKey: "reader-toc-panel-width",
+    defaultWidth: 300,
+    minWidth: 220,
+    maxWidth: 620,
+  });
   const notebookPanel = useResizablePanel({
     storageKey: "reader-notebook-panel-width",
     defaultWidth: 320,
@@ -534,8 +576,17 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     isVisible: controlsVisible,
     handleMouseEnter,
     handleMouseLeave,
-  } = useAutoHideControls(containerRef, 2000, keepControlsVisible);
+  } = useAutoHideControls(
+    containerRef,
+    bookId,
+    () => foliateRef.current?.goPrev(),
+    () => foliateRef.current?.goNext(),
+    2000,
+    keepControlsVisible,
+  );
   const toolbarVisible = controlsVisible || isToolbarPinned;
+  const readingHeaderTitle = (readerTab?.chapterTitle || book?.meta.title || "").trim();
+  const contentTopPadding = isToolbarPinned ? 78 : 56;
 
   useEffect(() => {
     window.localStorage.setItem(TOOLBAR_PIN_STORAGE_KEY, String(isToolbarPinned));
@@ -1884,6 +1935,34 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
 
   return (
     <div className="flex h-full bg-muted/30 p-1">
+      {/* TOC sidebar — LEFT side */}
+      {showToc && (
+        <div
+          className="relative mr-1 flex shrink-0 flex-col overflow-hidden rounded-lg border border-border/60 bg-background shadow-sm"
+          style={{ width: tocPanel.width }}
+        >
+          <ResizeHandle
+            side="right"
+            onResizeStart={tocPanel.handleResizeStart}
+            onResize={(delta) => tocPanel.handleResize(delta, "right")}
+            onResizeEnd={tocPanel.handleResizeEnd}
+          />
+          <TOCPanel
+            tocItems={tocItems}
+            onGoToChapter={(href) => {
+              handleGoToChapter(href);
+            }}
+            onGoToCfi={(cfi) => {
+              navigateToCfi(cfi);
+            }}
+            onClose={() => setShowToc(false)}
+            tabId={tabId}
+            bookId={bookId}
+            chapterTitle={readerTab?.chapterTitle}
+          />
+        </div>
+      )}
+
       {/* Notebook sidebar — LEFT side */}
       <NotebookSidebarWrapper
         bookId={bookId}
@@ -1927,8 +2006,14 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
         {/* Content area — takes full remaining space */}
         <div
           className="relative flex flex-1 overflow-hidden transition-[padding] duration-300"
-          style={{ paddingTop: isToolbarPinned ? 40 : 0 }}
+          style={{ paddingTop: contentTopPadding }}
         >
+          {readingHeaderTitle && (
+            <div className="pointer-events-none absolute left-5 top-3 z-[4] max-w-[70%] select-none truncate text-[20px] font-semibold tracking-tight text-foreground/86">
+              {readingHeaderTitle}
+            </div>
+          )}
+
           {/* Reading area — FoliateViewer */}
           <div className="relative flex-1 overflow-hidden" ref={containerRef}>
             {bookDoc ? (
@@ -2126,29 +2211,6 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
             />
           </div>
         </div>
-
-        {/* TOC overlay — floats above toolbar, content, and footer */}
-        {showToc && (
-          <>
-            <div className="absolute inset-0 z-40 bg-black/20" onClick={() => setShowToc(false)} />
-            <div className="absolute top-2 bottom-2 left-0 z-50 flex animate-in slide-in-from-left duration-200">
-              <TOCPanel
-                tocItems={tocItems}
-                onGoToChapter={(href) => {
-                  handleGoToChapter(href);
-                  setShowToc(false);
-                }}
-                onGoToCfi={(cfi) => {
-                  navigateToCfi(cfi);
-                  setShowToc(false);
-                }}
-                onClose={() => setShowToc(false)}
-                tabId={tabId}
-                bookId={bookId}
-              />
-            </div>
-          </>
-        )}
 
         {/* Settings overlay */}
         {showSettings && (

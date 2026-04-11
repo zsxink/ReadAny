@@ -75,6 +75,7 @@ function speakSegmentQueue(
   set: (partial: Partial<TTSState>) => void,
   get: () => TTSState,
   language: string,
+  options?: { showLoading?: boolean },
 ) {
   const gen = _sessionGeneration;
   if (_sessionStopped || _sessionIndex >= _sessionSegments.length) {
@@ -85,11 +86,18 @@ function speakSegmentQueue(
   }
 
   const segment = _sessionSegments[_sessionIndex];
-  set({
-    playState: "loading",
-    currentChunkIndex: _sessionIndex,
-    totalChunks: _sessionSegments.length,
-  });
+  if (options?.showLoading) {
+    set({
+      playState: "loading",
+      currentChunkIndex: _sessionIndex,
+      totalChunks: _sessionSegments.length,
+    });
+  } else {
+    set({
+      currentChunkIndex: _sessionIndex,
+      totalChunks: _sessionSegments.length,
+    });
+  }
 
   Speech.speak(segment, {
     rate: get().config.rate || 1.0,
@@ -155,11 +163,14 @@ export const useTTSStore = create<TTSState>()(
         totalChunks: segments.length,
       });
       console.log("[TTSStore] detected language:", _sessionLanguage);
-      speakSegmentQueue(set, get, _sessionLanguage);
+      speakSegmentQueue(set, get, _sessionLanguage, { showLoading: true });
     },
 
     pause: () => {
       console.log("[TTSStore] pause called");
+      const state = get().playState;
+      if (state !== "playing" && state !== "loading") return;
+      _sessionGeneration += 1;
       _sessionStopped = true;
       stopSpeechSilently();
       set({ playState: "paused" });
@@ -171,12 +182,19 @@ export const useTTSStore = create<TTSState>()(
         set({ playState: "stopped" });
         return;
       }
+      _sessionGeneration += 1;
       _sessionStopped = false;
-      speakSegmentQueue(set, get, _sessionLanguage);
+      set({
+        playState: "loading",
+        currentChunkIndex: _sessionIndex,
+        totalChunks: _sessionSegments.length,
+      });
+      speakSegmentQueue(set, get, _sessionLanguage, { showLoading: false });
     },
 
     stop: () => {
       console.log("[TTSStore] stop called");
+      _sessionGeneration += 1;
       _sessionStopped = true;
       _sessionSegments = [];
       _sessionIndex = 0;
@@ -223,8 +241,12 @@ export const useTTSStore = create<TTSState>()(
       _sessionGeneration += 1;
       _sessionIndex = index;
       _sessionStopped = false;
-      set({ currentChunkIndex: index });
-      speakSegmentQueue(set, get, _sessionLanguage);
+      set({
+        playState: "loading",
+        currentChunkIndex: index,
+        totalChunks: _sessionSegments.length,
+      });
+      speakSegmentQueue(set, get, _sessionLanguage, { showLoading: false });
     },
   }), {
     playState: "stopped" as const,

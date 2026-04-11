@@ -400,6 +400,7 @@ export function TTSPage({
   const [voicePickerVisible, setVoicePickerVisible] = useState(false);
   const lyricScrollRef = useRef<ScrollView>(null);
   const lyricLayoutRef = useRef(new Map<string, { y: number; height: number }>());
+  const lastCenteredSignatureRef = useRef<string | null>(null);
   const userScrollingRef = useRef(false);
   const userScrollUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadMoreAboveLockRef = useRef(false);
@@ -548,6 +549,7 @@ export function TTSPage({
   const voiceLabel = getTTSVoiceLabel(config);
   const isPlaying = playState === "playing";
   const isLoading = playState === "loading";
+  const shouldAutoCenterLyrics = isPlaying || isLoading;
   const chromeTopInset = Platform.OS === "android" ? Math.max(insets.top, 6) : Math.max(insets.top, 10);
   const chromeBottomInset =
     Platform.OS === "android" ? Math.max(insets.bottom, 6) : Math.max(insets.bottom, 10);
@@ -588,8 +590,11 @@ export function TTSPage({
 
   useEffect(() => {
     if (!visible || lyricSegments.length <= 1) return;
+    if (!shouldAutoCenterLyrics) return;
     if (userScrollingRef.current) return;
     const targetIndex = Math.max(0, Math.min(safeChunkIndex, lyricSegments.length - 1));
+    const centerSignature = `${targetIndex}:${currentSegmentCfi || ""}:${Math.round(lyricAreaHeight)}`;
+    if (lastCenteredSignatureRef.current === centerSignature) return;
     if (__DEV__) {
       console.log("[TTSPage][lyrics] active-changed", {
         currentSegmentCfi,
@@ -601,13 +606,23 @@ export function TTSPage({
     const targetId = lyricSegments[targetIndex]?.id;
     if (targetId && lyricLayoutRef.current.has(targetId)) {
       const timer = setTimeout(() => {
+        lastCenteredSignatureRef.current = centerSignature;
         centerLyricIndex(targetIndex, true);
       }, 80);
       return () => clearTimeout(timer);
     } else {
       pendingCenterRef.current = targetIndex;
     }
-  }, [centerLyricIndex, lyricSegments, safeChunkIndex, visible]);
+  }, [
+    centerLyricIndex,
+    currentChunkIndex,
+    currentSegmentCfi,
+    lyricAreaHeight,
+    lyricSegments,
+    safeChunkIndex,
+    shouldAutoCenterLyrics,
+    visible,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -942,9 +957,7 @@ export function TTSPage({
                 showsVerticalScrollIndicator={false}
                 nestedScrollEnabled
                 onScrollBeginDrag={markUserScrolling}
-                onMomentumScrollBegin={markUserScrolling}
                 onScrollEndDrag={releaseUserScrolling}
-                onMomentumScrollEnd={releaseUserScrolling}
                 scrollEventThrottle={16}
                 onScroll={(event) => {
                   const {
@@ -956,7 +969,7 @@ export function TTSPage({
                     contentSize.height - (contentOffset.y + layoutMeasurement.height);
                   const canAutoLoadMore =
                     userScrollingRef.current && Date.now() > autoScrollLockUntilRef.current;
-                  if (canAutoLoadMore && contentOffset.y < 180) {
+                  if (canAutoLoadMore && contentOffset.y > 0 && contentOffset.y < 180) {
                     if (__DEV__) {
                       console.log("[TTSPage][lyrics] load-more-above", {
                         offsetY: contentOffset.y,
@@ -984,12 +997,14 @@ export function TTSPage({
                         onLayout={(event) => {
                           const { y, height } = event.nativeEvent.layout;
                           lyricLayoutRef.current.set(item.id, { y, height });
-                          if (visible && index === safeChunkIndex && !userScrollingRef.current) {
-                            requestAnimationFrame(() => {
-                              centerLyricIndex(index, false);
-                            });
-                          } else if (pendingCenterRef.current === index && !userScrollingRef.current) {
+                          if (
+                            visible &&
+                            shouldAutoCenterLyrics &&
+                            pendingCenterRef.current === index &&
+                            !userScrollingRef.current
+                          ) {
                             pendingCenterRef.current = null;
+                            lastCenteredSignatureRef.current = `${index}:${currentSegmentCfi || ""}:${Math.round(lyricAreaHeight)}`;
                             requestAnimationFrame(() => {
                               centerLyricIndex(index, true);
                             });
