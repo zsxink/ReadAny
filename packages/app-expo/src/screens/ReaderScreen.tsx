@@ -8,19 +8,14 @@ import {
   BookmarkFilledIcon,
   BookmarkIcon,
   BotIcon,
-  CheckIcon,
-  ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  EditIcon,
   HeadphonesIcon,
   LanguagesIcon,
   NotebookPenIcon,
   SearchIcon,
-  Trash2Icon,
   XIcon,
 } from "@/components/ui/Icon";
-import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { useReaderBridge } from "@/hooks/use-reader-bridge";
 import type { RelocateEvent, SelectionEvent, VisibleTTSSegment } from "@/hooks/use-reader-bridge";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
@@ -33,14 +28,7 @@ import {
   useTTSStore,
 } from "@/stores";
 import { useTheme } from "@/styles/ThemeContext";
-import {
-  type ThemeColors,
-  fontSize,
-  fontWeight,
-  radius,
-  useColors,
-  withOpacity,
-} from "@/styles/theme";
+import { useColors } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { readingContextService } from "@readany/core/ai/reading-context-service";
 import { runWithDbRetry } from "@readany/core/db/write-retry";
@@ -48,20 +36,13 @@ import { useChapterTranslation } from "@readany/core/hooks";
 import { useReadingSession } from "@readany/core/hooks/use-reading-session";
 import { createSelectionNoteMutation } from "@readany/core/reader";
 import { getPlatformService } from "@readany/core/services";
-import { splitNarrationText } from "@readany/core/tts";
 import type { ReadSettings, TOCItem } from "@readany/core/types";
-import { generateId } from "@readany/core/utils";
-import { eventBus } from "@readany/core/utils/event-bus";
 import { throttle } from "@readany/core/utils/throttle";
+import { eventBus } from "@readany/core/utils/event-bus";
 import { Asset } from "expo-asset";
-import * as Battery from "expo-battery";
 import * as FileSystem from "expo-file-system/legacy";
-import { setStatusBarHidden } from "expo-status-bar";
 /**
  * ReaderScreen — WebView-based reader with foliate-js engine.
- * Features: toolbar with back/notebook/chat/TTS/TOC/search/settings,
- * footer with prev/next + slider + progress, TOC panel, settings panel,
- * search bar, selection popover for highlights/notes.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -69,11 +50,8 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
-  Dimensions,
   Easing,
-  KeyboardAvoidingView,
   Modal,
-  NativeEventEmitter,
   NativeModules,
   Platform,
   Pressable,
@@ -84,369 +62,31 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Path, Rect } from "react-native-svg";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
+
+// ── Extracted modules ──
+import { ReaderNoteViewModal } from "./reader/ReaderNoteViewModal";
+import { ReaderSettingsPanel } from "./reader/ReaderSettingsPanel";
+import { ReaderTOCPanel } from "./reader/ReaderTOCPanel";
+import {
+  CONTROLS_TIMEOUT,
+  SCREEN_HEIGHT,
+  SCREEN_WIDTH,
+  getVolumeManager,
+} from "./reader/reader-constants";
+import { BatteryIcon, ListIcon, SettingsIcon } from "./reader/reader-icons";
+import { makeStyles, noteTooltipMdStyles } from "./reader/reader-styles";
+import { useReaderBookmark } from "./reader/useReaderBookmark";
+import { useReaderSearch } from "./reader/useReaderSearch";
+import { useReaderSystemInfo } from "./reader/useReaderSystemInfo";
+import { useReaderTTS } from "./reader/useReaderTTS";
+import { useVolumeButtonPaging } from "./reader/useVolumeButtonPaging";
 
 const READER_HTML_ASSET = Asset.fromModule(require("../../assets/reader/reader.html"));
 
 type Props = NativeStackScreenProps<RootStackParamList, "Reader">;
 type TTSSegment = VisibleTTSSegment;
-type TTSDebuggableSegment = { text: string; cfi?: string | null };
-
-const SCREEN_WIDTH = Dimensions.get("window").width;
-const SCREEN_HEIGHT = Dimensions.get("window").height;
-const CONTROLS_TIMEOUT = 4000;
-
-type VolumeManagerNativeModule = {
-  showNativeVolumeUI?: (config: { enabled: boolean }) => Promise<void>;
-  getVolume?: () => Promise<{ volume?: number }>;
-  setVolume?: (
-    value: number,
-    config?: { showUI?: boolean; playSound?: boolean; type?: string },
-  ) => Promise<void>;
-};
-
-type VolumeManagerLike = {
-  showNativeVolumeUI: (config: { enabled: boolean }) => Promise<void>;
-  getVolume: () => Promise<{ volume?: number }>;
-  setVolume: (
-    value: number,
-    config?: { showUI?: boolean; playSound?: boolean; type?: string },
-  ) => Promise<void>;
-  addVolumeListener: (callback: (result: { volume?: number }) => void) => { remove: () => void };
-};
-
-let cachedVolumeManager: VolumeManagerLike | null | undefined;
-
-function getVolumeManager(): VolumeManagerLike | null {
-  if (cachedVolumeManager !== undefined) {
-    return cachedVolumeManager;
-  }
-
-  const nativeModule = NativeModules.VolumeManager as VolumeManagerNativeModule | undefined;
-  if (
-    !nativeModule ||
-    typeof nativeModule.getVolume !== "function" ||
-    typeof nativeModule.setVolume !== "function" ||
-    typeof nativeModule.showNativeVolumeUI !== "function"
-  ) {
-    cachedVolumeManager = null;
-    return cachedVolumeManager;
-  }
-
-  const eventEmitter = new NativeEventEmitter(NativeModules.VolumeManager);
-  cachedVolumeManager = {
-    showNativeVolumeUI: (config) => nativeModule.showNativeVolumeUI!(config),
-    getVolume: () => nativeModule.getVolume!(),
-    setVolume: (value, config) => nativeModule.setVolume!(value, config),
-    addVolumeListener: (callback) => {
-      const subscription = eventEmitter.addListener("RNVMEventVolume", callback);
-      return {
-        remove: () => subscription.remove(),
-      };
-    },
-  };
-  return cachedVolumeManager;
-}
-
-function formatReaderClock(date: Date) {
-  return date.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-}
-
-function normalizeTTSDebugText(text: string | null | undefined) {
-  return String(text || "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function logTTSDebugText(label: string, text: string | null | undefined, chunkSize = 220) {
-  if (!__DEV__) return;
-  const normalized = normalizeTTSDebugText(text);
-  const chunkCount = normalized ? Math.ceil(normalized.length / chunkSize) : 0;
-  console.log(`${label} summary`, {
-    length: normalized.length,
-    chunkCount,
-  });
-  if (!normalized) return;
-  for (let index = 0; index < chunkCount; index += 1) {
-    const start = index * chunkSize;
-    const end = start + chunkSize;
-    console.log(`${label}#${index + 1}/${chunkCount}`, normalized.slice(start, end));
-  }
-}
-
-function logTTSDebugSentenceList(
-  label: string,
-  sentences: Array<string | null | undefined>,
-  limit = Number.POSITIVE_INFINITY,
-) {
-  if (!__DEV__) return;
-  const normalized = sentences.map(normalizeTTSDebugText).filter(Boolean).slice(0, limit);
-  console.log(`${label} summary`, {
-    count: normalized.length,
-  });
-  normalized.forEach((sentence, index) => {
-    console.log(`${label}[${index}]`, {
-      length: sentence.length,
-      text: sentence,
-    });
-  });
-}
-
-function normalizeTTSDebugSegments(segments: TTSDebuggableSegment[]) {
-  return segments
-    .map((segment) => ({
-      cfi: segment.cfi || null,
-      text: normalizeTTSDebugText(segment.text),
-    }))
-    .filter((segment) => segment.text.length > 0);
-}
-
-function logTTSDebugSegments(label: string, segments: TTSDebuggableSegment[]) {
-  if (!__DEV__) return;
-  const normalized = normalizeTTSDebugSegments(segments);
-  console.log(`${label} summary`, {
-    count: normalized.length,
-    firstCfi: normalized[0]?.cfi || null,
-    lastCfi: normalized[normalized.length - 1]?.cfi || null,
-  });
-  normalized.forEach((segment, index) => {
-    console.log(`${label}[${index}]`, {
-      cfi: segment.cfi || null,
-      length: segment.text.length,
-      text: segment.text,
-    });
-  });
-}
-
-function collectMissingTTSDebugSentences(
-  sentences: string[],
-  segments: TTSDebuggableSegment[],
-) {
-  const segmentTexts = new Set(
-    normalizeTTSDebugSegments(segments).map((segment) => segment.text),
-  );
-  return sentences
-    .map(normalizeTTSDebugText)
-    .filter((sentence) => sentence.length > 0 && !segmentTexts.has(sentence));
-}
-
-function findTTSDebugSentenceIndex(sentence: string | null | undefined, segments: TTSDebuggableSegment[]) {
-  const normalizedSentence = normalizeTTSDebugText(sentence);
-  if (!normalizedSentence) return -1;
-  return normalizeTTSDebugSegments(segments).findIndex(
-    (segment) => segment.text === normalizedSentence,
-  );
-}
-
-const FONT_THEMES = [
-  { id: "default", labelKey: "reader.fontThemeDefault", fallback: "System" },
-  { id: "classic", labelKey: "reader.fontThemeClassic", fallback: "Classic" },
-  { id: "modern", labelKey: "reader.fontThemeModern", fallback: "Modern" },
-  { id: "elegant", labelKey: "reader.fontThemeElegant", fallback: "Elegant" },
-  { id: "literary", labelKey: "reader.fontThemeLiterary", fallback: "Literary" },
-];
-
-// ──────────────────────────── Settings Icon (Gear) ────────────────────────────
-function SettingsIcon({ size = 24, color = "#e8e8ed" }: { size?: number; color?: string }) {
-  return (
-    <Svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={color}
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <Path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-      <Path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" />
-    </Svg>
-  );
-}
-
-function ListIcon({ size = 24, color = "#e8e8ed" }: { size?: number; color?: string }) {
-  return (
-    <Svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={color}
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <Path d="M3 12h18M3 6h18M3 18h18" />
-    </Svg>
-  );
-}
-
-function BatteryIcon({
-  width = 24,
-  height = 12,
-  color = "#e8e8ed",
-  level,
-  charging = false,
-}: {
-  width?: number;
-  height?: number;
-  color?: string;
-  level?: number | null;
-  charging?: boolean;
-}) {
-  const normalizedLevel =
-    typeof level === "number" && Number.isFinite(level) ? Math.max(0, Math.min(1, level)) : null;
-  const bodyWidth = width - 3;
-  const innerPadding = 1.5;
-  const innerWidth = Math.max(0, bodyWidth - innerPadding * 2);
-  const fillWidth =
-    normalizedLevel == null ? innerWidth * 0.42 : Math.max(2, innerWidth * normalizedLevel);
-  const fillColor = normalizedLevel != null && normalizedLevel <= 0.2 ? "#ef4444" : color;
-  const boltPath = [
-    `M ${1 + bodyWidth * 0.52} ${height * 0.18}`,
-    `L ${1 + bodyWidth * 0.4} ${height * 0.5}`,
-    `H ${1 + bodyWidth * 0.56}`,
-    `L ${1 + bodyWidth * 0.42} ${height * 0.82}`,
-    `L ${1 + bodyWidth * 0.66} ${height * 0.42}`,
-    `H ${1 + bodyWidth * 0.5}`,
-  ].join(" ");
-
-  return (
-    <Svg
-      width={width}
-      height={height}
-      viewBox={`0 0 ${width} ${height}`}
-      fill="none"
-      stroke={color}
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <Rect x={1} y={1} width={bodyWidth} height={height - 2} rx={2.8} />
-      <Rect
-        x={3}
-        y={2.6}
-        width={fillWidth}
-        height={Math.max(0, height - 5.2)}
-        rx={1.8}
-        fill={fillColor}
-        stroke="none"
-      />
-      <Rect
-        x={width - 2}
-        y={height / 2 - 2}
-        width={2}
-        height={4}
-        rx={1}
-        fill={color}
-        stroke="none"
-      />
-      {charging ? (
-        <Path
-          d={boltPath}
-          fill="none"
-          stroke="#fffaf0"
-          strokeWidth={1.15}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      ) : null}
-    </Svg>
-  );
-}
-
-// ──────────────────────────── TOC Tree Item ────────────────────────────
-function TOCTreeItem({
-  item,
-  level,
-  currentChapter,
-  onSelect,
-}: {
-  item: TOCItem;
-  level: number;
-  currentChapter: string;
-  onSelect: (href: string) => void;
-}) {
-  const colors = useColors();
-  const tocS = makeTocStyles(colors);
-  const hasChildren = item.subitems && item.subitems.length > 0;
-  const isCurrent = item.title === currentChapter;
-  const hasCurrentChild = (items: TOCItem[]): boolean => {
-    for (const child of items) {
-      if (child.title === currentChapter) return true;
-      if (child.subitems && hasCurrentChild(child.subitems)) return true;
-    }
-    return false;
-  };
-  const shouldExpand = hasChildren && hasCurrentChild(item.subitems!);
-  const [expanded, setExpanded] = useState(shouldExpand);
-
-  return (
-    <View>
-      <TouchableOpacity
-        style={[tocS.item, { paddingLeft: 12 + level * 16 }, isCurrent && tocS.itemActive]}
-        onPress={() => item.href && onSelect(item.href)}
-        activeOpacity={0.7}
-      >
-        {hasChildren ? (
-          <TouchableOpacity
-            style={tocS.expandBtn}
-            onPress={() => setExpanded(!expanded)}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            {expanded ? (
-              <ChevronDownIcon size={14} color={colors.mutedForeground} />
-            ) : (
-              <ChevronRightIcon size={14} color={colors.mutedForeground} />
-            )}
-          </TouchableOpacity>
-        ) : (
-          <View style={tocS.expandPlaceholder} />
-        )}
-        <Text style={[tocS.itemText, isCurrent && tocS.itemTextActive]} numberOfLines={1}>
-          {item.title}
-        </Text>
-      </TouchableOpacity>
-      {expanded && hasChildren && (
-        <View>
-          {item.subitems!.map((child) => (
-            <TOCTreeItem
-              key={child.id || child.href}
-              item={child}
-              level={level + 1}
-              currentChapter={currentChapter}
-              onSelect={onSelect}
-            />
-          ))}
-        </View>
-      )}
-    </View>
-  );
-}
-
-const makeTocStyles = (colors: ThemeColors) =>
-  StyleSheet.create({
-    item: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      paddingVertical: 10,
-      paddingRight: 12,
-      borderRadius: radius.lg,
-    },
-    itemActive: { backgroundColor: `${colors.primary}18` },
-    expandBtn: { width: 20, height: 20, alignItems: "center", justifyContent: "center" },
-    expandPlaceholder: { width: 20 },
-    itemText: { fontSize: fontSize.sm, color: colors.foreground, flex: 1 },
-    itemTextActive: { color: colors.primary, fontWeight: fontWeight.medium },
-  });
 
 // ──────────────────────────── ReaderScreen ────────────────────────────
 export function ReaderScreen({ route, navigation }: Props) {
@@ -455,7 +95,6 @@ export function ReaderScreen({ route, navigation }: Props) {
   const s = makeStyles(colors);
   const { bookId, cfi, highlight: shouldHighlight, openTTS } = route.params;
   const { t, i18n } = useTranslation();
-  const insets = useSafeAreaInsets();
   const isWideLayout = SCREEN_WIDTH >= 768;
   const isIPadLayout = Platform.OS === "ios" && Platform.isPad;
   const shouldToggleSystemStatusBar = !isIPadLayout;
@@ -474,11 +113,6 @@ export function ReaderScreen({ route, navigation }: Props) {
   const [translationText, setTranslationText] = useState("");
   const [showTTS, setShowTTS] = useState(false);
   const [showChapterTranslation, setShowChapterTranslation] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResultCount, setSearchResultCount] = useState(0);
-  const [searchIndex, setSearchIndex] = useState(0);
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchStartCfi, setSearchStartCfi] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [currentChapter, setCurrentChapter] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -488,32 +122,13 @@ export function ReaderScreen({ route, navigation }: Props) {
   const [webViewReady, setWebViewReady] = useState(false);
   const [translationReady, setTranslationReady] = useState(false);
   const [readerHtmlUri, setReaderHtmlUri] = useState<string | null>(null);
-  const [ttsCoverUri, setTtsCoverUri] = useState<string | undefined>(undefined);
-  const [ttsLastText, setTtsLastText] = useState("");
-  const [ttsSegments, setTtsSegments] = useState<TTSSegment[]>([]);
-  const [ttsPrevPageSegments, setTtsPrevPageSegments] = useState<TTSSegment[]>([]);
-  const [ttsFutureSegments, setTtsFutureSegments] = useState<TTSSegment[]>([]);
-  const [ttsChunkOffset, setTtsChunkOffset] = useState(0);
   const [currentCfi, setCurrentCfi] = useState("");
-  const [pageSnippet, setPageSnippet] = useState("");
-  const [readerClock, setReaderClock] = useState(() => formatReaderClock(new Date()));
-  const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
-  const [batteryState, setBatteryState] = useState<Battery.BatteryState>(Battery.BatteryState.UNKNOWN);
   const [selection, setSelection] = useState<SelectionEvent | null>(null);
-  const [stableTopInset, setStableTopInset] = useState(() =>
-    Math.max(insets.top, isIPadLayout ? 24 : baseTopInset),
-  );
   const [noteViewHighlight, setNoteViewHighlight] = useState<{
-    id: string;
-    text: string;
-    note?: string;
-    cfi: string;
-    color: string;
+    id: string; text: string; note?: string; cfi: string; color: string;
   } | null>(null);
   const [noteViewEditing, setNoteViewEditing] = useState(false);
   const [noteViewContent, setNoteViewContent] = useState("");
-  const [ttsSourceKind, setTtsSourceKind] = useState<"page" | "selection">("page");
-  const [ttsContinuousEnabled, setTtsContinuousEnabled] = useState(true);
   const [noteTooltip, setNoteTooltip] = useState<{
     note: string;
     cfi: string;
@@ -521,11 +136,18 @@ export function ReaderScreen({ route, navigation }: Props) {
   } | null>(null);
   const noteTooltipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const assetLoadedRef = useRef(false);
-  const pendingBookmarkRef = useRef(false);
+  // Mediator ref so onRelocate can fire TTS continuation without direct hook dependency
+  const ttsPendingContinueRef = useRef<{
+    pendingTTSContinueCallbackRef: React.RefObject<(() => void) | null>;
+    pendingTTSContinueSafetyTimerRef: React.RefObject<ReturnType<typeof setTimeout> | null>;
+  } | null>(null);
 
   const bridgeRef = useRef<{
     requestPageSnippet: () => void;
     goNext: () => void;
+    search: (query: string) => void;
+    clearSearch: () => void;
+    navigateSearch: (index: number) => void;
     getVisibleText: () => Promise<string>;
     getVisibleTTSSegments: (alignCfi?: string | null) => Promise<TTSSegment[]>;
     getChapterParagraphs: () => Promise<Array<{ id: string; text: string; tagName: string }>>;
@@ -561,18 +183,12 @@ export function ReaderScreen({ route, navigation }: Props) {
   const updateReadSettings = useSettingsStore((s) => s.updateReadSettings);
   const translationConfig = useSettingsStore((s) => s.translationConfig);
   const aiConfig = useSettingsStore((s) => s.aiConfig);
-  const settingFontSize = readSettings.fontSize;
-  const settingLineHeight = readSettings.lineHeight;
-  const settingParagraphSpacing = readSettings.paragraphSpacing;
-  const settingPageMargin = readSettings.pageMargin;
-  const settingFontTheme = readSettings.fontTheme;
   const settingViewMode = readSettings.viewMode;
   const showTopTitleProgress = readSettings.showTopTitleProgress !== false;
   const showBottomTimeBattery = readSettings.showBottomTimeBattery !== false;
   const volumeButtonsPageTurn = readSettings.volumeButtonsPageTurn === true;
 
   const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const TOOLBAR_HIDE_OFFSET = 100;
   const toolbarAnim = useRef(new Animated.Value(TOOLBAR_HIDE_OFFSET)).current;
   const readerPullAnim = useRef(new Animated.Value(0)).current;
@@ -580,27 +196,6 @@ export function ReaderScreen({ route, navigation }: Props) {
   const progressRef = useRef(0);
   const locationHistoryRef = useRef<string[]>([]);
   const lastNavigatedCfiRef = useRef<string | undefined>(undefined);
-  const ttsSegmentsRef = useRef<TTSSegment[]>([]);
-  const ttsLastTextRef = useRef("");
-  const ttsFutureSegmentsRef = useRef<TTSSegment[]>([]);
-  const ttsLoadMoreAboveRef = useRef<string | null>(null);
-  const ttsLoadMoreBelowRef = useRef<string | null>(null);
-  const ttsExhaustedAboveAnchorsRef = useRef(new Set<string>());
-  const ttsExhaustedBelowAnchorsRef = useRef(new Set<string>());
-  const lastTTSLyricPrimeSignatureRef = useRef<string | null>(null);
-  const didForceReapplyTTSHighlightRef = useRef(false);
-  const ttsLyricPrimeRequestIdRef = useRef(0);
-  const lastFollowedTTSCfiRef = useRef<string | null>(null);
-  const ttsRecoveringLyricsRef = useRef<string | null>(null);
-  const lastKnownHardwareVolumeRef = useRef<number | null>(null);
-  const pendingVolumeRestoreRef = useRef<number | null>(null);
-  const lastVolumeButtonHandledAtRef = useRef(0);
-  const ttsContextCacheRef = useRef<Map<string, { before: TTSSegment[]; after: TTSSegment[] }>>(
-    new Map(),
-  );
-  const ttsContextInflightRef = useRef<
-    Map<string, Promise<{ before: TTSSegment[]; after: TTSSegment[] }>>
-  >(new Map());
 
   const {} = useReadingSessionStore(); // Removed startSession and stopSession
   const { sendEvent } = useReadingSession(bookId); // Added useReadingSession hook
@@ -622,147 +217,38 @@ export function ReaderScreen({ route, navigation }: Props) {
     removeHighlight,
     loadAnnotations,
     highlights,
-    bookmarks,
-    addBookmark,
     removeBookmark,
   } = useAnnotationStore();
-  const ttsPlay = useTTSStore((s) => s.play);
-  const ttsPause = useTTSStore((s) => s.pause);
-  const ttsResume = useTTSStore((s) => s.resume);
-  const ttsStop = useTTSStore((s) => s.stop);
-  const ttsPlayState = useTTSStore((s) => s.playState);
-  const ttsCurrentText = useTTSStore((s) => s.currentText);
-  const ttsCurrentSegmentText = useTTSStore((s) => s.currentSegmentText);
-  const ttsConfig = useTTSStore((s) => s.config);
-  const ttsUpdateConfig = useTTSStore((s) => s.updateConfig);
-  const ttsSetOnEnd = useTTSStore((s) => s.setOnEnd);
-  const ttsSetCurrentBook = useTTSStore((s) => s.setCurrentBook);
-  const ttsSetCurrentLocation = useTTSStore((s) => s.setCurrentLocation);
-  const ttsCurrentLocationCfi = useTTSStore((s) => s.currentLocationCfi);
-  const ttsCurrentBookId = useTTSStore((s) => s.currentBookId);
-  const ttsCurrentChunkIndex = useTTSStore((s) => s.currentChunkIndex);
-  const ttsTotalChunks = useTTSStore((s) => s.totalChunks);
-  const ttsJumpToChunk = useTTSStore((s) => s.jumpToChunk);
-  const TTS_CONTEXT_CACHE_LIMIT = 24;
-  const TTS_CONTEXT_WINDOW = 12;
-  const getTTSSegmentIdentity = useCallback(
-    (segment: TTSSegment | null | undefined) =>
-      `${segment?.cfi || ""}::${(segment?.text || "").replace(/\s+/g, " ").trim()}`,
-    [],
-  );
-
   const book = useMemo(() => books.find((b) => b.id === bookId), [books, bookId]);
-  const allLyricSegments = useMemo(
-    () => [...ttsPrevPageSegments, ...ttsSegments, ...ttsFutureSegments],
-    [ttsFutureSegments, ttsPrevPageSegments, ttsSegments],
-  );
-  const ttsDisplaySegments = useMemo(
-    () => [...ttsSegments, ...ttsFutureSegments],
-    [ttsFutureSegments, ttsSegments],
-  );
-  const localTTSChunkIndex = Math.max(0, ttsCurrentChunkIndex - ttsChunkOffset);
-  const currentTTSSegment = useMemo(() => {
-    const normalizedCurrentText = (ttsCurrentSegmentText || ttsCurrentText || "")
-      .replace(/\s+/g, " ")
-      .trim();
-    const normalizedSegmentText = (segment?: TTSSegment | null) =>
-      (segment?.text || "").replace(/\s+/g, " ").trim();
-    const indexSegment =
-      ttsSegments.length > 0 && localTTSChunkIndex >= 0 && localTTSChunkIndex < ttsSegments.length
-        ? ttsSegments[localTTSChunkIndex] || null
-        : null;
-    const cfiMatchedSegment = ttsCurrentLocationCfi
-      ? allLyricSegments.find((segment) => {
-          if (segment.cfi !== ttsCurrentLocationCfi) return false;
-          if (
-            normalizedCurrentText &&
-            (segment.text || "").replace(/\s+/g, " ").trim() !== normalizedCurrentText
-          ) {
-            return false;
-          }
-          return true;
-        }) ||
-        allLyricSegments.find((segment) => segment.cfi === ttsCurrentLocationCfi) ||
-        null
-      : null;
-    const textMatchedSegment =
-      normalizedCurrentText.length > 0
-        ? allLyricSegments.find(
-            (segment) => normalizedSegmentText(segment) === normalizedCurrentText,
-          ) || null
-        : null;
 
-    if (indexSegment) {
-      if (!normalizedCurrentText) return indexSegment;
-      if (normalizedSegmentText(indexSegment) === normalizedCurrentText) {
-        return indexSegment;
-      }
-    }
+  // ── System info (clock/battery/statusBar/SafeArea) ─────────────────────────
+  const { readerClock, batteryLevel, isBatteryCharging, stableTopInset, insets } =
+    useReaderSystemInfo({ showSearch, isIPadLayout, shouldToggleSystemStatusBar, baseTopInset });
 
-    if (cfiMatchedSegment) {
-      return cfiMatchedSegment;
-    }
+  // ── Bookmark ───────────────────────────────────────────────────────────────
+  const bookmark = useReaderBookmark({
+    bookId,
+    currentCfi,
+    currentChapter,
+    requestPageSnippet: () => bridgeRef.current?.requestPageSnippet(),
+  });
+  const { isBookmarked, bookBookmarks, handleToggleBookmark } = bookmark;
 
-    if (textMatchedSegment) {
-      return textMatchedSegment;
-    }
-
-    if (indexSegment) {
-      return indexSegment;
-    }
-
-    return null;
-  }, [
-    allLyricSegments,
-    localTTSChunkIndex,
-    ttsCurrentLocationCfi,
-    ttsCurrentSegmentText,
-    ttsCurrentText,
-    ttsSegments,
-  ]);
-  const resolvedTTSSegmentCfi = useMemo(() => {
-    if (currentTTSSegment?.cfi) return currentTTSSegment.cfi;
-    return ttsCurrentLocationCfi || null;
-  }, [currentTTSSegment?.cfi, ttsCurrentLocationCfi]);
-  const ttsHighlightColor = "rgba(96, 165, 250, 0.35)";
-  const ttsSourceLabel =
-    ttsSourceKind === "selection"
-      ? t("tts.fromSelection", "来自选中文本")
-      : t("tts.fromCurrentPage", "从当前页开始");
+  // ── Search ─────────────────────────────────────────────────────────────────
+  // Use bridgeRef for lazy access (bridge is initialized later)
+  const search = useReaderSearch({
+    currentCfi,
+    bridge: {
+      search: (q) => bridgeRef.current?.search?.(q),
+      clearSearch: () => bridgeRef.current?.clearSearch?.(),
+      navigateSearch: (idx) => bridgeRef.current?.navigateSearch?.(idx),
+      goToCFI: (cfi) => bridgeRef.current?.goToCFI(cfi),
+    },
+  });
 
   useEffect(() => {
-    const raw = book?.meta.coverUrl;
-    if (!raw) {
-      setTtsCoverUri(undefined);
-      return;
-    }
-    if (raw.startsWith("http") || raw.startsWith("blob") || raw.startsWith("file")) {
-      setTtsCoverUri(raw);
-      return;
-    }
-
-    let cancelled = false;
-    (async () => {
-      try {
-        const platform = getPlatformService();
-        const appData = await platform.getAppDataDir();
-        const absPath = await platform.joinPath(appData, raw);
-        if (!cancelled) {
-          setTtsCoverUri(absPath);
-        }
-      } catch {
-        if (!cancelled) {
-          setTtsCoverUri(undefined);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [book?.meta.coverUrl]);
-
-  // Chapter translation hook
+    progressRef.current = progress;
+  }, [progress]);
   const chapterTranslation = useChapterTranslation({
     bookId,
     sectionIndex: currentSectionIndex,
@@ -822,117 +308,9 @@ export function ReaderScreen({ route, navigation }: Props) {
     progressRef.current = progress;
   }, [progress]);
 
-  // Bookmark state
-  const existingBookmark = useMemo(
-    () => bookmarks.find((b) => b.bookId === bookId && b.cfi === currentCfi),
-    [bookmarks, bookId, currentCfi],
-  );
-  const isBookmarked = !!existingBookmark;
-  const bookBookmarks = useMemo(
-    () => bookmarks.filter((b) => b.bookId === bookId),
-    [bookmarks, bookId],
-  );
-
-  const handleToggleBookmark = useCallback(() => {
-    if (!currentCfi || !bookId) return;
-    if (isBookmarked && existingBookmark) {
-      removeBookmark(existingBookmark.id);
-    } else {
-      // Request fresh snippet from WebView — bookmark will be created in onPageSnippet callback
-      pendingBookmarkRef.current = true;
-      bridgeRef.current?.requestPageSnippet();
-      // Safety fallback: create bookmark without snippet if WebView doesn't respond in 500ms
-      setTimeout(() => {
-        if (pendingBookmarkRef.current) {
-          pendingBookmarkRef.current = false;
-          addBookmark({
-            id: generateId(),
-            bookId,
-            cfi: currentCfi,
-            label: undefined,
-            chapterTitle: currentChapter || undefined,
-            createdAt: Date.now(),
-          });
-        }
-      }, 500);
-    }
-  }, [
-    currentCfi,
-    bookId,
-    isBookmarked,
-    existingBookmark,
-    currentChapter,
-    removeBookmark,
-    addBookmark,
-  ]);
-
-  // Keep the reserved top inset stable even when the system status bar hides.
-  useEffect(() => {
-    if (!shouldToggleSystemStatusBar) {
-      setStatusBarHidden(false, "none");
-      return;
-    }
-    setStatusBarHidden(!showSearch, "slide");
-  }, [showSearch, shouldToggleSystemStatusBar]);
-
-  useEffect(() => {
-    return () => {
-      setStatusBarHidden(false, "slide");
-    };
-  }, []);
-
-  useEffect(() => {
-    const nextInset = Math.max(insets.top, isIPadLayout ? 24 : baseTopInset);
-    setStableTopInset((prev) => {
-      if (isIPadLayout) {
-        return Math.max(prev, nextInset);
-      }
-      return nextInset;
-    });
-  }, [baseTopInset, insets.top, isIPadLayout]);
-
-  useEffect(() => {
-    const updateClock = () => setReaderClock(formatReaderClock(new Date()));
-    updateClock();
-    const timer = setInterval(updateClock, 30000);
-    return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    let mounted = true;
-
-    const syncBattery = async () => {
-      try {
-        const [nextLevel, nextState] = await Promise.all([
-          Battery.getBatteryLevelAsync(),
-          Battery.getBatteryStateAsync(),
-        ]);
-        if (mounted) {
-          setBatteryLevel(typeof nextLevel === "number" && nextLevel >= 0 ? nextLevel : null);
-          setBatteryState(nextState);
-        }
-      } catch {
-        if (mounted) {
-          setBatteryLevel(null);
-          setBatteryState(Battery.BatteryState.UNKNOWN);
-        }
-      }
-    };
-
-    syncBattery();
-    const levelSubscription = Battery.addBatteryLevelListener(({ batteryLevel: nextLevel }) => {
-      setBatteryLevel(typeof nextLevel === "number" && nextLevel >= 0 ? nextLevel : null);
-    });
-    const stateSubscription = Battery.addBatteryStateListener(({ batteryState: nextState }) => {
-      setBatteryState(nextState);
-    });
-
-    return () => {
-      mounted = false;
-      levelSubscription.remove();
-      stateSubscription.remove();
-    };
-  }, []);
+  // Also read ttsPlayState from store for volume paging guard
+  const ttsPlayState = useTTSStore((s) => s.playState);
+  const ttsConfig = useTTSStore((s) => s.config);
 
   // Load reader HTML asset
   useEffect(() => {
@@ -952,6 +330,31 @@ export function ReaderScreen({ route, navigation }: Props) {
     };
     loadAsset();
   }, []);
+
+  // Controls toggle — declared before bridge so onTap can reference it without TS error
+  const toggleControls = useCallback(() => {
+    const willShow = !showControls;
+    setShowControls(willShow);
+    Animated.timing(toolbarAnim, {
+      toValue: willShow ? 0 : TOOLBAR_HIDE_OFFSET,
+      duration: 180,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+
+    if (willShow) {
+      if (controlsTimer.current) clearTimeout(controlsTimer.current);
+      controlsTimer.current = setTimeout(() => {
+        setShowControls(false);
+        Animated.timing(toolbarAnim, {
+          toValue: TOOLBAR_HIDE_OFFSET,
+          duration: 180,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }).start();
+      }, CONTROLS_TIMEOUT);
+    }
+  }, [showControls, toolbarAnim]);
 
   // Reader bridge
   const bridge = useReaderBridge({
@@ -1023,14 +426,15 @@ export function ReaderScreen({ route, navigation }: Props) {
 
       // If TTS is waiting for a page turn to complete, fire the continuation callback now
       // that the renderer has fully updated its position (renderer.start reflects new page).
-      if (pendingTTSContinueCallbackRef.current) {
+      if (ttsPendingContinueRef.current?.pendingTTSContinueCallbackRef.current) {
         console.log("[ReaderScreen][TTS] onRelocate triggered pending TTS continuation");
-        const cb = pendingTTSContinueCallbackRef.current;
-        pendingTTSContinueCallbackRef.current = null;
+        const cb = ttsPendingContinueRef.current.pendingTTSContinueCallbackRef.current;
+        ttsPendingContinueRef.current.pendingTTSContinueCallbackRef.current = null;
         // Cancel the safety timer since onRelocate fired successfully
-        if (pendingTTSContinueSafetyTimerRef.current) {
-          clearTimeout(pendingTTSContinueSafetyTimerRef.current);
-          pendingTTSContinueSafetyTimerRef.current = null;
+        const safetyTimerRef = ttsPendingContinueRef.current.pendingTTSContinueSafetyTimerRef;
+        if (safetyTimerRef.current) {
+          clearTimeout(safetyTimerRef.current);
+          safetyTimerRef.current = null;
         }
         void cb();
       }
@@ -1093,12 +497,10 @@ export function ReaderScreen({ route, navigation }: Props) {
       }).start();
     },
     onSearchResult: (index: number, count: number) => {
-      setSearchIndex(index);
-      setSearchResultCount(count);
+      search.onSearchResult(index, count);
     },
     onSearchComplete: (count: number) => {
-      setSearchResultCount(count);
-      setIsSearching(false);
+      search.onSearchComplete(count);
     },
     onError: (message: string) => {
       console.error("[Reader] WebView error:", message);
@@ -1147,462 +549,123 @@ export function ReaderScreen({ route, navigation }: Props) {
         noteTooltipTimer.current = null;
       }, 4000);
     },
-    onPageSnippet: (text: string) => {
-      setPageSnippet(text);
+    onPageSnippet: (_text: string) => {
+      // page snippet handled by bookmark hook if pending
     },
     onBookmarkSnippet: (text: string) => {
-      if (pendingBookmarkRef.current) {
-        pendingBookmarkRef.current = false;
-        const cfi = currentCfi;
-        if (cfi && bookId) {
-          addBookmark({
-            id: generateId(),
-            bookId,
-            cfi,
-            label: text || undefined,
-            chapterTitle: currentChapter || undefined,
-            createdAt: Date.now(),
-          });
-        }
-      }
+      bookmark.onBookmarkSnippet(text);
     },
   });
 
-  const volumeManager = getVolumeManager();
-  const hasVolumeButtonPagingSupport =
-    Platform.OS !== "web" && Platform.OS !== "windows" && !!NativeModules.VolumeManager && !!volumeManager;
+
+  // ── Volume button paging ─────────────────────────────────────────────────
   const volumeButtonPagingActive =
-    hasVolumeButtonPagingSupport &&
-    volumeButtonsPageTurn &&
-    webViewReady &&
-    !showSearch &&
-    !showTOC &&
-    !showSettings &&
-    !showNotebook &&
-    !showTTS &&
-    ttsPlayState === "stopped";
-  const isBatteryCharging =
-    batteryState === Battery.BatteryState.CHARGING || batteryState === Battery.BatteryState.FULL;
+    Platform.OS !== 'web' && Platform.OS !== 'windows' &&
+    !!NativeModules.VolumeManager && !!getVolumeManager() &&
+    volumeButtonsPageTurn && webViewReady &&
+    !showSearch && !showTOC && !showSettings && !showNotebook && !showTTS &&
+    ttsPlayState === 'stopped';
 
-  useEffect(() => {
-    if (__DEV__ && volumeButtonsPageTurn) {
-      console.log("[ReaderScreen][VolumeNav] config", {
-        hasNativeModule: !!NativeModules.VolumeManager,
-        hasVolumeManagerBridge: !!volumeManager,
-        volumeButtonPagingActive,
-        webViewReady,
-        showSearch,
-        showTOC,
-        showSettings,
-        showNotebook,
-        showTTS,
-        ttsPlayState,
-      });
-    }
-  }, [
-    showNotebook,
-    showSearch,
-    showSettings,
-    showTOC,
-    showTTS,
-    ttsPlayState,
-    volumeButtonPagingActive,
-    volumeButtonsPageTurn,
-    volumeManager,
-    webViewReady,
-  ]);
+  useVolumeButtonPaging({
+    active: volumeButtonPagingActive,
+    settingViewMode,
+    onPrev: () => bridge.goPrev(),
+    onNext: () => bridge.goNext(),
+  });
 
-  useEffect(() => {
-    if (!volumeButtonPagingActive) {
-      pendingVolumeRestoreRef.current = null;
-      return;
-    }
-
-    let cancelled = false;
-    let volumeListener: { remove: () => void } | null = null;
-
-    const restoreSystemVolume = async (targetVolume: number) => {
-      if (!volumeManager) return;
-      pendingVolumeRestoreRef.current = targetVolume;
-      try {
-        await volumeManager.setVolume(targetVolume, {
-          showUI: false,
-          playSound: false,
-          type: "music",
-        });
-      } catch (error) {
-        pendingVolumeRestoreRef.current = null;
-        console.warn("[ReaderScreen][VolumeNav] restore-volume failed", error);
-      }
-    };
-
-    const enableVolumeButtonPaging = async () => {
-      if (!volumeManager) {
-        return;
-      }
-      try {
-        await volumeManager.showNativeVolumeUI({ enabled: false });
-        const initialVolume = await volumeManager.getVolume();
-        if (cancelled) return;
-
-        lastKnownHardwareVolumeRef.current =
-          typeof initialVolume.volume === "number" ? initialVolume.volume : null;
-
-        if (__DEV__) {
-          console.log("[ReaderScreen][VolumeNav] enabled", {
-            initialVolume: lastKnownHardwareVolumeRef.current,
-            viewMode: settingViewMode,
-          });
-        }
-
-        volumeListener = volumeManager.addVolumeListener((result) => {
-          const nextVolume =
-            typeof result.volume === "number" && Number.isFinite(result.volume)
-              ? result.volume
-              : null;
-          if (cancelled || nextVolume == null) return;
-
-          const pendingRestore = pendingVolumeRestoreRef.current;
-          if (pendingRestore != null && Math.abs(nextVolume - pendingRestore) < 0.0001) {
-            pendingVolumeRestoreRef.current = null;
-            lastKnownHardwareVolumeRef.current = nextVolume;
-            if (__DEV__) {
-              console.log("[ReaderScreen][VolumeNav] restore-event", {
-                volume: nextVolume,
-              });
-            }
-            return;
-          }
-
-          const previousVolume = lastKnownHardwareVolumeRef.current;
-          lastKnownHardwareVolumeRef.current = nextVolume;
-          if (previousVolume == null) return;
-
-          const delta = nextVolume - previousVolume;
-          if (Math.abs(delta) < 0.0001) return;
-
-          const now = Date.now();
-          if (now - lastVolumeButtonHandledAtRef.current < 120) {
-            return;
-          }
-          lastVolumeButtonHandledAtRef.current = now;
-
-          const direction = delta > 0 ? "prev" : "next";
-          if (__DEV__) {
-            console.log("[ReaderScreen][VolumeNav] hardware-press", {
-              direction,
-              previousVolume,
-              nextVolume,
-              delta,
-            });
-          }
-
-          if (direction === "prev") {
-            bridge.goPrev();
-          } else {
-            bridge.goNext();
-          }
-
-          void restoreSystemVolume(previousVolume);
-        });
-      } catch (error) {
-        console.warn("[ReaderScreen][VolumeNav] unavailable", error);
-      }
-    };
-
-    void enableVolumeButtonPaging();
-
-    return () => {
-      cancelled = true;
-      volumeListener?.remove();
-      pendingVolumeRestoreRef.current = null;
-      if (volumeManager) {
-        void volumeManager.showNativeVolumeUI({ enabled: true }).catch((error) => {
-          console.warn("[ReaderScreen][VolumeNav] restore-native-ui failed", error);
-        });
-      }
-    };
-  }, [bridge, settingViewMode, ttsPlayState, volumeButtonPagingActive, volumeManager]);
 
   bridgeRef.current = bridge;
   chapterTranslationBridgeRef.current = bridge;
+
+  // ── useReaderTTS ──
+  const tts = useReaderTTS({
+    bookId,
+    bookTitle: bookTitle || book?.meta.title || "",
+    currentChapter,
+    currentCfi,
+    webViewReady,
+    showTTS,
+    setShowTTS,
+    setShowControls,
+    bridgeRef,
+    toc,
+    bookCoverUrl: book?.meta.coverUrl,
+    colors,
+    goToHref: bridge.goToHref,
+  });
+
+  // Bind mediator ref so onRelocate can fire the TTS continuation callback
+  ttsPendingContinueRef.current = {
+    pendingTTSContinueCallbackRef: tts.pendingTTSContinueCallbackRef,
+    pendingTTSContinueSafetyTimerRef: tts.pendingTTSContinueSafetyTimerRef,
+  };
+
+  // ── Non-TTS callbacks ──────────────────────────────────────────────────────
+
+  const goToTocItem = useCallback(
+    (href: string) => {
+      if (lastCfiRef.current) {
+        locationHistoryRef.current.push(lastCfiRef.current);
+      }
+      bridge.goToHref(href);
+      setShowTOC(false);
+    },
+    [bridge],
+  );
+
+  const goBackToPreviousLocation = useCallback(() => {
+    if (locationHistoryRef.current.length === 0) return;
+    const previousCfi = locationHistoryRef.current.pop();
+    if (previousCfi) {
+      bridge.goToCFI(previousCfi);
+    }
+  }, [bridge]);
+
+  const canGoBack = locationHistoryRef.current.length > 0;
+
+  const updateSetting = useCallback(
+    <K extends keyof ReadSettings>(key: K, value: ReadSettings[K]) => {
+      const updates = { [key]: value } as Partial<ReadSettings>;
+      updateReadSettings(updates);
+      const currentSettings = useSettingsStore.getState().readSettings;
+      bridge.applySettings({ ...currentSettings, ...updates });
+    },
+    [bridge, updateReadSettings],
+  );
+
+  // Selection popover handlers
+  const handleHighlight = useCallback(
+    (color: string) => {
+      if (!selection) return;
+      const highlight = {
+        id: `hl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        bookId,
+        cfi: selection.cfi,
+        text: selection.text,
+        color: color as any,
+        chapterTitle: currentChapter,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      addHighlight(highlight);
+      bridge.addAnnotation({ value: selection.cfi, type: "highlight", color });
+      setSelection(null);
+    },
+    [selection, bookId, currentChapter, addHighlight, bridge],
+  );
+
+  const handleDismissSelection = useCallback(() => {
+    setSelection(null);
+  }, []);
 
   useEffect(() => {
     setGoToCfiFn(() => bridge.goToCFI);
     return () => setGoToCfiFn(null);
   }, [bridge.goToCFI, setGoToCfiFn]);
 
-  useEffect(() => {
-    ttsSegmentsRef.current = ttsSegments;
-    ttsPrevPageSegmentsRef.current = ttsPrevPageSegments;
-    ttsLastTextRef.current = ttsLastText;
-    ttsFutureSegmentsRef.current = ttsFutureSegments;
-  }, [ttsFutureSegments, ttsLastText, ttsPrevPageSegments, ttsSegments]);
+  // ── Book loading effects ───────────────────────────────────────────────────
 
-  useEffect(() => {
-    ttsChunkOffsetRef.current = ttsChunkOffset;
-  }, [ttsChunkOffset]);
-
-  useEffect(() => {
-    ttsContextCacheRef.current.clear();
-    ttsContextInflightRef.current.clear();
-    ttsLoadMoreAboveRef.current = null;
-    ttsLoadMoreBelowRef.current = null;
-    ttsExhaustedAboveAnchorsRef.current.clear();
-    ttsExhaustedBelowAnchorsRef.current.clear();
-    lastTTSLyricPrimeSignatureRef.current = null;
-    ttsLyricPrimeRequestIdRef.current += 1;
-    lastFollowedTTSCfiRef.current = null;
-  }, [bookId]);
-
-  useEffect(() => {
-    return eventBus.on(
-      "tts:jump-to-current",
-      ({ bookId: targetBookId, cfi: targetCfi, respond }) => {
-        if (targetBookId !== bookId || !targetCfi) return;
-        setShowTTS(false);
-        setShowControls(false);
-        bridge.goToCFI(targetCfi);
-        bridge.flashHighlight(targetCfi, colors.primary, 1200);
-        respond?.();
-      },
-    );
-  }, [bookId, bridge, colors.primary]);
-
-  useEffect(() => {
-    return eventBus.on("tts:open-lyrics-page", ({ bookId: targetBookId, respond }) => {
-      if (targetBookId !== bookId) return;
-      setShowControls(false);
-      setShowTTS(true);
-      respond?.();
-    });
-  }, [bookId]);
-
-  useEffect(() => {
-    if (!webViewReady) return;
-    if (showTTS) {
-      bridge.setTTSHighlight(null);
-      return;
-    }
-    if (ttsPlayState !== "playing" && ttsPlayState !== "paused" && ttsPlayState !== "loading") {
-      bridge.setTTSHighlight(null);
-      return;
-    }
-    if (ttsSourceKind !== "page") {
-      bridge.setTTSHighlight(null);
-      return;
-    }
-    const targetCfi = resolvedTTSSegmentCfi;
-    if (!targetCfi) {
-      bridge.setTTSHighlight(null);
-      return;
-    }
-    if (__DEV__) {
-      console.log("[ReaderScreen][TTSHighlight] sync", {
-        showTTS,
-        targetCfi,
-        playState: ttsPlayState,
-        sourceKind: ttsSourceKind,
-      });
-    }
-    bridge.setTTSHighlight(targetCfi, ttsHighlightColor);
-  }, [
-    bridge,
-    currentCfi,
-    resolvedTTSSegmentCfi,
-    showTTS,
-    ttsPlayState,
-    ttsSourceKind,
-    webViewReady,
-  ]);
-
-  useEffect(() => {
-    if (!webViewReady) {
-      didForceReapplyTTSHighlightRef.current = false;
-      return;
-    }
-    if (showTTS) {
-      didForceReapplyTTSHighlightRef.current = false;
-      return;
-    }
-    if (didForceReapplyTTSHighlightRef.current) return;
-    if (ttsSourceKind !== "page") return;
-    if (ttsPlayState !== "playing" && ttsPlayState !== "paused" && ttsPlayState !== "loading")
-      return;
-    const targetCfi = resolvedTTSSegmentCfi;
-    if (!targetCfi) return;
-    // Re-apply once when WebView becomes ready to recover highlight after reloads.
-    bridge.setTTSHighlight(targetCfi, ttsHighlightColor, true);
-    didForceReapplyTTSHighlightRef.current = true;
-  }, [
-    bridge,
-    currentCfi,
-    resolvedTTSSegmentCfi,
-    showTTS,
-    ttsHighlightColor,
-    ttsPlayState,
-    ttsSourceKind,
-    webViewReady,
-  ]);
-
-  useEffect(() => {
-    if (!webViewReady || showTTS) return;
-    if (ttsSourceKind !== "page") return;
-    if (ttsPlayState !== "playing" && ttsPlayState !== "paused" && ttsPlayState !== "loading")
-      return;
-    const targetCfi = resolvedTTSSegmentCfi || currentCfi || null;
-    if (!targetCfi) return;
-    const timer = setTimeout(() => {
-      if (__DEV__) {
-        console.log("[ReaderScreen][TTSHighlight] reapply-after-close", {
-          targetCfi,
-          playState: ttsPlayState,
-        });
-      }
-      bridge.setTTSHighlight(targetCfi, ttsHighlightColor, true);
-    }, 180);
-    return () => clearTimeout(timer);
-  }, [
-    bridge,
-    currentCfi,
-    resolvedTTSSegmentCfi,
-    showTTS,
-    ttsHighlightColor,
-    ttsPlayState,
-    ttsSourceKind,
-    webViewReady,
-  ]);
-
-  useEffect(() => {
-    if (!webViewReady) {
-      lastFollowedTTSCfiRef.current = null;
-      return;
-    }
-    if (showTTS || ttsSourceKind !== "page") {
-      lastFollowedTTSCfiRef.current = null;
-      return;
-    }
-    if (ttsPlayState !== "playing" && ttsPlayState !== "loading") {
-      lastFollowedTTSCfiRef.current = null;
-      return;
-    }
-    const targetCfi = resolvedTTSSegmentCfi;
-    if (!targetCfi || lastFollowedTTSCfiRef.current === targetCfi) return;
-    lastFollowedTTSCfiRef.current = targetCfi;
-    bridge.goToCFI(targetCfi);
-  }, [bridge, resolvedTTSSegmentCfi, showTTS, ttsPlayState, ttsSourceKind, webViewReady]);
-
-  useEffect(() => {
-    if (ttsCurrentBookId !== bookId) return;
-    if (ttsSourceKind === "page") {
-      const spokenCfi = resolvedTTSSegmentCfi;
-      if (__DEV__ && spokenCfi && spokenCfi !== ttsCurrentLocationCfi) {
-        console.log("[ReaderScreen][TTS] update-current-location", {
-          currentChunkIndex: ttsCurrentChunkIndex,
-          ttsChunkOffset,
-          localTTSChunkIndex,
-          spokenCfi,
-          previousLocationCfi: ttsCurrentLocationCfi,
-          ttsSegmentsLength: ttsSegments.length,
-        });
-      }
-      if (spokenCfi && spokenCfi !== ttsCurrentLocationCfi) {
-        ttsSetCurrentLocation(spokenCfi);
-      }
-      return;
-    }
-
-    if (currentCfi && currentCfi !== ttsCurrentLocationCfi) {
-      ttsSetCurrentLocation(currentCfi);
-    }
-  }, [
-    bookId,
-    currentCfi,
-    resolvedTTSSegmentCfi,
-    ttsCurrentBookId,
-    ttsCurrentLocationCfi,
-    ttsPlayState,
-    ttsSetCurrentLocation,
-    ttsSourceKind,
-  ]);
-
-  useEffect(() => {
-    if (!__DEV__) return;
-    if (ttsSourceKind !== "page") return;
-    if (ttsPlayState === "stopped") return;
-    console.log("[ReaderScreen][TTS] segment-resolution", {
-      currentChunkIndex: ttsCurrentChunkIndex,
-      ttsChunkOffset,
-      localTTSChunkIndex,
-      resolvedTTSSegmentCfi,
-      currentSegmentText: normalizeTTSDebugText(currentTTSSegment?.text),
-      storeSegmentText: normalizeTTSDebugText(ttsCurrentSegmentText),
-      currentLocationCfi: ttsCurrentLocationCfi,
-      ttsSegmentsLength: ttsSegments.length,
-      prevSegmentsLength: ttsPrevPageSegments.length,
-      futureSegmentsLength: ttsFutureSegments.length,
-    });
-  }, [
-    currentTTSSegment?.text,
-    localTTSChunkIndex,
-    resolvedTTSSegmentCfi,
-    ttsChunkOffset,
-    ttsCurrentChunkIndex,
-    ttsCurrentLocationCfi,
-    ttsCurrentSegmentText,
-    ttsFutureSegments.length,
-    ttsPlayState,
-    ttsPrevPageSegments.length,
-    ttsSegments.length,
-    ttsSourceKind,
-  ]);
-
-  useEffect(() => {
-    if (!webViewReady) return;
-    bridge.setBookmarkPullState({
-      bookmarked: isBookmarked,
-      pullToAdd: t("bookmarks.pullToAdd", "下滑添加书签"),
-      releaseToAdd: t("bookmarks.releaseToAdd", "松手添加书签"),
-      pullToRemove: t("bookmarks.pullToRemove", "下滑删除书签"),
-      releaseToRemove: t("bookmarks.releaseToRemove", "松手删除书签"),
-    });
-  }, [bridge, isBookmarked, t, webViewReady]);
-
-  useEffect(() => {
-    if (!__DEV__) return;
-    if (ttsSourceKind !== "page") return;
-    if (ttsPlayState === "stopped") return;
-    if (ttsSegments.length === 0) return;
-    if (localTTSChunkIndex >= 0 && localTTSChunkIndex < ttsSegments.length) return;
-    console.log("[ReaderScreen][TTS] chunk-out-of-range", {
-      currentChunkIndex: ttsCurrentChunkIndex,
-      ttsChunkOffset,
-      localTTSChunkIndex,
-      ttsSegmentsLength: ttsSegments.length,
-      ttsFutureSegmentsLength: ttsFutureSegments.length,
-      currentLocationCfi: ttsCurrentLocationCfi,
-      currentSegmentTextLength: (ttsCurrentSegmentText || "").length,
-    });
-  }, [
-    localTTSChunkIndex,
-    ttsChunkOffset,
-    ttsCurrentChunkIndex,
-    ttsCurrentLocationCfi,
-    ttsCurrentSegmentText,
-    ttsFutureSegments.length,
-    ttsPlayState,
-    ttsSegments.length,
-    ttsSourceKind,
-  ]);
-
-  // Sync webViewRefForVisibility when WebView is ready
-  useEffect(() => {
-    if (webViewReady && bridge.webViewRef.current) {
-      webViewRefForVisibility.current = bridge.webViewRef.current;
-    }
-  }, [webViewReady]);
-
-  // Load book
+  // Load book metadata and annotations
   useEffect(() => {
     if (!book) {
       setError(t("reader.bookNotFound", "书籍未找到"));
@@ -1627,7 +690,6 @@ export function ReaderScreen({ route, navigation }: Props) {
   // Save progress immediately on unmount
   useEffect(() => {
     return () => {
-      // Flush the last known position to database immediately
       if (lastCfiRef.current) {
         const db = require("@readany/core/db/database");
         runWithDbRetry(
@@ -1650,37 +712,21 @@ export function ReaderScreen({ route, navigation }: Props) {
 
     const loadBook = async () => {
       try {
-        // Resolve absolute path from relative path
         const platform = getPlatformService();
         const appData = await platform.getAppDataDir();
         const absPath = await platform.joinPath(appData, book.filePath);
         const lastLocation = book.currentCfi || undefined;
 
-        if (Platform.OS === "android") {
-          // Android WebView fetch(file:// / content://) is unreliable here and can throw
-          // "TypeError: Failed to fetch". Use base64 like iOS for consistent loading.
-          const base64 = await FileSystem.readAsStringAsync(absPath, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          bridge.openBook({
-            base64,
-            fileName: book.filePath.split("/").pop() || "book.epub",
-            lastLocation,
-            pageMargin: settingPageMargin,
-          });
-        } else {
-          const base64 = await FileSystem.readAsStringAsync(absPath, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          bridge.openBook({
-            base64,
-            fileName: book.filePath.split("/").pop() || "book.epub",
-            lastLocation,
-            pageMargin: settingPageMargin,
-          });
-        }
+        const base64 = await FileSystem.readAsStringAsync(absPath, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        bridge.openBook({
+          base64,
+          fileName: book.filePath.split("/").pop() || "book.epub",
+          lastLocation,
+          pageMargin: readSettings.pageMargin,
+        });
 
-        // Set theme colors
         bridge.setThemeColors({
           background: colors.background,
           foreground: colors.foreground,
@@ -1724,51 +770,30 @@ export function ReaderScreen({ route, navigation }: Props) {
   // Navigate to CFI when book is loaded (from NotesPage or AI citation navigation)
   useEffect(() => {
     if (!webViewReady || loading || !cfi || cfi === lastNavigatedCfiRef.current) return;
-    console.log("[ReaderScreen] goToCFI effect fired", {
-      routeCfi: cfi,
-      lastNavigated: lastNavigatedCfiRef.current,
-      webViewReady,
-      loading,
-    });
     bridge.goToCFI(cfi);
     lastNavigatedCfiRef.current = cfi;
-    navigation.setParams({
-      bookId,
-      cfi: undefined,
-      highlight: undefined,
-    });
+    navigation.setParams({ bookId, cfi: undefined, highlight: undefined });
 
-    // Only flash highlight for AI citation (shouldHighlight === true)
-    // Notes navigation should NOT highlight
     if (shouldHighlight) {
       let flashCount = 0;
-      const maxFlashes = 3;
-      const flashInterval = 500;
-
       const doFlash = () => {
-        if (flashCount >= maxFlashes) return;
-
-        bridge.flashHighlight(cfi, "orange", flashInterval);
-
+        if (flashCount >= 3) return;
+        bridge.flashHighlight(cfi, "orange", 500);
         flashCount++;
-        if (flashCount < maxFlashes) {
-          setTimeout(doFlash, flashInterval + 100);
-        }
+        if (flashCount < 3) setTimeout(doFlash, 600);
       };
-
       setTimeout(doFlash, 100);
     }
   }, [webViewReady, loading, cfi, shouldHighlight, bridge, navigation, bookId]);
 
+  // Open TTS lyrics page when navigating from notification
   useEffect(() => {
     if (!openTTS || !webViewReady || loading) return;
 
     let cancelled = false;
     const openLyricsPage = async () => {
       const targetCfi =
-        ttsCurrentBookId === bookId
-          ? resolvedTTSSegmentCfi || ttsCurrentLocationCfi || currentCfi || null
-          : null;
+        tts.resolvedTTSSegmentCfi || tts.ttsDisplaySegments[0]?.cfi || currentCfi || null;
       if (targetCfi && targetCfi !== currentCfi) {
         bridge.goToCFI(targetCfi);
         await new Promise((resolve) => setTimeout(resolve, 320));
@@ -1776,28 +801,12 @@ export function ReaderScreen({ route, navigation }: Props) {
       if (cancelled) return;
       setShowControls(false);
       setShowTTS(true);
-      navigation.setParams({
-        bookId,
-        openTTS: undefined,
-      });
+      navigation.setParams({ bookId, openTTS: undefined });
     };
 
     void openLyricsPage();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    bookId,
-    bridge,
-    currentCfi,
-    loading,
-    navigation,
-    openTTS,
-    resolvedTTSSegmentCfi,
-    ttsCurrentBookId,
-    ttsCurrentLocationCfi,
-    webViewReady,
-  ]);
+    return () => { cancelled = true; };
+  }, [bookId, bridge, currentCfi, loading, navigation, openTTS, webViewReady]);
 
   // Lock navigation when selection is active
   useEffect(() => {
@@ -1805,1522 +814,6 @@ export function ReaderScreen({ route, navigation }: Props) {
     bridge.setNavigationLocked(!!selection);
   }, [webViewReady, selection]);
 
-  // Controls toggle
-  const toggleControls = useCallback(() => {
-    const willShow = !showControls;
-    setShowControls(willShow);
-    Animated.timing(toolbarAnim, {
-      toValue: willShow ? 0 : TOOLBAR_HIDE_OFFSET,
-      duration: 180,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-
-    if (willShow) {
-      if (controlsTimer.current) clearTimeout(controlsTimer.current);
-      controlsTimer.current = setTimeout(() => {
-        setShowControls(false);
-        Animated.timing(toolbarAnim, {
-          toValue: TOOLBAR_HIDE_OFFSET,
-          duration: 180,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }).start();
-      }, CONTROLS_TIMEOUT);
-    }
-  }, [showControls, toolbarAnim]);
-
-  const goToTocItem = useCallback(
-    (href: string) => {
-      if (lastCfiRef.current) {
-        locationHistoryRef.current.push(lastCfiRef.current);
-      }
-      bridge.goToHref(href);
-      setShowTOC(false);
-    },
-    [bridge],
-  );
-
-  const goBackToPreviousLocation = useCallback(() => {
-    if (locationHistoryRef.current.length === 0) return;
-    const previousCfi = locationHistoryRef.current.pop();
-    if (previousCfi) {
-      bridge.goToCFI(previousCfi);
-    }
-  }, [bridge]);
-
-  const canGoBack = locationHistoryRef.current.length > 0;
-
-  const handleSearchInput = useCallback(
-    (query: string) => {
-      setSearchQuery(query);
-      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-      searchDebounceRef.current = setTimeout(() => {
-        const trimmed = query.trim();
-        if (trimmed) {
-          // Record current position before searching
-          if (!searchStartCfi && currentCfi) {
-            setSearchStartCfi(currentCfi);
-          }
-          setIsSearching(true);
-          bridge.search(trimmed);
-        } else {
-          setSearchResultCount(0);
-          setSearchIndex(0);
-          bridge.clearSearch();
-        }
-      }, 300);
-    },
-    [bridge, searchStartCfi, currentCfi],
-  );
-
-  const navigateSearch = useCallback(
-    (direction: "prev" | "next") => {
-      if (searchResultCount === 0) return;
-      const newIdx =
-        direction === "next"
-          ? (searchIndex + 1) % searchResultCount
-          : (searchIndex - 1 + searchResultCount) % searchResultCount;
-      setSearchIndex(newIdx);
-      bridge.navigateSearch(newIdx);
-    },
-    [searchIndex, searchResultCount, bridge],
-  );
-
-  const updateSetting = useCallback(
-    <K extends keyof ReadSettings>(key: K, value: ReadSettings[K]) => {
-      const updates = { [key]: value } as Partial<ReadSettings>;
-      updateReadSettings(updates);
-      const currentSettings = useSettingsStore.getState().readSettings;
-      bridge.applySettings({
-        ...currentSettings,
-        ...updates,
-      });
-    },
-    [bridge, updateReadSettings],
-  );
-
-  // Selection popover handlers
-  const handleHighlight = useCallback(
-    (color: string) => {
-      if (!selection) return;
-      const highlight = {
-        id: `hl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        bookId,
-        cfi: selection.cfi,
-        text: selection.text,
-        color: color as any,
-        chapterTitle: currentChapter,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
-      addHighlight(highlight);
-      bridge.addAnnotation({ value: selection.cfi, type: "highlight", color });
-      setSelection(null);
-    },
-    [selection, bookId, currentChapter, addHighlight, bridge],
-  );
-
-  const handleDismissSelection = useCallback(() => {
-    setSelection(null);
-  }, []);
-
-  const getNormalizedVisibleTTSSegments = useCallback(
-    async (alignCfi?: string | null) => {
-      const segmentCandidates = await bridgeRef.current?.getVisibleTTSSegments(alignCfi);
-      const segments =
-        segmentCandidates && segmentCandidates.length > 0
-          ? segmentCandidates
-          : splitNarrationText((await bridgeRef.current?.getVisibleText()) || "").map(
-              (segmentText) => ({
-                text: segmentText,
-                cfi: alignCfi || currentCfi,
-              }),
-            );
-
-      return segments
-        .map((segment) => ({
-          text: segment.text.trim(),
-          cfi: segment.cfi,
-        }))
-        .filter((segment) => segment.text.length > 0);
-    },
-    [currentCfi],
-  );
-
-  const logTTSExtractionDiagnostics = useCallback(
-    async ({
-      reason,
-      alignCfi,
-      targetCfi,
-      targetText,
-      rawVisibleSegments,
-      playbackSegments,
-    }: {
-      reason: string;
-      alignCfi?: string | null;
-      targetCfi?: string | null;
-      targetText?: string | null;
-      rawVisibleSegments: TTSSegment[];
-      playbackSegments: TTSSegment[];
-    }) => {
-      if (!__DEV__) return;
-      if (!bridgeRef.current) return;
-
-      try {
-        const [chapterParagraphs, visibleText] = await Promise.all([
-          bridgeRef.current.getChapterParagraphs(),
-          bridgeRef.current.getVisibleText(),
-        ]);
-        const chapterText = chapterParagraphs
-          .map((paragraph: { id: string; text: string; tagName: string }) =>
-            normalizeTTSDebugText(paragraph.text),
-          )
-          .filter(Boolean)
-          .join("\n");
-        const normalizedVisibleText = normalizeTTSDebugText(visibleText);
-        const pageSentences = splitNarrationText(normalizedVisibleText)
-          .map((sentence) => normalizeTTSDebugText(sentence))
-          .filter(Boolean);
-        const normalizedRawVisibleSegments = normalizeTTSDebugSegments(rawVisibleSegments);
-        const normalizedPlaybackSegments = normalizeTTSDebugSegments(playbackSegments);
-        const missingFromRaw = collectMissingTTSDebugSentences(
-          pageSentences,
-          normalizedRawVisibleSegments,
-        );
-        const missingFromPlayback = collectMissingTTSDebugSentences(
-          pageSentences,
-          normalizedPlaybackSegments,
-        );
-        const pageFirstSentence = pageSentences[0] || null;
-        const rawFirstSentence = normalizedRawVisibleSegments[0]?.text || null;
-        const playbackFirstSentence = normalizedPlaybackSegments[0]?.text || null;
-
-        console.log("[ReaderScreen][TTS][diagnostics] summary", {
-          reason,
-          chapterTitle: currentChapter,
-          currentCfi,
-          alignCfi: alignCfi || null,
-          targetCfi: targetCfi || null,
-          targetTextLength: normalizeTTSDebugText(targetText).length,
-          chapterParagraphCount: chapterParagraphs.length,
-          chapterTextLength: chapterText.length,
-          visibleTextLength: normalizedVisibleText.length,
-          pageSentenceCount: pageSentences.length,
-          rawVisibleSegmentCount: normalizedRawVisibleSegments.length,
-          playbackSegmentCount: normalizedPlaybackSegments.length,
-          missingFromRawCount: missingFromRaw.length,
-          missingFromPlaybackCount: missingFromPlayback.length,
-          pageFirstSentence,
-          rawFirstSentence,
-          playbackFirstSentence,
-          pageFirstIndexInRaw: findTTSDebugSentenceIndex(
-            pageFirstSentence,
-            normalizedRawVisibleSegments,
-          ),
-          pageFirstIndexInPlayback: findTTSDebugSentenceIndex(
-            pageFirstSentence,
-            normalizedPlaybackSegments,
-          ),
-          rawFirstCfi: normalizedRawVisibleSegments[0]?.cfi || null,
-          playbackFirstCfi: normalizedPlaybackSegments[0]?.cfi || null,
-          playbackLastCfi:
-            normalizedPlaybackSegments[normalizedPlaybackSegments.length - 1]?.cfi || null,
-        });
-
-        logTTSDebugText("[ReaderScreen][TTS][diagnostics] chapter-text", chapterText);
-        logTTSDebugText("[ReaderScreen][TTS][diagnostics] visible-text", normalizedVisibleText);
-        logTTSDebugSentenceList(
-          "[ReaderScreen][TTS][diagnostics] visible-sentences",
-          pageSentences,
-        );
-        logTTSDebugSegments(
-          "[ReaderScreen][TTS][diagnostics] raw-visible-segments",
-          normalizedRawVisibleSegments,
-        );
-        logTTSDebugSegments(
-          "[ReaderScreen][TTS][diagnostics] playback-segments",
-          normalizedPlaybackSegments,
-        );
-        if (missingFromRaw.length > 0) {
-          logTTSDebugSentenceList(
-            "[ReaderScreen][TTS][diagnostics] missing-from-raw",
-            missingFromRaw,
-          );
-        }
-        if (missingFromPlayback.length > 0) {
-          logTTSDebugSentenceList(
-            "[ReaderScreen][TTS][diagnostics] missing-from-playback",
-            missingFromPlayback,
-          );
-        }
-      } catch (error) {
-        console.warn("[ReaderScreen][TTS][diagnostics] failed", {
-          reason,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    },
-    [currentCfi, currentChapter],
-  );
-
-  const dedupeTTSSegments = useCallback(
-    (segments: TTSSegment[]) => {
-      const seenIdentities = new Set<string>();
-      const result: TTSSegment[] = [];
-      for (const segment of segments) {
-        if (!segment.text.trim()) continue;
-        const identity = getTTSSegmentIdentity(segment);
-        if (seenIdentities.has(identity)) continue;
-        seenIdentities.add(identity);
-        result.push(segment);
-      }
-      return result;
-    },
-    [getTTSSegmentIdentity],
-  );
-
-  const filterDistinctTTSSegments = useCallback(
-    (incoming: TTSSegment[], ...existingGroups: TTSSegment[][]) => {
-      const blockedIdentities = new Set<string>();
-      for (const segment of existingGroups.flat()) {
-        blockedIdentities.add(getTTSSegmentIdentity(segment));
-      }
-      const result: TTSSegment[] = [];
-      for (const segment of dedupeTTSSegments(incoming)) {
-        const identity = getTTSSegmentIdentity(segment);
-        if (blockedIdentities.has(identity)) continue;
-        blockedIdentities.add(identity);
-        result.push(segment);
-      }
-      return result;
-    },
-    [dedupeTTSSegments, getTTSSegmentIdentity],
-  );
-
-  const syncTTSChunkOffset = useCallback((nextOffset: number) => {
-    ttsChunkOffsetRef.current = nextOffset;
-    setTtsChunkOffset(nextOffset);
-  }, []);
-
-  const areTTSSegmentListsEqual = useCallback((a: TTSSegment[], b: TTSSegment[]) => {
-    if (a === b) return true;
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i += 1) {
-      if ((a[i]?.cfi || null) !== (b[i]?.cfi || null)) return false;
-      if ((a[i]?.text || "").trim() !== (b[i]?.text || "").trim()) return false;
-    }
-    return true;
-  }, []);
-
-  const mergeUniqueTTSSegments: (
-    base: TTSSegment[],
-    incoming: TTSSegment[],
-    direction?: "prepend" | "append",
-  ) => TTSSegment[] = useCallback(
-    (base: TTSSegment[], incoming: TTSSegment[], direction: "prepend" | "append" = "append") => {
-      const ordered = direction === "prepend" ? [...incoming, ...base] : [...base, ...incoming];
-      return dedupeTTSSegments(ordered);
-    },
-    [dedupeTTSSegments],
-  );
-
-  const getCachedTTSSegmentContext = useCallback(
-    async (
-      cfi: string | null | undefined,
-      before = TTS_CONTEXT_WINDOW,
-      after = TTS_CONTEXT_WINDOW,
-    ) => {
-      if (!cfi || !bridgeRef.current?.getTTSSegmentContext) {
-        return { before: [], after: [] };
-      }
-      const key = `${cfi}|${before}|${after}`;
-      const cached = ttsContextCacheRef.current.get(key);
-      if (cached) {
-        ttsContextCacheRef.current.delete(key);
-        ttsContextCacheRef.current.set(key, cached);
-        return cached;
-      }
-
-      const inflight = ttsContextInflightRef.current.get(key);
-      if (inflight) {
-        return inflight;
-      }
-
-      const request = bridgeRef.current
-        .getTTSSegmentContext(cfi, before, after)
-        .then((context) => {
-          const normalized = {
-            before: dedupeTTSSegments(
-              (context.before || [])
-                .map((segment) => ({ text: segment.text.trim(), cfi: segment.cfi }))
-                .filter((segment) => segment.text.length > 0),
-            ),
-            after: dedupeTTSSegments(
-              (context.after || [])
-                .map((segment) => ({ text: segment.text.trim(), cfi: segment.cfi }))
-                .filter((segment) => segment.text.length > 0),
-            ),
-          };
-          ttsContextCacheRef.current.set(key, normalized);
-          while (ttsContextCacheRef.current.size > TTS_CONTEXT_CACHE_LIMIT) {
-            const oldestKey = ttsContextCacheRef.current.keys().next().value;
-            if (!oldestKey) break;
-            ttsContextCacheRef.current.delete(oldestKey);
-          }
-          return normalized;
-        })
-        .finally(() => {
-          ttsContextInflightRef.current.delete(key);
-        });
-
-      ttsContextInflightRef.current.set(key, request);
-      return request;
-    },
-    [TTS_CONTEXT_CACHE_LIMIT, TTS_CONTEXT_WINDOW, dedupeTTSSegments],
-  );
-
-  const primeTTSLyricContext = useCallback(
-    async (
-      currentCfi: string | null | undefined,
-      firstCfi?: string | null,
-      lastCfi?: string | null,
-    ) => {
-      if (!currentCfi) return;
-      const requestId = ttsLyricPrimeRequestIdRef.current + 1;
-      ttsLyricPrimeRequestIdRef.current = requestId;
-      const [centerContext, leadingContext, trailingContext] = await Promise.all([
-        getCachedTTSSegmentContext(currentCfi, TTS_CONTEXT_WINDOW, TTS_CONTEXT_WINDOW),
-        firstCfi
-          ? getCachedTTSSegmentContext(firstCfi, TTS_CONTEXT_WINDOW, 0)
-          : Promise.resolve({ before: [], after: [] }),
-        lastCfi
-          ? getCachedTTSSegmentContext(lastCfi, 0, TTS_CONTEXT_WINDOW)
-          : Promise.resolve({ before: [], after: [] }),
-      ]);
-
-      const previous = filterDistinctTTSSegments(
-        [...(leadingContext.before || []), ...(centerContext.before || [])],
-        ttsSegmentsRef.current,
-      ).slice(-(TTS_CONTEXT_WINDOW * 2));
-
-      const future = filterDistinctTTSSegments(
-        [...(centerContext.after || []), ...(trailingContext.after || [])],
-        previous,
-        ttsSegmentsRef.current,
-      ).slice(0, TTS_CONTEXT_WINDOW * 2);
-
-      if (ttsLyricPrimeRequestIdRef.current !== requestId) {
-        return;
-      }
-
-      setTtsPrevPageSegments((prev) => {
-        const next = mergeUniqueTTSSegments(prev, previous, "append");
-        if (areTTSSegmentListsEqual(prev, next)) {
-          ttsPrevPageSegmentsRef.current = prev;
-          return prev;
-        }
-        ttsPrevPageSegmentsRef.current = next;
-        return next;
-      });
-      setTtsFutureSegments((prev) => {
-        const next = mergeUniqueTTSSegments(prev, future, "append");
-        if (areTTSSegmentListsEqual(prev, next)) {
-          ttsFutureSegmentsRef.current = prev;
-          return prev;
-        }
-        ttsFutureSegmentsRef.current = next;
-        return next;
-      });
-    },
-    [
-      TTS_CONTEXT_WINDOW,
-      areTTSSegmentListsEqual,
-      filterDistinctTTSSegments,
-      getCachedTTSSegmentContext,
-      mergeUniqueTTSSegments,
-    ],
-  );
-
-  const recoverTTSLyricsState = useCallback(async () => {
-    if (ttsSourceKind !== "page") return false;
-    if (ttsCurrentBookId !== bookId) return false;
-    const normalizedStoreSegmentText = normalizeTTSDebugText(ttsCurrentSegmentText);
-    const alignCfi = currentCfi || ttsCurrentLocationCfi || resolvedTTSSegmentCfi || null;
-    let anchorCfi = resolvedTTSSegmentCfi || ttsCurrentLocationCfi || currentCfi || null;
-
-    if (normalizedStoreSegmentText && bridgeRef.current) {
-      try {
-        const visibleSegments = await getNormalizedVisibleTTSSegments(alignCfi);
-        const visibleIndex = visibleSegments.findIndex(
-          (segment) => normalizeTTSDebugText(segment.text) === normalizedStoreSegmentText,
-        );
-        if (visibleIndex >= 0) {
-          const visibleSeed = visibleSegments.slice(visibleIndex);
-          const matchedVisible = visibleSeed[0] || null;
-          anchorCfi = matchedVisible?.cfi || anchorCfi;
-          const context = await getCachedTTSSegmentContext(
-            anchorCfi,
-            TTS_CONTEXT_WINDOW,
-            TTS_CONTEXT_WINDOW * 2,
-          );
-          const previous = filterDistinctTTSSegments(context.before || [], visibleSeed).slice(
-            -(TTS_CONTEXT_WINDOW * 2),
-          );
-          const future = filterDistinctTTSSegments(
-            context.after || [],
-            previous,
-            visibleSeed,
-          ).slice(0, TTS_CONTEXT_WINDOW * 2);
-          const nextText =
-            visibleSeed
-              .map((segment) => segment.text)
-              .join(" ")
-              .trim() ||
-            normalizedStoreSegmentText;
-
-          if (__DEV__) {
-            console.log("[ReaderScreen][TTS] recover-visible-match", {
-              anchorCfi,
-              visibleSegmentsLength: visibleSegments.length,
-              visibleIndex,
-              recoveredSegmentsLength: visibleSeed.length,
-              previousLength: previous.length,
-              futureLength: future.length,
-              normalizedStoreSegmentTextLength: normalizedStoreSegmentText.length,
-            });
-          }
-
-          setTtsPrevPageSegments(previous);
-          setTtsSegments(visibleSeed);
-          setTtsFutureSegments(future);
-          setTtsLastText(nextText);
-          ttsPrevPageSegmentsRef.current = previous;
-          ttsSegmentsRef.current = visibleSeed;
-          ttsFutureSegmentsRef.current = future;
-          ttsLastTextRef.current = nextText;
-          syncTTSChunkOffset(ttsCurrentChunkIndex);
-          if (anchorCfi) {
-            ttsSetCurrentLocation(anchorCfi);
-          }
-          return true;
-        }
-      } catch (error) {
-        console.warn("[ReaderScreen][TTS] recover-visible-match failed", {
-          error: error instanceof Error ? error.message : String(error),
-          alignCfi,
-          anchorCfi,
-        });
-      }
-    }
-
-    if (!anchorCfi) return false;
-
-    const seedSegments = (() => {
-      if (normalizedStoreSegmentText) {
-        return [{ text: normalizedStoreSegmentText, cfi: anchorCfi }];
-      }
-      return splitNarrationText(ttsCurrentText || "")
-        .map((text) => text.trim())
-        .filter(Boolean)
-        .map((text) => ({ text, cfi: anchorCfi }));
-    })();
-
-    const requestKey = `${anchorCfi}|${ttsCurrentChunkIndex}|${seedSegments[0]?.text || ""}`;
-    if (ttsRecoveringLyricsRef.current === requestKey) return false;
-    ttsRecoveringLyricsRef.current = requestKey;
-
-    try {
-      const context = await getCachedTTSSegmentContext(
-        anchorCfi,
-        TTS_CONTEXT_WINDOW,
-        TTS_CONTEXT_WINDOW * 2,
-      );
-      const nextSegments =
-        seedSegments.length > 0
-          ? dedupeTTSSegments([
-              ...seedSegments,
-              ...filterDistinctTTSSegments(context.after || [], seedSegments),
-            ])
-          : dedupeTTSSegments(context.after || []);
-      const previous = filterDistinctTTSSegments(context.before || [], nextSegments).slice(
-        -(TTS_CONTEXT_WINDOW * 2),
-      );
-
-      if (!previous.length && !nextSegments.length) {
-        return false;
-      }
-
-      const nextText =
-        nextSegments
-          .map((segment) => segment.text)
-          .join(" ")
-          .trim() ||
-        (ttsCurrentText || "").trim() ||
-        ttsLastTextRef.current;
-
-      setTtsPrevPageSegments(previous);
-      setTtsSegments(nextSegments);
-      setTtsFutureSegments([]);
-      setTtsLastText(nextText);
-      ttsPrevPageSegmentsRef.current = previous;
-      ttsSegmentsRef.current = nextSegments;
-      ttsFutureSegmentsRef.current = [];
-      ttsLastTextRef.current = nextText;
-      syncTTSChunkOffset(ttsCurrentChunkIndex);
-      if (__DEV__) {
-        console.log("[ReaderScreen][TTS] recover-context-fallback", {
-          anchorCfi,
-          previousLength: previous.length,
-          nextSegmentsLength: nextSegments.length,
-          nextTextLength: nextText.length,
-          currentChunkIndex: ttsCurrentChunkIndex,
-        });
-      }
-      return true;
-    } finally {
-      if (ttsRecoveringLyricsRef.current === requestKey) {
-        ttsRecoveringLyricsRef.current = null;
-      }
-    }
-  }, [
-    TTS_CONTEXT_WINDOW,
-    currentCfi,
-    bookId,
-    dedupeTTSSegments,
-    filterDistinctTTSSegments,
-    getCachedTTSSegmentContext,
-    getNormalizedVisibleTTSSegments,
-    resolvedTTSSegmentCfi,
-    syncTTSChunkOffset,
-    ttsCurrentBookId,
-    ttsCurrentChunkIndex,
-    ttsCurrentLocationCfi,
-    ttsCurrentSegmentText,
-    ttsCurrentText,
-    ttsSetCurrentLocation,
-    ttsSourceKind,
-  ]);
-
-  const trimLeadingTTSOverlap = useCallback(
-    (previousSegments: TTSSegment[], nextSegments: TTSSegment[]) => {
-      if (!previousSegments.length || !nextSegments.length) return nextSegments;
-      const maxOverlap = Math.min(previousSegments.length, nextSegments.length);
-      for (let overlap = maxOverlap; overlap > 0; overlap -= 1) {
-        let matches = true;
-        for (let i = 0; i < overlap; i += 1) {
-          const previous = previousSegments[previousSegments.length - overlap + i];
-          const next = nextSegments[i];
-          const same = getTTSSegmentIdentity(previous) === getTTSSegmentIdentity(next);
-          if (!same) {
-            matches = false;
-            break;
-          }
-        }
-        if (matches) {
-          return nextSegments.slice(overlap);
-        }
-      }
-      return nextSegments;
-    },
-    [getTTSSegmentIdentity],
-  );
-
-  // TTS auto page-turn handler
-  const ttsContinuousRef = useRef(false);
-  // Stores the callback to resume TTS after a page turn; triggered by onRelocate
-  const pendingTTSContinueCallbackRef = useRef<(() => void) | null>(null);
-  const pendingTTSContinueSafetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const startPageTTSFromCfiRef = useRef<
-    ((targetCfi: string, targetText?: string) => Promise<void>) | null
-  >(null);
-  const ttsPrevPageSegmentsRef = useRef<TTSSegment[]>([]);
-  const ttsChunkOffsetRef = useRef(0);
-  const ttsHandlingPageEndRef = useRef(false);
-  const ttsLastStopHandledSignatureRef = useRef<string | null>(null);
-
-  const handleTTSPageEnd = useCallback(() => {
-    const shouldContinue = ttsContinuousRef.current && ttsSourceKind === "page";
-    console.log("[ReaderScreen][TTS] handle-page-end", {
-      shouldContinue,
-      continuousRef: ttsContinuousRef.current,
-      continuousEnabled: ttsContinuousEnabled,
-      sourceKind: ttsSourceKind,
-      currentChunkIndex: ttsCurrentChunkIndex,
-      totalChunks: ttsTotalChunks,
-      currentLocationCfi: ttsCurrentLocationCfi,
-      currentSegmentCfi: currentTTSSegment?.cfi || null,
-      activeSegmentsLength: ttsSegmentsRef.current.length,
-      hasRestartFromCfi: !!startPageTTSFromCfiRef.current,
-    });
-    if (!shouldContinue) return;
-    if (ttsHandlingPageEndRef.current) {
-      console.log("[ReaderScreen][TTS] handle-page-end skipped: already running");
-      return;
-    }
-    ttsHandlingPageEndRef.current = true;
-    const previousSegments = ttsSegmentsRef.current;
-    const previousFirstCfi =
-      previousSegments[0]?.cfi || currentTTSSegment?.cfi || currentCfi || null;
-    const previousLastCfi =
-      previousSegments[previousSegments.length - 1]?.cfi ||
-      currentTTSSegment?.cfi ||
-      previousFirstCfi;
-    const previousText = ttsLastTextRef.current;
-    console.log("[ReaderScreen][TTS] page end", {
-      previousFirstCfi,
-      previousLastCfi,
-      previousTextLength: previousText.length,
-      previousSegmentCount: previousSegments.length,
-    });
-
-    // Accumulate ALL previous pages so the lyric list is infinitely scrollable upward
-    if (previousSegments.length > 0) {
-      setTtsPrevPageSegments((prev) => {
-        const next = mergeUniqueTTSSegments(prev, previousSegments, "append");
-        ttsPrevPageSegmentsRef.current = next;
-        return next;
-      });
-    }
-    ttsExhaustedAboveAnchorsRef.current.clear();
-    ttsExhaustedBelowAnchorsRef.current.clear();
-
-    // Clear any lingering safety timer from a previous page turn
-    if (pendingTTSContinueSafetyTimerRef.current) {
-      clearTimeout(pendingTTSContinueSafetyTimerRef.current);
-      pendingTTSContinueSafetyTimerRef.current = null;
-    }
-    pendingTTSContinueCallbackRef.current = null;
-
-    // Clear TTS highlight BEFORE navigating — otherwise addAnnotation for the
-    // old segment's CFI will navigate the renderer back to the previous page,
-    // causing a page-bounce loop that prevents the continuation from finding
-    // any segments on the new page.
-    bridgeRef.current?.setTTSHighlight(null);
-
-    void (async () => {
-      try {
-        if (!ttsContinuousRef.current) return;
-        const restartFromCfi = startPageTTSFromCfiRef.current;
-        const context = await getCachedTTSSegmentContext(previousLastCfi, 0, TTS_CONTEXT_WINDOW * 2);
-        const nextSegment =
-          (context.after || []).find((segment) => segment.text.trim().length > 0) || null;
-        console.log("[ReaderScreen][TTS] continue from context", {
-          previousLastCfi,
-          nextCfi: nextSegment?.cfi || null,
-          nextTextLength: nextSegment?.text?.length || 0,
-          afterCount: context.after?.length || 0,
-        });
-
-        if (nextSegment?.cfi && restartFromCfi) {
-          await restartFromCfi(nextSegment.cfi, nextSegment.text);
-          return;
-        }
-
-        ttsContinuousRef.current = false;
-        ttsSetOnEnd(null);
-        ttsStop();
-      } finally {
-        ttsHandlingPageEndRef.current = false;
-      }
-    })();
-  }, [
-    TTS_CONTEXT_WINDOW,
-    currentCfi,
-    currentTTSSegment?.cfi,
-    getCachedTTSSegmentContext,
-    mergeUniqueTTSSegments,
-    ttsContinuousEnabled,
-    ttsCurrentChunkIndex,
-    ttsCurrentLocationCfi,
-    ttsSetOnEnd,
-    ttsSourceKind,
-    ttsStop,
-    ttsTotalChunks,
-  ]);
-
-  useEffect(() => {
-    const shouldContinue =
-      ttsCurrentBookId === bookId &&
-      ttsSourceKind === "page" &&
-      ttsContinuousEnabled &&
-      (ttsPlayState === "playing" || ttsPlayState === "paused" || ttsPlayState === "loading");
-    ttsContinuousRef.current = shouldContinue;
-    ttsSetOnEnd(shouldContinue ? handleTTSPageEnd : null);
-  }, [
-    bookId,
-    handleTTSPageEnd,
-    ttsContinuousEnabled,
-    ttsCurrentBookId,
-    ttsPlayState,
-    ttsSetOnEnd,
-    ttsSourceKind,
-  ]);
-
-  useEffect(() => {
-    const naturalStopSignature =
-      ttsSourceKind === "page" &&
-      ttsContinuousRef.current &&
-      ttsPlayState === "stopped" &&
-      ttsTotalChunks > 0 &&
-      ttsCurrentChunkIndex >= Math.max(0, ttsTotalChunks - 1)
-        ? `${ttsCurrentChunkIndex}:${resolvedTTSSegmentCfi || ""}:${ttsTotalChunks}`
-        : null;
-
-    if (!naturalStopSignature) {
-      ttsLastStopHandledSignatureRef.current = null;
-      return;
-    }
-    if (ttsLastStopHandledSignatureRef.current === naturalStopSignature) {
-      return;
-    }
-    ttsLastStopHandledSignatureRef.current = naturalStopSignature;
-    console.log("[ReaderScreen][TTS] natural-stop-fallback", {
-      signature: naturalStopSignature,
-      currentChunkIndex: ttsCurrentChunkIndex,
-      totalChunks: ttsTotalChunks,
-      resolvedTTSSegmentCfi,
-      currentLocationCfi: ttsCurrentLocationCfi,
-    });
-    handleTTSPageEnd();
-  }, [
-    handleTTSPageEnd,
-    resolvedTTSSegmentCfi,
-    ttsCurrentChunkIndex,
-    ttsCurrentLocationCfi,
-    ttsPlayState,
-    ttsSourceKind,
-    ttsTotalChunks,
-  ]);
-
-  const handleTTSPrevChapter = useCallback(() => {
-    // Find index of current chapter in toc, go to previous
-    const idx = toc.findIndex((item) => item.title === currentChapter);
-    const prevIdx = idx > 0 ? idx - 1 : 0;
-    const prevHref = toc[prevIdx]?.href;
-    if (prevHref) {
-      bridge.goToHref(prevHref);
-    }
-  }, [toc, currentChapter, bridge]);
-
-  const handleTTSNextChapter = useCallback(() => {
-    const idx = toc.findIndex((item) => item.title === currentChapter);
-    const nextIdx = idx >= 0 && idx < toc.length - 1 ? idx + 1 : toc.length - 1;
-    const nextHref = toc[nextIdx]?.href;
-    if (nextHref) {
-      bridge.goToHref(nextHref);
-    }
-  }, [toc, currentChapter, bridge]);
-
-  const startSelectionTTS = useCallback(
-    (text: string) => {
-      const normalized = text.trim();
-      if (!normalized) return;
-      const segments = splitNarrationText(normalized).map((segmentText) => ({
-        text: segmentText,
-        cfi: selection?.cfi || currentCfi,
-      }));
-      setTtsSourceKind("selection");
-      setTtsContinuousEnabled(false);
-      setTtsLastText(normalized);
-      setTtsSegments(segments);
-      setTtsPrevPageSegments([]);
-      setTtsFutureSegments([]);
-      ttsExhaustedAboveAnchorsRef.current.clear();
-      ttsExhaustedBelowAnchorsRef.current.clear();
-      ttsLyricPrimeRequestIdRef.current += 1;
-      ttsLastTextRef.current = normalized;
-      ttsSegmentsRef.current = segments;
-      ttsPrevPageSegmentsRef.current = [];
-      ttsFutureSegmentsRef.current = [];
-      syncTTSChunkOffset(0);
-      ttsContinuousRef.current = false;
-      ttsSetOnEnd(null);
-      ttsSetCurrentLocation(selection?.cfi || currentCfi);
-      ttsSetCurrentBook(bookTitle || book?.meta.title || "", currentChapter, bookId);
-      setShowControls(false);
-      setShowTTS(true);
-      ttsPlay(segments.length > 0 ? segments.map((segment) => segment.text) : normalized);
-    },
-    [
-      ttsPlay,
-      ttsSetOnEnd,
-      ttsSetCurrentBook,
-      ttsSetCurrentLocation,
-      bookTitle,
-      book,
-      currentChapter,
-      bookId,
-      selection?.cfi,
-      currentCfi,
-    ],
-  );
-
-  const startPageTTS = useCallback(
-    async (continuous = ttsContinuousEnabled) => {
-      const pageAnchorCfi = lastCfiRef.current || currentCfi || null;
-      const normalizedSegments = await getNormalizedVisibleTTSSegments(pageAnchorCfi);
-      const normalized = normalizedSegments
-        .map((segment) => segment.text)
-        .join(" ")
-        .trim();
-      if (!normalized) return;
-      if (__DEV__) {
-        console.log("[ReaderScreen][TTS] start-page", {
-          pageAnchorCfi,
-          segmentCount: normalizedSegments.length,
-          firstCfi: normalizedSegments[0]?.cfi || null,
-          lastCfi: normalizedSegments[normalizedSegments.length - 1]?.cfi || null,
-          firstText: normalizeTTSDebugText(normalizedSegments[0]?.text),
-        });
-      }
-      void logTTSExtractionDiagnostics({
-        reason: "start-page",
-        alignCfi: pageAnchorCfi,
-        targetCfi: normalizedSegments[0]?.cfi || pageAnchorCfi,
-        targetText: normalizedSegments[0]?.text || null,
-        rawVisibleSegments: normalizedSegments,
-        playbackSegments: normalizedSegments,
-      });
-      ttsStartChapterRef.current = currentChapter;
-      setTtsSourceKind("page");
-      setTtsContinuousEnabled(continuous);
-      setTtsLastText(normalized);
-      setTtsSegments(normalizedSegments);
-      setTtsPrevPageSegments([]); // fresh start — no prev page
-      setTtsFutureSegments([]);
-      ttsExhaustedAboveAnchorsRef.current.clear();
-      ttsExhaustedBelowAnchorsRef.current.clear();
-      ttsLyricPrimeRequestIdRef.current += 1;
-      ttsLastTextRef.current = normalized;
-      ttsSegmentsRef.current = normalizedSegments;
-      ttsPrevPageSegmentsRef.current = [];
-      ttsFutureSegmentsRef.current = [];
-      syncTTSChunkOffset(0);
-      ttsContinuousRef.current = continuous;
-      ttsSetOnEnd(continuous ? handleTTSPageEnd : null);
-      ttsSetCurrentBook(bookTitle || book?.meta.title || "", currentChapter, bookId);
-      ttsSetCurrentLocation(normalizedSegments[0]?.cfi || pageAnchorCfi);
-      setShowControls(false);
-      setShowTTS(true);
-      void primeTTSLyricContext(
-        normalizedSegments[0]?.cfi || pageAnchorCfi,
-        normalizedSegments[0]?.cfi || pageAnchorCfi,
-        normalizedSegments[normalizedSegments.length - 1]?.cfi ||
-          normalizedSegments[0]?.cfi ||
-          pageAnchorCfi,
-      );
-      ttsPlay(
-        normalizedSegments.length > 0
-          ? normalizedSegments.map((segment) => segment.text)
-          : normalized,
-      );
-    },
-    [
-      handleTTSPageEnd,
-      getNormalizedVisibleTTSSegments,
-      ttsContinuousEnabled,
-      ttsPlay,
-      ttsSetOnEnd,
-      ttsSetCurrentBook,
-      ttsSetCurrentLocation,
-      bookTitle,
-      book,
-      currentChapter,
-      bookId,
-      currentCfi,
-      logTTSExtractionDiagnostics,
-      primeTTSLyricContext,
-    ],
-  );
-
-  const startPageTTSFromCfi = useCallback(
-    async (targetCfi: string, targetText?: string) => {
-      if (!targetCfi || !bridgeRef.current) return;
-      const normalizedTargetText = (targetText || "").trim();
-      pendingTTSContinueCallbackRef.current = null;
-      if (pendingTTSContinueSafetyTimerRef.current) {
-        clearTimeout(pendingTTSContinueSafetyTimerRef.current);
-        pendingTTSContinueSafetyTimerRef.current = null;
-      }
-      bridgeRef.current.goToCFI(targetCfi);
-      await new Promise((resolve) => setTimeout(resolve, 320));
-      const normalizedSegments = await getNormalizedVisibleTTSSegments(targetCfi);
-      const context = await getCachedTTSSegmentContext(
-        targetCfi,
-        TTS_CONTEXT_WINDOW,
-        TTS_CONTEXT_WINDOW * 2,
-      );
-      const exactVisibleIndex = normalizedSegments.findIndex((segment) => {
-        if (segment.cfi !== targetCfi) return false;
-        if (normalizedTargetText && segment.text.trim() !== normalizedTargetText) return false;
-        return true;
-      });
-      const visibleIndexByCfi =
-        exactVisibleIndex >= 0
-          ? exactVisibleIndex
-          : normalizedSegments.findIndex((segment) => segment.cfi === targetCfi);
-      const seedSegment =
-        normalizedTargetText.length > 0 ? [{ text: normalizedTargetText, cfi: targetCfi }] : [];
-      const visibleSegments =
-        visibleIndexByCfi >= 0
-          ? normalizedSegments.slice(visibleIndexByCfi)
-          : dedupeTTSSegments([
-              ...seedSegment,
-              ...filterDistinctTTSSegments(context.after || [], seedSegment),
-            ]);
-      if (!visibleSegments.length) return;
-      const previousContext = filterDistinctTTSSegments(context.before || [], visibleSegments);
-      const previous = mergeUniqueTTSSegments(
-        ttsPrevPageSegmentsRef.current,
-        previousContext,
-        "append",
-      );
-      const future = filterDistinctTTSSegments(context.after || [], previous, visibleSegments);
-      const nextText = visibleSegments
-        .map((segment) => segment.text)
-        .join(" ")
-        .trim();
-      if (__DEV__) {
-        console.log("[ReaderScreen][TTS] start-from-cfi", {
-          targetCfi,
-          normalizedTargetTextLength: normalizedTargetText.length,
-          normalizedSegmentsLength: normalizedSegments.length,
-          exactVisibleIndex,
-          visibleIndexByCfi,
-          visibleSegmentsLength: visibleSegments.length,
-          previousLength: previous.length,
-          futureLength: future.length,
-          firstVisibleCfi: visibleSegments[0]?.cfi || null,
-          lastVisibleCfi: visibleSegments[visibleSegments.length - 1]?.cfi || null,
-          firstVisibleText: normalizeTTSDebugText(visibleSegments[0]?.text),
-        });
-      }
-      void logTTSExtractionDiagnostics({
-        reason: "start-from-cfi",
-        alignCfi: targetCfi,
-        targetCfi,
-        targetText: normalizedTargetText,
-        rawVisibleSegments: normalizedSegments,
-        playbackSegments: visibleSegments,
-      });
-      setTtsSegments(visibleSegments);
-      setTtsPrevPageSegments(previous);
-      setTtsFutureSegments(future);
-      ttsExhaustedAboveAnchorsRef.current.clear();
-      ttsExhaustedBelowAnchorsRef.current.clear();
-      ttsLyricPrimeRequestIdRef.current += 1;
-      setTtsLastText(nextText);
-      ttsSegmentsRef.current = visibleSegments;
-      ttsPrevPageSegmentsRef.current = previous;
-      ttsLastTextRef.current = nextText;
-      ttsFutureSegmentsRef.current = future;
-      syncTTSChunkOffset(0);
-      ttsSetCurrentLocation(visibleSegments[0]?.cfi || targetCfi);
-      ttsContinuousRef.current = ttsSourceKind === "page" && ttsContinuousEnabled;
-      ttsSetOnEnd(ttsContinuousRef.current ? handleTTSPageEnd : null);
-      ttsPlay(visibleSegments.map((segment) => segment.text));
-    },
-    [
-      dedupeTTSSegments,
-      filterDistinctTTSSegments,
-      getCachedTTSSegmentContext,
-      getNormalizedVisibleTTSSegments,
-      handleTTSPageEnd,
-      logTTSExtractionDiagnostics,
-      mergeUniqueTTSSegments,
-      TTS_CONTEXT_WINDOW,
-      ttsContinuousEnabled,
-      ttsPlay,
-      ttsSetCurrentLocation,
-      ttsSetOnEnd,
-      ttsSourceKind,
-    ],
-  );
-
-  useEffect(() => {
-    startPageTTSFromCfiRef.current = startPageTTSFromCfi;
-  }, [startPageTTSFromCfi]);
-
-  const handleSpeak = useCallback(() => {
-    if (!selection) return;
-    startSelectionTTS(selection.text);
-    setSelection(null);
-  }, [selection, startSelectionTTS]);
-
-  // Track the chapter that was active when TTS was last started, so we know
-  // if the user has navigated to a different chapter since then.
-  const ttsStartChapterRef = useRef<string>("");
-
-  const handleToggleTTS = useCallback(async () => {
-    if (showTTS) {
-      setShowTTS(false);
-      return;
-    }
-
-    const hasActiveSession = ttsPlayState !== "stopped" || !!(ttsCurrentText || ttsLastText).trim();
-    const isPlaying = ttsPlayState === "playing" || ttsPlayState === "loading";
-    const chapterChanged =
-      ttsStartChapterRef.current !== "" && ttsStartChapterRef.current !== currentChapter;
-
-    // If playing, always just re-show (don't interrupt playback)
-    // If stopped/paused with active session and same chapter, also just re-show
-    if (hasActiveSession && (isPlaying || !chapterChanged)) {
-      setShowControls(false);
-      setShowTTS(true);
-      return;
-    }
-
-    // Otherwise refresh: either first time, or chapter changed while not playing
-    ttsStartChapterRef.current = currentChapter;
-    await startPageTTS(ttsContinuousEnabled);
-  }, [
-    showTTS,
-    startPageTTS,
-    ttsContinuousEnabled,
-    ttsCurrentText,
-    ttsLastText,
-    ttsPlayState,
-    currentChapter,
-  ]);
-
-  const handleTTSReplay = useCallback(async () => {
-    if (ttsSourceKind === "selection") {
-      const text = (ttsCurrentText || ttsLastText).trim();
-      if (text) {
-        startSelectionTTS(text);
-      }
-      return;
-    }
-
-    await startPageTTS(ttsContinuousEnabled);
-  }, [
-    startPageTTS,
-    startSelectionTTS,
-    ttsContinuousEnabled,
-    ttsCurrentText,
-    ttsLastText,
-    ttsSourceKind,
-  ]);
-
-  const handleTTSPlayPause = useCallback(async () => {
-    if (ttsPlayState === "loading" || ttsPlayState === "playing") {
-      ttsPause();
-      return;
-    }
-    if (ttsPlayState === "paused") {
-      ttsResume();
-      return;
-    }
-
-    if (ttsSourceKind === "selection") {
-      const text = (ttsCurrentText || ttsLastText).trim();
-      if (text) {
-        startSelectionTTS(text);
-      }
-      return;
-    }
-
-    await startPageTTS(ttsContinuousEnabled);
-  }, [
-    startPageTTS,
-    startSelectionTTS,
-    ttsContinuousEnabled,
-    ttsCurrentText,
-    ttsLastText,
-    ttsPause,
-    ttsPlayState,
-    ttsResume,
-    ttsSourceKind,
-  ]);
-
-  const handleAdjustTTSRate = useCallback(
-    (delta: number) => {
-      const nextRate = Math.max(0.5, Math.min(2, Math.round((ttsConfig.rate + delta) * 10) / 10));
-      ttsUpdateConfig({ rate: nextRate });
-    },
-    [ttsConfig.rate, ttsUpdateConfig],
-  );
-
-  const handleAdjustTTSPitch = useCallback(
-    (delta: number) => {
-      const nextPitch = Math.max(0.5, Math.min(2, Math.round((ttsConfig.pitch + delta) * 10) / 10));
-      ttsUpdateConfig({ pitch: nextPitch });
-    },
-    [ttsConfig.pitch, ttsUpdateConfig],
-  );
-
-  const handleToggleTTSContinuous = useCallback(() => {
-    setTtsContinuousEnabled((prev) => {
-      const next = !prev;
-      const shouldContinue = next && ttsSourceKind === "page";
-      ttsContinuousRef.current = shouldContinue;
-      ttsSetOnEnd(shouldContinue ? handleTTSPageEnd : null);
-      return next;
-    });
-  }, [handleTTSPageEnd, ttsSetOnEnd, ttsSourceKind]);
-
-  const handleJumpToTTSSegment = useCallback(
-    (offsetFromCurrent = 0) => {
-      // Play from the tapped sentence — keep TTS page open
-      if (offsetFromCurrent < 0) {
-        // Tapped a prev-page segment — compute absolute index in prevPageSegments
-        const prevIndex = ttsPrevPageSegments.length + offsetFromCurrent;
-        const safeIdx = Math.max(0, prevIndex);
-        const fromPrev = ttsPrevPageSegments.slice(safeIdx);
-        const allSegments = [...fromPrev, ...ttsSegments];
-        if (allSegments.length === 0) return;
-        // Update UI state first, then play after React re-renders so safeChunkIndex is correct
-        const newPrev = ttsPrevPageSegments.slice(0, safeIdx);
-        const nextText = allSegments
-          .map((segment) => segment.text)
-          .join(" ")
-          .trim();
-        const nextCfi = allSegments[0]?.cfi || currentCfi;
-        setTtsPrevPageSegments(newPrev);
-        setTtsSegments(allSegments);
-        setTtsLastText(nextText);
-        ttsExhaustedAboveAnchorsRef.current.clear();
-        ttsExhaustedBelowAnchorsRef.current.clear();
-        ttsSegmentsRef.current = allSegments;
-        ttsPrevPageSegmentsRef.current = newPrev;
-        ttsLastTextRef.current = nextText;
-        syncTTSChunkOffset(0);
-        ttsSetCurrentLocation(nextCfi);
-        if (nextCfi) {
-          bridge.goToCFI(nextCfi);
-        }
-        setTimeout(() => ttsPlay(allSegments.map((s) => s.text)), 0);
-      } else {
-        // Tapped a current-page segment — slice from that offset
-        const safeIdx = Math.max(0, Math.min(offsetFromCurrent, ttsSegments.length - 1));
-        const sliced = ttsSegments.slice(safeIdx);
-        if (sliced.length === 0) return;
-        // Update UI state first, then play after React re-renders so safeChunkIndex is correct
-        const newPrev = [...ttsPrevPageSegments, ...ttsSegments.slice(0, safeIdx)];
-        const nextText = sliced
-          .map((segment) => segment.text)
-          .join(" ")
-          .trim();
-        const nextCfi = sliced[0]?.cfi || currentCfi;
-        setTtsPrevPageSegments(newPrev);
-        setTtsSegments(sliced);
-        setTtsLastText(nextText);
-        ttsExhaustedAboveAnchorsRef.current.clear();
-        ttsExhaustedBelowAnchorsRef.current.clear();
-        ttsSegmentsRef.current = sliced;
-        ttsPrevPageSegmentsRef.current = newPrev;
-        ttsLastTextRef.current = nextText;
-        syncTTSChunkOffset(0);
-        ttsSetCurrentLocation(nextCfi);
-        if (nextCfi) {
-          bridge.goToCFI(nextCfi);
-        }
-        setTimeout(() => ttsPlay(sliced.map((s) => s.text)), 0);
-      }
-    },
-    [bridge, currentCfi, ttsPlay, ttsPrevPageSegments, ttsSegments, ttsSetCurrentLocation],
-  );
-
-  const handleJumpToTTSLyricSegment = useCallback(
-    (segment: { text: string; cfi?: string | null }, offsetFromCurrent: number) => {
-      // offsetFromCurrent = lyricIndex - prevCount
-      // lyricSegments = [...ttsPrevPageSegments, ...ttsSegments, ...ttsFutureSegments]
-      // offsetFromCurrent < 0                      → prev segment
-      // 0 <= offsetFromCurrent < ttsSegments.length → current TTS session
-      // offsetFromCurrent >= ttsSegments.length     → future segment
-
-      // ── Within current TTS session: instant jump ──
-      if (offsetFromCurrent >= 0 && offsetFromCurrent < ttsSegments.length) {
-        ttsJumpToChunk(offsetFromCurrent);
-        if (segment.cfi) {
-          bridge.setTTSHighlight(segment.cfi, ttsHighlightColor);
-        }
-        return;
-      }
-
-      // ── Jumping to a prev-page segment (data already in memory) ──
-      if (offsetFromCurrent < 0) {
-        const prevIndex = ttsPrevPageSegments.length + offsetFromCurrent;
-        const safeIdx = Math.max(0, prevIndex);
-        const fromPrev = ttsPrevPageSegments.slice(safeIdx);
-        const allSegments = [...fromPrev, ...ttsSegments, ...ttsFutureSegments];
-        if (allSegments.length === 0) return;
-        const newPrev = ttsPrevPageSegments.slice(0, safeIdx);
-        const targetChunkInNew = 0; // play from the first (target) segment
-        const nextText = allSegments
-          .map((s) => s.text)
-          .join(" ")
-          .trim();
-        const nextCfi = allSegments[0]?.cfi || currentCfi;
-        setTtsPrevPageSegments(newPrev);
-        setTtsSegments(allSegments);
-        setTtsFutureSegments([]);
-        setTtsLastText(nextText);
-        ttsLyricPrimeRequestIdRef.current += 1;
-        ttsSegmentsRef.current = allSegments;
-        ttsPrevPageSegmentsRef.current = newPrev;
-        ttsLastTextRef.current = nextText;
-        ttsFutureSegmentsRef.current = [];
-        syncTTSChunkOffset(0);
-        ttsSetCurrentLocation(nextCfi);
-        if (nextCfi) bridge.goToCFI(nextCfi);
-        // Play all segments, starting from the target
-        ttsPlay(allSegments.map((s) => s.text));
-        // jumpToChunk(0) is implicit since play() starts from index 0
-        return;
-      }
-
-      // ── Jumping to a future segment (data already in memory) ──
-      const futureOffset = offsetFromCurrent - ttsSegments.length;
-      if (futureOffset >= 0 && futureOffset < ttsFutureSegments.length) {
-        // Move consumed ttsSegments + skipped future segments to prev
-        const consumedCurrent = ttsSegments;
-        const skippedFuture = ttsFutureSegments.slice(0, futureOffset);
-        const remainingFuture = ttsFutureSegments.slice(futureOffset);
-        const newPrev = [...ttsPrevPageSegments, ...consumedCurrent, ...skippedFuture];
-        const nextText = remainingFuture
-          .map((s) => s.text)
-          .join(" ")
-          .trim();
-        const nextCfi = remainingFuture[0]?.cfi || currentCfi;
-        setTtsPrevPageSegments(newPrev);
-        setTtsSegments(remainingFuture);
-        setTtsFutureSegments([]);
-        setTtsLastText(nextText);
-        ttsExhaustedAboveAnchorsRef.current.clear();
-        ttsExhaustedBelowAnchorsRef.current.clear();
-        ttsLyricPrimeRequestIdRef.current += 1;
-        ttsSegmentsRef.current = remainingFuture;
-        ttsPrevPageSegmentsRef.current = newPrev;
-        ttsLastTextRef.current = nextText;
-        ttsFutureSegmentsRef.current = [];
-        syncTTSChunkOffset(0);
-        ttsSetCurrentLocation(nextCfi);
-        if (nextCfi) bridge.goToCFI(nextCfi);
-        ttsPlay(remainingFuture.map((s) => s.text));
-        // Prime more context from the new position
-        void primeTTSLyricContext(
-          remainingFuture[0]?.cfi || nextCfi,
-          remainingFuture[0]?.cfi || nextCfi,
-          remainingFuture[remainingFuture.length - 1]?.cfi || nextCfi,
-        );
-        return;
-      }
-
-      // ── Data not loaded yet — should not normally happen ──
-      // Fall back to startPageTTSFromCfi which navigates and reloads
-      if (segment.cfi) {
-        void startPageTTSFromCfi(segment.cfi, segment.text);
-      }
-    },
-    [
-      bridge,
-      currentCfi,
-      primeTTSLyricContext,
-      startPageTTSFromCfi,
-      ttsJumpToChunk,
-      ttsPlay,
-      ttsPrevPageSegments,
-      ttsSegments,
-      ttsFutureSegments,
-      ttsSetCurrentLocation,
-    ],
-  );
-
-  const handleLoadMoreAboveTTSLyrics = useCallback(async () => {
-    const anchorCfi = ttsPrevPageSegments[0]?.cfi || ttsSegments[0]?.cfi || null;
-    if (
-      !anchorCfi ||
-      ttsLoadMoreAboveRef.current === anchorCfi ||
-      ttsExhaustedAboveAnchorsRef.current.has(anchorCfi)
-    ) {
-      return;
-    }
-    ttsLoadMoreAboveRef.current = anchorCfi;
-    try {
-      const context = await getCachedTTSSegmentContext(anchorCfi, TTS_CONTEXT_WINDOW, 0);
-      if (context.before?.length) {
-        const incoming = filterDistinctTTSSegments(
-          context.before,
-          ttsPrevPageSegments,
-          ttsSegments,
-        );
-        if (incoming.length > 0) {
-          ttsExhaustedAboveAnchorsRef.current.delete(anchorCfi);
-          setTtsPrevPageSegments((prev) => {
-            const next = mergeUniqueTTSSegments(prev, incoming, "prepend");
-            ttsPrevPageSegmentsRef.current = next;
-            return next;
-          });
-        } else {
-          ttsExhaustedAboveAnchorsRef.current.add(anchorCfi);
-        }
-      } else {
-        ttsExhaustedAboveAnchorsRef.current.add(anchorCfi);
-      }
-    } finally {
-      ttsLoadMoreAboveRef.current = null;
-    }
-  }, [
-    TTS_CONTEXT_WINDOW,
-    filterDistinctTTSSegments,
-    getCachedTTSSegmentContext,
-    mergeUniqueTTSSegments,
-    ttsPrevPageSegments,
-    ttsSegments,
-  ]);
-
-  const handleLoadMoreBelowTTSLyrics = useCallback(async () => {
-    const anchorCfi =
-      ttsFutureSegments[ttsFutureSegments.length - 1]?.cfi ||
-      ttsSegments[ttsSegments.length - 1]?.cfi ||
-      null;
-    if (
-      !anchorCfi ||
-      ttsLoadMoreBelowRef.current === anchorCfi ||
-      ttsExhaustedBelowAnchorsRef.current.has(anchorCfi)
-    ) {
-      return;
-    }
-    ttsLoadMoreBelowRef.current = anchorCfi;
-    try {
-      const context = await getCachedTTSSegmentContext(anchorCfi, 0, TTS_CONTEXT_WINDOW);
-      if (context.after?.length) {
-        const incoming = filterDistinctTTSSegments(
-          context.after,
-          ttsPrevPageSegments,
-          ttsSegments,
-          ttsFutureSegments,
-        );
-        if (incoming.length > 0) {
-          ttsExhaustedBelowAnchorsRef.current.delete(anchorCfi);
-          setTtsFutureSegments((prev) => {
-            const next = mergeUniqueTTSSegments(prev, incoming, "append");
-            ttsFutureSegmentsRef.current = next;
-            return next;
-          });
-        } else {
-          ttsExhaustedBelowAnchorsRef.current.add(anchorCfi);
-        }
-      } else {
-        ttsExhaustedBelowAnchorsRef.current.add(anchorCfi);
-      }
-    } finally {
-      ttsLoadMoreBelowRef.current = null;
-    }
-  }, [
-    TTS_CONTEXT_WINDOW,
-    filterDistinctTTSSegments,
-    getCachedTTSSegmentContext,
-    mergeUniqueTTSSegments,
-    ttsFutureSegments,
-    ttsPrevPageSegments,
-    ttsSegments,
-  ]);
-
-  useEffect(() => {
-    if (!showTTS) {
-      ttsRecoveringLyricsRef.current = null;
-      return;
-    }
-    if (ttsSourceKind !== "page") return;
-    if (ttsPlayState === "stopped") return;
-    if (ttsSegments.length > 0 || ttsPrevPageSegments.length > 0 || ttsFutureSegments.length > 0) {
-      return;
-    }
-    void recoverTTSLyricsState();
-  }, [
-    recoverTTSLyricsState,
-    showTTS,
-    ttsFutureSegments.length,
-    ttsPlayState,
-    ttsPrevPageSegments.length,
-    ttsSegments.length,
-    ttsSourceKind,
-  ]);
-
-  useEffect(() => {
-    if (!webViewReady) return;
-    if (ttsCurrentBookId !== bookId) return;
-    if (ttsSourceKind !== "page") return;
-    if (ttsPlayState === "stopped") return;
-
-    const hasAnySegments =
-      ttsSegments.length > 0 || ttsPrevPageSegments.length > 0 || ttsFutureSegments.length > 0;
-    const needsRecovery =
-      !hasAnySegments ||
-      (!currentTTSSegment &&
-        (normalizeTTSDebugText(ttsCurrentSegmentText).length > 0 ||
-          normalizeTTSDebugText(ttsCurrentLocationCfi).length > 0));
-
-    if (!needsRecovery) return;
-
-    if (__DEV__) {
-      console.log("[ReaderScreen][TTS] recover-state-needed", {
-        showTTS,
-        playState: ttsPlayState,
-        currentChunkIndex: ttsCurrentChunkIndex,
-        hasAnySegments,
-        currentSegmentResolved: !!currentTTSSegment,
-        storeSegmentTextLength: normalizeTTSDebugText(ttsCurrentSegmentText).length,
-        currentLocationCfi: ttsCurrentLocationCfi,
-        ttsSegmentsLength: ttsSegments.length,
-        prevSegmentsLength: ttsPrevPageSegments.length,
-        futureSegmentsLength: ttsFutureSegments.length,
-      });
-    }
-
-    void recoverTTSLyricsState();
-  }, [
-    bookId,
-    currentTTSSegment,
-    recoverTTSLyricsState,
-    showTTS,
-    ttsCurrentBookId,
-    ttsCurrentChunkIndex,
-    ttsCurrentLocationCfi,
-    ttsCurrentSegmentText,
-    ttsFutureSegments.length,
-    ttsPlayState,
-    ttsPrevPageSegments.length,
-    ttsSegments.length,
-    ttsSourceKind,
-    webViewReady,
-  ]);
-
-  useEffect(() => {
-    if (!showTTS) {
-      lastTTSLyricPrimeSignatureRef.current = null;
-      return;
-    }
-    const activeCfi =
-      currentTTSSegment?.cfi || resolvedTTSSegmentCfi || ttsSegments[0]?.cfi || null;
-    if (!activeCfi) return;
-    const firstVisibleCfi = ttsSegments[0]?.cfi || activeCfi;
-    const lastVisibleCfi = ttsSegments[ttsSegments.length - 1]?.cfi || activeCfi;
-    const signature = `${activeCfi}|${firstVisibleCfi}|${lastVisibleCfi}`;
-    if (lastTTSLyricPrimeSignatureRef.current === signature) return;
-    lastTTSLyricPrimeSignatureRef.current = signature;
-    void primeTTSLyricContext(activeCfi, firstVisibleCfi, lastVisibleCfi);
-  }, [
-    currentTTSSegment?.cfi,
-    primeTTSLyricContext,
-    resolvedTTSSegmentCfi,
-    showTTS,
-    ttsSegments,
-  ]);
-
-  useEffect(() => {
-    return () => {
-      // Don't stop TTS on unmount — the floating bubble should keep playing
-      // while the user navigates to other screens.
-      // Just clear the continuous-reading callback that depends on this WebView.
-      ttsContinuousRef.current = false;
-      ttsSetOnEnd(null);
-      bridgeRef.current?.setTTSHighlight(null);
-    };
-  }, [ttsSetOnEnd]);
 
   if (loading && !webViewReady && !readerHtmlUri) {
     return (
@@ -3666,7 +1159,7 @@ export function ReaderScreen({ route, navigation }: Props) {
               s.floatingToolBtn,
               (showTTS || ttsPlayState !== "stopped") && s.floatingToolBtnActive,
             ]}
-            onPress={handleToggleTTS}
+            onPress={tts.handleToggleTTS}
           >
             <HeadphonesIcon size={20} color="#fff" />
           </TouchableOpacity>
@@ -3798,76 +1291,65 @@ export function ReaderScreen({ route, navigation }: Props) {
                 style={s.searchInput}
                 placeholder={t("reader.searchInBook", "在书中搜索")}
                 placeholderTextColor={colors.mutedForeground}
-                value={searchQuery}
-                onChangeText={handleSearchInput}
+                value={search.searchQuery}
+                onChangeText={search.handleSearchInput}
                 autoFocus
                 returnKeyType="search"
               />
             </View>
             <View style={s.searchMetaRow}>
-              {isSearching ? (
+              {search.isSearching ? (
                 <ActivityIndicator size="small" color={colors.mutedForeground} />
-              ) : searchQuery && searchResultCount > 0 ? (
+              ) : search.searchQuery && search.searchResultCount > 0 ? (
                 <Text style={s.searchCount}>
-                  {searchIndex + 1} / {searchResultCount}
+                  {search.searchIndex + 1} / {search.searchResultCount}
                 </Text>
-              ) : searchQuery && !isSearching ? (
+              ) : search.searchQuery && !search.isSearching ? (
                 <Text style={s.searchCount}>0</Text>
               ) : null}
             </View>
             <TouchableOpacity
               style={s.searchNavBtn}
-              onPress={() => navigateSearch("prev")}
-              disabled={searchResultCount === 0}
+              onPress={() => search.navigateSearch("prev")}
+              disabled={search.searchResultCount === 0}
             >
               <ChevronLeftIcon
                 size={16}
-                color={searchResultCount > 0 ? colors.foreground : colors.mutedForeground}
+                color={search.searchResultCount > 0 ? colors.foreground : colors.mutedForeground}
               />
             </TouchableOpacity>
             <TouchableOpacity
               style={s.searchNavBtn}
-              onPress={() => navigateSearch("next")}
-              disabled={searchResultCount === 0}
+              onPress={() => search.navigateSearch("next")}
+              disabled={search.searchResultCount === 0}
             >
               <ChevronRightIcon
                 size={16}
-                color={searchResultCount > 0 ? colors.foreground : colors.mutedForeground}
+                color={search.searchResultCount > 0 ? colors.foreground : colors.mutedForeground}
               />
             </TouchableOpacity>
             <TouchableOpacity
               style={s.searchNavBtn}
               onPress={() => {
-                // Ask user if they want to return to original position
-                if (searchStartCfi && searchResultCount > 0) {
+                if (search.searchStartCfi && search.searchResultCount > 0) {
                   Alert.alert(
                     t("reader.searchComplete", "搜索完成"),
                     t("reader.returnToOriginal", "是否返回搜索前的位置？"),
                     [
-                      {
-                        text: t("common.cancel", "取消"),
-                        style: "cancel",
+                      { text: t("common.cancel", "取消"), style: "cancel",
+                        onPress: () => { search.setSearchStartCfi(null); } },
+                      { text: t("common.confirm", "确定"),
                         onPress: () => {
-                          setSearchStartCfi(null);
-                        },
-                      },
-                      {
-                        text: t("common.confirm", "确定"),
-                        onPress: () => {
-                          bridge.goToCFI(searchStartCfi);
-                          setSearchStartCfi(null);
-                        },
-                      },
+                          bridge.goToCFI(search.searchStartCfi!);
+                          search.setSearchStartCfi(null);
+                        } },
                     ],
                   );
                 } else {
-                  setSearchStartCfi(null);
+                  search.setSearchStartCfi(null);
                 }
                 setShowSearch(false);
-                setSearchQuery("");
-                setSearchResultCount(0);
-                setSearchIndex(0);
-                bridge.clearSearch();
+                search.clearSearch();
                 setShowControls(true);
                 Animated.timing(toolbarAnim, {
                   toValue: 0,
@@ -3884,351 +1366,26 @@ export function ReaderScreen({ route, navigation }: Props) {
       )}
 
       {/* ─── TOC & Bookmarks Panel ─── */}
-      <Modal
+      <ReaderTOCPanel
         visible={showTOC}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowTOC(false)}
-      >
-        <Pressable style={s.modalBackdrop} onPress={() => setShowTOC(false)} />
-        <View
-          style={[
-            s.bottomSheet,
-            { maxHeight: SCREEN_HEIGHT * 0.7, paddingBottom: insets.bottom || 16 },
-          ]}
-        >
-          {/* Tab Header */}
-          <View style={s.sheetHeader}>
-            <View style={s.tocTabBar}>
-              <TouchableOpacity
-                style={[
-                  s.tocTab,
-                  tocActiveTab === "toc" && { backgroundColor: `${colors.primary}14` },
-                ]}
-                onPress={() => setTocActiveTab("toc")}
-              >
-                <ListIcon
-                  size={14}
-                  color={tocActiveTab === "toc" ? colors.primary : colors.mutedForeground}
-                />
-                <Text
-                  style={[
-                    s.tocTabText,
-                    { color: tocActiveTab === "toc" ? colors.primary : colors.mutedForeground },
-                  ]}
-                >
-                  {t("reader.toc", "目录")}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  s.tocTab,
-                  tocActiveTab === "bookmarks" && { backgroundColor: `${colors.primary}14` },
-                ]}
-                onPress={() => setTocActiveTab("bookmarks")}
-              >
-                {tocActiveTab === "bookmarks" ? (
-                  <BookmarkFilledIcon size={14} color={colors.primary} />
-                ) : (
-                  <BookmarkIcon size={14} color={colors.mutedForeground} />
-                )}
-                <Text
-                  style={[
-                    s.tocTabText,
-                    {
-                      color: tocActiveTab === "bookmarks" ? colors.primary : colors.mutedForeground,
-                    },
-                  ]}
-                >
-                  {t("bookmarks.title", "书签")}
-                  {bookBookmarks.length > 0 ? ` (${bookBookmarks.length})` : ""}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            <TouchableOpacity onPress={() => setShowTOC(false)}>
-              <XIcon size={18} color={colors.mutedForeground} />
-            </TouchableOpacity>
-          </View>
-
-          {/* Tab Content */}
-          {tocActiveTab === "toc" ? (
-            <ScrollView showsVerticalScrollIndicator={false} style={s.sheetScroll}>
-              {toc.length > 0 ? (
-                toc.map((item) => (
-                  <TOCTreeItem
-                    key={item.id || item.href}
-                    item={item}
-                    level={0}
-                    currentChapter={currentChapter}
-                    onSelect={goToTocItem}
-                  />
-                ))
-              ) : (
-                <Text style={s.sheetEmpty}>{t("reader.noToc", "暂无目录信息")}</Text>
-              )}
-            </ScrollView>
-          ) : bookBookmarks.length > 0 ? (
-            <ScrollView showsVerticalScrollIndicator={false} style={s.sheetScroll}>
-              {bookBookmarks.map((bm) => (
-                <TouchableOpacity
-                  key={bm.id}
-                  style={s.bookmarkItem}
-                  onPress={() => {
-                    bridge.goToCFI(bm.cfi);
-                    setShowTOC(false);
-                  }}
-                  activeOpacity={0.6}
-                >
-                  <BookmarkFilledIcon size={14} color={colors.primary} />
-                  <View style={s.bookmarkContent}>
-                    <Text style={[s.bookmarkLabel, { color: colors.foreground }]} numberOfLines={1}>
-                      {bm.chapterTitle || t("common.unnamed")}
-                    </Text>
-                    {bm.label ? (
-                      <Text
-                        style={[s.bookmarkSnippet, { color: colors.mutedForeground }]}
-                        numberOfLines={2}
-                      >
-                        {bm.label}
-                      </Text>
-                    ) : null}
-                    <Text style={[s.bookmarkDate, { color: colors.mutedForeground }]}>
-                      {new Date(bm.createdAt).toLocaleDateString(i18n.language, {
-                        month: "short",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={s.bookmarkDeleteBtn}
-                    onPress={() => removeBookmark(bm.id)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <Trash2Icon size={14} color={colors.mutedForeground} />
-                  </TouchableOpacity>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          ) : (
-            <View style={s.notebookPlaceholder}>
-              <BookmarkIcon size={32} color={`${colors.mutedForeground}60`} />
-              <Text style={s.notebookPlaceholderText}>{t("bookmarks.empty", "暂无书签")}</Text>
-              <Text style={[s.notebookPlaceholderText, { fontSize: fontSize.xs, opacity: 0.6 }]}>
-                {t("bookmarks.emptyHint", "使用工具栏的书签按钮来标记页面")}
-              </Text>
-            </View>
-          )}
-        </View>
-      </Modal>
+        activeTab={tocActiveTab}
+        toc={toc}
+        bookmarks={bookBookmarks}
+        currentChapter={currentChapter}
+        onClose={() => setShowTOC(false)}
+        onTabChange={setTocActiveTab}
+        onSelectTocItem={goToTocItem}
+        onGoToBookmark={(cfi) => { bridge.goToCFI(cfi); setShowTOC(false); }}
+        onDeleteBookmark={(id) => removeBookmark(id)}
+      />
 
       {/* ─── Settings Panel ─── */}
-      <Modal
+      <ReaderSettingsPanel
         visible={showSettings}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowSettings(false)}
-      >
-        <Pressable style={s.modalBackdrop} onPress={() => setShowSettings(false)} />
-        <View style={[s.bottomSheet, { paddingBottom: insets.bottom || 16 }]}>
-          <View style={s.sheetHeader}>
-            <Text style={s.sheetTitle}>{t("reader.settings", "阅读设置")}</Text>
-            <TouchableOpacity onPress={() => setShowSettings(false)}>
-              <XIcon size={18} color={colors.mutedForeground} />
-            </TouchableOpacity>
-          </View>
-          <ScrollView showsVerticalScrollIndicator={false}>
-            {/* Font Size */}
-            <View style={s.settingRow}>
-              <Text style={s.settingLabel}>{t("reader.fontSize", "字号")}</Text>
-              <View style={s.settingControl}>
-                <TouchableOpacity
-                  style={s.stepBtn}
-                  onPress={() => updateSetting("fontSize", Math.max(12, settingFontSize - 1))}
-                >
-                  <Text style={s.stepBtnText}>A-</Text>
-                </TouchableOpacity>
-                <Text style={s.settingValue}>{settingFontSize}</Text>
-                <TouchableOpacity
-                  style={s.stepBtn}
-                  onPress={() => updateSetting("fontSize", Math.min(32, settingFontSize + 1))}
-                >
-                  <Text style={s.stepBtnText}>A+</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-            {/* Line Height */}
-            <View style={s.settingRow}>
-              <Text style={s.settingLabel}>{t("reader.lineHeight", "行高")}</Text>
-              <View style={s.settingControl}>
-                <TouchableOpacity
-                  style={s.stepBtn}
-                  onPress={() =>
-                    updateSetting(
-                      "lineHeight",
-                      Math.round(Math.max(1.2, settingLineHeight - 0.1) * 10) / 10,
-                    )
-                  }
-                >
-                  <Text style={s.stepBtnText}>-</Text>
-                </TouchableOpacity>
-                <Text style={s.settingValue}>{settingLineHeight.toFixed(1)}</Text>
-                <TouchableOpacity
-                  style={s.stepBtn}
-                  onPress={() =>
-                    updateSetting(
-                      "lineHeight",
-                      Math.round(Math.min(2.5, settingLineHeight + 0.1) * 10) / 10,
-                    )
-                  }
-                >
-                  <Text style={s.stepBtnText}>+</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-            {/* Paragraph Spacing */}
-            <View style={s.settingRow}>
-              <Text style={s.settingLabel}>{t("reader.paragraphSpacing", "段间距")}</Text>
-              <View style={s.settingControl}>
-                <TouchableOpacity
-                  style={s.stepBtn}
-                  onPress={() =>
-                    updateSetting("paragraphSpacing", Math.max(0, settingParagraphSpacing - 2))
-                  }
-                >
-                  <Text style={s.stepBtnText}>-</Text>
-                </TouchableOpacity>
-                <Text style={s.settingValue}>{settingParagraphSpacing}</Text>
-                <TouchableOpacity
-                  style={s.stepBtn}
-                  onPress={() =>
-                    updateSetting("paragraphSpacing", Math.min(24, settingParagraphSpacing + 2))
-                  }
-                >
-                  <Text style={s.stepBtnText}>+</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-            {/* Page Margin */}
-            <View style={s.settingRow}>
-              <Text style={s.settingLabel}>{t("reader.pageMargin", "页边距")}</Text>
-              <View style={s.settingControl}>
-                <TouchableOpacity
-                  style={s.stepBtn}
-                  onPress={() => updateSetting("pageMargin", Math.max(0, settingPageMargin - 4))}
-                >
-                  <Text style={s.stepBtnText}>-</Text>
-                </TouchableOpacity>
-                <Text style={s.settingValue}>{settingPageMargin}</Text>
-                <TouchableOpacity
-                  style={s.stepBtn}
-                  onPress={() => updateSetting("pageMargin", Math.min(48, settingPageMargin + 4))}
-                >
-                  <Text style={s.stepBtnText}>+</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-            {/* Font Theme */}
-            <View style={s.settingRow}>
-              <Text style={s.settingLabel}>{t("reader.fontTheme", "字体主题")}</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.themeScroll}>
-                <View style={s.themeRow}>
-                  {FONT_THEMES.map((theme) => (
-                    <TouchableOpacity
-                      key={theme.id}
-                      style={[s.themeBtn, settingFontTheme === theme.id && s.themeBtnActive]}
-                      onPress={() => updateSetting("fontTheme", theme.id)}
-                    >
-                      <Text
-                        style={[
-                          s.themeBtnText,
-                          settingFontTheme === theme.id && s.themeBtnTextActive,
-                        ]}
-                      >
-                        {t(theme.labelKey, theme.fallback)}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </ScrollView>
-            </View>
-            {/* View Mode */}
-            <View style={s.settingRow}>
-              <Text style={s.settingLabel}>{t("reader.viewMode", "阅读模式")}</Text>
-              <View style={s.viewModeRow}>
-                <TouchableOpacity
-                  style={[s.viewModeBtn, settingViewMode === "paginated" && s.viewModeBtnActive]}
-                  onPress={() => updateSetting("viewMode", "paginated")}
-                >
-                  <Text
-                    style={[
-                      s.viewModeBtnText,
-                      settingViewMode === "paginated" && s.viewModeBtnTextActive,
-                    ]}
-                  >
-                    {t("reader.paginated", "翻页")}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.viewModeBtn, settingViewMode === "scroll" && s.viewModeBtnActive]}
-                  onPress={() => updateSetting("viewMode", "scroll")}
-                >
-                  <Text
-                    style={[
-                      s.viewModeBtnText,
-                      settingViewMode === "scroll" && s.viewModeBtnTextActive,
-                    ]}
-                  >
-                    {t("reader.scrollMode", "滚动")}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-            <View style={s.settingRow}>
-              <Text style={s.settingLabel}>{t("settings.showTopTitleProgress")}</Text>
-              <TouchableOpacity
-                style={[s.settingToggleBtn, showTopTitleProgress && s.settingToggleBtnActive]}
-                onPress={() => updateSetting("showTopTitleProgress", !showTopTitleProgress)}
-              >
-                <Text
-                  style={[s.settingToggleText, showTopTitleProgress && s.settingToggleTextActive]}
-                >
-                  {showTopTitleProgress ? t("settings.enabled") : t("settings.disabled")}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            <View style={s.settingRow}>
-              <Text style={s.settingLabel}>{t("settings.showBottomTimeBattery")}</Text>
-              <TouchableOpacity
-                style={[s.settingToggleBtn, showBottomTimeBattery && s.settingToggleBtnActive]}
-                onPress={() => updateSetting("showBottomTimeBattery", !showBottomTimeBattery)}
-              >
-                <Text
-                  style={[s.settingToggleText, showBottomTimeBattery && s.settingToggleTextActive]}
-                >
-                  {showBottomTimeBattery ? t("settings.enabled") : t("settings.disabled")}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            <View style={[s.settingRow, s.settingRowMultiline]}>
-              <View style={s.settingLabelBlock}>
-                <Text style={s.settingLabel}>{t("settings.volumeButtonsPageTurn")}</Text>
-              </View>
-              <TouchableOpacity
-                style={[s.settingToggleBtn, volumeButtonsPageTurn && s.settingToggleBtnActive]}
-                onPress={() => updateSetting("volumeButtonsPageTurn", !volumeButtonsPageTurn)}
-              >
-                <Text
-                  style={[s.settingToggleText, volumeButtonsPageTurn && s.settingToggleTextActive]}
-                >
-                  {volumeButtonsPageTurn ? t("settings.enabled") : t("settings.disabled")}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
-        </View>
-      </Modal>
+        readSettings={readSettings}
+        onClose={() => setShowSettings(false)}
+        onUpdateSetting={updateSetting}
+      />
 
       {/* ─── Notebook Panel ─── */}
       <Modal
@@ -4294,127 +1451,22 @@ export function ReaderScreen({ route, navigation }: Props) {
       </Modal>
 
       {/* ─── Note View Modal ─── */}
-      <Modal
-        visible={!!noteViewHighlight}
-        transparent
-        animationType="slide"
-        onRequestClose={() => {
-          setNoteViewHighlight(null);
+      <ReaderNoteViewModal
+        highlight={noteViewHighlight}
+        editing={noteViewEditing}
+        editContent={noteViewContent}
+        bookId={bookId}
+        onClose={() => { setNoteViewHighlight(null); setNoteViewEditing(false); }}
+        onStartEdit={() => { setNoteViewContent(noteViewHighlight?.note || ""); setNoteViewEditing(true); }}
+        onCancelEdit={() => { setNoteViewEditing(false); setNoteViewContent(noteViewHighlight?.note || ""); }}
+        onContentChange={setNoteViewContent}
+        onSave={(highlight, newNote) => {
+          bridge.removeAnnotation({ value: highlight.cfi });
+          bridge.addAnnotation({ value: highlight.cfi, type: "highlight", color: highlight.color, note: newNote });
+          setNoteViewHighlight({ ...highlight, note: newNote });
           setNoteViewEditing(false);
         }}
-      >
-        <KeyboardAvoidingView
-          style={s.noteViewOverlay}
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-        >
-          <TouchableOpacity
-            style={StyleSheet.absoluteFill}
-            activeOpacity={1}
-            onPress={() => {
-              setNoteViewHighlight(null);
-              setNoteViewEditing(false);
-            }}
-          />
-          <View style={[s.noteViewModal, { paddingBottom: insets.bottom || 16 }]}>
-            <View style={s.noteViewHeader}>
-              <Text style={s.noteViewTitle}>{t("reader.viewNote", "查看笔记")}</Text>
-              <TouchableOpacity
-                style={s.noteViewCloseBtn}
-                onPress={() => {
-                  setNoteViewHighlight(null);
-                  setNoteViewEditing(false);
-                }}
-              >
-                <XIcon size={18} color={colors.mutedForeground} />
-              </TouchableOpacity>
-            </View>
-            {noteViewHighlight && (
-              <>
-                <Text style={s.noteViewQuote} numberOfLines={3}>
-                  "{noteViewHighlight.text}"
-                </Text>
-                {noteViewEditing ? (
-                  <>
-                    <View style={s.noteViewEditorContainer}>
-                      <RichTextEditor
-                        initialContent={noteViewContent}
-                        onChange={setNoteViewContent}
-                        placeholder={t("reader.notePlaceholder", "写下你的想法...")}
-                        autoFocus
-                      />
-                    </View>
-                    <View style={s.noteViewActions}>
-                      <TouchableOpacity
-                        style={s.noteViewCancelBtn}
-                        onPress={() => {
-                          setNoteViewEditing(false);
-                          setNoteViewContent(noteViewHighlight.note || "");
-                        }}
-                      >
-                        <XIcon size={14} color={colors.mutedForeground} />
-                        <Text style={s.noteViewCancelText}>{t("common.cancel", "取消")}</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={s.noteViewSaveBtn}
-                        onPress={() => {
-                          const mutation = createSelectionNoteMutation({
-                            bookId,
-                            cfi: noteViewHighlight.cfi,
-                            text: noteViewHighlight.text,
-                            note: noteViewContent,
-                            existingHighlight: noteViewHighlight,
-                          });
-
-                          if (mutation.kind !== "update") {
-                            setNoteViewEditing(false);
-                            return;
-                          }
-
-                          const { updateHighlight } = useAnnotationStore.getState();
-                          updateHighlight(mutation.id, mutation.updates);
-                          bridge.removeAnnotation({ value: noteViewHighlight.cfi });
-                          bridge.addAnnotation({
-                            value: noteViewHighlight.cfi,
-                            type: "highlight",
-                            color: noteViewHighlight.color,
-                            note: mutation.updates.note,
-                          });
-                          setNoteViewHighlight({
-                            ...noteViewHighlight,
-                            note: mutation.updates.note,
-                          });
-                          setNoteViewEditing(false);
-                        }}
-                      >
-                        <CheckIcon size={14} color={colors.primaryForeground} />
-                        <Text style={s.noteViewSaveText}>{t("common.save", "保存")}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </>
-                ) : (
-                  <>
-                    <ScrollView style={s.noteViewBody} showsVerticalScrollIndicator={false}>
-                      <MarkdownRenderer content={noteViewHighlight.note || ""} />
-                    </ScrollView>
-                    <View style={s.noteViewActions}>
-                      <TouchableOpacity
-                        style={s.noteViewEditBtn}
-                        onPress={() => {
-                          setNoteViewContent(noteViewHighlight.note || "");
-                          setNoteViewEditing(true);
-                        }}
-                      >
-                        <EditIcon size={14} color={colors.primaryForeground} />
-                        <Text style={s.noteViewEditText}>{t("common.edit", "编辑")}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </>
-                )}
-              </>
-            )}
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      />
 
       {/* ─── Translation Panel ─── */}
       {showTranslation && translationText && (
@@ -4443,778 +1495,37 @@ export function ReaderScreen({ route, navigation }: Props) {
         visible={showTTS}
         bookTitle={bookTitle || book?.meta.title || ""}
         chapterTitle={currentChapter}
-        coverUri={ttsCoverUri}
+        coverUri={tts.ttsCoverUri}
         playState={ttsPlayState}
-        currentText={ttsCurrentSegmentText || ttsCurrentText || ttsLastText}
+        currentText={tts.currentTTSSegment?.text || tts.ttsLastText}
         config={ttsConfig}
         readingProgress={progress}
         currentPage={currentPage}
         totalPages={totalPages}
-        sourceLabel={ttsSourceLabel}
-        continuousEnabled={ttsContinuousEnabled}
-        narrationSegments={ttsDisplaySegments}
-        prevNarrationSegments={ttsPrevPageSegments}
-        currentSegmentCfi={resolvedTTSSegmentCfi}
-        currentSegmentText={currentTTSSegment?.text || null}
-        currentChunkIndex={ttsCurrentChunkIndex}
-        totalChunks={ttsTotalChunks}
+        sourceLabel={tts.ttsSourceLabel}
+        continuousEnabled={tts.ttsContinuousEnabled}
+        narrationSegments={tts.ttsDisplaySegments}
+        prevNarrationSegments={tts.ttsPrevPageSegments}
+        currentSegmentCfi={tts.resolvedTTSSegmentCfi}
+        currentSegmentText={tts.currentTTSSegment?.text || null}
+        currentChunkIndex={tts.localTTSChunkIndex}
+        totalChunks={tts.ttsDisplaySegments.length}
         onClose={() => setShowTTS(false)}
-        onReturnToReading={() => {
-          const targetCfi = resolvedTTSSegmentCfi || ttsCurrentLocationCfi || currentCfi;
-          setShowTTS(false);
-          if (!targetCfi) return;
-          lastFollowedTTSCfiRef.current = targetCfi;
-          bridge.goToCFI(targetCfi);
-          bridge.flashHighlight(targetCfi, colors.primary, 1200);
-          setTimeout(() => {
-            bridge.setTTSHighlight(targetCfi, ttsHighlightColor, true);
-          }, 120);
-        }}
-        onReplay={handleTTSReplay}
-        onPlayPause={handleTTSPlayPause}
-        onJumpToSegment={handleJumpToTTSSegment}
-        onJumpToLyricSegment={handleJumpToTTSLyricSegment}
-        onLoadMoreAbove={handleLoadMoreAboveTTSLyrics}
-        onLoadMoreBelow={handleLoadMoreBelowTTSLyrics}
-        onStop={() => {
-          ttsContinuousRef.current = false;
-          ttsSetOnEnd(null);
-          bridge.setTTSHighlight(null);
-          lastFollowedTTSCfiRef.current = null;
-          setTtsSegments([]);
-          ttsSegmentsRef.current = [];
-          setTtsPrevPageSegments([]);
-          setTtsFutureSegments([]);
-          ttsPrevPageSegmentsRef.current = [];
-          ttsExhaustedAboveAnchorsRef.current.clear();
-          ttsExhaustedBelowAnchorsRef.current.clear();
-          ttsLyricPrimeRequestIdRef.current += 1;
-          ttsFutureSegmentsRef.current = [];
-          syncTTSChunkOffset(0);
-          setTtsLastText("");
-          ttsLastTextRef.current = "";
-          ttsStop();
-        }}
-        onAdjustRate={handleAdjustTTSRate}
-        onAdjustPitch={handleAdjustTTSPitch}
-        onToggleContinuous={handleToggleTTSContinuous}
-        onUpdateConfig={ttsUpdateConfig}
-        onPrevChapter={toc.length > 0 ? handleTTSPrevChapter : undefined}
-        onNextChapter={toc.length > 0 ? handleTTSNextChapter : undefined}
+        onReturnToReading={tts.handleTTSReturnToReading}
+        onReplay={tts.handleTTSReplay}
+        onPlayPause={tts.handleTTSPlayPause}
+        onJumpToSegment={tts.handleJumpToTTSSegment}
+        onJumpToLyricSegment={tts.handleJumpToTTSLyricSegment}
+        onLoadMoreAbove={tts.handleLoadMoreAboveTTSLyrics}
+        onLoadMoreBelow={tts.handleLoadMoreBelowTTSLyrics}
+        onStop={tts.handleTTSStop}
+        onAdjustRate={tts.handleAdjustTTSRate}
+        onAdjustPitch={tts.handleAdjustTTSPitch}
+        onToggleContinuous={tts.handleToggleTTSContinuous}
+        onUpdateConfig={ttsConfig ? undefined : undefined}
+        onPrevChapter={toc.length > 0 ? tts.handleTTSPrevChapter : undefined}
+        onNextChapter={toc.length > 0 ? tts.handleTTSNextChapter : undefined}
       />
     </View>
   );
 }
-
-const TOOLTIP_FG = "#f1f5f9";
-const TOOLTIP_MUTED = "rgba(148, 163, 184, 0.5)";
-const noteTooltipMdStyles = {
-  body: { color: TOOLTIP_FG, fontSize: 13, lineHeight: 19 },
-  textgroup: { color: TOOLTIP_FG, fontSize: 13, lineHeight: 19 },
-  text: { color: TOOLTIP_FG, fontSize: 13, lineHeight: 19 },
-  paragraph: { color: TOOLTIP_FG, fontSize: 13, lineHeight: 19, marginBottom: 4, marginTop: 0 },
-  heading1: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "600" as const,
-    marginBottom: 4,
-    marginTop: 4,
-  },
-  heading2: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "600" as const,
-    marginBottom: 3,
-    marginTop: 3,
-  },
-  heading3: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "600" as const,
-    marginBottom: 2,
-    marginTop: 2,
-  },
-  strong: { fontWeight: "700" as const, color: "#fff" },
-  em: { fontStyle: "italic" as const, color: "#e2e8f0" },
-  link: { color: "#60a5fa" },
-  code_inline: {
-    backgroundColor: "rgba(255,255,255,0.1)",
-    color: TOOLTIP_FG,
-    fontSize: 14,
-    fontFamily: "Menlo",
-  },
-  code_block: {
-    backgroundColor: "rgba(0,0,0,0.3)",
-    color: TOOLTIP_FG,
-    fontSize: 14,
-    fontFamily: "Menlo",
-    padding: 8,
-  },
-  fence: {
-    backgroundColor: "rgba(0,0,0,0.3)",
-    color: TOOLTIP_FG,
-    fontSize: 14,
-    fontFamily: "Menlo",
-    padding: 8,
-  },
-  blockquote: {
-    borderLeftWidth: 2,
-    borderLeftColor: TOOLTIP_MUTED,
-    paddingLeft: 10,
-    backgroundColor: "transparent",
-    color: TOOLTIP_FG,
-  },
-  bullet_list: { marginVertical: 2 },
-  ordered_list: { marginVertical: 2 },
-  list_item: { marginBottom: 2, flexDirection: "row" as const },
-  bullet_list_icon: { color: TOOLTIP_FG, marginLeft: 0, marginRight: 8 },
-  bullet_list_content: { color: TOOLTIP_FG, flex: 1 },
-  ordered_list_icon: { color: TOOLTIP_FG, marginLeft: 0, marginRight: 8 },
-  ordered_list_content: { color: TOOLTIP_FG, flex: 1 },
-  hardbreak: { color: TOOLTIP_FG },
-  softbreak: { color: TOOLTIP_FG },
-};
-
-const makeStyles = (colors: ThemeColors) =>
-  StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.background },
-    readerStage: { flex: 1 },
-    webview: { flex: 1 },
-    loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
-    loadingText: { fontSize: fontSize.sm, color: colors.mutedForeground },
-    errorText: {
-      fontSize: fontSize.base,
-      color: colors.destructive,
-      textAlign: "center",
-      paddingHorizontal: 24,
-    },
-    backButton: {
-      marginTop: 16,
-      paddingHorizontal: 24,
-      paddingVertical: 10,
-      borderRadius: radius.lg,
-      backgroundColor: colors.primary,
-    },
-    backButtonText: {
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.medium,
-      color: colors.primaryForeground,
-    },
-    loadingOverlay: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.background,
-      zIndex: 20,
-    },
-
-    topToolbar: {
-      position: "absolute",
-      zIndex: 34,
-      left: 0,
-      right: 0,
-      top: 0,
-    },
-    topToolbarBar: {
-      backgroundColor: withOpacity(colors.background, 0.94),
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: withOpacity(colors.foreground, 0.1),
-    },
-    topToolbarRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-    },
-    topToolbarBackBtn: {
-      width: 48,
-      height: 48,
-      borderRadius: 24,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    topToolbarSideSlot: {
-      width: 68,
-      justifyContent: "center",
-      alignItems: "flex-start",
-    },
-    topToolbarSpacer: {
-      flex: 1,
-      minHeight: 44,
-    },
-    topToolbarTitleWrap: {
-      flex: 1,
-      minWidth: 0,
-      alignItems: "center",
-      justifyContent: "center",
-      paddingHorizontal: 12,
-    },
-    topToolbarTitleText: {
-      fontSize: fontSize.sm,
-      color: colors.foreground,
-      fontWeight: fontWeight.medium,
-    },
-    topToolbarMetaWrap: {
-      width: 60,
-      alignItems: "flex-end",
-      justifyContent: "center",
-    },
-    topToolbarMetaText: {
-      fontSize: fontSize.sm,
-      color: colors.mutedForeground,
-      fontWeight: fontWeight.medium,
-    },
-    topToolbarRight: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 2,
-    },
-    topToolbarBtn: {
-      width: 40,
-      height: 40,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    topToolbarBtnActive: {
-      backgroundColor: withOpacity(colors.foreground, 0.06),
-    },
-    topToolbarProgressTrack: {
-      height: 2,
-      backgroundColor: withOpacity(colors.foreground, 0.08),
-      overflow: "hidden",
-    },
-    topToolbarProgressFill: {
-      height: "100%",
-      backgroundColor: withOpacity(colors.foreground, 0.48),
-    },
-
-    floatingTools: {
-      position: "absolute",
-      zIndex: 34,
-      gap: 10,
-      alignItems: "center",
-    },
-    floatingToolBtn: {
-      width: 52,
-      height: 52,
-      borderRadius: 26,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: "rgba(76, 82, 94, 0.88)",
-    },
-    floatingToolBtnActive: {
-      backgroundColor: "rgba(59, 130, 246, 0.9)",
-    },
-
-    bottomToolbar: {
-      position: "absolute",
-      bottom: 0,
-      zIndex: 30,
-      left: 0,
-      right: 0,
-    },
-    bottomToolbarGlass: {
-      backgroundColor: withOpacity(colors.background, 0.98),
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderColor: withOpacity(colors.foreground, 0.12),
-      paddingTop: 10,
-    },
-    bottomDockRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 2,
-    },
-    bottomDockBtn: {
-      flex: 1,
-      height: 54,
-      borderRadius: 10,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 4,
-      paddingTop: 4,
-    },
-    bottomDockBtnActive: {
-      backgroundColor: withOpacity(colors.foreground, 0.06),
-    },
-    bottomDockLabel: {
-      fontSize: fontSize.xs,
-      lineHeight: 14,
-      color: colors.mutedForeground,
-      fontWeight: fontWeight.medium,
-    },
-    bottomDockLabelActive: {
-      color: colors.primary,
-    },
-    bottomToolbarProgressTrack: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      height: 2,
-      backgroundColor: withOpacity(colors.foreground, 0.08),
-      overflow: "hidden",
-    },
-    bottomToolbarProgressFill: {
-      height: "100%",
-      backgroundColor: withOpacity(colors.foreground, 0.48),
-      borderRadius: 999,
-    },
-    toolbarRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-    toolbarBtn: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    toolbarBtnActive: { backgroundColor: `${colors.primary}30` },
-    toolbarBtnDisabled: { opacity: 0.4 },
-    toolbarCenter: { flex: 1, paddingHorizontal: 8, alignItems: "center" },
-    toolbarTitle: {
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.semibold,
-      color: "#fff",
-      letterSpacing: 0.3,
-    },
-    toolbarChapter: { fontSize: fontSize.xs, color: "rgba(255,255,255,0.5)", marginTop: 1 },
-
-    topInfoBar: {
-      position: "absolute",
-      left: 0,
-      right: 0,
-      paddingHorizontal: 18,
-      paddingVertical: 6,
-      gap: 8,
-    },
-    topInfoRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-    },
-    topInfoText: {
-      flex: 1,
-      fontSize: fontSize.xs,
-      color: colors.mutedForeground,
-      marginRight: 8,
-    },
-    topInfoPageText: {
-      fontSize: fontSize.xs,
-      color: colors.mutedForeground,
-    },
-    topInfoProgressTrack: {
-      height: 2,
-      borderRadius: 999,
-      overflow: "hidden",
-      backgroundColor: withOpacity(colors.foreground, 0.08),
-    },
-    topInfoProgressFill: {
-      height: "100%",
-      borderRadius: 999,
-      backgroundColor: withOpacity(colors.foreground, 0.42),
-    },
-    bottomInfoBar: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      position: "absolute",
-      zIndex: 24,
-    },
-    bottomInfoSide: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-    },
-    bottomInfoText: {
-      fontSize: fontSize.xs,
-      color: colors.mutedForeground,
-      fontVariant: ["tabular-nums"],
-    },
-    footerSliderRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-    footerNavBtn: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: "rgba(255,255,255,0.1)",
-    },
-    sliderWrap: { flex: 1, justifyContent: "center", paddingVertical: 4 },
-    sliderTrack: {
-      height: 3,
-      backgroundColor: "rgba(255,255,255,0.15)",
-      borderRadius: 1.5,
-      overflow: "hidden",
-    },
-    sliderFill: { height: "100%", backgroundColor: colors.primary, borderRadius: 1.5 },
-
-    thinProgressWrap: {
-      position: "absolute",
-      left: 0,
-      right: 0,
-      height: 2,
-      backgroundColor: "rgba(255,255,255,0.05)",
-      zIndex: 40,
-    },
-    thinProgressFill: { height: "100%", backgroundColor: colors.primary, opacity: 0.8 },
-
-    searchBarWrap: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      backgroundColor: colors.background,
-      borderBottomWidth: 0.5,
-      borderBottomColor: colors.border,
-      zIndex: 40,
-    },
-    searchBarRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 4,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-    },
-    searchInputWrap: {
-      flex: 1,
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: colors.muted,
-      borderRadius: radius.lg,
-      paddingHorizontal: 10,
-      height: 36,
-      gap: 6,
-    },
-    searchInput: { flex: 1, fontSize: fontSize.sm, color: colors.foreground, padding: 0 },
-    searchMetaRow: { flexDirection: "row", alignItems: "center" },
-    searchCount: { fontSize: fontSize.xs, color: colors.mutedForeground },
-    searchNavBtn: {
-      width: 32,
-      height: 32,
-      borderRadius: radius.lg,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-
-    modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)" },
-    bottomSheet: {
-      backgroundColor: colors.card,
-      borderTopLeftRadius: radius.xxl,
-      borderTopRightRadius: radius.xxl,
-      padding: 16,
-    },
-    sheetHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      marginBottom: 12,
-    },
-    sheetTitle: {
-      fontSize: fontSize.md,
-      fontWeight: fontWeight.semibold,
-      color: colors.foreground,
-    },
-    sheetScroll: { maxHeight: SCREEN_HEIGHT * 0.5 },
-    sheetEmpty: {
-      fontSize: fontSize.sm,
-      color: colors.mutedForeground,
-      textAlign: "center",
-      paddingVertical: 32,
-    },
-
-    tocTabBar: {
-      flexDirection: "row" as const,
-      alignItems: "center" as const,
-      gap: 4,
-    },
-    tocTab: {
-      flexDirection: "row" as const,
-      alignItems: "center" as const,
-      gap: 4,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: radius.md,
-    },
-    tocTabText: {
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.medium,
-    },
-
-    settingRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingVertical: 12,
-      borderBottomWidth: 0.5,
-      borderBottomColor: colors.border,
-    },
-    settingRowMultiline: {
-      alignItems: "flex-start",
-      gap: 12,
-    },
-    settingLabelBlock: {
-      flex: 1,
-      minWidth: 0,
-      paddingRight: 12,
-      gap: 4,
-    },
-    settingLabel: { fontSize: fontSize.sm, color: colors.mutedForeground },
-    settingHint: {
-      fontSize: fontSize.xs,
-      lineHeight: 16,
-      color: withOpacity(colors.mutedForeground, 0.82),
-    },
-    settingControl: { flexDirection: "row", alignItems: "center", gap: 12 },
-    stepBtn: {
-      width: 32,
-      height: 32,
-      borderRadius: radius.lg,
-      backgroundColor: colors.muted,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    stepBtnText: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.foreground },
-    settingValue: {
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.medium,
-      color: colors.foreground,
-      minWidth: 32,
-      textAlign: "center",
-    },
-    settingToggleBtn: {
-      minWidth: 68,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: radius.lg,
-      backgroundColor: colors.muted,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    settingToggleBtnActive: {
-      backgroundColor: `${colors.primary}18`,
-    },
-    settingToggleText: {
-      fontSize: fontSize.xs,
-      color: colors.mutedForeground,
-      fontWeight: fontWeight.medium,
-    },
-    settingToggleTextActive: {
-      color: colors.primary,
-    },
-    themeScroll: { maxWidth: 220 },
-    themeRow: { flexDirection: "row", gap: 6 },
-    themeBtn: {
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: radius.lg,
-      backgroundColor: colors.muted,
-    },
-    themeBtnActive: { backgroundColor: colors.primary },
-    themeBtnText: {
-      fontSize: fontSize.xs,
-      fontWeight: fontWeight.medium,
-      color: colors.mutedForeground,
-    },
-    themeBtnTextActive: { color: colors.primaryForeground },
-    viewModeRow: { flexDirection: "row", gap: 8 },
-    viewModeBtn: {
-      paddingHorizontal: 16,
-      paddingVertical: 6,
-      borderRadius: radius.lg,
-      backgroundColor: colors.muted,
-    },
-    viewModeBtnActive: { backgroundColor: colors.primary },
-    viewModeBtnText: {
-      fontSize: fontSize.xs,
-      fontWeight: fontWeight.medium,
-      color: colors.mutedForeground,
-    },
-    viewModeBtnTextActive: { color: colors.primaryForeground },
-
-    notebookPlaceholder: {
-      alignItems: "center",
-      justifyContent: "center",
-      paddingVertical: 48,
-      gap: 12,
-    },
-    notebookPlaceholderText: {
-      fontSize: fontSize.sm,
-      color: colors.mutedForeground,
-      textAlign: "center",
-      paddingHorizontal: 32,
-    },
-
-    highlightItem: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      gap: 8,
-      paddingVertical: 8,
-      borderBottomWidth: 0.5,
-      borderBottomColor: colors.border,
-    },
-    highlightColorDot: { width: 8, height: 8, borderRadius: 4, marginTop: 4 },
-    highlightContent: { flex: 1 },
-    highlightText: { fontSize: fontSize.sm, color: colors.foreground, lineHeight: 18 },
-    highlightNote: { fontSize: fontSize.xs, color: colors.mutedForeground, marginTop: 4 },
-
-    bookmarkItem: {
-      flexDirection: "row" as const,
-      alignItems: "center" as const,
-      gap: 10,
-      paddingVertical: 12,
-      paddingHorizontal: 12,
-      borderBottomWidth: 0.5,
-      borderBottomColor: colors.border,
-    },
-    bookmarkContent: {
-      flex: 1,
-      minWidth: 0,
-    },
-    bookmarkLabel: {
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.medium,
-      lineHeight: 20,
-    },
-    bookmarkSnippet: {
-      fontSize: fontSize.xs,
-      lineHeight: 16,
-      marginTop: 2,
-      opacity: 0.7,
-    },
-    bookmarkDate: {
-      fontSize: fontSize.xs,
-      marginTop: 3,
-      opacity: 0.6,
-    },
-    bookmarkDeleteBtn: {
-      padding: 6,
-      borderRadius: radius.md,
-      opacity: 0.5,
-    },
-
-    noteViewOverlay: {
-      flex: 1,
-      justifyContent: "flex-end",
-      backgroundColor: "rgba(0,0,0,0.5)",
-    },
-    noteViewModal: {
-      backgroundColor: colors.card,
-      borderTopLeftRadius: radius.xxl,
-      borderTopRightRadius: radius.xxl,
-      padding: 16,
-      maxHeight: SCREEN_HEIGHT * 0.75,
-    },
-    noteViewHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      marginBottom: 12,
-    },
-    noteViewTitle: {
-      fontSize: fontSize.md,
-      fontWeight: fontWeight.semibold,
-      color: colors.foreground,
-    },
-    noteViewCloseBtn: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.muted,
-    },
-    noteViewQuote: {
-      fontSize: fontSize.sm,
-      color: colors.mutedForeground,
-      marginBottom: 12,
-      fontStyle: "italic",
-      lineHeight: 20,
-      paddingHorizontal: 8,
-      borderLeftWidth: 2,
-      borderLeftColor: colors.primary,
-    },
-    noteViewBody: {
-      maxHeight: SCREEN_HEIGHT * 0.35,
-      backgroundColor: colors.muted,
-      borderRadius: radius.lg,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-    },
-    noteViewEditorContainer: {
-      height: 200,
-      borderRadius: radius.lg,
-      borderWidth: 1,
-      borderColor: colors.border,
-      overflow: "hidden",
-    },
-    noteViewActions: {
-      flexDirection: "row",
-      justifyContent: "flex-end",
-      gap: 8,
-      marginTop: 12,
-    },
-    noteViewEditBtn: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 4,
-      backgroundColor: colors.primary,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: radius.lg,
-    },
-    noteViewEditText: {
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.medium,
-      color: colors.primaryForeground,
-    },
-    noteViewCancelBtn: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 4,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: radius.lg,
-    },
-    noteViewCancelText: {
-      fontSize: fontSize.sm,
-      color: colors.mutedForeground,
-    },
-    noteViewSaveBtn: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 4,
-      backgroundColor: colors.primary,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: radius.lg,
-    },
-    noteViewSaveText: {
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.medium,
-      color: colors.primaryForeground,
-    },
-
-    noteTooltip: {
-      position: "absolute",
-      width: 300,
-      maxHeight: 200,
-      backgroundColor: "rgba(15, 23, 42, 0.95)",
-      borderRadius: radius.lg,
-      padding: 12,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: 0.3,
-      shadowRadius: 16,
-      elevation: 12,
-      borderWidth: 1,
-      borderColor: "rgba(100, 116, 139, 0.3)",
-      zIndex: 90,
-    },
-    noteTooltipContent: {
-      maxHeight: 140,
-      overflow: "hidden",
-    },
-  });
