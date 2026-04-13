@@ -20,12 +20,15 @@ export type { EdgeTTSVoice } from "@readany/core/tts";
 // Singleton instances (kept at app level for lifecycle management)
 import { BrowserTTSPlayer, DashScopeTTSPlayer, EdgeTTSPlayer } from "@readany/core/tts";
 
-export const browserTTS = new BrowserTTSPlayer();
+export const systemTTS = new BrowserTTSPlayer();
+export const browserTTS = systemTTS;
 export const edgeTTS = new EdgeTTSPlayer();
 export const dashscopeTTS = new DashScopeTTSPlayer();
 
-/** Get available browser SpeechSynthesis voices */
-export function getBrowserVoices(): SpeechSynthesisVoice[] {
+/** Get available system SpeechSynthesis voices */
+export function getSystemVoices(): SpeechSynthesisVoice[] {
   if (!("speechSynthesis" in window)) return [];
   return window.speechSynthesis.getVoices();
 }
+
+export const getBrowserVoices = getSystemVoices;

@@ -215,6 +215,24 @@ export interface EdgeTTSPayload {
   pitch: number;
 }
 
+function formatEdgeTTSError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object") {
+    const maybeMessage =
+      "message" in error && typeof (error as { message?: unknown }).message === "string"
+        ? (error as { message: string }).message
+        : null;
+    if (maybeMessage) return maybeMessage;
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return String(error);
+    }
+  }
+  return String(error);
+}
+
 const edgeTtsAudioCache = new Map<string, ArrayBuffer>();
 const edgeTtsInflightCache = new Map<string, Promise<ArrayBuffer>>();
 
@@ -342,13 +360,13 @@ async function fetchEdgeTTSAudioUncached(payload: EdgeTTSPayload): Promise<Array
       });
 
       ws.onError((error) => {
-        reject(new Error(`Edge TTS WebSocket error: ${error}`));
+        reject(new Error(`Edge TTS WebSocket error: ${formatEdgeTTSError(error)}`));
       });
 
       ws.send(configMsg);
       ws.send(ssmlMsg);
     } catch (error) {
-      reject(new Error(`Edge TTS WebSocket error: ${error}`));
+      reject(new Error(`Edge TTS WebSocket error: ${formatEdgeTTSError(error)}`));
     }
   });
 }

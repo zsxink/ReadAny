@@ -10,7 +10,7 @@
  */
 
 import { useTTSStore } from "@/stores";
-import { splitNarrationText } from "@readany/core/tts";
+import { normalizeTTSConfig, splitNarrationText, type TTSConfig } from "@readany/core/tts";
 import { getPlatformService } from "@readany/core/services";
 import { eventBus } from "@readany/core/utils/event-bus";
 import type { VisibleTTSSegment } from "@/hooks/use-reader-bridge";
@@ -86,6 +86,7 @@ export interface UseReaderTTSResult {
   handleTTSPlayPause: () => Promise<void>;
   handleAdjustTTSRate: (delta: number) => void;
   handleAdjustTTSPitch: (delta: number) => void;
+  handleUpdateTTSConfig: (updates: Partial<TTSConfig>) => void;
   handleToggleTTSContinuous: () => void;
   handleJumpToTTSSegment: (offsetFromCurrent: number) => void;
   handleJumpToTTSLyricSegment: (
@@ -1263,6 +1264,70 @@ export function useReaderTTS({
     [ttsConfig.pitch, ttsUpdateConfig],
   );
 
+  const handleUpdateTTSConfig = useCallback(
+    (updates: Partial<TTSConfig>) => {
+      const nextConfig = normalizeTTSConfig({ ...ttsConfig, ...updates });
+      const hasActiveSession =
+        ttsCurrentBookId === bookId &&
+        (ttsPlayState === "playing" || ttsPlayState === "paused" || ttsPlayState === "loading");
+      const restartSourceKind = ttsSourceKind;
+      const restartSelectionText = (ttsCurrentText || ttsLastText).trim();
+      const restartCfi =
+        currentTTSSegment?.cfi || resolvedTTSSegmentCfi || ttsCurrentLocationCfi || currentCfi;
+      const restartText =
+        currentTTSSegment?.text || normalizeTTSDebugText(ttsCurrentSegmentText) || undefined;
+
+      console.log("[ReaderScreen][TTS] update-config", {
+        updates,
+        currentEngine: ttsConfig.engine,
+        nextEngine: nextConfig.engine,
+        hasActiveSession,
+        sourceKind: restartSourceKind,
+        restartCfi,
+      });
+
+      ttsUpdateConfig(updates);
+
+      if (!hasActiveSession) return;
+
+      setTimeout(() => {
+        if (restartSourceKind === "selection") {
+          if (restartSelectionText) {
+            startSelectionTTS(restartSelectionText, restartCfi || undefined);
+          }
+          return;
+        }
+
+        const restartFromCfi = startPageTTSFromCfiRef.current;
+        if (restartFromCfi && restartCfi) {
+          void restartFromCfi(restartCfi, restartText);
+          return;
+        }
+
+        void startPageTTS(ttsContinuousEnabled);
+      }, 0);
+    },
+    [
+      bookId,
+      currentCfi,
+      currentTTSSegment?.cfi,
+      currentTTSSegment?.text,
+      resolvedTTSSegmentCfi,
+      startPageTTS,
+      startSelectionTTS,
+      ttsConfig,
+      ttsContinuousEnabled,
+      ttsCurrentBookId,
+      ttsCurrentLocationCfi,
+      ttsCurrentSegmentText,
+      ttsCurrentText,
+      ttsLastText,
+      ttsPlayState,
+      ttsSourceKind,
+      ttsUpdateConfig,
+    ],
+  );
+
   const handleToggleTTSContinuous = useCallback(() => {
     setTtsContinuousEnabled((prev) => {
       const next = !prev;
@@ -1994,6 +2059,7 @@ export function useReaderTTS({
     handleTTSPlayPause,
     handleAdjustTTSRate,
     handleAdjustTTSPitch,
+    handleUpdateTTSConfig,
     handleToggleTTSContinuous,
     handleJumpToTTSSegment,
     handleJumpToTTSLyricSegment,

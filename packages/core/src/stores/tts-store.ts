@@ -6,14 +6,14 @@
  * - TTS configuration (engine, voice, rate, pitch, DashScope key)
  * - Persists config to FS
  *
- * Cross-platform: player factories are injectable. By default uses Web-based
- * BrowserTTSPlayer/EdgeTTSPlayer/DashScopeTTSPlayer. Platforms without Web Audio
+ * Cross-platform: player factories are injectable. By default uses a Web-based
+ * system TTS player plus EdgeTTSPlayer/DashScopeTTSPlayer. Platforms without Web Audio
  * (e.g. React Native) can override via `setTTSPlayerFactories()`.
  */
 import { create } from "zustand";
 import { BrowserTTSPlayer, DashScopeTTSPlayer, EdgeTTSPlayer } from "../tts/tts-players";
 import type { ITTSPlayer, TTSConfig } from "../tts/types";
-import { DEFAULT_TTS_CONFIG } from "../tts/types";
+import { DEFAULT_TTS_CONFIG, normalizeTTSConfig } from "../tts/types";
 import { withPersist } from "./persist";
 
 export type TTSPlayState = "stopped" | "playing" | "paused" | "loading";
@@ -22,14 +22,14 @@ export type TTSPlayState = "stopped" | "playing" | "paused" | "loading";
  * TTS player factory interface — allows platforms to provide custom player implementations.
  */
 export interface TTSPlayerFactories {
-  createBrowserTTS: () => ITTSPlayer;
+  createSystemTTS: () => ITTSPlayer;
   createEdgeTTS: () => ITTSPlayer;
   createDashScopeTTS: () => ITTSPlayer;
 }
 
 /** Default Web-based factories */
 const defaultFactories: TTSPlayerFactories = {
-  createBrowserTTS: () => new BrowserTTSPlayer(),
+  createSystemTTS: () => new BrowserTTSPlayer(),
   createEdgeTTS: () => new EdgeTTSPlayer(),
   createDashScopeTTS: () => new DashScopeTTSPlayer(),
 };
@@ -42,7 +42,7 @@ let _factories: TTSPlayerFactories = defaultFactories;
  *
  * Example (React Native):
  *   setTTSPlayerFactories({
- *     createBrowserTTS: () => new ExpoSpeechTTSPlayer(),
+ *     createSystemTTS: () => new ExpoSpeechTTSPlayer(),
  *     createEdgeTTS: () => new ExpoAVEdgeTTSPlayer(),
  *     createDashScopeTTS: () => new ExpoAVDashScopeTTSPlayer(),
  *   });
@@ -50,13 +50,13 @@ let _factories: TTSPlayerFactories = defaultFactories;
 export function setTTSPlayerFactories(factories: Partial<TTSPlayerFactories>): void {
   _factories = { ...defaultFactories, ...factories };
   // Reset cached instances so new factories take effect
-  _browserTTS = null;
+  _systemTTS = null;
   _edgeTTS = null;
   _dashscopeTTS = null;
 }
 
 /** Lazily-created singleton TTS player instances */
-let _browserTTS: ITTSPlayer | null = null;
+let _systemTTS: ITTSPlayer | null = null;
 let _edgeTTS: ITTSPlayer | null = null;
 let _dashscopeTTS: ITTSPlayer | null = null;
 let _sessionSegments: string[] = [];
@@ -64,9 +64,9 @@ let _sessionCurrentIndex = 0;
 /** Generation counter — incremented on every play/jumpToChunk to invalidate stale callbacks */
 let _sessionGeneration = 0;
 
-function getBrowserTTS(): ITTSPlayer {
-  if (!_browserTTS) _browserTTS = _factories.createBrowserTTS();
-  return _browserTTS;
+function getSystemTTS(): ITTSPlayer {
+  if (!_systemTTS) _systemTTS = _factories.createSystemTTS();
+  return _systemTTS;
 }
 
 function getEdgeTTS(): ITTSPlayer {
@@ -131,7 +131,7 @@ export const useTTSStore = create<TTSState>()(
     currentLocationCfi: "",
 
     play: (text: string | string[]) => {
-      const { config } = get();
+      const config = normalizeTTSConfig(get().config);
       const segments = Array.isArray(text) ? text.map((item) => item.trim()).filter(Boolean) : [text.trim()].filter(Boolean);
       const sessionSegments = segments.length > 0 ? segments : [Array.isArray(text) ? text.join(" ").trim() : text.trim()].filter(Boolean);
       _sessionSegments = sessionSegments;
@@ -175,7 +175,7 @@ export const useTTSStore = create<TTSState>()(
         player.onEnd = handleEnd;
         player.speak(sessionSegments, config);
       } else {
-        const player = getBrowserTTS();
+        const player = getSystemTTS();
         player.onStateChange = onState;
         player.onChunkChange = onChunk;
         player.onEnd = handleEnd;
@@ -184,7 +184,8 @@ export const useTTSStore = create<TTSState>()(
     },
 
     pause: () => {
-      const { config, playState } = get();
+      const config = normalizeTTSConfig(get().config);
+      const { playState } = get();
       if (playState !== "playing") return;
       if (config.engine === "dashscope" && config.dashscopeApiKey) {
         getDashScopeTTS().pause();
@@ -192,13 +193,14 @@ export const useTTSStore = create<TTSState>()(
         getEdgeTTS().pause();
       } else {
         // expo-speech pause is unreliable on React Native; keep a stable store-level pause by stopping.
-        getBrowserTTS().stop();
+        getSystemTTS().stop();
       }
       set({ playState: "paused" });
     },
 
     resume: () => {
-      const { config, playState } = get();
+      const config = normalizeTTSConfig(get().config);
+      const { playState } = get();
       if (playState !== "paused") return;
       if (_sessionSegments.length > 0) {
         const nextIndex = Math.max(0, Math.min(_sessionCurrentIndex, _sessionSegments.length - 1));
@@ -240,7 +242,7 @@ export const useTTSStore = create<TTSState>()(
             return;
           }
 
-          const player = getBrowserTTS();
+          const player = getSystemTTS();
           player.onStateChange = onState;
           player.onChunkChange = onChunk;
           player.onEnd = handleEnd;
@@ -252,13 +254,13 @@ export const useTTSStore = create<TTSState>()(
     },
 
     stop: () => {
-      const browser = getBrowserTTS();
+      const system = getSystemTTS();
       const edge = getEdgeTTS();
       const dashscope = getDashScopeTTS();
-      browser.onEnd = undefined;
+      system.onEnd = undefined;
       edge.onEnd = undefined;
       dashscope.onEnd = undefined;
-      browser.stop();
+      system.stop();
       edge.stop();
       dashscope.stop();
       _sessionSegments = [];
@@ -291,7 +293,7 @@ export const useTTSStore = create<TTSState>()(
 
     updateConfig: (updates) =>
       set((s) => ({
-        config: { ...s.config, ...updates },
+        config: normalizeTTSConfig({ ...s.config, ...updates }),
       })),
 
     setPlayState: (playState) => set({ playState }),
@@ -307,8 +309,8 @@ export const useTTSStore = create<TTSState>()(
 
     jumpToChunk: (index: number) => {
       if (index < 0 || index >= _sessionSegments.length) return;
-      const { config } = get();
-      getBrowserTTS().stop();
+      const config = normalizeTTSConfig(get().config);
+      getSystemTTS().stop();
       getEdgeTTS().stop();
       getDashScopeTTS().stop();
 
@@ -351,7 +353,7 @@ export const useTTSStore = create<TTSState>()(
         player.onEnd = handleEnd;
         player.speak(remainingSegments, config);
       } else {
-        const player = getBrowserTTS();
+        const player = getSystemTTS();
         player.onStateChange = onState;
         player.onChunkChange = onChunk;
         player.onEnd = handleEnd;
@@ -364,5 +366,8 @@ export const useTTSStore = create<TTSState>()(
     currentChunkIndex: 0,
     totalChunks: 0,
     currentLocationCfi: "",
-  } as Partial<TTSState>),
+  } as Partial<TTSState>, (persisted) => ({
+    ...persisted,
+    config: normalizeTTSConfig((persisted as TTSState).config),
+  })),
 );

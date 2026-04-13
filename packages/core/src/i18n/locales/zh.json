@@ -812,8 +812,10 @@
     "engine": "引擎",
     "edgeEngine": "Edge TTS",
     "edgeEngineDesc": "免费高质量微软 Neural 语音",
-    "browserEngine": "浏览器内置",
-    "browserEngineDesc": "免费离线，使用系统语音合成",
+    "systemEngine": "系统语音",
+    "systemEngineDesc": "免费离线，使用设备系统语音",
+    "browserEngine": "系统语音",
+    "browserEngineDesc": "免费离线，使用设备系统语音",
     "dashscopeEngine": "DashScope",
     "dashscopeEngineDesc": "高质量云端语音，需要 API 密钥",
     "voice": "语音",
@@ -832,6 +834,7 @@
     "rate": "语速",
     "pitch": "音调",
     "language": "语言",
+    "system": "系统语音",
     "browser": "系统语音",
     "listenSpace": "听书空间",
     "fromCurrentPage": "从当前页开始",
@@ -871,7 +874,8 @@
     "selectEngine": "朗读引擎",
     "prevChapter": "上一章",
     "nextChapter": "下一章",
-    "browserVoiceNote": "浏览器音色请在系统设置中选择"
+    "systemVoiceNote": "系统音色请在设备系统设置中选择",
+    "browserVoiceNote": "系统音色请在设备系统设置中选择"
   },
   "mindmap": {
     "title": "思维导图",

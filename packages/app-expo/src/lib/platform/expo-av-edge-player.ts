@@ -114,7 +114,7 @@ export class ExpoAVEdgeTTSPlayer implements ITTSPlayer {
         await this._playChunk();
       }
     } catch (err) {
-      if ((err as Error)?.message !== "aborted") {
+      if (!this._stopped && (err as Error)?.message !== "aborted") {
         console.error("[ExpoAVEdgeTTSPlayer] chunk error:", err);
       }
       if (this._currentSound) {

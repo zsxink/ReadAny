@@ -542,7 +542,9 @@ export function AISettings() {
       try {
         const models = await fetchModels(endpointId);
         if (models.length === 0) {
-          setFetchError("No models returned. Check your API key and URL.");
+          setFetchError(
+            "No models returned. Check your API key, model access, and whether the base URL points to the API root.",
+          );
         } else if (!aiConfig.activeModel) {
           // 自动选中第一个模型（如果当前没有选中任何模型）
           setActiveEndpoint(endpointId);

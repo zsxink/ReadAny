@@ -2,14 +2,17 @@
  * TTS types and constants — shared across all platforms.
  */
 
-export type TTSEngine = "browser" | "edge" | "dashscope";
+export type TTSEngine = "system" | "edge" | "dashscope";
+export type LegacyTTSEngine = TTSEngine | "browser";
 
 export type TTSPlayState = "stopped" | "playing" | "paused" | "loading";
 
 export interface TTSConfig {
   engine: TTSEngine;
-  /** Browser SpeechSynthesis voice name */
+  /** System voice identifier (or legacy display name on older configs) */
   voiceName: string;
+  /** Human-readable system voice label for UI display */
+  systemVoiceLabel: string;
   /** Speech rate (0.5 - 2.0) */
   rate: number;
   /** Speech pitch (0.5 - 2.0) */
@@ -25,12 +28,42 @@ export interface TTSConfig {
 export const DEFAULT_TTS_CONFIG: TTSConfig = {
   engine: "edge",
   voiceName: "",
+  systemVoiceLabel: "",
   rate: 1.0,
   pitch: 1.0,
   edgeVoice: "zh-CN-XiaoxiaoNeural",
   dashscopeApiKey: "",
   dashscopeVoice: "Cherry",
 };
+
+export interface PersistedTTSConfig extends Partial<Omit<TTSConfig, "engine">> {
+  engine?: LegacyTTSEngine | string | null;
+}
+
+export function normalizeTTSEngine(engine: LegacyTTSEngine | string | null | undefined): TTSEngine {
+  if (engine === "system" || engine === "edge" || engine === "dashscope") {
+    return engine;
+  }
+  if (engine === "browser") {
+    return "system";
+  }
+  return DEFAULT_TTS_CONFIG.engine;
+}
+
+export function normalizeTTSConfig(config: PersistedTTSConfig | null | undefined): TTSConfig {
+  return {
+    ...DEFAULT_TTS_CONFIG,
+    ...config,
+    engine: normalizeTTSEngine(config?.engine),
+    voiceName: config?.voiceName ?? DEFAULT_TTS_CONFIG.voiceName,
+    systemVoiceLabel: config?.systemVoiceLabel ?? DEFAULT_TTS_CONFIG.systemVoiceLabel,
+    rate: typeof config?.rate === "number" ? config.rate : DEFAULT_TTS_CONFIG.rate,
+    pitch: typeof config?.pitch === "number" ? config.pitch : DEFAULT_TTS_CONFIG.pitch,
+    edgeVoice: config?.edgeVoice ?? DEFAULT_TTS_CONFIG.edgeVoice,
+    dashscopeApiKey: config?.dashscopeApiKey ?? DEFAULT_TTS_CONFIG.dashscopeApiKey,
+    dashscopeVoice: config?.dashscopeVoice ?? DEFAULT_TTS_CONFIG.dashscopeVoice,
+  };
+}
 
 export const DASHSCOPE_VOICES = [
   { id: "Cherry", label: "芊悦 (Cherry)" },

@@ -123,8 +123,24 @@ async function fetchOpenAIModels(endpoint: AIEndpoint): Promise<string[]> {
   if (!response.ok) {
     throw new Error(`Failed to fetch models: ${response.status} ${response.statusText}`);
   }
-  const data = await response.json();
-  return (data.data || [])
+  const rawBody = await response.text();
+  let data: { data?: Array<{ id: string }> };
+
+  try {
+    data = JSON.parse(rawBody);
+  } catch {
+    throw new Error(
+      "The endpoint did not return JSON. Check whether the base URL points to the API root instead of a console page.",
+    );
+  }
+
+  if (!Array.isArray(data.data)) {
+    throw new Error(
+      "The endpoint returned an unexpected models response. Check whether the base URL points to the OpenAI-compatible API root.",
+    );
+  }
+
+  return data.data
     .map((m: { id: string }) => m.id)
     .sort((a: string, b: string) => a.localeCompare(b));
 }
@@ -380,7 +396,7 @@ export const useSettingsStore = create<SettingsState>()(
             ),
           },
         }));
-        return [];
+        throw err;
       }
     },
 

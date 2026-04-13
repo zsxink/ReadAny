@@ -22,6 +22,8 @@
     "./ai/agents/*": "./src/ai/agents/*.ts",
     "./ai/skills": "./src/ai/skills/index.ts",
     "./ai/skills/*": "./src/ai/skills/*.ts",
+    "./ai/tools": "./src/ai/tools/index.ts",
+    "./ai/tools/*": "./src/ai/tools/*.ts",
     "./rag": "./src/rag/index.ts",
     "./rag/*": "./src/rag/*.ts",
     "./db": "./src/db/index.ts",

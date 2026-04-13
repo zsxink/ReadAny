@@ -1522,7 +1522,7 @@ export function ReaderScreen({ route, navigation }: Props) {
         onAdjustRate={tts.handleAdjustTTSRate}
         onAdjustPitch={tts.handleAdjustTTSPitch}
         onToggleContinuous={tts.handleToggleTTSContinuous}
-        onUpdateConfig={ttsConfig ? undefined : undefined}
+        onUpdateConfig={tts.handleUpdateTTSConfig}
         onPrevChapter={toc.length > 0 ? tts.handleTTSPrevChapter : undefined}
         onNextChapter={toc.length > 0 ? tts.handleTTSNextChapter : undefined}
       />

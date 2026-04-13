@@ -8,9 +8,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { DASHSCOPE_VOICES, getBrowserVoices } from "@/lib/tts/tts-service";
+import { DASHSCOPE_VOICES, getSystemVoices } from "@/lib/tts/tts-service";
+import {
+  DEFAULT_SYSTEM_VOICE_VALUE,
+  findSystemVoiceLabel,
+  getSystemVoiceOptions,
+  groupSystemVoiceOptions,
+  resolveSystemVoiceValue,
+} from "@/lib/tts/system-voices";
 import type { TTSEngine } from "@/lib/tts/tts-service";
 import { useTTSStore } from "@/stores/tts-store";
+import { getLocaleDisplayLabel } from "@readany/core/tts";
 import { cn } from "@readany/core/utils";
 import { ChevronDown, ChevronUp, Headphones, Minus, Pause, Play, Plus, Square } from "lucide-react";
 /**
@@ -19,7 +27,7 @@ import { ChevronDown, ChevronUp, Headphones, Minus, Pause, Play, Plus, Square } 
  * Appears at bottom of reader when TTS is active.
  * Uses shadcn/ui: Button, Select, Slider, Tooltip.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 interface TTSControlsProps {
@@ -28,7 +36,7 @@ interface TTSControlsProps {
 }
 
 export function TTSControls({ onClose, className }: TTSControlsProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const playState = useTTSStore((s) => s.playState);
   const config = useTTSStore((s) => s.config);
   const pause = useTTSStore((s) => s.pause);
@@ -40,11 +48,22 @@ export function TTSControls({ onClose, className }: TTSControlsProps) {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
 
   useEffect(() => {
-    const loadVoices = () => setVoices(getBrowserVoices());
+    const loadVoices = () => setVoices(getSystemVoices());
     loadVoices();
     window.speechSynthesis?.addEventListener?.("voiceschanged", loadVoices);
     return () => window.speechSynthesis?.removeEventListener?.("voiceschanged", loadVoices);
   }, []);
+
+  const displayLocale = i18n.resolvedLanguage || i18n.language;
+  const systemVoiceOptions = useMemo(() => getSystemVoiceOptions(voices), [voices]);
+  const systemVoiceGroups = useMemo(
+    () => groupSystemVoiceOptions(systemVoiceOptions),
+    [systemVoiceOptions],
+  );
+  const selectedSystemVoiceValue = useMemo(
+    () => resolveSystemVoiceValue(config.voiceName, systemVoiceOptions),
+    [config.voiceName, systemVoiceOptions],
+  );
 
   const handleStop = () => {
     stop();
@@ -71,7 +90,7 @@ export function TTSControls({ onClose, className }: TTSControlsProps) {
             <div className="flex items-center gap-3">
               <span className="text-xs text-muted-foreground w-16 shrink-0">{t("tts.engine")}</span>
               <div className="flex gap-1">
-                {(["browser", "dashscope"] as TTSEngine[]).map((eng) => (
+                {(["system", "dashscope"] as TTSEngine[]).map((eng) => (
                   <Button
                     key={eng}
                     variant={config.engine === eng ? "default" : "secondary"}
@@ -79,31 +98,49 @@ export function TTSControls({ onClose, className }: TTSControlsProps) {
                     className="h-7 text-xs"
                     onClick={() => updateConfig({ engine: eng })}
                   >
-                    {eng === "browser" ? t("tts.browserEngine") : t("tts.dashscopeEngine")}
+                    {eng === "system" ? t("tts.systemEngine") : t("tts.dashscopeEngine")}
                   </Button>
                 ))}
               </div>
             </div>
 
             {/* Voice selection */}
-            {config.engine === "browser" ? (
+            {config.engine === "system" ? (
               <div className="flex items-center gap-3">
                 <span className="text-xs text-muted-foreground w-16 shrink-0">
                   {t("tts.voice")}
                 </span>
                 <Select
-                  value={config.voiceName || "__default__"}
-                  onValueChange={(v) => updateConfig({ voiceName: v === "__default__" ? "" : v })}
+                  value={selectedSystemVoiceValue}
+                  onValueChange={(v) => {
+                    if (v === DEFAULT_SYSTEM_VOICE_VALUE) {
+                      updateConfig({ voiceName: "", systemVoiceLabel: "" });
+                      return;
+                    }
+                    updateConfig({
+                      voiceName: v,
+                      systemVoiceLabel: findSystemVoiceLabel(v, systemVoiceOptions),
+                    });
+                  }}
                 >
                   <SelectTrigger className="h-7 flex-1 text-xs">
                     <SelectValue placeholder={t("tts.defaultVoice")} />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__default__">{t("tts.defaultVoice")}</SelectItem>
-                    {voices.map((v) => (
-                      <SelectItem key={v.name} value={v.name}>
-                        {v.name} ({v.lang})
-                      </SelectItem>
+                  <SelectContent className="max-h-[220px]">
+                    <SelectItem value={DEFAULT_SYSTEM_VOICE_VALUE}>
+                    {t("tts.defaultVoice")}
+                  </SelectItem>
+                    {systemVoiceGroups.map(([lang, langVoices]) => (
+                      <div key={lang}>
+                        <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                          {getLocaleDisplayLabel(lang, displayLocale)}
+                        </div>
+                        {langVoices.map((voice) => (
+                          <SelectItem key={voice.id} value={voice.id}>
+                            {voice.label}
+                          </SelectItem>
+                        ))}
+                      </div>
                     ))}
                   </SelectContent>
                 </Select>

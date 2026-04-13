@@ -1,9 +1,20 @@
 import { useColors, radius } from "@/styles/theme";
 import {
+  DEFAULT_SYSTEM_VOICE_VALUE,
+  findSystemVoiceLabel,
+  getSystemVoiceOptionsAsync,
+  groupSystemVoiceOptions,
+  resolveSystemVoiceValue,
+  type NativeSystemVoiceOption,
+} from "@/lib/platform/system-voices";
+import {
   DASHSCOPE_VOICES,
   EDGE_TTS_VOICES,
+  getLocaleDisplayLabel,
+  groupEdgeTTSVoices,
   type TTSConfig,
 } from "@readany/core/tts";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Modal,
@@ -31,7 +42,24 @@ export function VoicePickerModal({
 }: VoicePickerModalProps) {
   const colors = useColors();
   const s = makeStyles(colors);
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const [systemVoices, setSystemVoices] = useState<NativeSystemVoiceOption[]>([]);
+  const displayLocale = i18n.resolvedLanguage || i18n.language;
+
+  useEffect(() => {
+    if (!visible) return;
+    void getSystemVoiceOptionsAsync().then(setSystemVoices);
+  }, [visible]);
+
+  const systemVoiceGroups = useMemo(
+    () => groupSystemVoiceOptions(systemVoices),
+    [systemVoices],
+  );
+  const edgeVoiceGroups = useMemo(() => groupEdgeTTSVoices(EDGE_TTS_VOICES), []);
+  const selectedSystemVoiceValue = useMemo(
+    () => resolveSystemVoiceValue(config.voiceName, systemVoices),
+    [config.voiceName, systemVoices],
+  );
 
   return (
     <Modal
@@ -53,10 +81,10 @@ export function VoicePickerModal({
 
           {/* Engine selector */}
           <View style={s.engineSection}>
-            {(["edge", "dashscope", "browser"] as const).map((eng) => {
+            {(["edge", "dashscope", "system"] as const).map((eng) => {
               const isActive = config.engine === eng;
               const label =
-                eng === "edge" ? "Edge TTS" : eng === "dashscope" ? "DashScope" : t("tts.browser");
+                eng === "edge" ? "Edge TTS" : eng === "dashscope" ? "DashScope" : t("tts.system");
               const desc =
                 eng === "edge"
                   ? "Microsoft · 多语言"
@@ -87,7 +115,7 @@ export function VoicePickerModal({
           </View>
 
           {/* Divider + voice section title */}
-          {config.engine !== "browser" && (
+          {config.engine !== "system" && (
             <View style={s.voicePickerHeader}>
               <Text style={s.voicePickerTitle}>{t("tts.selectVoice")}</Text>
             </View>
@@ -118,52 +146,95 @@ export function VoicePickerModal({
 
             {/* Edge TTS voices — grouped by language, zh-* first */}
             {config.engine === "edge" &&
-              (() => {
-                const grouped = EDGE_TTS_VOICES.reduce<Record<string, typeof EDGE_TTS_VOICES>>(
-                  (acc, v) => {
-                    (acc[v.lang] ??= []).push(v);
-                    return acc;
-                  },
-                  {},
-                );
-                const langs = Object.keys(grouped).sort((a, b) => {
-                  const aZh = a.startsWith("zh") ? -1 : 0;
-                  const bZh = b.startsWith("zh") ? -1 : 0;
-                  return aZh - bZh || a.localeCompare(b);
-                });
-                return langs.map((lang) => (
+              edgeVoiceGroups.map(([lang, voices]) => (
+                <View key={lang}>
+                  <View style={s.voiceLangHeader}>
+                    <Text style={s.voiceLangTxt}>
+                      {getLocaleDisplayLabel(lang, displayLocale)}
+                    </Text>
+                  </View>
+                  {voices.map((v) => {
+                    const isSelected = config.edgeVoice === v.id;
+                    return (
+                      <TouchableOpacity
+                        key={v.id}
+                        style={[s.voiceItem, isSelected && s.voiceItemSelected]}
+                        onPress={() => {
+                          onUpdateConfig({ edgeVoice: v.id });
+                          onClose();
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[s.voiceItemTxt, isSelected && s.voiceItemTxtSelected]}>
+                          {v.name}
+                        </Text>
+                        {isSelected && <Text style={s.voiceItemCheck}>✓</Text>}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ))}
+
+            {/* System voices */}
+            {config.engine === "system" && (
+              <>
+                <TouchableOpacity
+                  style={[
+                    s.voiceItem,
+                    selectedSystemVoiceValue === DEFAULT_SYSTEM_VOICE_VALUE &&
+                      s.voiceItemSelected,
+                  ]}
+                  onPress={() => {
+                    onUpdateConfig({ voiceName: "", systemVoiceLabel: "" });
+                    onClose();
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      s.voiceItemTxt,
+                      selectedSystemVoiceValue === DEFAULT_SYSTEM_VOICE_VALUE &&
+                        s.voiceItemTxtSelected,
+                    ]}
+                  >
+                    {t("tts.defaultVoice")}
+                  </Text>
+                  {selectedSystemVoiceValue === DEFAULT_SYSTEM_VOICE_VALUE && (
+                    <Text style={s.voiceItemCheck}>✓</Text>
+                  )}
+                </TouchableOpacity>
+                {systemVoiceGroups.map(([lang, voices]) => (
                   <View key={lang}>
                     <View style={s.voiceLangHeader}>
-                      <Text style={s.voiceLangTxt}>{lang}</Text>
+                      <Text style={s.voiceLangTxt}>
+                        {getLocaleDisplayLabel(lang, displayLocale)}
+                      </Text>
                     </View>
-                    {grouped[lang]!.map((v) => {
-                      const isSelected = config.edgeVoice === v.id;
+                    {voices.map((voice) => {
+                      const isSelected = selectedSystemVoiceValue === voice.id;
                       return (
                         <TouchableOpacity
-                          key={v.id}
+                          key={voice.id}
                           style={[s.voiceItem, isSelected && s.voiceItemSelected]}
                           onPress={() => {
-                            onUpdateConfig({ edgeVoice: v.id });
+                            onUpdateConfig({
+                              voiceName: voice.id,
+                              systemVoiceLabel: findSystemVoiceLabel(voice.id, systemVoices),
+                            });
                             onClose();
                           }}
                           activeOpacity={0.7}
                         >
                           <Text style={[s.voiceItemTxt, isSelected && s.voiceItemTxtSelected]}>
-                            {v.name}
+                            {voice.label}
                           </Text>
                           {isSelected && <Text style={s.voiceItemCheck}>✓</Text>}
                         </TouchableOpacity>
                       );
                     })}
                   </View>
-                ));
-              })()}
-
-            {/* Browser — no selectable voices */}
-            {config.engine === "browser" && (
-              <View style={s.voiceBrowserNote}>
-                <Text style={s.voiceBrowserNoteTxt}>{t("tts.browserVoiceNote")}</Text>
-              </View>
+                ))}
+              </>
             )}
           </ScrollView>
 

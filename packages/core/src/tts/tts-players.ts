@@ -64,7 +64,9 @@ export class BrowserTTSPlayer implements ITTSPlayer {
     utt.pitch = config.pitch;
 
     if (config.voiceName) {
-      const voice = synth.getVoices().find((v) => v.name === config.voiceName);
+      const voice = synth
+        .getVoices()
+        .find((v) => v.voiceURI === config.voiceName || v.name === config.voiceName);
       if (voice) utt.voice = voice;
     }
 

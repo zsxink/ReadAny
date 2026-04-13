@@ -213,6 +213,11 @@ export const makeStyles = (colors: ThemeColors) =>
     endpointTestResult: { fontSize: fontSize.xs, marginTop: spacing.xs },
     endpointTestSuccess: { color: "#16a34a" },
     endpointTestError: { color: colors.destructive },
+    errorText: {
+      fontSize: fontSize.xs,
+      color: colors.destructive,
+      marginTop: spacing.xs,
+    },
     modelTags: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
     modelTag: {
       flexDirection: "row",

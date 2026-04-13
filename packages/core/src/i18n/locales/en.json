@@ -932,8 +932,10 @@
     "engine": "Engine",
     "edgeEngine": "Edge TTS",
     "edgeEngineDesc": "Free high-quality Microsoft Neural voices",
-    "browserEngine": "Browser Built-in",
-    "browserEngineDesc": "Free offline, uses system speech synthesis",
+    "systemEngine": "System Voice",
+    "systemEngineDesc": "Free offline, uses the device system voice",
+    "browserEngine": "System Voice",
+    "browserEngineDesc": "Free offline, uses the device system voice",
     "dashscopeEngine": "DashScope",
     "dashscopeEngineDesc": "High-quality cloud voice, requires API key",
     "voice": "Voice",
@@ -952,6 +954,7 @@
     "rate": "Rate",
     "pitch": "Pitch",
     "language": "Language",
+    "system": "System Voice",
     "browser": "System Voice",
     "listenSpace": "Listening Space",
     "fromCurrentPage": "From current page",
@@ -991,6 +994,7 @@
     "selectEngine": "TTS Engine",
     "prevChapter": "Previous Chapter",
     "nextChapter": "Next Chapter",
-    "browserVoiceNote": "Browser voice can be selected in system settings"
+    "systemVoiceNote": "Choose the system voice in your device settings",
+    "browserVoiceNote": "Choose the system voice in your device settings"
   }
 }

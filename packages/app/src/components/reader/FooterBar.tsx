@@ -8,10 +8,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { DASHSCOPE_VOICES, EDGE_TTS_VOICES, getBrowserVoices } from "@/lib/tts/tts-service";
+import { DASHSCOPE_VOICES, EDGE_TTS_VOICES, getSystemVoices } from "@/lib/tts/tts-service";
+import {
+  DEFAULT_SYSTEM_VOICE_VALUE,
+  findSystemVoiceLabel,
+  getSystemVoiceOptions,
+  groupSystemVoiceOptions,
+  resolveSystemVoiceValue,
+} from "@/lib/tts/system-voices";
 import type { TTSEngine } from "@/lib/tts/tts-service";
 import { useReaderStore } from "@/stores/reader-store";
 import { useTTSStore } from "@/stores/tts-store";
+import { getLocaleDisplayLabel, groupEdgeTTSVoices } from "@readany/core/tts";
 import {
   ChevronDown,
   ChevronLeft,
@@ -24,7 +32,7 @@ import {
   Plus,
   Square,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 interface FooterBarProps {
@@ -53,7 +61,7 @@ export function FooterBar({
   showTTS = false,
   onTTSClose,
 }: FooterBarProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const tab = useReaderStore((s) => s.tabs[tabId]);
 
   const playState = useTTSStore((s) => s.playState);
@@ -67,11 +75,23 @@ export function FooterBar({
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
 
   useEffect(() => {
-    const loadVoices = () => setVoices(getBrowserVoices());
+    const loadVoices = () => setVoices(getSystemVoices());
     loadVoices();
     window.speechSynthesis?.addEventListener?.("voiceschanged", loadVoices);
     return () => window.speechSynthesis?.removeEventListener?.("voiceschanged", loadVoices);
   }, []);
+
+  const displayLocale = i18n.resolvedLanguage || i18n.language;
+  const edgeVoiceGroups = useMemo(() => groupEdgeTTSVoices(EDGE_TTS_VOICES), []);
+  const systemVoiceOptions = useMemo(() => getSystemVoiceOptions(voices), [voices]);
+  const systemVoiceGroups = useMemo(
+    () => groupSystemVoiceOptions(systemVoiceOptions),
+    [systemVoiceOptions],
+  );
+  const selectedSystemVoiceValue = useMemo(
+    () => resolveSystemVoiceValue(config.voiceName, systemVoiceOptions),
+    [config.voiceName, systemVoiceOptions],
+  );
 
   // Collapse settings when TTS is hidden
   useEffect(() => {
@@ -109,7 +129,7 @@ export function FooterBar({
             <div className="flex items-center gap-3">
               <span className="text-xs text-muted-foreground w-16 shrink-0">{t("tts.engine")}</span>
               <div className="flex gap-1">
-                {(["edge", "browser", "dashscope"] as TTSEngine[]).map((eng) => (
+                {(["edge", "system", "dashscope"] as TTSEngine[]).map((eng) => (
                   <Button
                     key={eng}
                     variant={config.engine === eng ? "default" : "secondary"}
@@ -117,8 +137,8 @@ export function FooterBar({
                     className="h-7 text-xs"
                     onClick={() => updateConfig({ engine: eng })}
                   >
-                    {eng === "browser"
-                      ? t("tts.browserEngine")
+                    {eng === "system"
+                      ? t("tts.systemEngine")
                       : eng === "edge"
                         ? t("tts.edgeEngine")
                         : t("tts.dashscopeEngine")}
@@ -141,36 +161,57 @@ export function FooterBar({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="max-h-[200px]">
-                    {EDGE_TTS_VOICES.filter((v) => {
-                      const selectedLang =
-                        config.edgeVoice?.split("-").slice(0, 2).join("-") || "zh-CN";
-                      return v.lang === selectedLang;
-                    }).map((v) => (
-                      <SelectItem key={v.id} value={v.id}>
-                        {v.name} ({v.lang})
-                      </SelectItem>
+                    {edgeVoiceGroups.map(([lang, voices]) => (
+                      <div key={lang}>
+                        <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                          {getLocaleDisplayLabel(lang, displayLocale)}
+                        </div>
+                        {voices.map((v) => (
+                          <SelectItem key={v.id} value={v.id}>
+                            {v.name}
+                          </SelectItem>
+                        ))}
+                      </div>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-            ) : config.engine === "browser" ? (
+            ) : config.engine === "system" ? (
               <div className="flex items-center gap-3">
                 <span className="text-xs text-muted-foreground w-16 shrink-0">
                   {t("tts.voice")}
                 </span>
                 <Select
-                  value={config.voiceName || "__default__"}
-                  onValueChange={(v) => updateConfig({ voiceName: v === "__default__" ? "" : v })}
+                  value={selectedSystemVoiceValue}
+                  onValueChange={(v) => {
+                    if (v === DEFAULT_SYSTEM_VOICE_VALUE) {
+                      updateConfig({ voiceName: "", systemVoiceLabel: "" });
+                      return;
+                    }
+                    updateConfig({
+                      voiceName: v,
+                      systemVoiceLabel: findSystemVoiceLabel(v, systemVoiceOptions),
+                    });
+                  }}
                 >
                   <SelectTrigger className="h-7 flex-1 text-xs">
                     <SelectValue placeholder={t("tts.defaultVoice")} />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__default__">{t("tts.defaultVoice")}</SelectItem>
-                    {voices.map((v) => (
-                      <SelectItem key={v.name} value={v.name}>
-                        {v.name} ({v.lang})
-                      </SelectItem>
+                  <SelectContent className="max-h-[220px]">
+                    <SelectItem value={DEFAULT_SYSTEM_VOICE_VALUE}>
+                    {t("tts.defaultVoice")}
+                  </SelectItem>
+                  {systemVoiceGroups.map(([lang, langVoices]) => (
+                    <div key={lang}>
+                      <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                          {getLocaleDisplayLabel(lang, displayLocale)}
+                      </div>
+                      {langVoices.map((voice) => (
+                        <SelectItem key={voice.id} value={voice.id}>
+                            {voice.label}
+                          </SelectItem>
+                        ))}
+                      </div>
                     ))}
                   </SelectContent>
                 </Select>

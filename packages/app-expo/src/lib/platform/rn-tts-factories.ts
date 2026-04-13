@@ -10,7 +10,7 @@ import { ExpoAVEdgeTTSPlayer } from "./expo-av-edge-player";
 import { ExpoSpeechTTSPlayer } from "./expo-speech-player";
 
 export const rnTTSPlayerFactories: TTSPlayerFactories = {
-  createBrowserTTS: () => new ExpoSpeechTTSPlayer(),
+  createSystemTTS: () => new ExpoSpeechTTSPlayer(),
   createEdgeTTS: () => new ExpoAVEdgeTTSPlayer(),
   // DashScope TTS needs PCM streaming via expo-av — falls back to expo-speech for now.
   createDashScopeTTS: () => new ExpoSpeechTTSPlayer(),

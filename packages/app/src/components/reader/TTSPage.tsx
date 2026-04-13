@@ -2,10 +2,20 @@ import {
   buildNarrationPreview,
   DASHSCOPE_VOICES,
   EDGE_TTS_VOICES,
+  getLocaleDisplayLabel,
   getTTSVoiceLabel,
+  groupEdgeTTSVoices,
   type TTSConfig,
   type TTSPlayState,
 } from "@readany/core/tts";
+import { getSystemVoices } from "@/lib/tts/tts-service";
+import {
+  DEFAULT_SYSTEM_VOICE_VALUE,
+  findSystemVoiceLabel,
+  getSystemVoiceOptions,
+  groupSystemVoiceOptions,
+  resolveSystemVoiceValue,
+} from "@/lib/tts/system-voices";
 import {
   ChevronLeft,
   ChevronRight,
@@ -101,8 +111,9 @@ export function TTSPage({
   onPrevChapter: _onPrevChapter,
   onNextChapter: _onNextChapter,
 }: TTSPageProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [voicePickerOpen, setVoicePickerOpen] = useState(false);
+  const [systemVoices, setSystemVoices] = useState<SpeechSynthesisVoice[]>([]);
   const voiceAnchorRef = useRef<HTMLButtonElement>(null);
   const activeLyricRef = useRef<HTMLButtonElement | null>(null);
   const pendingScrollRef = useRef(false);
@@ -120,6 +131,24 @@ export function TTSPage({
   const loadMoreBelowLockRef = useRef(false);
 
   const fallbackPreview = useMemo(() => buildNarrationPreview(currentText), [currentText]);
+  useEffect(() => {
+    const loadVoices = () => setSystemVoices(getSystemVoices());
+    loadVoices();
+    window.speechSynthesis?.addEventListener?.("voiceschanged", loadVoices);
+    return () => window.speechSynthesis?.removeEventListener?.("voiceschanged", loadVoices);
+  }, []);
+
+  const displayLocale = i18n.resolvedLanguage || i18n.language;
+  const edgeVoiceGroups = useMemo(() => groupEdgeTTSVoices(EDGE_TTS_VOICES), []);
+  const systemVoiceOptions = useMemo(() => getSystemVoiceOptions(systemVoices), [systemVoices]);
+  const systemVoiceGroups = useMemo(
+    () => groupSystemVoiceOptions(systemVoiceOptions),
+    [systemVoiceOptions],
+  );
+  const selectedSystemVoiceValue = useMemo(
+    () => resolveSystemVoiceValue(config.voiceName, systemVoiceOptions),
+    [config.voiceName, systemVoiceOptions],
+  );
   const prevCount =
     prevNarrationSegments?.filter((segment) => segment.text.trim().length > 0).length ?? 0;
   const lyricSegments = useMemo(() => {
@@ -304,7 +333,7 @@ export function TTSPage({
                   ? "Edge TTS"
                   : config.engine === "dashscope"
                     ? "DashScope"
-                    : t("tts.browser")}
+                    : t("tts.system")}
                 {onUpdateConfig && <ChevronRight className="h-2.5 w-2.5" />}
               </button>
             </div>
@@ -333,10 +362,10 @@ export function TTSPage({
                     <div className="sticky top-0 z-10 border-b border-border/30 bg-background/95 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                       {t("tts.selectEngine")}
                     </div>
-                    {(["edge", "dashscope", "browser"] as const).map((eng) => {
+                    {(["edge", "dashscope", "system"] as const).map((eng) => {
                       const isActive = config.engine === eng;
                       const label =
-                        eng === "edge" ? "Edge TTS" : eng === "dashscope" ? "DashScope" : t("tts.browser");
+                        eng === "edge" ? "Edge TTS" : eng === "dashscope" ? "DashScope" : t("tts.system");
                       const desc =
                         eng === "edge"
                           ? "Microsoft · 多语言"
@@ -362,7 +391,7 @@ export function TTSPage({
                     })}
 
                     {/* Voice section */}
-                    {config.engine !== "browser" && (
+                    {config.engine !== "system" && (
                       <div className="sticky top-8 z-10 border-y border-border/30 bg-background/95 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                         {t("tts.selectVoice")}
                       </div>
@@ -385,45 +414,77 @@ export function TTSPage({
                         </button>
                       ))}
                     {config.engine === "edge" &&
-                      (() => {
-                        // Group by language, show zh-* first
-                        const grouped = EDGE_TTS_VOICES.reduce<Record<string, typeof EDGE_TTS_VOICES>>((acc, v) => {
-                          (acc[v.lang] ??= []).push(v);
-                          return acc;
-                        }, {});
-                        const langs = Object.keys(grouped).sort((a, b) => {
-                          const aZh = a.startsWith("zh") ? -1 : 0;
-                          const bZh = b.startsWith("zh") ? -1 : 0;
-                          return aZh - bZh || a.localeCompare(b);
-                        });
-                        return langs.map((lang) => (
-                          <div key={lang}>
-                            <div className="bg-muted/60 px-3 py-1 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground/70">
-                              {lang}
-                            </div>
-                            {grouped[lang].map((v) => (
+                      edgeVoiceGroups.map(([lang, voices]) => (
+                        <div key={lang}>
+                          <div className="bg-muted/60 px-3 py-1 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+                            {getLocaleDisplayLabel(lang, displayLocale)}
+                          </div>
+                          {voices.map((v) => (
+                            <button
+                              key={v.id}
+                              type="button"
+                              onClick={() => {
+                                onUpdateConfig({ edgeVoice: v.id });
+                                setVoicePickerOpen(false);
+                              }}
+                              className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs transition-colors hover:bg-muted ${config.edgeVoice === v.id ? "font-semibold text-primary" : "text-foreground"}`}
+                            >
+                              {v.name}
+                              {config.edgeVoice === v.id && (
+                                <span className="text-[11px] font-bold text-primary">✓</span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      ))}
+                    {config.engine === "system" && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onUpdateConfig?.({ voiceName: "", systemVoiceLabel: "" });
+                            setVoicePickerOpen(false);
+                          }}
+                          className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs transition-colors hover:bg-muted ${selectedSystemVoiceValue === DEFAULT_SYSTEM_VOICE_VALUE ? "font-semibold text-primary" : "text-foreground"}`}
+                        >
+                          {t("tts.defaultVoice")}
+                          {selectedSystemVoiceValue === DEFAULT_SYSTEM_VOICE_VALUE && (
+                            <span className="text-[11px] font-bold text-primary">✓</span>
+                          )}
+                        </button>
+                        {systemVoiceGroups.map(([lang, langVoices]) => (
+                        <div key={lang}>
+                          <div className="bg-muted/60 px-3 py-1 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+                            {getLocaleDisplayLabel(lang, displayLocale)}
+                          </div>
+                          {langVoices.map((voice) => {
+                            const isSelected = selectedSystemVoiceValue === voice.id;
+                            return (
                               <button
-                                key={v.id}
+                                key={voice.id}
                                 type="button"
                                 onClick={() => {
-                                  onUpdateConfig({ edgeVoice: v.id });
+                                  onUpdateConfig?.({
+                                    voiceName: voice.id,
+                                    systemVoiceLabel: findSystemVoiceLabel(
+                                      voice.id,
+                                      systemVoiceOptions,
+                                    ),
+                                  });
                                   setVoicePickerOpen(false);
                                 }}
-                                className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs transition-colors hover:bg-muted ${config.edgeVoice === v.id ? "font-semibold text-primary" : "text-foreground"}`}
+                                className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs transition-colors hover:bg-muted ${isSelected ? "font-semibold text-primary" : "text-foreground"}`}
                               >
-                                {v.name}
-                                {config.edgeVoice === v.id && (
+                                {voice.label}
+                                {isSelected && (
                                   <span className="text-[11px] font-bold text-primary">✓</span>
                                 )}
                               </button>
-                            ))}
-                          </div>
-                        ));
-                      })()}
-                    {config.engine === "browser" && (
-                      <div className="px-3 py-4 text-center text-xs text-muted-foreground">
-                        {t("tts.browserVoiceNote")}
-                      </div>
+                            );
+                          })}
+                        </div>
+                        ))}
+                      </>
                     )}
                   </div>
                 </>

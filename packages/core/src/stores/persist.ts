@@ -86,6 +86,7 @@ export function withPersist<T extends object>(
   creator: StateCreator<T>,
   /** Keys to always reset to these values after hydration (transient state that should not be restored) */
   resetAfterHydrate?: Partial<T>,
+  migrate?: (persisted: T) => T,
 ): StateCreator<T> {
   return (set, get, api) => {
     const wrappedSet = ((partial: unknown, replace?: boolean) => {
@@ -102,7 +103,8 @@ export function withPersist<T extends object>(
     // Load persisted state on creation
     loadFromFS<T>(key).then((persisted) => {
       if (persisted) {
-        set({ ...persisted, ...(resetAfterHydrate ?? {}), _hasHydrated: true } as unknown as Partial<T>);
+        const migrated = migrate ? migrate(persisted) : persisted;
+        set({ ...migrated, ...(resetAfterHydrate ?? {}), _hasHydrated: true } as unknown as Partial<T>);
       } else {
         set({ ...(resetAfterHydrate ?? {}), _hasHydrated: true } as unknown as Partial<T>);
       }

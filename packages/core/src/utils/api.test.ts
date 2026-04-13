@@ -16,6 +16,18 @@ describe("AI API URL helpers", () => {
     );
   });
 
+  it("strips console-like dashboard paths before appending /v1", () => {
+    expect(resolveProviderBaseUrl("openai", "https://elysiver.h-e.top/console")).toBe(
+      "https://elysiver.h-e.top/v1",
+    );
+    expect(resolveProviderBaseUrl("custom", "https://example.com/proxy/console")).toBe(
+      "https://example.com/proxy/v1",
+    );
+    expect(buildProviderModelsUrl("openai", "https://elysiver.h-e.top/console")).toBe(
+      "https://elysiver.h-e.top/v1/models",
+    );
+  });
+
   it("keeps custom paths as-is when the URL ends with a slash", () => {
     expect(resolveProviderBaseUrl("custom", "https://example.com/api/")).toBe(
       "https://example.com/api",

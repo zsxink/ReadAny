@@ -207,6 +207,8 @@ const SPECIAL_HOSTS = [
   "generativelanguage.googleapis.com",
 ];
 
+const CONSOLE_PATH_SEGMENTS = new Set(["console", "playground", "dashboard", "studio"]);
+
 const VERSION_PATTERN = /\/(v[1-9]\d*|api\/v[1-9]\d*|api\/paas\/v[1-9]\d*|compatible-mode\/v[1-9]\d*|openai\/v[1-9]\d*)$/i;
 
 export function formatApiHost(host: string): string {
@@ -235,6 +237,31 @@ export function trimApiUrl(url: string): string {
   return url.replace(/\/+$/, "");
 }
 
+function sanitizeOpenAICompatibleBaseUrl(url: string): string {
+  const trimmed = trimApiUrl(url);
+
+  try {
+    const parsed = new URL(trimmed);
+    const segments = parsed.pathname.split("/").filter(Boolean);
+
+    while (segments.length > 0) {
+      const lastSegment = segments[segments.length - 1]?.toLowerCase();
+      if (!lastSegment || !CONSOLE_PATH_SEGMENTS.has(lastSegment)) {
+        break;
+      }
+      segments.pop();
+    }
+
+    parsed.pathname = segments.length > 0 ? `/${segments.join("/")}` : "/";
+    parsed.search = "";
+    parsed.hash = "";
+
+    return trimApiUrl(parsed.toString());
+  } catch {
+    return trimmed;
+  }
+}
+
 export function providerSupportsExactRequestUrl(providerId: string): boolean {
   return providerId !== "anthropic" && providerId !== "google";
 }
@@ -246,16 +273,23 @@ export function resolveProviderBaseUrl(
 ): string {
   const rawBaseUrl = (baseUrl || getDefaultBaseUrl(providerId) || "").trim();
   if (!rawBaseUrl) return "";
+  const providerConfig = getProviderConfig(providerId);
+  const trimmedRawBaseUrl = trimApiUrl(rawBaseUrl);
+  const rawLastSegment = trimmedRawBaseUrl.split("/").filter(Boolean).pop()?.toLowerCase();
 
   if (exactRequestUrl && providerSupportsExactRequestUrl(providerId)) {
     return rawBaseUrl;
   }
 
-  if (!getProviderConfig(providerId).needsV1Suffix) {
+  if (!providerConfig.needsV1Suffix) {
     return trimApiUrl(rawBaseUrl);
   }
 
-  return trimApiUrl(formatApiHost(rawBaseUrl));
+  if (rawBaseUrl.endsWith("/") && (!rawLastSegment || !CONSOLE_PATH_SEGMENTS.has(rawLastSegment))) {
+    return trimApiUrl(rawBaseUrl);
+  }
+
+  return trimApiUrl(formatApiHost(sanitizeOpenAICompatibleBaseUrl(rawBaseUrl)));
 }
 
 export function buildProviderModelsUrl(

@@ -4,6 +4,7 @@ import { getDefaultBaseUrl, PROVIDER_CONFIGS } from "@readany/core/utils";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -36,6 +37,7 @@ export default function AISettingsScreen() {
   } = useSettingsStore();
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const handleAddEndpoint = useCallback(async () => {
     const defaultProvider = "openai";
@@ -55,6 +57,7 @@ export default function AISettingsScreen() {
 
   const handleFetchModels = useCallback(
     async (ep: AIEndpoint) => {
+      setFetchError(null);
       await updateEndpoint(ep.id, {
         name: ep.name,
         apiKey: ep.apiKey,
@@ -67,12 +70,20 @@ export default function AISettingsScreen() {
         if (models.length > 0 && !aiConfig.activeModel) {
           setActiveEndpoint(ep.id);
           setActiveModel(models[0]);
+        } else if (models.length === 0) {
+          const message =
+            "No models returned. Check your API key, model access, and whether the base URL points to the API root.";
+          setFetchError(message);
+          Alert.alert(t("common.failed", "失败"), message);
         }
       } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to fetch models";
         console.error("Failed to fetch models:", err);
+        setFetchError(message);
+        Alert.alert(t("common.failed", "失败"), message);
       }
     },
-    [fetchModels, updateEndpoint, aiConfig.activeModel, setActiveEndpoint, setActiveModel],
+    [fetchModels, updateEndpoint, aiConfig.activeModel, setActiveEndpoint, setActiveModel, t],
   );
 
   const addButton = (
@@ -146,6 +157,8 @@ export default function AISettingsScreen() {
               </View>
             );
           })}
+
+          {fetchError ? <Text style={styles.errorText}>{fetchError}</Text> : null}
 
           {/* Global Settings */}
           <View style={styles.sectionCard}>

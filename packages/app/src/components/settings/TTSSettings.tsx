@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/password-input";
 import {
   Select,
@@ -7,11 +8,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-import { DASHSCOPE_VOICES, EDGE_TTS_VOICES, getBrowserVoices } from "@/lib/tts/tts-service";
+import { DASHSCOPE_VOICES, EDGE_TTS_VOICES, getSystemVoices } from "@/lib/tts/tts-service";
+import {
+  DEFAULT_SYSTEM_VOICE_VALUE,
+  findSystemVoiceLabel,
+  getSystemVoiceOptions,
+  groupSystemVoiceOptions,
+  resolveSystemVoiceValue,
+} from "@/lib/tts/system-voices";
+import { previewTTSConfig, stopTTSPreview } from "@/lib/tts/tts-preview";
 import type { TTSEngine } from "@/lib/tts/tts-service";
 import { useTTSStore } from "@/stores/tts-store";
+import { getLocaleDisplayLabel, groupEdgeTTSVoices } from "@readany/core/tts";
 import { cn } from "@readany/core/utils";
-import { Globe, Mic, type Volume2, Zap } from "lucide-react";
+import { Headphones, Mic, Play, type Volume2, Zap } from "lucide-react";
 /**
  * TTSSettings — TTS configuration panel in the settings dialog.
  *
@@ -21,33 +31,49 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 export function TTSSettings() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const config = useTTSStore((s) => s.config);
   const updateConfig = useTTSStore((s) => s.updateConfig);
+  const stop = useTTSStore((s) => s.stop);
 
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
 
   useEffect(() => {
-    const loadVoices = () => setVoices(getBrowserVoices());
+    const loadVoices = () => setVoices(getSystemVoices());
     loadVoices();
     window.speechSynthesis?.addEventListener?.("voiceschanged", loadVoices);
     return () => window.speechSynthesis?.removeEventListener?.("voiceschanged", loadVoices);
   }, []);
 
   // Group Edge TTS voices by language
-  const edgeVoicesByLang = useMemo(() => {
-    const map = new Map<string, typeof EDGE_TTS_VOICES>();
-    for (const v of EDGE_TTS_VOICES) {
-      const group = map.get(v.lang) || [];
-      group.push(v);
-      map.set(v.lang, group);
-    }
-    return map;
-  }, []);
+  const displayLocale = i18n.resolvedLanguage || i18n.language;
+  const edgeVoiceGroups = useMemo(() => groupEdgeTTSVoices(EDGE_TTS_VOICES), []);
+
+  const systemVoiceOptions = useMemo(() => getSystemVoiceOptions(voices), [voices]);
+  const systemVoiceGroups = useMemo(
+    () => groupSystemVoiceOptions(systemVoiceOptions),
+    [systemVoiceOptions],
+  );
+  const selectedSystemVoiceValue = useMemo(
+    () => resolveSystemVoiceValue(config.voiceName, systemVoiceOptions),
+    [config.voiceName, systemVoiceOptions],
+  );
+
+  useEffect(() => stopTTSPreview, []);
+
+  const handlePreview = async () => {
+    stop();
+    await previewTTSConfig(t("tts.testText", "这是一段测试文本"), config);
+  };
 
   const engines: { id: TTSEngine; icon: typeof Volume2; label: string; desc: string }[] = [
     { id: "edge", icon: Zap, label: t("tts.edgeEngine"), desc: t("tts.edgeEngineDesc") },
-    { id: "browser", icon: Globe, label: t("tts.browserEngine"), desc: t("tts.browserEngineDesc") },
+    {
+      id: "system",
+      icon: Headphones,
+      label: t("tts.systemEngine"),
+      desc: t("tts.systemEngineDesc"),
+    },
     {
       id: "dashscope",
       icon: Mic,
@@ -59,8 +85,16 @@ export function TTSSettings() {
   return (
     <div className="space-y-4 p-4 pt-3">
       <section className="rounded-lg bg-muted/60 p-4">
-        <h2 className="mb-4 text-sm font-medium text-foreground">{t("tts.settingsTitle")}</h2>
-        <p className="mb-4 text-xs text-muted-foreground">{t("tts.settingsDesc")}</p>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-medium text-foreground">{t("tts.settingsTitle")}</h2>
+            <p className="mt-1 text-xs text-muted-foreground">{t("tts.settingsDesc")}</p>
+          </div>
+          <Button type="button" variant="secondary" size="sm" className="shrink-0" onClick={handlePreview}>
+            <Play className="mr-1.5 h-3.5 w-3.5" />
+            {t("common.preview", "试听")}
+          </Button>
+        </div>
 
         <div className="space-y-5">
           {/* Engine selection — 3 engines */}
@@ -106,8 +140,8 @@ export function TTSSettings() {
             />
           </div>
 
-          {/* Pitch (browser only) */}
-          {config.engine === "browser" && (
+          {/* Pitch (system only) */}
+          {config.engine === "system" && (
             <div>
               <div className="mb-3 flex items-center justify-between">
                 <span className="text-sm text-foreground">{t("tts.pitch")}</span>
@@ -137,10 +171,10 @@ export function TTSSettings() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="max-h-[300px]">
-                  {Array.from(edgeVoicesByLang.entries()).map(([lang, langVoices]) => (
+                  {edgeVoiceGroups.map(([lang, langVoices]) => (
                     <div key={lang}>
                       <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                        {lang}
+                        {getLocaleDisplayLabel(lang, displayLocale)}
                       </div>
                       {langVoices.map((v) => (
                         <SelectItem key={v.id} value={v.id}>
@@ -154,22 +188,40 @@ export function TTSSettings() {
             </div>
           )}
 
-          {config.engine === "browser" && (
+          {config.engine === "system" && (
             <div className="flex items-center justify-between">
               <span className="text-sm text-foreground">{t("tts.voice")}</span>
               <Select
-                value={config.voiceName || "__default__"}
-                onValueChange={(v) => updateConfig({ voiceName: v === "__default__" ? "" : v })}
+                value={selectedSystemVoiceValue}
+                onValueChange={(v) => {
+                  if (v === DEFAULT_SYSTEM_VOICE_VALUE) {
+                    updateConfig({ voiceName: "", systemVoiceLabel: "" });
+                    return;
+                  }
+                  updateConfig({
+                    voiceName: v,
+                    systemVoiceLabel: findSystemVoiceLabel(v, systemVoiceOptions),
+                  });
+                }}
               >
                 <SelectTrigger className="w-[200px]">
                   <SelectValue placeholder={t("tts.defaultVoice")} />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__default__">{t("tts.defaultVoice")}</SelectItem>
-                  {voices.map((v) => (
-                    <SelectItem key={v.name} value={v.name}>
-                      {v.name} ({v.lang})
-                    </SelectItem>
+                <SelectContent className="max-h-[300px]">
+                  <SelectItem value={DEFAULT_SYSTEM_VOICE_VALUE}>
+                    {t("tts.defaultVoice")}
+                  </SelectItem>
+                  {systemVoiceGroups.map(([lang, langVoices]) => (
+                    <div key={lang}>
+                      <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                        {getLocaleDisplayLabel(lang, displayLocale)}
+                      </div>
+                      {langVoices.map((voice) => (
+                        <SelectItem key={voice.id} value={voice.id}>
+                          {voice.label}
+                        </SelectItem>
+                      ))}
+                    </div>
                   ))}
                 </SelectContent>
               </Select>

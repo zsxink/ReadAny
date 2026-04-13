@@ -72,6 +72,5 @@ export function getTTSVoiceLabel(config: TTSConfig): string {
     return voice?.label || config.dashscopeVoice;
   }
 
-  return config.voiceName || "System Voice";
+  return config.systemVoiceLabel || config.voiceName || "System Voice";
 }
-

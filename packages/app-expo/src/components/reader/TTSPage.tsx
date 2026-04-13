@@ -320,7 +320,7 @@ export function TTSPage({
       ? "Edge TTS"
       : config.engine === "dashscope"
         ? "DashScope"
-        : t("tts.browser");
+        : t("tts.system");
 
   const pendingCenterRef = useRef<number | null>(null);
 
@@ -878,4 +878,3 @@ export function TTSPage({
     </Modal>
   );
 }
-

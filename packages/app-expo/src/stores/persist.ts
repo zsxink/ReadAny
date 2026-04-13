@@ -83,6 +83,7 @@ export function withPersist<T extends object>(
   creator: StateCreator<T>,
   /** Keys to always reset to these values after hydration (transient state that should not be restored) */
   resetAfterHydrate?: Partial<T>,
+  migrate?: (persisted: T) => T,
 ): StateCreator<T> {
   return (set, get, api) => {
     let persistLoaded = false;
@@ -105,9 +106,10 @@ export function withPersist<T extends object>(
     // Load persisted data and notify when done
     loadFromFS<T>(key).then(async (persisted) => {
       if (persisted) {
+        const migrated = migrate ? migrate(persisted) : persisted;
         // Merge persisted data with current state (don't replace methods)
         const currentState = get();
-        const mergedState = { ...currentState, ...persisted, ...(resetAfterHydrate ?? {}), _hasHydrated: true };
+        const mergedState = { ...currentState, ...migrated, ...(resetAfterHydrate ?? {}), _hasHydrated: true };
         (set as (state: T, replace: true) => void)(mergedState as T, true);
       } else {
         const currentState = get();

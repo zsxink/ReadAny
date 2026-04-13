@@ -60,7 +60,7 @@ export class ExpoSpeechTTSPlayer implements ITTSPlayer {
       Speech.speak(chunk, {
         rate: config.rate,
         pitch: config.pitch,
-        language: guessLanguage(chunk),
+        ...(config.voiceName ? { voice: config.voiceName } : { language: guessLanguage(chunk) }),
         onDone: () => {
           this._currentIndex++;
           this._speakChunk(config).then(resolve);

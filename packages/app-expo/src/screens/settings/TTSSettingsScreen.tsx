@@ -1,6 +1,21 @@
 import { useTTSStore } from "@/stores";
-import { DASHSCOPE_VOICES, EDGE_TTS_VOICES, type TTSEngine } from "@readany/core/tts";
-import { useCallback, useMemo } from "react";
+import {
+  DEFAULT_SYSTEM_VOICE_VALUE,
+  findSystemVoiceLabel,
+  getSystemVoiceOptionsAsync,
+  groupSystemVoiceOptions,
+  resolveSystemVoiceValue,
+  type NativeSystemVoiceOption,
+} from "@/lib/platform/system-voices";
+import { previewTTSConfig, stopTTSPreview } from "@/lib/platform/tts-preview";
+import {
+  DASHSCOPE_VOICES,
+  EDGE_TTS_VOICES,
+  getLocaleDisplayLabel,
+  groupEdgeTTSVoices,
+  type TTSEngine,
+} from "@readany/core/tts";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   KeyboardAvoidingView,
@@ -26,36 +41,39 @@ import { SettingsHeader } from "./SettingsHeader";
 
 const ENGINES: { id: TTSEngine; labelKey: string }[] = [
   { id: "edge", labelKey: "tts.edgeEngine" },
-  { id: "browser", labelKey: "tts.browser" },
+  { id: "system", labelKey: "tts.system" },
   { id: "dashscope", labelKey: "tts.tongyi" },
 ];
 
 export default function TTSSettingsScreen() {
   const colors = useColors();
   const styles = makeStyles(colors);
-  const { t } = useTranslation();
-  const { config, updateConfig, play, stop } = useTTSStore();
+  const { t, i18n } = useTranslation();
+  const { config, updateConfig, stop } = useTTSStore();
+  const [systemVoices, setSystemVoices] = useState<NativeSystemVoiceOption[]>([]);
 
-  const edgeVoiceGroups = useMemo(() => {
-    const groups: Record<string, typeof EDGE_TTS_VOICES> = {};
-    for (const v of EDGE_TTS_VOICES) {
-      const lang = v.lang;
-      if (!groups[lang]) groups[lang] = [];
-      groups[lang].push(v);
-    }
-    return Object.entries(groups).sort(([a], [b]) => {
-      if (a.startsWith("zh")) return -1;
-      if (b.startsWith("zh")) return 1;
-      if (a.startsWith("en")) return -1;
-      if (b.startsWith("en")) return 1;
-      return a.localeCompare(b);
-    });
+  const displayLocale = i18n.resolvedLanguage || i18n.language;
+  const edgeVoiceGroups = useMemo(() => groupEdgeTTSVoices(EDGE_TTS_VOICES), []);
+
+  const systemVoiceGroups = useMemo(
+    () => groupSystemVoiceOptions(systemVoices),
+    [systemVoices],
+  );
+  const selectedSystemVoiceValue = useMemo(
+    () => resolveSystemVoiceValue(config.voiceName, systemVoices),
+    [config.voiceName, systemVoices],
+  );
+
+  useEffect(() => {
+    void getSystemVoiceOptionsAsync().then(setSystemVoices);
   }, []);
+
+  useEffect(() => stopTTSPreview, []);
 
   const handlePreview = useCallback(() => {
     stop();
-    setTimeout(() => play(t("tts.testText", "这是一段测试文本")), 100);
-  }, [play, stop, t]);
+    void previewTTSConfig(t("tts.testText", "这是一段测试文本"), config);
+  }, [config, stop, t]);
 
   const previewBtn = (
     <TouchableOpacity style={styles.previewBtn} onPress={handlePreview} activeOpacity={0.7}>
@@ -115,7 +133,9 @@ export default function TTSSettingsScreen() {
                 {edgeVoiceGroups.map(([lang, voices]) => (
                   <View key={lang}>
                     <View style={styles.voiceGroupHeader}>
-                      <Text style={styles.voiceGroupLabel}>{lang}</Text>
+                      <Text style={styles.voiceGroupLabel}>
+                        {getLocaleDisplayLabel(lang, displayLocale)}
+                      </Text>
                     </View>
                     {voices.map((v) => (
                       <TouchableOpacity
@@ -180,14 +200,66 @@ export default function TTSSettingsScreen() {
               </>
             )}
 
-            {config.engine === "browser" && (
-              <View style={styles.voiceList}>
-                <View style={styles.emptyVoice}>
-                  <Text style={styles.emptyVoiceText}>
-                    {t("tts.browserNote", "浏览器 TTS 引擎使用系统自带语音合成")}
+            {config.engine === "system" && (
+              <ScrollView style={styles.voiceList} nestedScrollEnabled>
+                <TouchableOpacity
+                  style={styles.voiceItem}
+                  onPress={() => updateConfig({ voiceName: "", systemVoiceLabel: "" })}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.voiceName,
+                      selectedSystemVoiceValue === DEFAULT_SYSTEM_VOICE_VALUE &&
+                        styles.voiceNameActive,
+                    ]}
+                  >
+                    {t("tts.defaultVoice")}
                   </Text>
-                </View>
-              </View>
+                  {selectedSystemVoiceValue === DEFAULT_SYSTEM_VOICE_VALUE && (
+                    <Text style={styles.micIcon}>♪</Text>
+                  )}
+                </TouchableOpacity>
+                {systemVoiceGroups.map(([lang, voices]) => (
+                  <View key={lang}>
+                    <View style={styles.voiceGroupHeader}>
+                      <Text style={styles.voiceGroupLabel}>
+                        {getLocaleDisplayLabel(lang, displayLocale)}
+                      </Text>
+                    </View>
+                    {voices.map((voice) => (
+                      <TouchableOpacity
+                        key={voice.id}
+                        style={styles.voiceItem}
+                        onPress={() =>
+                          updateConfig({
+                            voiceName: voice.id,
+                            systemVoiceLabel: findSystemVoiceLabel(voice.id, systemVoices),
+                          })
+                        }
+                        activeOpacity={0.7}
+                      >
+                        <View>
+                          <Text
+                            style={[
+                              styles.voiceName,
+                              selectedSystemVoiceValue === voice.id && styles.voiceNameActive,
+                            ]}
+                          >
+                            {voice.label}
+                          </Text>
+                          <Text style={styles.voiceSubLabel}>
+                            {getLocaleDisplayLabel(voice.lang, displayLocale)}
+                          </Text>
+                        </View>
+                        {selectedSystemVoiceValue === voice.id && (
+                          <Text style={styles.micIcon}>♪</Text>
+                        )}
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ))}
+              </ScrollView>
             )}
           </View>
 
@@ -214,8 +286,8 @@ export default function TTSSettingsScreen() {
                 />
               </View>
 
-              {/* Pitch (browser only) */}
-              {config.engine === "browser" && (
+              {/* Pitch (system only) */}
+              {config.engine === "system" && (
                 <View style={styles.paramRow}>
                   <View style={styles.paramHeader}>
                     <Text style={styles.paramLabel}>{t("tts.pitch", "音调")}</Text>

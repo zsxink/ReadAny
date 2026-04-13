@@ -401,11 +401,84 @@ export class ExpoPlatformService implements IPlatformService {
   }
 
   async createWebSocket(url: string, _options?: WebSocketOptions): Promise<IWebSocket> {
-    // RN has built-in WebSocket (note: custom headers not supported like Tauri)
-    const ws = new WebSocket(url);
+    const formatWebSocketError = (value: unknown): string => {
+      if (value instanceof Error) return value.message;
+      if (typeof value === "string") return value;
+      if (value && typeof value === "object") {
+        const maybeMessage =
+          "message" in value && typeof (value as { message?: unknown }).message === "string"
+            ? (value as { message: string }).message
+            : null;
+        if (maybeMessage) return maybeMessage;
+        try {
+          return JSON.stringify(value);
+        } catch {
+          return String(value);
+        }
+      }
+      return String(value);
+    };
+
+    // RN WebSocket supports constructor headers via the third argument.
+    // Edge TTS relies on Origin/User-Agent/Cookie, so we must pass them through.
+    // We also wait for `open` so send() never races the handshake.
+    const ReactNativeWebSocket = WebSocket as unknown as new (
+      url: string,
+      protocols?: string | string[] | null,
+      options?: { headers?: Record<string, string> },
+    ) => WebSocket;
+
+    const ws = new ReactNativeWebSocket(url, undefined, {
+      headers: _options?.headers ?? {},
+    });
+    ws.binaryType = "arraybuffer";
+
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      let pendingErrorMessage = "";
+      const timeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        try {
+          ws.close();
+        } catch {}
+        reject(new Error(`WebSocket connection timeout: ${url}`));
+      }, 10000);
+
+      ws.onopen = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        resolve();
+      };
+
+      ws.onerror = (err) => {
+        if (settled) return;
+        pendingErrorMessage = formatWebSocketError(err);
+      };
+
+      ws.onclose = (event) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        const closeReason =
+          event && typeof event === "object" && "reason" in event
+            ? String((event as { reason?: unknown }).reason || "")
+            : "";
+        const detail = closeReason || pendingErrorMessage || formatWebSocketError(event);
+        reject(
+          new Error(
+            `WebSocket closed before open: ${url} (${detail})`,
+          ),
+        );
+      };
+    });
 
     return {
       send(data: string | ArrayBuffer) {
+        if (ws.readyState !== WebSocket.OPEN) {
+          throw new Error(`WebSocket is not open (readyState=${ws.readyState})`);
+        }
         ws.send(data);
       },
       close() {
@@ -418,7 +491,7 @@ export class ExpoPlatformService implements IPlatformService {
         ws.onclose = () => handler();
       },
       onError(handler) {
-        ws.onerror = (err) => handler(err);
+        ws.onerror = (err) => handler(new Error(formatWebSocketError(err)));
       },
     };
   }
