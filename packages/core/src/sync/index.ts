@@ -1,5 +1,10 @@
 export { WebDavClient } from "./webdav-client";
-export { determineSyncDirection, runSync, downloadBookFile, syncFiles } from "./sync-engine";
+export { runSync } from "./sync-engine";
+export { determineSyncDirection } from "./sync-direction";
+export { syncFiles, downloadBookFile } from "./sync-files";
+export type { SyncFilesOptions } from "./sync-files";
+export { getSyncMeta, batchSetSyncMeta, acquireSyncLock } from "./sync-meta";
+export { executeUpload, executeDownload, parallelLimit } from "./sync-transfer";
 export { runSimpleSync, collectChanges, applyChanges } from "./simple-sync";
 export { setSyncAdapter, getSyncAdapter } from "./sync-adapter";
 export type { ISyncAdapter } from "./sync-adapter";
