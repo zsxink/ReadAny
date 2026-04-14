@@ -9,6 +9,59 @@ import { useReaderStore } from "@/stores/reader-store";
 import { BookOpen, Home, MessageSquare, NotebookPen, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
+function useIsWindows() {
+  const [isWin, setIsWin] = useState(false);
+  useEffect(() => {
+    setIsWin(!navigator.userAgent.toLowerCase().includes("mac") && "__TAURI_INTERNALS__" in window);
+  }, []);
+  return isWin;
+}
+
+function WindowControls() {
+  const isWin = useIsWindows();
+  if (!isWin) return null;
+
+  const handleMinimize = async () => {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().minimize();
+  };
+  const handleMaximize = async () => {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    const win = getCurrentWindow();
+    await win.isMaximized().then((m) => m ? win.unmaximize() : win.maximize());
+  };
+  const handleClose = async () => {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().close();
+  };
+
+  return (
+    <div className="flex h-full shrink-0 items-center gap-0" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+      <button
+        type="button"
+        className="flex h-full w-11 items-center justify-center text-neutral-500 transition-colors hover:bg-neutral-200/60"
+        onClick={handleMinimize}
+      >
+        <svg width="10" height="1" viewBox="0 0 10 1" fill="currentColor"><rect width="10" height="1"/></svg>
+      </button>
+      <button
+        type="button"
+        className="flex h-full w-11 items-center justify-center text-neutral-500 transition-colors hover:bg-neutral-200/60"
+        onClick={handleMaximize}
+      >
+        <svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="currentColor" strokeWidth="1.2"><rect x="0.6" y="0.6" width="7.8" height="7.8"/></svg>
+      </button>
+      <button
+        type="button"
+        className="flex h-full w-11 items-center justify-center text-neutral-500 transition-colors hover:bg-red-500 hover:text-white"
+        onClick={handleClose}
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
 const TAB_ICONS: Record<string, React.ElementType> = {
   home: Home,
   reader: BookOpen,
@@ -113,6 +166,9 @@ export function TabBar() {
           />
         ))}
       </div>
+
+      {/* Windows window controls */}
+      <WindowControls />
     </div>
   );
 }
