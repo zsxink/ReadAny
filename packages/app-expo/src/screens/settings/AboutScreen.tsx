@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Linking,
   ScrollView,
   StyleSheet,
@@ -83,7 +84,11 @@ export default function AboutScreen() {
         {/* Logo & Version */}
         <View style={styles.logoSection}>
           <View style={styles.logoCircle}>
-            <Text style={styles.logoText}>R</Text>
+            <Image
+              source={require("../../../assets/icon.png")}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
           </View>
           <Text style={styles.appName}>ReadAny</Text>
           <Text style={styles.version}>v{version}</Text>
@@ -186,10 +191,9 @@ const makeStyles = (colors: ThemeColors) =>
       justifyContent: "center",
       marginBottom: 16,
     },
-    logoText: {
-      fontSize: 32,
-      fontWeight: fontWeight.bold,
-      color: colors.primary,
+    logoImage: {
+      width: 56,
+      height: 56,
     },
     appName: {
       fontSize: fontSize.xl,
