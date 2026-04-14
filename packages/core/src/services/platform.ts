@@ -66,7 +66,12 @@ export interface IPlatformService {
   mkdir(path: string): Promise<void>;
   exists(path: string): Promise<boolean>;
   deleteFile(path: string): Promise<void>;
+  /** System app data dir — used only for bootstrap config (e.g. locating desktop-data-root.json). NOT for user data. */
   getAppDataDir(): Promise<string>;
+  /** User data root — the directory where user-facing data (fonts, store JSON, etc.) should be stored.
+   *  On desktop: honours the user-configured library root (falls back to getAppDataDir()).
+   *  On mobile/web: same as getAppDataDir(). */
+  getDataDir(): Promise<string>;
   joinPath(...parts: string[]): Promise<string>;
   convertFileSrc(path: string): string;
 

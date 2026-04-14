@@ -21,6 +21,7 @@ export type SidebarTab = "chat" | "notes" | "toc" | "highlights" | "stats";
 export type SettingsTab =
   | "general"
   | "reading"
+  | "fonts"
   | "ai"
   | "vectorModel"
   | "tts"

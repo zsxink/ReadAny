@@ -7,6 +7,7 @@ import { cn } from "@readany/core/utils";
 import { useTranslation } from "react-i18next";
 import { AISettings } from "./AISettings";
 import { AboutSettings } from "./AboutSettings";
+import { FontSettings } from "./FontSettings";
 import { GeneralSettings } from "./GeneralSettings";
 import { ReadSettingsPanel } from "./ReadSettings";
 import { SyncSettings } from "./SyncSettings";
@@ -22,6 +23,7 @@ interface SettingsDialogProps {
 const TAB_IDS: SettingsTab[] = [
   "general",
   "reading",
+  "fonts",
   "ai",
   "vectorModel",
   "tts",
@@ -32,6 +34,7 @@ const TAB_IDS: SettingsTab[] = [
 const TAB_KEYS: Record<SettingsTab, string> = {
   general: "settings.general",
   reading: "settings.reading",
+  fonts: "settings.fonts",
   ai: "settings.ai",
   vectorModel: "settings.vectorModel",
   tts: "settings.tts",
@@ -83,6 +86,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <div className="min-w-0 flex-1 overflow-y-auto">
             {settingsTab === "general" && <GeneralSettings />}
             {settingsTab === "reading" && <ReadSettingsPanel />}
+            {settingsTab === "fonts" && <FontSettings />}
             {settingsTab === "ai" && <AISettings />}
             {settingsTab === "vectorModel" && <VectorModelSettings />}
             {settingsTab === "tts" && <TTSSettings />}

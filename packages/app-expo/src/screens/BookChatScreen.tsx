@@ -42,7 +42,7 @@ import {
   HistoryIcon,
   MessageCirclePlusIcon,
 } from "@/components/ui/Icon";
-import { fontSize as fs, fontWeight as fw, radius, useColors } from "@/styles/theme";
+import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
 import { ThreadSidebar } from "./chat/ThreadSidebar";
 

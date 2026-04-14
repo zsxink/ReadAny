@@ -153,6 +153,12 @@
     let currentThemeColors = { bg: '#1c1c1e', fg: '#e8e8ed', muted: '#7c7c82', primary: '#3b82f6' };
     let lastRendererStyles = '';
     let currentViewMode = 'paginated';
+    let currentFontSize = 16;
+    let currentLineHeight = 1.6;
+    let currentParagraphSpacing = 8;
+    let currentFontTheme = 'default';
+    let currentCustomFontFaceCSS = '';
+    let currentCustomFontFamily = '';
     let tapNavigationInFlight = false;
     let tapNavigationResetTimer = null;
     let readerElement = null;
@@ -1008,30 +1014,64 @@
       if (!view || !view.renderer) return;
       const renderer = view.renderer;
 
-      if (settings.fontSize || settings.lineHeight || settings.fontTheme || settings.paragraphSpacing) {
+      // Update custom font state
+      if (settings.customFontFaceCSS !== undefined) {
+        currentCustomFontFaceCSS = settings.customFontFaceCSS || '';
+        injectCustomFontFace(currentCustomFontFaceCSS);
+      }
+      if (settings.customFontFamily !== undefined) {
+        currentCustomFontFamily = settings.customFontFamily || '';
+      }
+
+      if (settings.fontSize !== undefined) {
+        currentFontSize = settings.fontSize;
+      }
+      if (settings.lineHeight !== undefined) {
+        currentLineHeight = settings.lineHeight;
+      }
+      if (settings.paragraphSpacing !== undefined) {
+        currentParagraphSpacing = settings.paragraphSpacing;
+      }
+      if (settings.fontTheme !== undefined) {
+        currentFontTheme = settings.fontTheme || 'default';
+      }
+
+      if (settings.fontSize !== undefined || settings.lineHeight !== undefined || settings.fontTheme !== undefined || settings.paragraphSpacing !== undefined
+          || settings.customFontFamily !== undefined || settings.customFontFaceCSS !== undefined) {
         const fontThemes = {
-          default: { cjk: 'system-ui', serif: '-apple-system' },
-          classic: { cjk: 'STSong', serif: 'Georgia' },
-          modern: { cjk: 'PingFang SC', serif: 'Helvetica Neue' },
-          elegant: { cjk: 'STKaiti', serif: 'Palatino' },
-          literary: { cjk: 'STFangsong', serif: 'Baskerville' },
+          default: { cjk: 'system-ui', serif: 'system-ui' },
+          system: { cjk: 'system-ui', serif: 'system-ui' },
+          literata: { cjk: "'Noto Serif SC', 'Source Han Serif SC', serif", serif: "Literata, Georgia, serif" },
         };
 
-        const theme = fontThemes[settings.fontTheme] || fontThemes.default;
-        const fontFamily = "'" + theme.cjk + "', '" + theme.serif + "', serif";
-        const fSize = settings.fontSize || 16;
-        const lh = settings.lineHeight || 1.6;
-        const ps = settings.paragraphSpacing || 8;
+        let fontFamily;
+        if (currentCustomFontFamily) {
+          fontFamily = currentCustomFontFamily;
+        } else {
+          const theme = fontThemes[currentFontTheme] || fontThemes.default;
+          fontFamily = "'" + theme.cjk + "', '" + theme.serif + "', serif";
+        }
+        const fSize = currentFontSize;
+        const lh = currentLineHeight;
+        const ps = currentParagraphSpacing;
 
         const baseStyles = `
+          :root {
+            --readany-font-family: ${fontFamily};
+          }
           html, body {
-            font-family: ${fontFamily} !important;
+            font-family: var(--readany-font-family) !important;
             font-size: ${fSize}px !important;
             -webkit-text-size-adjust: none;
           }
+          body *:not(svg):not(svg *):not(code):not(pre):not(kbd):not(samp) {
+            font-family: var(--readany-font-family) !important;
+          }
           p, div, blockquote, li, span, h1, h2, h3, h4, h5, h6 {
-            font-family: ${fontFamily} !important;
             line-height: ${lh} !important;
+          }
+          pre, code, kbd, samp {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
           }
           p { margin-top: ${ps}px !important; margin-bottom: ${ps}px !important; }
           img, svg { max-width: 100% !important; height: auto !important; }
@@ -1044,6 +1084,7 @@
           currentThemeColors.primary,
         );
         renderer.setStyles(themedStyles);
+        syncCustomFontStylesForAllDocs(currentCustomFontFaceCSS);
       }
 
       if (settings.pageMargin != null) {
@@ -1063,6 +1104,62 @@
           renderer.setAttribute('max-inline-size', '100%');
         }
       }
+    }
+
+    function splitCustomFontCSS(css) {
+      const importUrls = [];
+      const fontFaceLines = [];
+      for (const line of (css || '').split('\n')) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('@import')) {
+          const url = trimmed
+            .replace(/^@import\s+url\(['"]?/, '')
+            .replace(/['"]?\);?\s*$/, '')
+            .trim();
+          if (url) importUrls.push(url);
+        } else {
+          fontFaceLines.push(line);
+        }
+      }
+      return {
+        importUrls,
+        fontFaceCSS: fontFaceLines.join('\n').trim(),
+      };
+    }
+
+    function syncCustomFontStylesForDoc(doc, css) {
+      if (!doc || !doc.head) return;
+      const { importUrls, fontFaceCSS } = splitCustomFontCSS(css);
+
+      doc.querySelectorAll('link.__readany_css_font__').forEach((el) => el.remove());
+      for (const url of importUrls) {
+        const link = doc.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = url;
+        link.className = '__readany_css_font__';
+        doc.head.appendChild(link);
+      }
+
+      const styleId = '__readany_custom_font_face__';
+      let el = doc.getElementById(styleId);
+      if (!el) {
+        el = doc.createElement('style');
+        el.id = styleId;
+        doc.head.appendChild(el);
+      }
+      el.textContent = fontFaceCSS;
+    }
+
+    function syncCustomFontStylesForAllDocs(css) {
+      for (const content of getRendererContents()) {
+        if (!content || !content.doc) continue;
+        syncCustomFontStylesForDoc(content.doc, css);
+      }
+    }
+
+    function injectCustomFontFace(css) {
+      syncCustomFontStylesForDoc(document, css);
+      syncCustomFontStylesForAllDocs(css);
     }
 
     function setThemeColors(colors) {
@@ -1112,6 +1209,7 @@ a { color: ${primary} !important; }
 
     // ─── Document styles ───
     function applyDocStyles(doc) {
+      syncCustomFontStylesForDoc(doc, currentCustomFontFaceCSS);
       for (const img of doc.querySelectorAll('img')) {
         img.style.maxWidth = '100%';
         img.style.height = 'auto';

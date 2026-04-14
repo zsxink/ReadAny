@@ -29,6 +29,7 @@ import { useAppStore } from "@/stores/app-store";
 import { useLibraryStore } from "@/stores/library-store";
 import { useReaderStore } from "@/stores/reader-store";
 import { useSettingsStore } from "@readany/core/stores/settings-store";
+import { useFontStore } from "@readany/core/stores";
 import { BookOpen } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -60,6 +61,52 @@ export function AppLayout() {
   const books = useLibraryStore((s) => s.books);
   const { hasCompletedOnboarding: _hasCompletedOnboarding, _hasHydrated } = useSettingsStore();
   const { t } = useTranslation();
+
+  // Inject @font-face / <link> for all custom fonts into the main app document
+  const customFonts = useFontStore((s) => s.fonts);
+  useEffect(() => {
+    // 1. Inject <link> tags for CSS-based remote fonts
+    const cssLinkClass = "__readany_remote_css_font__";
+    // Remove old ones that are no longer needed
+    document.querySelectorAll(`link.${cssLinkClass}`).forEach((el) => el.remove());
+    for (const f of customFonts) {
+      if (f.source === "remote" && f.remoteCssUrl) {
+        const link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = f.remoteCssUrl;
+        link.className = cssLinkClass;
+        document.head.appendChild(link);
+      }
+    }
+
+    // 2. Inject @font-face for local and direct-URL remote fonts
+    if (customFonts.every((f) => f.remoteCssUrl)) return;
+    import("@tauri-apps/api/core").then(({ convertFileSrc }) => {
+      const styleId = "__readany_app_font_faces__";
+      let el = document.getElementById(styleId) as HTMLStyleElement | null;
+      if (!el) {
+        el = document.createElement("style");
+        el.id = styleId;
+        document.head.appendChild(el);
+      }
+      el.textContent = customFonts
+        .map((f) => {
+          if (f.remoteCssUrl) return ""; // handled by <link>
+          if (f.source === "remote") {
+            const src = f.remoteUrlWoff2
+              ? `url('${f.remoteUrlWoff2}') format('woff2')${f.remoteUrl ? `, url('${f.remoteUrl}') format('woff')` : ""}`
+              : f.remoteUrl ? `url('${f.remoteUrl}') format('woff')` : "";
+            return src ? `@font-face { font-family: '${f.fontFamily}'; src: ${src}; font-display: swap; }` : "";
+          }
+          if (!f.filePath) return "";
+          const fileUrl = convertFileSrc(f.filePath);
+          const fmt = f.format === "otf" ? "opentype" : f.format === "woff" ? "woff" : f.format === "woff2" ? "woff2" : "truetype";
+          return `@font-face { font-family: '${f.fontFamily}'; src: url('${fileUrl}') format('${fmt}'); }`;
+        })
+        .filter(Boolean)
+        .join("\n");
+    }).catch(() => {});
+  }, [customFonts]);
 
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const readerTabs = tabs.filter((t) => t.type === "reader" && t.bookId);

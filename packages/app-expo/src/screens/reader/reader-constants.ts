@@ -8,11 +8,8 @@ export const SCREEN_HEIGHT = Dimensions.get("window").height;
 export const CONTROLS_TIMEOUT = 4000;
 
 export const FONT_THEMES = [
-  { id: "default", labelKey: "reader.fontThemeDefault", fallback: "System" },
-  { id: "classic", labelKey: "reader.fontThemeClassic", fallback: "Classic" },
-  { id: "modern", labelKey: "reader.fontThemeModern", fallback: "Modern" },
-  { id: "elegant", labelKey: "reader.fontThemeElegant", fallback: "Elegant" },
-  { id: "literary", labelKey: "reader.fontThemeLiterary", fallback: "Literary" },
+  { id: "system", labelKey: "reader.fontThemeSystem", fallback: "System" },
+  { id: "literata", labelKey: "reader.fontThemeLiterata", fallback: "Literata" },
 ];
 
 // ─── Volume Manager ───

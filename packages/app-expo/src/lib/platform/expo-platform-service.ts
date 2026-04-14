@@ -80,6 +80,10 @@ export class ExpoPlatformService implements IPlatformService {
     return Paths.document.uri;
   }
 
+  async getDataDir(): Promise<string> {
+    return Paths.document.uri;
+  }
+
   async joinPath(...parts: string[]): Promise<string> {
     const joined = parts.join("/");
     // Preserve file:// protocol prefix while collapsing duplicate slashes in path

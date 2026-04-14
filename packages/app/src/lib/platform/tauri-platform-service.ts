@@ -123,6 +123,12 @@ export class TauriPlatformService implements IPlatformService {
     return appDataDir();
   }
 
+  async getDataDir(): Promise<string> {
+    // Desktop: user-configurable library root (defaults to appDataDir if not customised)
+    const { getDesktopLibraryRoot } = await import("@/lib/storage/desktop-library-root");
+    return getDesktopLibraryRoot();
+  }
+
   async joinPath(...parts: string[]): Promise<string> {
     const { join } = await import("@tauri-apps/api/path");
     return join(...parts);

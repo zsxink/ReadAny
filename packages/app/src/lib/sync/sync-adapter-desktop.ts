@@ -19,8 +19,13 @@ import {
 } from "@tauri-apps/plugin-fs";
 
 export class DesktopSyncAdapter implements ISyncAdapter {
+  private isWindowsAbsolutePath(p: string): boolean {
+    return /^[a-zA-Z]:[\\/]/.test(p) || p.startsWith("\\\\");
+  }
+
   private isRelativePath(p: string): boolean {
     return (
+      !this.isWindowsAbsolutePath(p) &&
       !p.startsWith("/") &&
       !p.startsWith("file://") &&
       !p.startsWith("asset://") &&
@@ -116,8 +121,34 @@ export class DesktopSyncAdapter implements ISyncAdapter {
   }
 
   joinPath(...segments: string[]): string {
-    // Simple synchronous path join for use in sync engine
-    return segments.join("/").replace(/\/+/g, "/");
+    const filtered = segments.filter((segment) => !!segment);
+    if (filtered.length === 0) return "";
+
+    const isWindowsPath = filtered.some(
+      (segment) => this.isWindowsAbsolutePath(segment) || segment.includes("\\"),
+    );
+
+    if (isWindowsPath) {
+      return filtered.reduce((acc, segment, index) => {
+        const normalized = segment.replace(/\//g, "\\");
+
+        if (index === 0) {
+          if (normalized.startsWith("\\\\")) {
+            return `\\\\${normalized.slice(2).replace(/\\+$/, "")}`;
+          }
+          return normalized.replace(/\\+$/, "");
+        }
+
+        return `${acc}\\${normalized.replace(/^\\+/, "").replace(/\\+$/, "")}`;
+      }, "");
+    }
+
+    return filtered.reduce((acc, segment, index) => {
+      if (index === 0) {
+        return segment.replace(/\/+$/, "");
+      }
+      return `${acc}/${segment.replace(/^\/+/, "").replace(/\/+$/, "")}`;
+    }, "");
   }
 
   async getAppVersion(): Promise<string> {

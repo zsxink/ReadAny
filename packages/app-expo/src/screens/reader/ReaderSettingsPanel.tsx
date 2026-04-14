@@ -8,7 +8,7 @@ import { Modal, Pressable, ScrollView, Text, TouchableOpacity, View } from "reac
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { makeStyles } from "./reader-styles";
-import { FONT_THEMES } from "./reader-constants";
+import { useFontStore } from "@readany/core/stores";
 
 interface Props {
   visible: boolean;
@@ -23,12 +23,15 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
 
+  const customFonts = useFontStore((s) => s.fonts);
+  const selectedFontId = useFontStore((s) => s.selectedFontId);
+  const setSelectedFont = useFontStore((s) => s.setSelectedFont);
+
   const {
     fontSize: settingFontSize,
     lineHeight: settingLineHeight,
     paragraphSpacing: settingParagraphSpacing,
     pageMargin: settingPageMargin,
-    fontTheme: settingFontTheme,
     viewMode: settingViewMode,
     showTopTitleProgress,
     showBottomTimeBattery,
@@ -141,21 +144,27 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
               </TouchableOpacity>
             </View>
           </View>
-          {/* Font Theme */}
+          {/* Font */}
           <View style={s.settingRow}>
-            <Text style={s.settingLabel}>{t("reader.fontTheme", "字体主题")}</Text>
+            <Text style={s.settingLabel}>{t("fonts.title", "字体")}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.themeScroll}>
               <View style={s.themeRow}>
-                {FONT_THEMES.map((theme) => (
+                <TouchableOpacity
+                  style={[s.themeBtn, !selectedFontId && s.themeBtnActive]}
+                  onPress={() => setSelectedFont(null)}
+                >
+                  <Text style={[s.themeBtnText, !selectedFontId && s.themeBtnTextActive]}>
+                    {t("fonts.systemDefault", "系统默认")}
+                  </Text>
+                </TouchableOpacity>
+                {customFonts.map((font) => (
                   <TouchableOpacity
-                    key={theme.id}
-                    style={[s.themeBtn, settingFontTheme === theme.id && s.themeBtnActive]}
-                    onPress={() => onUpdateSetting("fontTheme", theme.id)}
+                    key={font.id}
+                    style={[s.themeBtn, selectedFontId === font.id && s.themeBtnActive]}
+                    onPress={() => setSelectedFont(font.id)}
                   >
-                    <Text
-                      style={[s.themeBtnText, settingFontTheme === theme.id && s.themeBtnTextActive]}
-                    >
-                      {t(theme.labelKey, theme.fallback)}
+                    <Text style={[s.themeBtnText, selectedFontId === font.id && s.themeBtnTextActive]}>
+                      {font.name}
                     </Text>
                   </TouchableOpacity>
                 ))}

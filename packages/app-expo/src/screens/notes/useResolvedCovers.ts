@@ -6,12 +6,13 @@ import { getPlatformService } from "@readany/core/services";
 import { useEffect, useState } from "react";
 
 export function useResolvedCovers<T extends { bookId?: string; id?: string; coverUrl?: string | null }>(
-  items: T[],
+  items?: T[],
 ): Map<string, string> {
   const [resolvedCovers, setResolvedCovers] = useState<Map<string, string>>(new Map());
+  const safeItems = items ?? [];
 
   useEffect(() => {
-    if (items.length === 0) {
+    if (safeItems.length === 0) {
       setResolvedCovers(new Map());
       return;
     }
@@ -20,7 +21,7 @@ export function useResolvedCovers<T extends { bookId?: string; id?: string; cove
       try {
         const platform = getPlatformService();
         const appData = await platform.getAppDataDir();
-        for (const item of items) {
+        for (const item of safeItems) {
           const key = item.bookId || item.id;
           if (!key || !item.coverUrl) continue;
           if (
@@ -42,7 +43,7 @@ export function useResolvedCovers<T extends { bookId?: string; id?: string; cove
       }
     };
     resolve();
-  }, [items]);
+  }, [safeItems]);
 
   return resolvedCovers;
 }

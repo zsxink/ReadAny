@@ -673,3 +673,27 @@ export function BookmarkFilledIcon({
     </Svg>
   );
 }
+
+// Font management icons
+export const TypeIcon = icon(() => (
+  <>
+    <Path d="M4 7V4h16v3" />
+    <Path d="M9 20h6" />
+    <Path d="M12 4v16" />
+  </>
+));
+
+export const LinkIcon = icon(() => (
+  <>
+    <Path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+    <Path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+  </>
+));
+
+export const GlobeIcon = icon(() => (
+  <>
+    <Circle cx="12" cy="12" r="10" />
+    <Path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+    <Path d="M2 12h20" />
+  </>
+));

@@ -10,19 +10,32 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-import { FONT_THEMES } from "@/lib/reader/font-themes";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useTranslation } from "react-i18next";
+import { useFontStore } from "@readany/core/stores";
 
 export function ReadSettingsPanel() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { readSettings, updateReadSettings } = useSettingsStore();
+  const customFonts = useFontStore((s) => s.fonts);
+  const selectedFontId = useFontStore((s) => s.selectedFontId);
+  const setSelectedFont = useFontStore((s) => s.setSelectedFont);
 
   useEffect(() => {
     if (readSettings.viewMode === "scroll") {
       updateReadSettings({ viewMode: "paginated" });
     }
   }, [readSettings.viewMode, updateReadSettings]);
+
+  const currentFontValue = selectedFontId ?? "system";
+
+  const handleFontChange = (v: string) => {
+    if (v === "system") {
+      setSelectedFont(null);
+    } else {
+      setSelectedFont(v);
+    }
+  };
 
   return (
     <div className="space-y-6 p-4 pt-3">
@@ -50,20 +63,18 @@ export function ReadSettingsPanel() {
             </Select>
           </div>
 
-          {/* Font Theme */}
+          {/* Font */}
           <div className="flex items-center justify-between">
             <span className="text-sm text-foreground">{t("settings.fontTheme")}</span>
-            <Select
-              value={readSettings.fontTheme}
-              onValueChange={(v) => updateReadSettings({ fontTheme: v })}
-            >
+            <Select value={currentFontValue} onValueChange={handleFontChange}>
               <SelectTrigger className="w-[140px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {FONT_THEMES.map((theme) => (
-                  <SelectItem key={theme.id} value={theme.id}>
-                    {i18n.language === "zh" ? theme.name : theme.nameEn}
+                <SelectItem value="system">{t("fonts.systemDefault", "系统默认")}</SelectItem>
+                {customFonts.map((font) => (
+                  <SelectItem key={font.id} value={font.id}>
+                    {font.name}
                   </SelectItem>
                 ))}
               </SelectContent>

@@ -67,6 +67,8 @@ async function persistDesktopLibraryRootConfig(path: string | null): Promise<voi
   await writeTextFile(configPath, JSON.stringify({ dataRoot: normalized }, null, 2));
 }
 
+const FONTS_DIR = "readany-fonts";
+
 async function collectManagedRelativePaths(): Promise<string[]> {
   await initDatabase();
   const books = await getBooks();
@@ -85,11 +87,23 @@ async function collectManagedRelativePaths(): Promise<string[]> {
   return Array.from(new Set([...assetPaths, ...dbPaths]));
 }
 
+async function collectDirRelativePaths(root: string, subDir: string): Promise<string[]> {
+  const { exists, readDir } = await import("@tauri-apps/plugin-fs");
+  const { join } = await import("@tauri-apps/api/path");
+  const dir = await join(root, subDir);
+  if (!(await exists(dir))) return [];
+  const entries = await readDir(dir);
+  return entries
+    .filter((e) => e.isFile)
+    .map((e) => `${subDir}/${e.name}`);
+}
+
 async function ensureTargetDirs(root: string): Promise<void> {
   const { mkdir } = await import("@tauri-apps/plugin-fs");
   await mkdir(root, { recursive: true });
   await mkdir(await joinWithinRoot(root, "books"), { recursive: true });
   await mkdir(await joinWithinRoot(root, "covers"), { recursive: true });
+  await mkdir(await joinWithinRoot(root, FONTS_DIR), { recursive: true });
 }
 
 export async function getDefaultDesktopLibraryRoot(): Promise<string> {
@@ -167,6 +181,8 @@ export async function migrateDesktopLibraryRoot(nextRoot: string): Promise<Migra
   }
 
   const relativePaths = await collectManagedRelativePaths();
+  const fontPaths = await collectDirRelativePaths(currentRoot, FONTS_DIR);
+  const allRelativePaths = Array.from(new Set([...relativePaths, ...fontPaths]));
 
   await closeDB();
   try {
@@ -181,7 +197,7 @@ export async function migrateDesktopLibraryRoot(nextRoot: string): Promise<Migra
   let movedFiles = 0;
   let skippedFiles = 0;
 
-  for (const relativePath of relativePaths) {
+  for (const relativePath of allRelativePaths) {
     const sourcePath = await joinWithinRoot(currentRoot, relativePath);
     const targetPath = await joinWithinRoot(targetRoot, relativePath);
 
@@ -213,6 +229,27 @@ export async function migrateDesktopLibraryRoot(nextRoot: string): Promise<Migra
   }
 
   await setDesktopLibraryRoot(targetRoot);
+
+  // Update font store: rewrite filePath entries to point to new location
+  // custom-fonts.json lives inside readany-fonts/ so it was already migrated above;
+  // we just need to update in-memory state and write the updated index to the new path.
+  try {
+    const { useFontStore } = await import("@readany/core/stores");
+    const { join } = await import("@tauri-apps/api/path");
+    const { fonts, selectedFontId } = useFontStore.getState();
+    const updatedFonts = await Promise.all(
+      fonts.map(async (f) => {
+        if (f.source !== "local" || !f.fileName) return f;
+        return { ...f, filePath: await join(targetRoot, FONTS_DIR, f.fileName) };
+      }),
+    );
+    useFontStore.setState({ fonts: updatedFonts });
+    const { writeFile } = await import("@tauri-apps/plugin-fs");
+    const indexPath = await join(targetRoot, FONTS_DIR, "custom-fonts.json");
+    await writeFile(indexPath, new TextEncoder().encode(JSON.stringify({ fonts: updatedFonts, selectedFontId }, null, 2)));
+  } catch {
+    // Non-fatal: font paths may need manual fix, but books are safe
+  }
 
   return {
     from: currentRoot,

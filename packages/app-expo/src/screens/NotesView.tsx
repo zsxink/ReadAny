@@ -89,9 +89,6 @@ export function NotesView({
   const [editNote, setEditNote] = useState("");
   const [showExportMenu, setShowExportMenu] = useState(false);
 
-  // Resolve cover URLs using shared hook
-  const resolvedCovers = useResolvedCovers(bookNotebooks);
-
   useFocusEffect(
     useCallback(() => {
       setIsLoading(true);
@@ -165,6 +162,9 @@ export function NotesView({
 
     return Array.from(grouped.values()).sort((a, b) => b.latestAt - a.latestAt);
   }, [highlightsWithBooks, t]);
+
+  // Resolve cover URLs using shared hook
+  const resolvedCovers = useResolvedCovers(bookNotebooks);
 
   const selectedBook = useMemo(() => {
     if (!selectedBookId) return null;

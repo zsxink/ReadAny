@@ -28,6 +28,7 @@ import { useNotebookStore } from "@/stores/notebook-store";
 import { useReaderStore } from "@/stores/reader-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useTTSStore } from "@/stores/tts-store";
+import { useFontStore, getCSSFontFace } from "@readany/core/stores";
 import { useChapterTranslation } from "@readany/core/hooks";
 import { splitNarrationText } from "@readany/core/tts";
 import type { CitationPart, HighlightColor } from "@readany/core/types";
@@ -147,6 +148,7 @@ function useAutoHideControls(
   onNext?: () => void,
   delay = 2000,
   keepVisible = false,
+  isDoublePage = false,
 ) {
   const [isVisible, setIsVisible] = useState(true);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -198,11 +200,14 @@ function useAutoHideControls(
             ? data.screenX
             : windowStartX + Number(data.clientX ?? 0);
         const viewStartX = windowStartX + viewRect.left;
-        const centerStartX = viewStartX + viewWidth * 0.375;
-        const centerEndX = viewStartX + viewWidth * 0.625;
-        const viewCenterX = viewStartX + viewWidth / 2;
 
-        if (clickScreenX >= centerStartX && clickScreenX <= centerEndX) {
+        // Double-page: left 25% = prev, right 25% = next, middle 50% = toggle
+        // Single-page: left/right 37.5% = nav, middle 25% = toggle
+        const leftNavEnd   = viewStartX + viewWidth * (isDoublePage ? 0.25 : 0.375);
+        const rightNavStart = viewStartX + viewWidth * (isDoublePage ? 0.75 : 0.625);
+
+        if (clickScreenX > leftNavEnd && clickScreenX < rightNavStart) {
+          // Middle zone: toggle toolbar
           setIsVisible((prev) => {
             if (prev) {
               clearTimer();
@@ -217,7 +222,7 @@ function useAutoHideControls(
         clearTimer();
         setIsVisible(false);
 
-        if (clickScreenX < viewCenterX) {
+        if (clickScreenX <= leftNavEnd) {
           onPrev?.();
         } else {
           onNext?.();
@@ -227,7 +232,7 @@ function useAutoHideControls(
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [bookKey, clearTimer, containerRef, onNext, onPrev, showAndScheduleHide]);
+  }, [bookKey, clearTimer, containerRef, onNext, onPrev, showAndScheduleHide, isDoublePage]);
 
   // Mouse enter/leave handlers for toolbar area
   const handleMouseEnter = useCallback(() => {
@@ -280,6 +285,116 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   const setSelectedText = useReaderStore((s) => s.setSelectedText);
   const pushHistory = useReaderStore((s) => s.pushHistory);
   const setGoToCfiFn = useReaderStore((s) => s.setGoToCfiFn);
+
+  // Custom fonts — read local files as blob: URLs to work inside foliate-js iframes (same-origin blob: sandbox)
+  const customFonts = useFontStore((s) => s.fonts);
+  const [fontBlobUrls, setFontBlobUrls] = useState<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    let cancelled = false;
+    const newBlobUrls = new Map<string, string>();
+
+    Promise.all(
+      customFonts.map(async (f) => {
+        if (f.source === "remote") return;
+        if (!f.filePath) return;
+        try {
+          const { readFile } = await import("@tauri-apps/plugin-fs");
+          const data = await readFile(f.filePath);
+          const mimeType =
+            f.format === "woff2" ? "font/woff2"
+            : f.format === "woff" ? "font/woff"
+            : f.format === "otf" ? "font/otf"
+            : "font/ttf";
+          const blob = new Blob([data], { type: mimeType });
+          const url = URL.createObjectURL(blob);
+          newBlobUrls.set(f.id, url);
+        } catch (err) {
+          console.error("[FontStore] readFile error for", f.name, err);
+        }
+      }),
+    ).then(() => {
+      if (!cancelled) {
+        setFontBlobUrls((prev) => {
+          for (const [id, url] of prev) {
+            if (!newBlobUrls.has(id)) URL.revokeObjectURL(url);
+          }
+          return newBlobUrls;
+        });
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, [customFonts]);
+
+  // Cleanup blob URLs on unmount
+  useEffect(() => {
+    return () => {
+      setFontBlobUrls((prev) => {
+        for (const url of prev.values()) URL.revokeObjectURL(url);
+        return new Map();
+      });
+    };
+  }, []);
+
+  const selectedFontId = useFontStore((s) => s.selectedFontId);
+
+  const viewSettingsWithFonts = useMemo(() => {
+    const selectedFont = selectedFontId
+      ? customFonts.find((f) => f.id === selectedFontId)
+      : null;
+    const customFontFamily = selectedFont?.fontFamily ?? null;
+    const customFontCssUrls =
+      selectedFont?.source === "remote" && selectedFont.remoteCssUrl
+        ? [selectedFont.remoteCssUrl]
+        : [];
+
+    const fontCSS = selectedFont
+      ? (() => {
+        if (selectedFont.source === "remote" && selectedFont.remoteCssUrl) {
+          return "";
+        }
+        if (selectedFont.source === "remote") return getCSSFontFace(selectedFont);
+        const blobUrl = fontBlobUrls.get(selectedFont.id);
+        if (!blobUrl) return "";
+        const cssFormat = selectedFont.format === "otf" ? "opentype"
+          : selectedFont.format === "woff" ? "woff"
+          : selectedFont.format === "woff2" ? "woff2"
+          : "truetype";
+        return `@font-face {\n  font-family: '${selectedFont.fontFamily}';\n  src: url('${blobUrl}') format('${cssFormat}');\n  font-weight: normal;\n  font-style: normal;\n}`;
+      })()
+      : "";
+    return {
+      ...viewSettings,
+      ...(fontCSS ? { customFontFaceCSS: fontCSS } : {}),
+      ...(customFontCssUrls.length > 0 ? { customFontCssUrls } : {}),
+      ...(customFontFamily ? { customFontFamily } : {}),
+    };
+  }, [viewSettings, customFonts, fontBlobUrls, selectedFontId]);
+
+  useEffect(() => {
+    const selectedFont = selectedFontId
+      ? customFonts.find((font) => font.id === selectedFontId) ?? null
+      : null;
+    console.log("[ReaderView][Font] selection", {
+      selectedFontId,
+      selectedFontName: selectedFont?.name ?? null,
+      selectedFontFamily: selectedFont?.fontFamily ?? null,
+      selectedFontSource: selectedFont?.source ?? null,
+      remoteCssUrl: selectedFont?.remoteCssUrl ?? null,
+      fontTheme: viewSettings.fontTheme,
+      resolvedCustomFontFamily: viewSettingsWithFonts.customFontFamily ?? null,
+      customFontCssUrls: viewSettingsWithFonts.customFontCssUrls ?? [],
+      customFontFaceCSSLength: viewSettingsWithFonts.customFontFaceCSS?.length ?? 0,
+    });
+  }, [
+    customFonts,
+    selectedFontId,
+    viewSettings.fontTheme,
+    viewSettingsWithFonts.customFontCssUrls,
+    viewSettingsWithFonts.customFontFaceCSS,
+    viewSettingsWithFonts.customFontFamily,
+  ]);
 
   const books = useLibraryStore((s) => s.books);
   const updateBook = useLibraryStore((s) => s.updateBook);
@@ -633,6 +748,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     () => foliateRef.current?.goNext(),
     2000,
     keepControlsVisible,
+    (viewSettings.paginatedLayout ?? "double") === "double",
   );
   const toolbarVisible = controlsVisible || isToolbarPinned;
   const readingHeaderTitle = (readerTab?.chapterTitle || book?.meta.title || "").trim();
@@ -2079,7 +2195,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
                 bookKey={bookId}
                 bookDoc={bookDoc}
                 format={bookFormat}
-                viewSettings={viewSettings}
+                viewSettings={viewSettingsWithFonts}
                 lastLocation={book?.currentCfi || undefined}
                 onRelocate={handleRelocate}
                 onTocReady={handleTocReady}

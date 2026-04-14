@@ -18,6 +18,10 @@ export type { PendingNote, NotebookState } from "./notebook-store";
 export { useReaderStore } from "./reader-store";
 export type { NavigationHistoryItem, ReaderTab, ReaderState } from "./reader-store";
 
+// Font store
+export { useFontStore, generateFontId, getFontFormat, saveFontFile, deleteFontFile, getCSSFontFace, getRemoteCssImports, getFontFamilyCSS, getFontsDir } from "./font-store";
+export type { FontState } from "./font-store";
+
 // Persisted stores (FS JSON)
 export { useSettingsStore } from "./settings-store";
 export type { SettingsState } from "./settings-store";

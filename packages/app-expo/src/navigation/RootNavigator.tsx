@@ -7,6 +7,7 @@ import StatsScreen from "@/screens/StatsScreen";
 import AISettingsScreen from "@/screens/settings/AISettingsScreen";
 import AboutScreen from "@/screens/settings/AboutScreen";
 import AppearanceSettingsScreen from "@/screens/settings/AppearanceSettingsScreen";
+import FontSettingsScreen from "@/screens/settings/FontSettingsScreen";
 import SyncSettingsScreen from "@/screens/settings/SyncSettingsScreen";
 import TTSSettingsScreen from "@/screens/settings/TTSSettingsScreen";
 import TranslationSettingsScreen from "@/screens/settings/TranslationSettingsScreen";
@@ -33,6 +34,7 @@ export type RootStackParamList = {
   SyncSettings: undefined;
   About: undefined;
   FullScreenNotes: { bookId: string };
+  FontSettings: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -82,6 +84,7 @@ export function RootNavigator() {
           <Stack.Screen name="TranslationSettings" component={TranslationSettingsScreen} />
           <Stack.Screen name="SyncSettings" component={SyncSettingsScreen} />
           <Stack.Screen name="About" component={AboutScreen} />
+          <Stack.Screen name="FontSettings" component={FontSettingsScreen} options={{ animation: "slide_from_right" }} />
           <Stack.Screen
             name="FullScreenNotes"
             component={FullScreenNotesScreen}

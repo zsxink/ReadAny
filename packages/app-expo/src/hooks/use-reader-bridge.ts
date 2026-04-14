@@ -240,6 +240,8 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       pageMargin?: number;
       fontTheme?: string;
       viewMode?: string;
+      customFontFaceCSS?: string;
+      customFontFamily?: string;
     }) => {
       const msg = JSON.stringify({ type: "applySettings", settings });
       inject(`handleCommand(${msg})`);
