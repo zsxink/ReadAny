@@ -24,6 +24,7 @@ import {
 } from "../../styles/theme";
 import { useUpdateStore } from "@/stores/update-store";
 import { SettingsHeader } from "./SettingsHeader";
+import AppIcon from "../../../assets/icon.png";
 
 const TECH_STACK = [
   { label: "Expo SDK 55", descKey: "about.nativeContainer" },
@@ -83,12 +84,8 @@ export default function AboutScreen() {
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         {/* Logo & Version */}
         <View style={styles.logoSection}>
-          <View style={styles.logoCircle}>
-            <Image
-              source={require("../../../assets/icon.png")}
-              style={styles.logoImage}
-              resizeMode="contain"
-            />
+          <View style={styles.logoBadge}>
+            <Image source={AppIcon} style={{ width: 80, height: 80, borderRadius: 18 }} resizeMode="contain" />
           </View>
           <Text style={styles.appName}>ReadAny</Text>
           <Text style={styles.version}>v{version}</Text>
@@ -180,20 +177,14 @@ const makeStyles = (colors: ThemeColors) =>
       paddingBottom: 24,
       paddingHorizontal: 32,
     },
-    logoCircle: {
+    logoBadge: {
       width: 80,
       height: 80,
-      borderRadius: 40,
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
+      borderRadius: 18,
+      overflow: "hidden",
       alignItems: "center",
       justifyContent: "center",
       marginBottom: 16,
-    },
-    logoImage: {
-      width: 56,
-      height: 56,
     },
     appName: {
       fontSize: fontSize.xl,

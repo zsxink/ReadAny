@@ -120,7 +120,11 @@ export function AboutSettings() {
     <div className="flex flex-col items-center p-6">
       {/* Logo & App Name */}
       <div className="mb-6 flex flex-col items-center">
-        <img src="/logo.svg" alt="ReadAny Logo" className="mb-4 h-24 w-24 drop-shadow-lg" />
+        <img
+          src="/logo.svg"
+          alt="ReadAny Logo"
+          className="mb-4 h-24 w-24 rounded-[22%] drop-shadow-lg"
+        />
         <h1 className="text-2xl font-bold text-foreground">ReadAny</h1>
         <p className="mt-1 text-sm text-muted-foreground">{t("settings.aboutDesc")}</p>
       </div>
