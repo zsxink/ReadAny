@@ -74,21 +74,21 @@ function CustomTrafficLights() {
     <div className="flex h-full shrink-0 items-center gap-1.5 pl-2" style={NO_DRAG_STYLE}>
       <button
         type="button"
-        className="h-3 w-3 rounded-full bg-[#ff5f57] transition-opacity hover:opacity-80"
+        className="h-3 w-3 shrink-0 rounded-full bg-[#ff5f57] p-0 leading-none transition-opacity hover:opacity-80"
         onClick={() => winRef.current?.close().catch(() => {})}
         onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0.8"; }}
         onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
       />
       <button
         type="button"
-        className="h-3 w-3 rounded-full bg-[#febc2e] transition-opacity hover:opacity-80"
+        className="h-3 w-3 shrink-0 rounded-full bg-[#febc2e] p-0 leading-none transition-opacity hover:opacity-80"
         onClick={() => winRef.current?.minimize().catch(() => {})}
         onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0.8"; }}
         onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
       />
       <button
         type="button"
-        className="h-3 w-3 rounded-full bg-[#28c840] transition-opacity hover:opacity-80"
+        className="h-3 w-3 shrink-0 rounded-full bg-[#28c840] p-0 leading-none transition-opacity hover:opacity-80"
         onClick={async () => {
           if (!winRef.current) return;
           try {
