@@ -34,6 +34,25 @@ function usePlatformInfo() {
   return info;
 }
 
+function useIsFullscreen() {
+  const [fs, setFs] = useState(false);
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        const w = getCurrentWindow();
+        setFs(await w.isFullscreen());
+        const unlisten = await w.onResized(async () => { setFs(await w.isFullscreen()); });
+        return unlisten;
+      } catch { return undefined; }
+    };
+    let unlisten: (() => void) | undefined;
+    check().then((u) => { unlisten = u; });
+    return () => unlisten?.();
+  }, []);
+  return fs;
+}
+
 function CustomTrafficLights() {
   const { isTauri, isWin } = usePlatformInfo();
   const applied = useRef(false);
@@ -89,6 +108,7 @@ export function TabBar() {
   const removeReaderTab = useReaderStore((s) => s.removeTab);
   const books = useLibraryStore((s) => s.books);
   const { isMac } = usePlatformInfo();
+  const isFullscreen = useIsFullscreen();
 
   const readerTabs = tabs.filter((t) => t.type !== "home");
 
@@ -112,8 +132,8 @@ export function TabBar() {
     >
       <CustomTrafficLights />
 
-      {/* macOS: space for native traffic lights; others: small padding */}
-      <div className="flex h-full shrink-0 items-center" style={{ paddingLeft: isMac ? 68 : 4 }}>
+      {/* macOS: space for native traffic lights (collapse in fullscreen); others: small padding */}
+      <div className="flex h-full shrink-0 items-center" style={{ paddingLeft: (isMac && !isFullscreen) ? 68 : 4 }}>
         <button
           type="button"
           className="flex items-center justify-center rounded-md p-1 text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800"
