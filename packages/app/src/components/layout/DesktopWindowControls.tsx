@@ -119,7 +119,7 @@ export function DesktopWindowControls({
   }, [isVisible]);
 
   useEffect(() => {
-    if (!isTauriPlatform || !headerRef?.current) return;
+    if (!isVisible || !headerRef?.current) return;
 
     const headerElement = headerRef.current;
 
@@ -233,7 +233,7 @@ export function DesktopWindowControls({
       headerElement.removeEventListener("pointerup", handlePointerUp);
       headerElement.removeEventListener("pointercancel", handlePointerUp);
     };
-  }, [headerRef, isTauriPlatform]);
+  }, [headerRef, isVisible]);
 
   if (!isVisible) return null;
 
