@@ -1,5 +1,6 @@
+import { DesktopWindowControls } from "@/components/layout/DesktopWindowControls";
 import { useSettingsStore } from "@readany/core/stores/settings-store";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AIPage } from "./steps/AIPage";
 import { AppearancePage } from "./steps/AppearancePage";
 import { CompletePage } from "./steps/CompletePage";
@@ -26,6 +27,7 @@ export function OnboardingModal() {
     useSettingsStore();
 
   const [mounted, setMounted] = useState(false);
+  const topBarRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -53,11 +55,13 @@ export function OnboardingModal() {
 
   return (
     <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-background">
-      {/* Draggable Top Bar */}
+      {/* Draggable Top Bar + desktop window controls */}
       <div
-        data-tauri-drag-region
-        className="absolute top-0 left-0 right-0 h-10 z-50 cursor-grab active:cursor-grabbing"
-      />
+        ref={topBarRef}
+        className="absolute top-0 left-0 right-0 z-50 flex h-10 items-center justify-end border-b border-border/30 bg-background/65 backdrop-blur-md cursor-grab active:cursor-grabbing"
+      >
+        <DesktopWindowControls headerRef={topBarRef} />
+      </div>
 
       {/* Decorative ambient background */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">

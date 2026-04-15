@@ -1,15 +1,15 @@
 import { evictBlobCache } from "@/components/reader/ReaderView";
+import { DesktopWindowControls } from "@/components/layout/DesktopWindowControls";
 /**
  * TabBar — draggable tab bar
- * macOS: native traffic lights (left), decorations=true
- * Windows/Linux: custom window controls (right), decorations removed at runtime
+ * macOS: native traffic lights (left), can optionally preview custom controls on the right
+ * Windows/Linux: custom window controls (right), system decorations disabled in Tauri setup
  */
 import { type Tab, useAppStore } from "@/stores/app-store";
 import { useLibraryStore } from "@/stores/library-store";
 import { useReaderStore } from "@/stores/reader-store";
 import { BookOpen, Home, MessageSquare, NotebookPen, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { Window as TauriWindow } from "@tauri-apps/api/window";
 
 const TAB_ICONS: Record<string, React.ElementType> = {
   home: Home,
@@ -18,7 +18,6 @@ const TAB_ICONS: Record<string, React.ElementType> = {
   notes: NotebookPen,
 };
 
-const DRAG_STYLE = { WebkitAppRegion: "drag" } as Record<string, string>;
 const NO_DRAG_STYLE = { WebkitAppRegion: "no-drag" } as Record<string, string>;
 
 function usePlatformInfo() {
@@ -53,76 +52,13 @@ function useIsFullscreen() {
   return fs;
 }
 
-function WindowControls() {
-  const { isTauri, isMac, isWinOrLinux } = usePlatformInfo();
-  const applied = useRef(false);
-  const winRef = useRef<TauriWindow | null>(null);
-
-  useEffect(() => {
-    if (!isTauri || applied.current) return;
-    applied.current = true;
-    import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
-      const w = getCurrentWindow();
-      winRef.current = w;
-      w.setDecorations(false).catch(() => {});
-    }).catch(() => {});
-  }, [isTauri, isMac, isWinOrLinux]);
-
-  if (!isTauri) return null;
-
-  const handlePreventDrag = (e: React.PointerEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-  };
-
-  return (
-    <div className="flex h-full shrink-0 items-center pr-1" style={NO_DRAG_STYLE} onPointerDown={handlePreventDrag}>
-      <button
-        type="button"
-        className="flex h-8 w-11 items-center justify-center text-neutral-500 transition-colors hover:bg-black/5"
-        onPointerDown={handlePreventDrag}
-        onClick={(e) => { e.stopPropagation(); winRef.current?.minimize().catch(() => {}); }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(0,0,0,0.05)"; }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = ""; }}
-      >
-        <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor"/></svg>
-      </button>
-      <button
-        type="button"
-        className="flex h-8 w-11 items-center justify-center text-neutral-500 transition-colors hover:bg-black/5"
-        onPointerDown={handlePreventDrag}
-        onClick={(e) => {
-          e.stopPropagation();
-          if (!winRef.current) return;
-          winRef.current.isMaximized().then((m) => m ? winRef.current!.unmaximize() : winRef.current!.maximize()).catch(() => {});
-        }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(0,0,0,0.05)"; }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = ""; }}
-      >
-        <svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="currentColor" strokeWidth="1.2">
-          <rect x="0.6" y="0.6" width="7.8" height="7.8"/>
-        </svg>
-      </button>
-      <button
-        type="button"
-        className="flex h-8 w-11 items-center justify-center text-neutral-500 transition-colors hover:bg-red-600 hover:text-white"
-        onPointerDown={handlePreventDrag}
-        onClick={(e) => { e.stopPropagation(); winRef.current?.close().catch(() => {}); }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "#dc2626"; (e.currentTarget as HTMLElement).style.color = "#fff"; }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = ""; (e.currentTarget as HTMLElement).style.color = ""; }}
-      >
-        <X className="h-3.5 w-3.5" />
-      </button>
-    </div>
-  );
-}
-
 export function TabBar() {
   const { tabs, activeTabId, setActiveTab, removeTab } = useAppStore();
   const removeReaderTab = useReaderStore((s) => s.removeTab);
   const books = useLibraryStore((s) => s.books);
-  const { isMac, isWinOrLinux, isTauri } = usePlatformInfo();
+  const { isMac, isTauri } = usePlatformInfo();
   const isFullscreen = useIsFullscreen();
+  const headerRef = useRef<HTMLDivElement | null>(null);
 
   const readerTabs = tabs.filter((t) => t.type !== "home");
   const isReaderActive = readerTabs.some((t) => t.id === activeTabId);
@@ -141,9 +77,8 @@ export function TabBar() {
 
   return (
     <div
+      ref={headerRef}
       className="flex h-8 shrink-0 select-none items-center border-neutral-200 bg-muted"
-      data-tauri-drag-region
-      style={DRAG_STYLE}
     >
       {/* macOS: space for native traffic lights (hidden in reader mode) */}
       <div className="flex h-full shrink-0 items-center" style={{ paddingLeft: (isMac && !isFullscreen && !isReaderActive) ? 68 : 4 }}>
@@ -160,8 +95,6 @@ export function TabBar() {
       {/* Tabs */}
       <div
         className="flex h-full flex-1 items-center gap-0.5 overflow-x-auto px-1"
-        data-tauri-drag-region
-        style={DRAG_STYLE}
       >
         {readerTabs.map((tab) => (
           <TabItem
@@ -174,8 +107,8 @@ export function TabBar() {
         ))}
       </div>
 
-      {/* Windows/Linux: window controls on right (always show for non-Mac Tauri) */}
-      {isTauri && isWinOrLinux && <WindowControls />}
+      {/* Desktop: custom window controls on right; macOS keeps native traffic lights only */}
+      {isTauri && <DesktopWindowControls headerRef={headerRef} />}
     </div>
   );
 }

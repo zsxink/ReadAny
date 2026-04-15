@@ -45,6 +45,13 @@ pub fn run() {
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();
+            #[cfg(any(target_os = "windows", target_os = "linux"))]
+            if let Some(window) = app.get_webview_window("main") {
+                if let Err(e) = window.set_decorations(false) {
+                    eprintln!("[Window] Failed to disable system decorations: {}", e);
+                }
+            }
+
             if let Err(e) = db::init_database_sync(&app_handle) {
                 eprintln!("[DB] Failed to initialize database: {}", e);
             }
