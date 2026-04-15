@@ -24,11 +24,13 @@ if (typeof navigator !== "undefined" && !navigator.userAgent) {
 
 import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useState } from "react";
+import * as SplashScreen from "expo-splash-screen";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { AnimatedSplash } from "@/components/splash/AnimatedSplash";
 import { rnSessionEventSource } from "@/hooks";
 import { Audio } from "expo-av";
 import { setStreamingFetch } from "@readany/core/ai/llm-provider";
@@ -51,8 +53,12 @@ import { useLibraryStore } from "@/stores/library-store";
 import { ThemeProvider, useTheme } from "@/styles/ThemeContext";
 import { useAutoSync } from "@readany/core/hooks/use-auto-sync";
 
+// Keep the native splash screen visible while we bootstrap
+SplashScreen.preventAutoHideAsync().catch(() => {});
+
 export default function App() {
   const [ready, setReady] = useState(false);
+  const [splashDone, setSplashDone] = useState(false);
   const [bootError, setBootError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -91,12 +97,19 @@ export default function App() {
 
         console.log("[App] bootstrap: done");
         setReady(true);
+        // Hide native splash now — our animated splash takes over
+        await SplashScreen.hideAsync();
       } catch (error) {
         console.error("[App] bootstrap failed:", error);
         setBootError(error instanceof Error ? error.message : String(error));
+        await SplashScreen.hideAsync();
       }
     }
     bootstrap();
+  }, []);
+
+  const handleSplashFinish = useCallback(() => {
+    setSplashDone(true);
   }, []);
 
   if (bootError) {
@@ -133,10 +146,10 @@ export default function App() {
           flex: 1,
           justifyContent: "center",
           alignItems: "center",
-          backgroundColor: "#1c1c1e",
+          backgroundColor: "#05042B",
         }}
       >
-        <ActivityIndicator size="large" color="#6366f1" />
+        {/* Background matches animated splash so transition is seamless */}
       </View>
     );
   }
@@ -145,6 +158,7 @@ export default function App() {
     <I18nextProvider i18n={i18n}>
       <ThemeProvider>
         <AppInner />
+        {!splashDone && <AnimatedSplash onFinish={handleSplashFinish} />}
       </ThemeProvider>
     </I18nextProvider>
   );
