@@ -13,6 +13,7 @@ import {
   getMonthLabel,
   groupThreadsByTime,
   mergeMessagesWithStreaming,
+  providerRequiresApiKey,
 } from "@readany/core/utils";
 import {
   BookOpen,
@@ -222,7 +223,8 @@ export function ChatPage() {
     async (content: string, deepThinking = false, spoilerFree = false) => {
       const { aiConfig } = useSettingsStore.getState();
       const endpoint = aiConfig.endpoints.find((e) => e.id === aiConfig.activeEndpointId);
-      if (!endpoint?.apiKey || !aiConfig.activeModel) {
+      const needsKey = endpoint ? providerRequiresApiKey(endpoint.provider) : true;
+      if (!endpoint || (needsKey && !endpoint.apiKey) || !aiConfig.activeModel) {
         setConfigGuide("ai");
         return;
       }
