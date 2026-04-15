@@ -65,9 +65,9 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/codedogQBY/ReadAny/releases/latest/download/latest.json"
+        "https://github.com/zsxink/ReadAny/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ2ODk0NkQ4RTNBMzc5ODYKUldTR2VhUGoyRWFKMXMxYjVoS1dSWTVBbVlMSk5xdTFVZWRUUTFFTVNXRXVaR2J4TEZZMVd2T3QK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDEzQTI4QzQ2NzFDNDlDOTcKUldTWG5NUnhSb3lpRTJjeXM3QjUvMGZ6dGFCYjhVTEJQdkM3V2ZqcTRzSXc2MDBSSUhhTlVtdUYK"
     }
   }
 }
