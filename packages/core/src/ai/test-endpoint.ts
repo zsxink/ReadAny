@@ -1,6 +1,7 @@
 import type { AIEndpoint } from "../types";
 import { getDefaultBaseUrl, providerRequiresApiKey } from "../utils";
 import { logAIEndpointDebug, summarizeDebugText } from "./request-debug";
+import { getEndpointFetch } from "./llm-provider";
 import {
   buildOpenAICompatibleUrl,
   buildProviderModelsUrl,
@@ -77,7 +78,9 @@ async function fetchJson(
     });
   }
 
-  const response = await fetch(url, init);
+  // 使用和AI对话一致的跨域适配fetch，避免CORS错误
+  const requestFetch = debug ? getEndpointFetch(debug.endpoint, debug.model) : globalThis.fetch;
+  const response = await requestFetch(url, init);
   if (!response.ok) {
     const errorBody = await parseErrorBody(response);
     if (debug) {
