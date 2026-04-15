@@ -35,7 +35,6 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
     viewMode: settingViewMode,
     showTopTitleProgress,
     showBottomTimeBattery,
-    volumeButtonsPageTurn,
   } = readSettings;
 
   return (
@@ -216,17 +215,6 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
             >
               <Text style={[s.settingToggleText, showBottomTimeBattery !== false && s.settingToggleTextActive]}>
                 {showBottomTimeBattery !== false ? t("settings.enabled") : t("settings.disabled")}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <View style={s.settingRow}>
-            <Text style={s.settingLabel}>{t("settings.volumeButtonsPageTurn")}</Text>
-            <TouchableOpacity
-              style={[s.settingToggleBtn, volumeButtonsPageTurn === true && s.settingToggleBtnActive]}
-              onPress={() => onUpdateSetting("volumeButtonsPageTurn", !volumeButtonsPageTurn)}
-            >
-              <Text style={[s.settingToggleText, volumeButtonsPageTurn === true && s.settingToggleTextActive]}>
-                {volumeButtonsPageTurn === true ? t("settings.enabled") : t("settings.disabled")}
               </Text>
             </TouchableOpacity>
           </View>
