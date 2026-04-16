@@ -51,6 +51,8 @@ export interface DailyBookBreakdown {
   title: string;
   author?: string;
   coverUrl?: string;
+  tags?: string[];
+  subjects?: string[];
   totalTime: number; // minutes
   pagesRead: number;
   sessionsCount: number;
@@ -76,6 +78,7 @@ export interface DailyReadingFact {
   firstSessionAt?: number;
   lastSessionAt?: number;
   peakHour?: number; // 0-23
+  hourlyDistribution: number[]; // 24 buckets, minutes per hour
 
   bookBreakdown: DailyBookBreakdown[];
 }
@@ -159,6 +162,14 @@ export interface TopBookEntry {
   progress?: number;
 }
 
+export interface StatsYearSnapshot {
+  year: string;
+  totalReadingTime: number; // minutes
+  activeDays: number;
+  booksTouched: number;
+  topBook?: TopBookEntry;
+}
+
 export interface StatsShareCardModel {
   dimension: StatsDimension;
   title: string;
@@ -227,6 +238,8 @@ export interface YearReport extends BaseStatsReport {
   dimension: "year";
   monthlyCharts: StatsChartBlock[];
   strongestMonth?: StatsMetricComparison;
+  timeOfDayChart?: StatsChartBlock;
+  categoryDistribution?: StatsChartBlock;
 }
 
 export interface LifetimeContext {
@@ -242,6 +255,9 @@ export interface LifetimeReport extends BaseStatsReport {
   dimension: "lifetime";
   context: LifetimeContext;
   yearlyCharts: StatsChartBlock[];
+  yearlySnapshots: StatsYearSnapshot[];
+  timeOfDayChart?: StatsChartBlock;
+  categoryDistribution?: StatsChartBlock;
   milestones: StatsInsight[];
 }
 

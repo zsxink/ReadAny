@@ -15,11 +15,27 @@ function createBookBreakdown(
     title: book?.meta.title ?? "Unknown",
     author: book?.meta.author,
     coverUrl: book?.meta.coverUrl,
+    tags: book?.tags ?? [],
+    subjects: book?.meta.subjects ?? [],
     totalTime: 0,
     pagesRead: 0,
     sessionsCount: 0,
     progressEnd: book?.progress,
   };
+}
+
+function getPeakHour(hourlyDistribution: number[]): number | undefined {
+  let bestHour: number | undefined;
+  let bestValue = -1;
+
+  hourlyDistribution.forEach((value, hour) => {
+    if (value > bestValue) {
+      bestHour = hour;
+      bestValue = value;
+    }
+  });
+
+  return bestValue > 0 ? bestHour : undefined;
 }
 
 function createDailyFact(date: string): DailyReadingFact {
@@ -35,6 +51,7 @@ function createDailyFact(date: string): DailyReadingFact {
     completedBooks: 0,
     avgSessionTime: 0,
     longestSessionTime: 0,
+    hourlyDistribution: Array.from({ length: 24 }, () => 0),
     bookBreakdown: [],
   };
 }
@@ -77,7 +94,8 @@ export function mergeCurrentSessionIntoDailyFacts(
     target.lastSessionAt === undefined
       ? currentSession.endedAt ?? currentSession.startedAt
       : Math.max(target.lastSessionAt, currentSession.endedAt ?? currentSession.startedAt);
-  target.peakHour = target.peakHour === undefined ? sessionHour : target.peakHour;
+  target.hourlyDistribution[sessionHour] = (target.hourlyDistribution[sessionHour] ?? 0) + sessionMinutes;
+  target.peakHour = getPeakHour(target.hourlyDistribution);
 
   let targetBook = target.bookBreakdown.find((item) => item.bookId === currentSession.bookId);
   if (!targetBook) {
@@ -88,6 +106,8 @@ export function mergeCurrentSessionIntoDailyFacts(
   targetBook.totalTime += sessionMinutes;
   targetBook.pagesRead += currentSession.pagesRead;
   targetBook.sessionsCount += 1;
+  targetBook.tags = book?.tags ?? targetBook.tags;
+  targetBook.subjects = book?.meta.subjects ?? targetBook.subjects;
   targetBook.progressEnd = book?.progress ?? targetBook.progressEnd;
 
   target.bookBreakdown.sort((a, b) => b.totalTime - a.totalTime);

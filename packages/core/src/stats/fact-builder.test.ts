@@ -27,13 +27,14 @@ const books: Book[] = [
       title: "Deep Reading",
       author: "Alice",
       coverUrl: "cover-1",
+      subjects: ["Personal Growth"],
     },
     addedAt: 1,
     updatedAt: 1,
     progress: 0.42,
     isVectorized: false,
     vectorizeProgress: 0,
-    tags: [],
+    tags: ["Growth"],
     syncStatus: "local",
   },
   {
@@ -103,12 +104,16 @@ describe("buildDailyReadingFacts", () => {
       expect.objectContaining({
         bookId: "book-1",
         title: "Deep Reading",
+        tags: ["Growth"],
+        subjects: ["Personal Growth"],
         totalTime: 75,
         pagesRead: 20,
         sessionsCount: 2,
         progressEnd: 0.42,
       }),
     ]);
+    expect(facts[0].hourlyDistribution[9]).toBe(30);
+    expect(facts[0].hourlyDistribution[20]).toBe(45);
 
     expect(facts[1]).toMatchObject({
       date: "2026-04-18",
@@ -147,6 +152,8 @@ describe("buildDailyReadingFacts", () => {
     expect(fact.bookBreakdown[1]).toMatchObject({
       bookId: "book-unknown",
       title: "Unknown",
+      tags: [],
+      subjects: [],
       totalTime: 15,
     });
   });

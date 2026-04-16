@@ -14,6 +14,7 @@ import type {
   StatsPeriodRef,
   StatsShareCardModel,
   StatsSummary,
+  StatsYearSnapshot,
   TopBookEntry,
   WeekReport,
   YearReport,
@@ -325,6 +326,34 @@ function buildDailyTimeChart(
   };
 }
 
+function buildMonthlyHeatmapChart(
+  facts: DailyReadingFact[],
+  period: StatsPeriodRef,
+): StatsChartBlock {
+  const start = fromLocalDateKey(period.startDate);
+  const end = fromLocalDateKey(period.endDate);
+  const values = new Map(facts.map((fact) => [fact.date, fact.totalTime]));
+  const data: StatsChartDatum[] = [];
+
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    const key = toLocalDateKey(cursor);
+    data.push({
+      key,
+      label: key.slice(5),
+      value: values.get(key) ?? 0,
+    });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return {
+    id: `${period.dimension}-heatmap`,
+    title: "Reading intensity",
+    type: "heatmap",
+    data,
+  };
+}
+
 function getCalendarIntensity(totalTime: number, maxTotalTime: number): 0 | 1 | 2 | 3 | 4 {
   if (totalTime <= 0 || maxTotalTime <= 0) return 0;
   const ratio = totalTime / maxTotalTime;
@@ -434,6 +463,114 @@ function buildLifetimeYearChart(facts: DailyReadingFact[]): StatsChartBlock {
   };
 }
 
+const TIME_OF_DAY_BUCKETS = [
+  { key: "lateNight", label: "lateNight", startHour: 0, endHour: 5 },
+  { key: "earlyMorning", label: "earlyMorning", startHour: 5, endHour: 8 },
+  { key: "morning", label: "morning", startHour: 8, endHour: 12 },
+  { key: "afternoon", label: "afternoon", startHour: 12, endHour: 17 },
+  { key: "evening", label: "evening", startHour: 17, endHour: 21 },
+  { key: "night", label: "night", startHour: 21, endHour: 24 },
+] as const;
+
+function buildTimeOfDayChart(
+  facts: DailyReadingFact[],
+  id: string,
+  title: string,
+): StatsChartBlock | undefined {
+  if (facts.length === 0) {
+    return undefined;
+  }
+
+  const data = TIME_OF_DAY_BUCKETS.map((bucket) => {
+    let total = 0;
+    for (const fact of facts) {
+      for (let hour = bucket.startHour; hour < bucket.endHour; hour += 1) {
+        total += fact.hourlyDistribution[hour] ?? 0;
+      }
+    }
+
+    return {
+      key: bucket.key,
+      label: bucket.label,
+      value: total,
+    };
+  });
+
+  if (!data.some((item) => item.value > 0)) {
+    return undefined;
+  }
+
+  return {
+    id,
+    title,
+    type: "bar",
+    data,
+  };
+}
+
+const UNCATEGORIZED_KEY = "__uncategorized__";
+
+function buildCategoryDistributionChart(
+  facts: DailyReadingFact[],
+  id: string,
+  title: string,
+): StatsChartBlock | undefined {
+  const byCategory = new Map<string, number>();
+
+  for (const fact of facts) {
+    for (const book of fact.bookBreakdown) {
+      const primaryCategory = book.tags?.[0] || book.subjects?.[0] || UNCATEGORIZED_KEY;
+      byCategory.set(primaryCategory, (byCategory.get(primaryCategory) ?? 0) + book.totalTime);
+    }
+  }
+
+  const data = Array.from(byCategory.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([key, value]) => ({
+      key,
+      label: key,
+      value,
+    }));
+
+  if (data.length === 0) {
+    return undefined;
+  }
+
+  return {
+    id,
+    title,
+    type: "bar",
+    data,
+  };
+}
+
+function buildYearSnapshots(facts: DailyReadingFact[]): StatsYearSnapshot[] {
+  const byYear = new Map<string, DailyReadingFact[]>();
+
+  for (const fact of facts) {
+    const list = byYear.get(fact.yearKey) ?? [];
+    list.push(fact);
+    byYear.set(fact.yearKey, list);
+  }
+
+  return Array.from(byYear.entries())
+    .sort(([a], [b]) => b.localeCompare(a))
+    .slice(0, 4)
+    .map(([year, yearFacts]) => {
+      const summary = buildStatsSummary(yearFacts);
+      const topBook = buildTopBooksFromFacts(yearFacts, 1)[0];
+
+      return {
+        year,
+        totalReadingTime: summary.totalReadingTime,
+        activeDays: summary.activeDays,
+        booksTouched: summary.booksTouched,
+        topBook,
+      };
+    });
+}
+
 export function buildDayReport(
   facts: DailyReadingFact[],
   date: Date,
@@ -495,7 +632,7 @@ export function buildMonthReport(
   const periodFacts = filterFactsByPeriod(facts, period);
   const summary = buildStatsSummary(periodFacts);
   const topBooks = buildTopBooksFromFacts(periodFacts, options.limitTopBooks);
-  const heatmap = buildDailyTimeChart(periodFacts, period, "Daily reading intensity");
+  const heatmap = buildMonthlyHeatmapChart(periodFacts, period);
   const readingCalendar = buildMonthReadingCalendar(
     periodFacts,
     date,
@@ -528,6 +665,12 @@ export function buildYearReport(
   const summary = buildStatsSummary(periodFacts);
   const topBooks = buildTopBooksFromFacts(periodFacts, options.limitTopBooks);
   const monthlyChart = buildYearlyMonthChart(periodFacts, date.getFullYear());
+  const timeOfDayChart = buildTimeOfDayChart(periodFacts, `year-${date.getFullYear()}-time-of-day`, "Preferred reading time");
+  const categoryDistribution = buildCategoryDistributionChart(
+    periodFacts,
+    `year-${date.getFullYear()}-category-distribution`,
+    "Book distribution",
+  );
   const strongestMonth = monthlyChart.data.reduce<StatsMetricCard | undefined>((best, current) => {
     if (!best || Number(best.sublabel ?? "0") < current.value) {
       return createMetricCard("strongest-month", "Strongest month", current.label, String(current.value));
@@ -544,6 +687,8 @@ export function buildYearReport(
     charts: [monthlyChart],
     topBooks,
     monthlyCharts: [monthlyChart],
+    timeOfDayChart,
+    categoryDistribution,
     strongestMonth: strongestMonth
       ? {
           label: strongestMonth.label,
@@ -564,6 +709,13 @@ export function buildLifetimeReport(
   const summary = buildStatsSummary(sortedFacts);
   const topBooks = buildTopBooksFromFacts(sortedFacts, options.limitTopBooks);
   const yearlyChart = buildLifetimeYearChart(sortedFacts);
+  const timeOfDayChart = buildTimeOfDayChart(sortedFacts, "lifetime-time-of-day", "Preferred reading time");
+  const categoryDistribution = buildCategoryDistributionChart(
+    sortedFacts,
+    "lifetime-category-distribution",
+    "Book distribution",
+  );
+  const yearlySnapshots = buildYearSnapshots(sortedFacts);
   const firstReadingDate = sortedFacts[0]?.date;
   const totalActiveDays = summary.activeDays;
   const totalDays =
@@ -591,6 +743,9 @@ export function buildLifetimeReport(
       companionMessage: `ReadAny has been with you for ${totalDays} days.`,
     },
     yearlyCharts: [yearlyChart],
+    yearlySnapshots,
+    timeOfDayChart,
+    categoryDistribution,
     milestones: [
       {
         id: "joined",

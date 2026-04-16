@@ -96,10 +96,21 @@ describe("ReadingReportsService", () => {
 
     expect(report.dimension).toBe("month");
     expect(report.summary.totalReadingTime).toBe(30);
+    expect(report.heatmap?.type).toBe("heatmap");
     expect(report.readingCalendar?.monthKey).toBe("2026-04");
     expect(report.topBooks[0]).toMatchObject({
       bookId: "book-1",
       title: "Deep Reading",
     });
+  });
+
+  it("returns a lifetime report with profile charts", async () => {
+    const service = new ReadingReportsService();
+    const report = await service.getLifetimeReport();
+
+    expect(report.dimension).toBe("lifetime");
+    expect(report.timeOfDayChart?.data.length).toBeGreaterThan(0);
+    expect(report.categoryDistribution?.data.length).toBeGreaterThan(0);
+    expect(report.yearlySnapshots[0]?.year).toBe("2026");
   });
 });

@@ -15,6 +15,8 @@ function createUnknownBookBreakdown(bookId: string): DailyBookBreakdown {
   return {
     bookId,
     title: "Unknown",
+    tags: [],
+    subjects: [],
     totalTime: 0,
     pagesRead: 0,
     sessionsCount: 0,
@@ -104,6 +106,8 @@ export function buildDailyReadingFacts(
             title: book.meta.title,
             author: book.meta.author,
             coverUrl: book.meta.coverUrl,
+            tags: book.tags,
+            subjects: book.meta.subjects,
             totalTime: 0,
             pagesRead: 0,
             sessionsCount: 0,
@@ -139,6 +143,7 @@ export function buildDailyReadingFacts(
         firstSessionAt: day.firstSessionAt,
         lastSessionAt: day.lastSessionAt,
         peakHour: getPeakHour(day.hourBuckets),
+        hourlyDistribution: Array.from({ length: 24 }, (_, hour) => day.hourBuckets.get(hour) ?? 0),
         bookBreakdown,
       };
     });

@@ -13,13 +13,14 @@ const books: Book[] = [
       title: "Deep Reading",
       author: "Alice",
       coverUrl: "cover-1",
+      subjects: ["Personal Growth"],
     },
     addedAt: 1,
     updatedAt: 1,
     progress: 0.5,
     isVectorized: false,
     vectorizeProgress: 0,
-    tags: [],
+    tags: ["Growth"],
     syncStatus: "local",
   },
 ];
@@ -56,12 +57,15 @@ describe("mergeCurrentSessionIntoDailyFacts", () => {
         firstSessionAt: new Date(2026, 3, 17, 9, 0, 0).getTime(),
         lastSessionAt: new Date(2026, 3, 17, 10, 0, 0).getTime(),
         peakHour: 9,
+        hourlyDistribution: Array.from({ length: 24 }, (_, hour) => (hour === 9 ? 45 : 0)),
         bookBreakdown: [
           {
             bookId: "book-1",
             title: "Deep Reading",
             author: "Alice",
             coverUrl: "cover-1",
+            tags: ["Growth"],
+            subjects: ["Personal Growth"],
             totalTime: 45,
             pagesRead: 12,
             sessionsCount: 2,
@@ -87,6 +91,7 @@ describe("mergeCurrentSessionIntoDailyFacts", () => {
       pagesRead: 21,
       sessionsCount: 3,
     });
+    expect(merged[0].hourlyDistribution[20]).toBe(30);
   });
 
   it("creates a new daily fact when the session is on a missing date", () => {

@@ -20,10 +20,13 @@ const facts: DailyReadingFact[] = [
     firstSessionAt: new Date(2026, 3, 13, 8, 0, 0).getTime(),
     lastSessionAt: new Date(2026, 3, 13, 8, 30, 0).getTime(),
     peakHour: 8,
+    hourlyDistribution: Array.from({ length: 24 }, (_, hour) => (hour === 8 ? 30 : 0)),
     bookBreakdown: [
       {
         bookId: "book-1",
         title: "Deep Reading",
+        tags: ["Growth"],
+        subjects: ["Personal Growth"],
         totalTime: 30,
         pagesRead: 10,
         sessionsCount: 1,
@@ -45,10 +48,13 @@ const facts: DailyReadingFact[] = [
     firstSessionAt: new Date(2026, 3, 14, 20, 0, 0).getTime(),
     lastSessionAt: new Date(2026, 3, 14, 21, 0, 0).getTime(),
     peakHour: 20,
+    hourlyDistribution: Array.from({ length: 24 }, (_, hour) => (hour === 20 ? 45 : 0)),
     bookBreakdown: [
       {
         bookId: "book-1",
         title: "Deep Reading",
+        tags: ["Growth"],
+        subjects: ["Personal Growth"],
         totalTime: 45,
         pagesRead: 14,
         sessionsCount: 2,

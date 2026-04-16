@@ -77,6 +77,7 @@ export type {
   StatsSectionBlock,
   StatsShareCardModel,
   StatsSummary,
+  StatsYearSnapshot,
   StatsViewModel,
   TopBookEntry,
   WeekReport,

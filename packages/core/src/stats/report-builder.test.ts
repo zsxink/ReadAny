@@ -27,11 +27,14 @@ const facts: DailyReadingFact[] = [
     firstSessionAt: new Date(2026, 3, 13, 8, 0, 0).getTime(),
     lastSessionAt: new Date(2026, 3, 13, 8, 30, 0).getTime(),
     peakHour: 8,
+    hourlyDistribution: Array.from({ length: 24 }, (_, hour) => (hour === 8 ? 30 : 0)),
     bookBreakdown: [
       {
         bookId: "book-1",
         title: "Deep Reading",
         author: "Alice",
+        tags: ["Growth"],
+        subjects: ["Personal Growth"],
         totalTime: 30,
         pagesRead: 10,
         sessionsCount: 1,
@@ -53,11 +56,14 @@ const facts: DailyReadingFact[] = [
     firstSessionAt: new Date(2026, 3, 14, 20, 0, 0).getTime(),
     lastSessionAt: new Date(2026, 3, 14, 21, 0, 0).getTime(),
     peakHour: 20,
+    hourlyDistribution: Array.from({ length: 24 }, (_, hour) => (hour === 20 ? 45 : 0)),
     bookBreakdown: [
       {
         bookId: "book-1",
         title: "Deep Reading",
         author: "Alice",
+        tags: ["Growth"],
+        subjects: ["Personal Growth"],
         totalTime: 45,
         pagesRead: 14,
         sessionsCount: 2,
@@ -79,11 +85,14 @@ const facts: DailyReadingFact[] = [
     firstSessionAt: new Date(2026, 3, 16, 21, 0, 0).getTime(),
     lastSessionAt: new Date(2026, 3, 16, 22, 0, 0).getTime(),
     peakHour: 21,
+    hourlyDistribution: Array.from({ length: 24 }, (_, hour) => (hour === 21 ? 60 : 0)),
     bookBreakdown: [
       {
         bookId: "book-2",
         title: "Systems Thinking",
         author: "Bob",
+        tags: ["Thinking"],
+        subjects: ["Systems"],
         totalTime: 60,
         pagesRead: 18,
         sessionsCount: 1,
@@ -105,11 +114,14 @@ const facts: DailyReadingFact[] = [
     firstSessionAt: new Date(2026, 4, 2, 9, 0, 0).getTime(),
     lastSessionAt: new Date(2026, 4, 2, 9, 20, 0).getTime(),
     peakHour: 9,
+    hourlyDistribution: Array.from({ length: 24 }, (_, hour) => (hour === 9 ? 20 : 0)),
     bookBreakdown: [
       {
         bookId: "book-1",
         title: "Deep Reading",
         author: "Alice",
+        tags: ["Growth"],
+        subjects: ["Personal Growth"],
         totalTime: 20,
         pagesRead: 5,
         sessionsCount: 1,
@@ -197,6 +209,8 @@ describe("report-builder", () => {
     expect(yearReport.monthlyCharts[0].data.find((item) => item.key === "2026-04")?.value).toBe(
       135,
     );
+    expect(yearReport.timeOfDayChart?.data.length).toBe(6);
+    expect(yearReport.categoryDistribution?.data[0]?.key).toBe("Growth");
 
     const lifetimeReport = buildLifetimeReport(facts, {
       now: new Date(2026, 4, 10),
@@ -208,5 +222,6 @@ describe("report-builder", () => {
       key: "2026",
       value: 155,
     });
+    expect(lifetimeReport.yearlySnapshots[0]?.year).toBe("2026");
   });
 });

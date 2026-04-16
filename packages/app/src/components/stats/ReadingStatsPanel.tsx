@@ -28,14 +28,13 @@ import {
   Layers3,
   LibraryBig,
   ScanSearch,
-  Share2,
-  Sparkles,
   TrendingUp,
 } from "lucide-react";
 import type { TFunction } from "i18next";
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { BarChart } from "./BarChart";
+import { HeatmapChart } from "./HeatmapChart";
 
 type MetricTileData = {
   id: string;
@@ -87,12 +86,22 @@ function getStatsCopy(t: TFunction) {
     readingCalendarDesc: t("stats.desktop.readingCalendarDesc"),
     primaryChart: t("stats.desktop.primaryChart"),
     primaryChartDesc: t("stats.desktop.primaryChartDesc"),
+    readingHeatmap: t("stats.desktop.readingHeatmap"),
+    readingHeatmapDesc: t("stats.desktop.readingHeatmapDesc"),
     singlePointLabel: t("stats.desktop.singlePointLabel"),
     singlePointDesc: t("stats.desktop.singlePointDesc"),
     topBooks: t("stats.desktop.topBooks"),
     topBooksDesc: t("stats.desktop.topBooksDesc"),
     insights: t("stats.desktop.insights"),
     insightsDesc: t("stats.desktop.insightsDesc"),
+    rhythmProfile: t("stats.desktop.rhythmProfile"),
+    rhythmProfileDesc: t("stats.desktop.rhythmProfileDesc"),
+    timeOfDay: t("stats.desktop.timeOfDay"),
+    timeOfDayDesc: t("stats.desktop.timeOfDayDesc"),
+    categoryDistribution: t("stats.desktop.categoryDistribution"),
+    categoryDistributionDesc: t("stats.desktop.categoryDistributionDesc"),
+    annualShelf: t("stats.desktop.annualShelf"),
+    annualShelfDesc: t("stats.desktop.annualShelfDesc"),
     milestones: t("stats.desktop.milestones"),
     milestonesDesc: t("stats.desktop.milestonesDesc"),
     sharePreview: t("stats.desktop.sharePreview"),
@@ -133,9 +142,33 @@ function getStatsCopy(t: TFunction) {
     insightBodyTopBook: (title: string) => t("stats.desktop.insightBodyTopBook", { title }),
     milestoneTitleJoined: t("stats.desktop.milestoneTitleJoined"),
     milestoneBodyJoined: (date: string) => t("stats.desktop.milestoneBodyJoined", { date }),
-    loadFailed: t("stats.loadFailed", "Failed to load reading stats."),
-    loading: t("stats.loading", "Preparing your reading story…"),
+    heroNarrativeDay: (time: string, sessions: number) =>
+      t("stats.desktop.heroNarrativeDay", { time, sessions }),
+    heroNarrativeWeek: (days: number, longest: string) =>
+      t("stats.desktop.heroNarrativeWeek", { days, longest }),
+    heroNarrativeMonth: (time: string, books: number) =>
+      t("stats.desktop.heroNarrativeMonth", { time, books }),
+    heroNarrativeYear: (time: string, activeDays: number) =>
+      t("stats.desktop.heroNarrativeYear", { time, activeDays }),
+    heroNarrativeLifetime: (date: string) => t("stats.desktop.heroNarrativeLifetime", { date }),
+    chartPeakLabel: (label: string, value: string) =>
+      t("stats.desktop.chartPeakLabel", { label, value }),
+    topBookLead: t("stats.desktop.topBookLead"),
+    heatmapLegendLow: t("stats.desktop.heatmapLegendLow"),
+    heatmapLegendHigh: t("stats.desktop.heatmapLegendHigh"),
+    uncategorized: t("stats.desktop.uncategorized"),
+    timeOfDayLabels: {
+      lateNight: t("stats.desktop.timeOfDayLabels.lateNight"),
+      earlyMorning: t("stats.desktop.timeOfDayLabels.earlyMorning"),
+      morning: t("stats.desktop.timeOfDayLabels.morning"),
+      afternoon: t("stats.desktop.timeOfDayLabels.afternoon"),
+      evening: t("stats.desktop.timeOfDayLabels.evening"),
+      night: t("stats.desktop.timeOfDayLabels.night"),
+    },
+    loadFailed: t("stats.loadFailed"),
+    loading: t("stats.loading"),
     daySessions: (count: number) => t("stats.desktop.daySessions", { count }),
+    activeDaysSummary: (count: number) => t("stats.desktop.activeDaysSummary", { count }),
   };
 }
 
@@ -373,6 +406,56 @@ function localizeInsight(
   return insight;
 }
 
+function buildHeroNarrative(report: StatsReport, copy: StatsCopy, isZh: boolean): string {
+  if (report.dimension === "day") {
+    return copy.heroNarrativeDay(
+      formatMinutes(report.summary.totalReadingTime, isZh),
+      report.summary.totalSessions,
+    );
+  }
+
+  if (report.dimension === "week") {
+    return copy.heroNarrativeWeek(
+      report.summary.activeDays,
+      formatMinutes(report.summary.longestSessionTime, isZh),
+    );
+  }
+
+  if (report.dimension === "month") {
+    return copy.heroNarrativeMonth(
+      formatMinutes(report.summary.totalReadingTime, isZh),
+      report.summary.booksTouched,
+    );
+  }
+
+  if (report.dimension === "year") {
+    return copy.heroNarrativeYear(
+      formatMinutes(report.summary.totalReadingTime, isZh),
+      report.summary.activeDays,
+    );
+  }
+
+  return copy.heroNarrativeLifetime(formatDateLabel(report.context.joinedSince, isZh));
+}
+
+function getPeakChartDatum(chart: StatsChartBlock): StatsChartBlock["data"][number] | null {
+  if (chart.data.length === 0) return null;
+  const strongest = [...chart.data].sort((a, b) => b.value - a.value)[0];
+  return strongest && strongest.value > 0 ? strongest : null;
+}
+
+function localizeSemanticLabel(key: string, fallback: string, copy: StatsCopy): string {
+  if (key === "__uncategorized__") {
+    return copy.uncategorized;
+  }
+
+  if (key in copy.timeOfDayLabels) {
+    return copy.timeOfDayLabels[key as keyof typeof copy.timeOfDayLabels];
+  }
+
+  return fallback;
+}
+
 export function ReadingStatsPanel() {
   const { t, i18n } = useTranslation();
   const isZh = i18n.language.startsWith("zh");
@@ -434,14 +517,26 @@ export function ReadingStatsPanel() {
     () => (report ? buildHeroMetrics(report, copy, isZh) : []),
     [report, copy, isZh],
   );
+  const headlineMetric = heroMetrics[0] ?? null;
+  const supportMetrics = heroMetrics.slice(1);
 
   const periodLabel = useMemo(
     () => (report ? formatPeriodLabel(report, isZh, copy) : ""),
     [report, isZh, copy],
   );
+  const heroNarrative = useMemo(
+    () => (report ? buildHeroNarrative(report, copy, isZh) : ""),
+    [report, copy, isZh],
+  );
 
   const primaryChart = report?.charts[0] ?? null;
   const monthlyReport = report?.dimension === "month" ? report : null;
+  const yearOrLifetimeReport =
+    report?.dimension === "year" || report?.dimension === "lifetime" ? report : null;
+  const primaryChartTitle =
+    primaryChart?.type === "heatmap" ? copy.readingHeatmap : copy.primaryChart;
+  const primaryChartDesc =
+    primaryChart?.type === "heatmap" ? copy.readingHeatmapDesc : copy.primaryChartDesc;
   const localizedInsights = useMemo(
     () => (report ? report.insights.map((item) => localizeInsight(item, report, copy, isZh)) : []),
     [report, copy, isZh],
@@ -493,106 +588,35 @@ export function ReadingStatsPanel() {
 
   return (
     <TooltipProvider delayDuration={120}>
-      <div className="h-full min-w-0 overflow-y-auto overflow-x-hidden bg-background px-4 py-4 sm:px-6 sm:py-5">
-        <div className="mx-auto flex w-full min-w-0 max-w-[1480px] flex-col gap-5 lg:gap-6">
-          <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-            <div className="space-y-2">
-              <div className="inline-flex items-center gap-2 rounded-full border border-border bg-muted/70 px-3 py-1 text-xs font-medium text-muted-foreground shadow-around">
-                <Sparkles className="h-3.5 w-3.5 text-primary/70" />
-                {copy.dimensionTitles[dimension]}
-              </div>
+      <div className="h-full min-w-0 overflow-y-auto overflow-x-hidden bg-background px-4 py-4 sm:px-6 sm:py-6">
+        <div className="mx-auto flex w-full min-w-0 max-w-[1320px] flex-col gap-6 lg:gap-8">
+          <header className="space-y-3">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
               <div className="space-y-1">
-                <h1 className="text-3xl font-semibold tracking-tight text-foreground">{copy.pageTitle}</h1>
+                <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-[30px]">
+                  {copy.pageTitle}
+                </h1>
                 <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{copy.pageSubtitle}</p>
               </div>
-            </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              {DIMENSIONS.map((item) => (
-                <button
-                  key={item}
-                  className={cn(
-                    "rounded-full border px-4 py-2 text-sm font-medium transition-all",
-                    dimension === item
-                      ? "border-primary bg-primary text-primary-foreground shadow-around"
-                      : "border-border bg-card/80 text-muted-foreground hover:bg-muted hover:text-foreground",
-                  )}
-                  onClick={() => setDimension(item)}
-                >
-                  {copy.dimensions[item]}
-                </button>
-              ))}
+              <div className="inline-flex w-full max-w-full rounded-full border border-border/70 bg-muted/55 p-1 lg:w-auto">
+                {DIMENSIONS.map((item) => (
+                  <button
+                    key={item}
+                    className={cn(
+                      "min-w-0 flex-1 rounded-full px-3 py-2 text-sm font-medium transition-all lg:flex-none lg:px-4",
+                      dimension === item
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                    onClick={() => setDimension(item)}
+                  >
+                    {copy.dimensions[item]}
+                  </button>
+                ))}
+              </div>
             </div>
           </header>
-
-          <section className="border-y border-border/80 py-4">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-foreground">{periodLabel}</p>
-                <p className="text-xs text-muted-foreground">{copy.periodNavigationHint}</p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                {dimension !== "lifetime" && report && (
-                  <>
-                    <div className="flex items-center rounded-full border border-border bg-muted/60 p-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8 rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
-                        onClick={() => setAnchorDate((prev) => shiftAnchorDate(prev, dimension, -1))}
-                        disabled={!report.navigation.canGoPrev}
-                      >
-                        <ChevronLeft className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8 rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
-                        onClick={() => setAnchorDate((prev) => shiftAnchorDate(prev, dimension, 1))}
-                        disabled={!report.navigation.canGoNext}
-                      >
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
-                    </div>
-
-                    {dimension === "year" ? (
-                      <input
-                        type="number"
-                        min="2000"
-                        max={String(new Date().getFullYear())}
-                        value={currentPickerValue}
-                        onChange={onPickPeriod}
-                        className="h-10 w-28 rounded-full border border-input bg-background px-4 text-sm text-foreground outline-none transition-colors focus:border-ring"
-                      />
-                    ) : (
-                      <input
-                        type={dimension === "month" ? "month" : "date"}
-                        value={currentPickerValue}
-                        onChange={onPickPeriod}
-                        className="h-10 rounded-full border border-input bg-background px-4 text-sm text-foreground outline-none transition-colors focus:border-ring"
-                      />
-                    )}
-
-                    <Button
-                      variant="soft"
-                      size="sm"
-                      className="rounded-full border border-border bg-muted px-4 text-foreground hover:bg-muted/80"
-                      onClick={resetToCurrentPeriod}
-                    >
-                      {dimension === "day"
-                        ? copy.today
-                        : dimension === "week"
-                          ? copy.thisWeek
-                          : dimension === "month"
-                            ? copy.thisMonth
-                            : copy.thisYear}
-                    </Button>
-                  </>
-                )}
-              </div>
-            </div>
-          </section>
 
           {loading ? (
             <div className="flex min-h-[48vh] items-center justify-center rounded-[32px] border border-border bg-card/80 shadow-around">
@@ -611,14 +635,102 @@ export function ReadingStatsPanel() {
             </SectionCard>
           ) : (
             <>
-              <section className="grid gap-x-6 gap-y-5 border-y border-border/80 py-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
-                {heroMetrics.map((metric) => (
-                  <MetricTile key={metric.id} metric={metric} />
-                ))}
+              <section className="overflow-hidden rounded-[32px] border border-border/70 bg-card/85 px-5 py-5 shadow-[0_20px_60px_-45px_rgba(122,91,42,0.45)] sm:px-6 sm:py-6">
+                <div className="flex flex-col gap-6">
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                    <div className="space-y-1">
+                      <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                        {copy.dimensionTitles[dimension]}
+                      </div>
+                      <div className="text-lg font-semibold text-foreground sm:text-xl">{periodLabel}</div>
+                    </div>
+
+                    {dimension !== "lifetime" && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex items-center rounded-full border border-border bg-background/80 p-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
+                            onClick={() => setAnchorDate((prev) => shiftAnchorDate(prev, dimension, -1))}
+                            disabled={!report.navigation.canGoPrev}
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
+                            onClick={() => setAnchorDate((prev) => shiftAnchorDate(prev, dimension, 1))}
+                            disabled={!report.navigation.canGoNext}
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
+                        </div>
+
+                        {dimension === "year" ? (
+                          <input
+                            type="number"
+                            min="2000"
+                            max={String(new Date().getFullYear())}
+                            value={currentPickerValue}
+                            onChange={onPickPeriod}
+                            className="h-10 w-28 rounded-full border border-input bg-background px-4 text-sm text-foreground outline-none transition-colors focus:border-ring"
+                          />
+                        ) : (
+                          <input
+                            type={dimension === "month" ? "month" : "date"}
+                            value={currentPickerValue}
+                            onChange={onPickPeriod}
+                            className="h-10 rounded-full border border-input bg-background px-4 text-sm text-foreground outline-none transition-colors focus:border-ring"
+                          />
+                        )}
+
+                        <Button
+                          variant="soft"
+                          size="sm"
+                          className="rounded-full border border-border bg-muted px-4 text-foreground hover:bg-muted/80"
+                          onClick={resetToCurrentPeriod}
+                        >
+                          {dimension === "day"
+                            ? copy.today
+                            : dimension === "week"
+                              ? copy.thisWeek
+                              : dimension === "month"
+                                ? copy.thisMonth
+                                : copy.thisYear}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_420px]">
+                    <div className="min-w-0 space-y-4">
+                      {headlineMetric && (
+                        <div className="space-y-2">
+                          <div className="text-5xl font-semibold tracking-tight text-foreground sm:text-6xl">
+                            {headlineMetric.value}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            {headlineMetric.label}
+                            {headlineMetric.sublabel ? ` · ${headlineMetric.sublabel}` : ""}
+                          </div>
+                        </div>
+                      )}
+                      <p className="max-w-2xl text-sm leading-7 text-muted-foreground">{heroNarrative}</p>
+                    </div>
+
+                    <section className="grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-2">
+                      {supportMetrics.map((metric) => (
+                        <MetricTile key={metric.id} metric={metric} />
+                      ))}
+                    </section>
+                  </div>
+                </div>
               </section>
 
-              <div className="grid min-w-0 gap-6 2xl:grid-cols-[minmax(0,1fr)_320px]">
-                <div className="min-w-0 space-y-6">
+              <div className="grid min-w-0 gap-8 xl:grid-cols-[minmax(0,1.1fr)_360px]">
+                <div className="min-w-0 space-y-8">
                   {report.dimension === "day" && (
                     <SectionCard>
                       <SectionHeader title={copy.daySummary} description={copy.daySummaryDesc} />
@@ -631,10 +743,10 @@ export function ReadingStatsPanel() {
                     </SectionCard>
                   )}
 
-                  {report.dimension === "lifetime" && (
+                  {primaryChart && (
                     <SectionCard>
-                      <SectionHeader title={copy.journey} description={copy.journeySubtitle} />
-                      <JourneySummaryPanel report={report} copy={copy} isZh={isZh} />
+                      <SectionHeader title={primaryChartTitle} description={primaryChartDesc} />
+                      <ChartSurface chart={primaryChart} copy={copy} isZh={isZh} />
                     </SectionCard>
                   )}
 
@@ -648,24 +760,42 @@ export function ReadingStatsPanel() {
                     </SectionCard>
                   )}
 
-                  {primaryChart && (
+                  {yearOrLifetimeReport &&
+                    (yearOrLifetimeReport.timeOfDayChart || yearOrLifetimeReport.categoryDistribution) && (
+                      <SectionCard>
+                        <SectionHeader
+                          title={copy.rhythmProfile}
+                          description={copy.rhythmProfileDesc}
+                        />
+                        <RhythmProfileSection
+                          timeOfDayChart={yearOrLifetimeReport.timeOfDayChart}
+                          categoryChart={yearOrLifetimeReport.categoryDistribution}
+                          copy={copy}
+                          isZh={isZh}
+                        />
+                      </SectionCard>
+                    )}
+
+                  {report.dimension === "lifetime" && report.yearlySnapshots.length > 0 && (
                     <SectionCard>
-                      <SectionHeader title={copy.primaryChart} description={copy.primaryChartDesc} />
-                      <ChartSurface chart={primaryChart} copy={copy} isZh={isZh} />
+                      <SectionHeader title={copy.annualShelf} description={copy.annualShelfDesc} />
+                      <YearlySnapshotsSection
+                        snapshots={report.yearlySnapshots}
+                        copy={copy}
+                        isZh={isZh}
+                      />
+                    </SectionCard>
+                  )}
+
+                  {report.dimension === "lifetime" && (
+                    <SectionCard>
+                      <SectionHeader title={copy.journey} description={copy.journeySubtitle} />
+                      <JourneySummaryPanel report={report} copy={copy} isZh={isZh} />
                     </SectionCard>
                   )}
                 </div>
 
-                <aside className="min-w-0 space-y-6">
-                  <SectionCard>
-                    <SectionHeader
-                      title={copy.sharePreview}
-                      description={copy.sharePreviewDesc}
-                      icon={<Share2 className="h-4 w-4 text-muted-foreground" />}
-                    />
-                    <SharePreviewCard report={report} copy={copy} isZh={isZh} />
-                  </SectionCard>
-
+                <aside className="min-w-0 space-y-8">
                   <SectionCard>
                     <SectionHeader title={copy.topBooks} description={copy.topBooksDesc} />
                     <TopBooksSection books={report.topBooks} copy={copy} isZh={isZh} />
@@ -702,7 +832,7 @@ function SectionCard({
   return (
     <section
       className={cn(
-        "min-w-0 border-t border-border/80 pt-5",
+        "min-w-0 overflow-hidden rounded-[30px] border border-border/70 bg-card/85 px-5 py-5 shadow-[0_20px_60px_-45px_rgba(122,91,42,0.45)] sm:px-6 sm:py-6",
         className,
       )}
     >
@@ -777,6 +907,28 @@ function ChartSurface({
   copy: StatsCopy;
   isZh: boolean;
 }) {
+  if (chart.type === "heatmap") {
+    const peak = getPeakChartDatum(chart);
+
+    return (
+      <div className="space-y-5">
+        <HeatmapChart
+          data={chart.data}
+          emptyMessage={copy.noDataDesc}
+          isZh={isZh}
+          lowLabel={copy.heatmapLegendLow}
+          highLabel={copy.heatmapLegendHigh}
+          activeDaysLabel={copy.activeDaysSummary}
+        />
+        {peak && (
+          <div className="inline-flex max-w-full rounded-full bg-primary/[0.08] px-4 py-2 text-sm font-medium text-foreground">
+            {copy.chartPeakLabel(peak.label, formatMinutes(peak.value, isZh))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   if (chart.data.length <= 1) {
     const point = chart.data[0];
 
@@ -789,29 +941,29 @@ function ChartSurface({
     }
 
     return (
-      <div className="grid gap-6 border-y border-border/70 py-6 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-end">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-end">
         <div className="space-y-3">
           <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{copy.singlePointLabel}</div>
           <div className="text-4xl font-semibold tracking-tight text-foreground">{formatMinutes(point.value, isZh)}</div>
           <div className="text-sm text-muted-foreground">{point.label}</div>
           <p className="max-w-xl text-sm leading-6 text-muted-foreground">{copy.singlePointDesc}</p>
         </div>
-        <div className="border-l border-border/70 pl-5">
+        <div className="rounded-[22px] bg-primary/[0.06] px-4 py-4">
           <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{copy.primaryChart}</div>
-          <div className="mt-3 space-y-3">
-            <div className="h-2 overflow-hidden rounded-full bg-background">
-              <div className="h-full w-full rounded-full bg-primary/70" />
-            </div>
-            <div className="text-xs leading-5 text-muted-foreground">{copy.readingTime}</div>
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-background/80">
+            <div className="h-full w-full rounded-full bg-primary/70" />
           </div>
+          <div className="mt-3 text-xs leading-5 text-muted-foreground">{copy.readingTime}</div>
         </div>
       </div>
     );
   }
 
+  const peak = getPeakChartDatum(chart);
+
   return (
-    <div className="space-y-4">
-      <div className="px-1">
+    <div className="space-y-5">
+      <div className="rounded-[24px] bg-gradient-to-b from-primary/[0.08] via-transparent to-transparent px-2 py-2">
         <BarChart
           data={chart.data.map((item) => ({ label: item.label, value: item.value }))}
           height={220}
@@ -819,23 +971,145 @@ function ChartSurface({
           formatValue={(value) => formatChartMinutes(value, isZh)}
         />
       </div>
-      <div className="grid gap-3 sm:grid-cols-3">
-        {chart.data
-          .slice()
-          .sort((a, b) => b.value - a.value)
-          .slice(0, 3)
-          .map((item) => (
-            <div
-              key={item.key}
-              className="border-b border-border/70 px-1 pb-3 text-sm"
-            >
-              <div className="text-muted-foreground">{item.label}</div>
-              <div className="mt-1 text-lg font-semibold text-foreground">
-                {formatMinutes(item.value, isZh)}
+      {peak && (
+        <div className="inline-flex max-w-full rounded-full bg-primary/[0.08] px-4 py-2 text-sm font-medium text-foreground">
+          {copy.chartPeakLabel(peak.label, formatMinutes(peak.value, isZh))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RhythmProfileSection({
+  timeOfDayChart,
+  categoryChart,
+  copy,
+  isZh,
+}: {
+  timeOfDayChart?: StatsChartBlock;
+  categoryChart?: StatsChartBlock;
+  copy: StatsCopy;
+  isZh: boolean;
+}) {
+  const columns = [timeOfDayChart ? "time" : null, categoryChart ? "category" : null].filter(Boolean)
+    .length;
+
+  return (
+    <div
+      className={cn(
+        "grid gap-6",
+        columns === 2 ? "xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]" : "grid-cols-1",
+      )}
+    >
+      {timeOfDayChart && (
+        <div className={cn("space-y-4", categoryChart && "xl:border-r xl:border-border/60 xl:pr-6")}>
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold text-foreground">{copy.timeOfDay}</h3>
+            <p className="text-sm leading-6 text-muted-foreground">{copy.timeOfDayDesc}</p>
+          </div>
+          <BarChart
+            data={timeOfDayChart.data.map((item) => ({
+              label: localizeSemanticLabel(item.key, item.label, copy),
+              value: item.value,
+            }))}
+            height={220}
+            emptyMessage={copy.noDataDesc}
+            formatValue={(value) => formatChartMinutes(value, isZh)}
+          />
+        </div>
+      )}
+
+      {categoryChart && (
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold text-foreground">{copy.categoryDistribution}</h3>
+            <p className="text-sm leading-6 text-muted-foreground">{copy.categoryDistributionDesc}</p>
+          </div>
+          <CategoryDistributionList chart={categoryChart} copy={copy} isZh={isZh} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CategoryDistributionList({
+  chart,
+  copy,
+  isZh,
+}: {
+  chart: StatsChartBlock;
+  copy: StatsCopy;
+  isZh: boolean;
+}) {
+  const maxValue = Math.max(...chart.data.map((item) => item.value), 1);
+
+  return (
+    <div className="space-y-4">
+      {chart.data.map((item, index) => {
+        const label = localizeSemanticLabel(item.key, item.label, copy);
+        const width = `${Math.max(10, (item.value / maxValue) * 100)}%`;
+
+        return (
+          <div key={`${item.key}-${index}`} className="space-y-2">
+            <div className="flex items-end justify-between gap-3">
+              <div className="min-w-0 text-sm font-medium text-foreground">{label}</div>
+              <div className="flex-shrink-0 text-sm text-muted-foreground">
+                {formatCompactMinutes(item.value, isZh)}
               </div>
             </div>
-          ))}
-      </div>
+            <div className="h-2 overflow-hidden rounded-full bg-muted/70">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-primary/45 to-primary/80"
+                style={{ width }}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function YearlySnapshotsSection({
+  snapshots,
+  copy,
+  isZh,
+}: {
+  snapshots: Extract<StatsReport, { dimension: "lifetime" }>["yearlySnapshots"];
+  copy: StatsCopy;
+  isZh: boolean;
+}) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {snapshots.map((snapshot) => (
+        <article key={snapshot.year} className="border-b border-border/70 pb-4">
+          <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{snapshot.year}</div>
+          <div className="mt-3 text-2xl font-semibold tracking-tight text-foreground">
+            {formatCompactMinutes(snapshot.totalReadingTime, isZh)}
+          </div>
+          <div className="mt-2 text-sm text-muted-foreground">
+            {snapshot.booksTouched.toLocaleString()} {copy.books}
+          </div>
+          <div className="text-sm text-muted-foreground">
+            {snapshot.activeDays.toLocaleString()} {copy.activeDays}
+          </div>
+          {snapshot.topBook && (
+            <div className="mt-4 flex items-center gap-3">
+              <CoverThumb
+                title={snapshot.topBook.title}
+                coverUrl={snapshot.topBook.coverUrl}
+                className="h-16 w-12 rounded-xl shadow-md"
+              />
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium text-foreground">{snapshot.topBook.title}</div>
+                <div className="truncate text-xs text-muted-foreground">
+                  {formatCompactMinutes(snapshot.topBook.totalTime, isZh)}
+                </div>
+              </div>
+            </div>
+          )}
+        </article>
+      ))}
     </div>
   );
 }
@@ -970,9 +1244,15 @@ function MonthCalendarSection({
   calendar: NonNullable<MonthReport["readingCalendar"]>;
   isZh: boolean;
 }) {
-  const weekLabels = isZh
-    ? ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
-    : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const locale = isZh ? "zh-CN" : "en-US";
+  const weekLabels = useMemo(() => {
+    const monday = new Date(2024, 0, 1);
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(monday);
+      date.setDate(monday.getDate() + index);
+      return new Intl.DateTimeFormat(locale, { weekday: "short" }).format(date);
+    });
+  }, [locale]);
 
   return (
     <div className="space-y-3">
@@ -1116,29 +1396,44 @@ function TopBooksSection({
   return (
     <div className="space-y-3">
       {books.slice(0, 5).map((book, index) => (
-        <div
+        <article
           key={book.bookId}
-          className="flex min-w-0 items-center gap-3 border-b border-border/70 py-3"
+          className={cn(
+            "flex min-w-0 items-center gap-3 py-3",
+            index === 0
+              ? "rounded-[24px] bg-primary/[0.06] px-4 py-4"
+              : "border-b border-border/70",
+          )}
         >
           <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-semibold text-muted-foreground">
-            {index + 1}
+            {String(index + 1).padStart(2, "0")}
           </div>
-          <CoverThumb title={book.title} coverUrl={book.coverUrl} className="h-16 w-12 rounded-xl shadow-md" />
+          <CoverThumb
+            title={book.title}
+            coverUrl={book.coverUrl}
+            className={cn("rounded-xl shadow-md", index === 0 ? "h-20 w-14" : "h-16 w-12")}
+          />
 
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold text-foreground">{book.title}</div>
+            {index === 0 && (
+              <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.16em] text-primary/75">
+                {copy.topBookLead}
+              </div>
+            )}
+            <div className={cn("truncate font-semibold text-foreground", index === 0 ? "text-base" : "text-sm")}>
+              {book.title}
+            </div>
             <div className="truncate text-xs text-muted-foreground">{book.author || copy.unknownAuthor}</div>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-              <span className="rounded-full bg-background/90 px-2 py-1">{formatCompactMinutes(book.totalTime, isZh)}</span>
-              <span className="rounded-full bg-background/90 px-2 py-1">
-                {book.pagesRead.toLocaleString()} {copy.pagesReadSuffix}
+            <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span className={cn("font-semibold text-foreground", index === 0 ? "text-2xl" : "text-base")}>
+                {formatCompactMinutes(book.totalTime, isZh)}
               </span>
-              <span className="rounded-full bg-background/90 px-2 py-1">
-                {book.sessionsCount.toLocaleString()} {copy.sessionsSuffix}
+              <span className="text-[11px] text-muted-foreground">
+                {book.pagesRead.toLocaleString()} {copy.pagesReadSuffix} · {book.sessionsCount.toLocaleString()} {copy.sessionsSuffix}
               </span>
             </div>
           </div>
-        </div>
+        </article>
       ))}
     </div>
   );
@@ -1150,104 +1445,33 @@ function InsightsSection({ insights, copy }: { insights: StatsInsight[]; copy: S
   }
 
   return (
-    <div className="space-y-3">
-      {insights.map((insight) => (
+    <div className="space-y-4">
+      {insights.map((insight, index) => (
         <div
           key={insight.id}
-          className={cn(
-            "border-l-2 pl-4",
-            insight.tone === "celebration" && "border-primary/30",
-            insight.tone === "positive" && "border-border",
-            insight.tone === "warning" && "border-destructive/30",
-            (!insight.tone || insight.tone === "neutral") && "border-border/80",
-          )}
+          className="grid grid-cols-[16px_minmax(0,1fr)] gap-3 border-b border-border/60 pb-4 last:border-b-0 last:pb-0"
         >
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 rounded-full bg-muted p-2 text-muted-foreground">
-              <Sparkles className="h-4 w-4" />
-            </div>
-            <div className="space-y-1">
+          <div className="flex items-start justify-center pt-1">
+            <div
+              className={cn(
+                "mt-1 h-2.5 w-2.5 rounded-full bg-border",
+                insight.tone === "celebration" && "bg-primary",
+                insight.tone === "warning" && "bg-destructive/70",
+                insight.tone === "positive" && "bg-primary/70",
+              )}
+            />
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                {String(index + 1).padStart(2, "0")}
+              </span>
               <div className="text-sm font-semibold text-foreground">{insight.title}</div>
-              <div className="text-sm leading-6 text-muted-foreground">{insight.body}</div>
             </div>
+            <div className="text-sm leading-6 text-muted-foreground">{insight.body}</div>
           </div>
         </div>
       ))}
-    </div>
-  );
-}
-
-function SharePreviewCard({
-  report,
-  copy,
-  isZh,
-}: {
-  report: StatsReport;
-  copy: StatsCopy;
-  isZh: boolean;
-}) {
-  const topBook = report.topBooks[0];
-
-  return (
-    <div className="overflow-hidden rounded-[28px] border border-border bg-card shadow-around">
-      <div className="flex items-center justify-between border-b border-border px-4 py-3">
-        <div className="space-y-0.5">
-          <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">ReadAny</div>
-          <div className="text-sm font-semibold text-foreground">{copy.dimensionTitles[report.dimension]}</div>
-        </div>
-        <div className="rounded-full bg-muted px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm">
-          {copy.exportSoon}
-        </div>
-      </div>
-
-      <div className="space-y-5 px-4 py-5">
-        <div className="rounded-[24px] border border-primary/15 bg-primary/5 p-4">
-          <div className="space-y-1">
-            <div className="text-xs uppercase tracking-[0.16em] text-primary/70">{formatPeriodLabel(report, isZh, copy)}</div>
-            <div className="text-3xl font-semibold tracking-tight text-foreground">
-              {report.dimension === "lifetime"
-                ? `${report.context.daysSinceJoined.toLocaleString()} ${copy.daysSuffix}`
-                : formatMinutes(report.summary.totalReadingTime, isZh)}
-            </div>
-            <div className="text-sm text-muted-foreground">
-              {report.dimension === "lifetime" ? copy.daysTogether : copy.readingTime}
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-3 gap-3">
-          <ShareMetric label={copy.sessions} value={report.summary.totalSessions.toLocaleString()} />
-          <ShareMetric label={copy.books} value={report.summary.booksTouched.toLocaleString()} />
-          <ShareMetric
-            label={copy.streak}
-            value={`${
-              report.dimension === "lifetime" ? report.summary.longestStreak : report.summary.currentStreak
-            }`}
-          />
-        </div>
-
-        {topBook && (
-          <div className="flex min-w-0 items-center gap-3 rounded-[22px] border border-border bg-muted/45 p-3 shadow-sm">
-            <CoverThumb title={topBook.title} coverUrl={topBook.coverUrl} className="h-16 w-12 rounded-xl shadow-md" />
-            <div className="min-w-0 flex-1">
-              <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{copy.topBooks}</div>
-              <div className="truncate text-sm font-semibold text-foreground">{topBook.title}</div>
-              <div className="truncate text-xs text-muted-foreground">
-                {formatCompactMinutes(topBook.totalTime, isZh)} · {topBook.author || copy.unknownAuthor}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ShareMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="px-1 py-1 text-center">
-      <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">{label}</div>
-      <div className="mt-1 text-lg font-semibold text-foreground">{value}</div>
     </div>
   );
 }
