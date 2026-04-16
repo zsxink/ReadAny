@@ -60,8 +60,9 @@ export function TabBar() {
   const isFullscreen = useIsFullscreen();
   const headerRef = useRef<HTMLDivElement | null>(null);
 
-  const readerTabs = tabs.filter((t) => t.type !== "home");
-  const isReaderActive = readerTabs.some((t) => t.id === activeTabId);
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const visibleTabs = tabs.filter((t) => t.type !== "home");
+  const isReaderActive = activeTab?.type === "reader";
 
   const handleTabClose = (tabId: string) => {
     const closingTab = tabs.find((t) => t.id === tabId);
@@ -97,7 +98,7 @@ export function TabBar() {
       <div
         className="flex h-full flex-1 items-center gap-0.5 overflow-x-auto px-1"
       >
-        {readerTabs.map((tab) => (
+        {visibleTabs.map((tab) => (
           <TabItem
             key={tab.id}
             tab={tab}
