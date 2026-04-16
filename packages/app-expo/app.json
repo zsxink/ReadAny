@@ -15,6 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.readany.app",
+      "buildNumber": "2",
       "infoPlist": {
         "UIBackgroundModes": [
           "audio",
