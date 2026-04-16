@@ -86,6 +86,7 @@ export function TabBar() {
           type="button"
           className="flex items-center justify-center rounded-md p-1 text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800"
           style={NO_DRAG_STYLE}
+          data-no-window-drag
           onClick={() => setActiveTab("home")}
         >
           <Home className="h-[18px] w-[18px]" />
@@ -134,6 +135,7 @@ function TabItem({
           : "text-muted-foreground hover:text-foreground"
       }`}
       style={NO_DRAG_STYLE}
+      data-no-window-drag
       onClick={onActivate}
     >
       <Icon className="h-3.5 w-3.5 shrink-0" />
@@ -141,6 +143,7 @@ function TabItem({
       <button
         type="button"
         className="ml-0.5 hidden h-4 w-4 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-neutral-200/80 hover:text-foreground group-hover:flex"
+        data-no-window-drag
         onClick={(e) => { e.stopPropagation(); onClose(); }}
       >
         <X className="h-3 w-3" />
