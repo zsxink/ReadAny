@@ -24,6 +24,7 @@ export function DesktopWindowControls({
   showMaximize = true,
   showClose = true,
 }: DesktopWindowControlsProps) {
+  const [isTauriPlatform, setIsTauriPlatform] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [isMacPlatform, setIsMacPlatform] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
@@ -77,6 +78,7 @@ export function DesktopWindowControls({
     const isTauri = "__TAURI_INTERNALS__" in window;
     const isMac = ua.includes("mac");
     setIsMacPlatform(isMac);
+    setIsTauriPlatform(isTauri);
     logInfo("platform detection", { isTauri, isMac, showOnMac });
     setIsVisible(isTauri && (!isMac || showOnMac));
   }, [showOnMac]);
@@ -117,7 +119,7 @@ export function DesktopWindowControls({
   }, [isVisible]);
 
   useEffect(() => {
-    if (!isVisible || !headerRef?.current) return;
+    if (!isTauriPlatform || !headerRef?.current) return;
 
     const headerElement = headerRef.current;
 
@@ -231,7 +233,7 @@ export function DesktopWindowControls({
       headerElement.removeEventListener("pointerup", handlePointerUp);
       headerElement.removeEventListener("pointercancel", handlePointerUp);
     };
-  }, [headerRef, isVisible]);
+  }, [headerRef, isTauriPlatform]);
 
   if (!isVisible) return null;
 
@@ -300,6 +302,7 @@ export function DesktopWindowControls({
       className={cn("flex h-full shrink-0 items-center pr-1", className)}
       style={NO_DRAG_STYLE}
       data-no-window-drag
+      data-tauri-drag-region="false"
     >
       {showMinimize && (
         <button
@@ -309,6 +312,7 @@ export function DesktopWindowControls({
           title="最小化"
           style={NO_DRAG_STYLE}
           data-no-window-drag
+          data-tauri-drag-region="false"
         >
           <svg width="10" height="1" viewBox="0 0 10 1" aria-hidden="true">
             <rect width="10" height="1" fill="currentColor" />
@@ -326,6 +330,7 @@ export function DesktopWindowControls({
           title={isMacPlatform ? (isFullscreen ? "退出全屏" : "进入全屏") : isMaximized ? "还原" : "最大化"}
           style={NO_DRAG_STYLE}
           data-no-window-drag
+          data-tauri-drag-region="false"
         >
           {isMacPlatform ? (
             isFullscreen ? (
@@ -371,6 +376,7 @@ export function DesktopWindowControls({
           title="关闭"
           style={NO_DRAG_STYLE}
           data-no-window-drag
+          data-tauri-drag-region="false"
         >
           <X className="h-3.5 w-3.5" />
         </button>
