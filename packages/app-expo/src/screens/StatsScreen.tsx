@@ -57,7 +57,6 @@ import {
   RhythmProfileSection,
   SectionCard,
   TopBooksSection,
-  YearlySnapshotsSection,
 } from "./stats/StatsSections";
 import { BadgesPreview } from "./stats/BadgesPreview";
 
@@ -442,20 +441,6 @@ export default function StatsScreen() {
                 <RhythmProfileSection
                   timeOfDayChart={yearOrLifetimeReport.timeOfDayChart}
                   categoryChart={yearOrLifetimeReport.categoryDistribution}
-                  isZh={isZh}
-                  copy={copy}
-                />
-              </SectionCard>
-            )}
-
-            {/* ═══ Yearly Snapshots (lifetime) ═══ */}
-            {report.dimension === "lifetime" && report.yearlySnapshots.length > 0 && (
-              <SectionCard
-                title={t("stats.desktop.annualShelf")}
-                description={t("stats.desktop.annualShelfDesc")}
-              >
-                <YearlySnapshotsSection
-                  snapshots={report.yearlySnapshots}
                   isZh={isZh}
                   copy={copy}
                 />

@@ -1050,6 +1050,7 @@
       "badgesDesc": "Milestones unlocked through your reading journey.",
       "noBadges": "Keep reading to earn your first badge!",
       "badgesEarnedCount": "{{count}} earned",
+      "badgesRemainingCount": "{{count}} more",
       "viewAllBadges": "View all",
       "badgeCategoryDays": "Reading Days",
       "badgeCategoryStreak": "Reading Streaks",

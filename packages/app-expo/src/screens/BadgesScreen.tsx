@@ -28,6 +28,7 @@ import {
   Modal,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   TouchableOpacity,
   useWindowDimensions,
@@ -144,7 +145,7 @@ export default function BadgesScreen() {
     } finally {
       setIsSharingPoster(false);
     }
-  }, [capturePosterFile, earnedBadgeDefinitions.length, isSharingPoster, t]);
+  }, [capturePosterFile, isSharingPoster, earnedBadgeDefinitions.length, t]);
 
   const handleSavePoster = React.useCallback(async () => {
     if (earnedBadgeDefinitions.length === 0 || isSharingPoster) return;
@@ -172,10 +173,15 @@ export default function BadgesScreen() {
     } finally {
       setIsSharingPoster(false);
     }
-  }, [capturePosterFile, earnedBadgeDefinitions.length, isSharingPoster, t]);
+  }, [capturePosterFile, isSharingPoster, earnedBadgeDefinitions.length, t]);
 
   return (
-    <LinearGradient colors={[...BADGE_WALL_GRADIENT]} style={{ flex: 1 }}>
+    <View style={{ flex: 1, backgroundColor: BADGE_WALL_GRADIENT[0] }}>
+      <LinearGradient
+        colors={[...BADGE_WALL_GRADIENT]}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
       <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }} edges={["top"]}>
         <View style={{
           flexDirection: "row",
@@ -215,6 +221,7 @@ export default function BadgesScreen() {
         </View>
 
         <ScrollView
+          style={{ flex: 1 }}
           contentContainerStyle={{
             paddingHorizontal: 20,
             paddingTop: 18,
@@ -230,6 +237,7 @@ export default function BadgesScreen() {
             subtitle={t("stats.desktop.myBadgesDesc")}
             countLabel={t("stats.desktop.badgesEarnedCount", { count: earnedBadgeDefinitions.length })}
             emptyLabel={t("stats.desktop.noBadges")}
+            remainingLabel={(remaining) => t("stats.desktop.badgesRemainingCount", { count: remaining })}
             resolveTitle={(badge) => t(`stats.desktop.badge_${badge.id}_title`)}
             onBadgePress={setSelectedBadge}
           />
@@ -274,6 +282,7 @@ export default function BadgesScreen() {
           posterSubtitle={t("stats.desktop.myBadgesDesc")}
           posterCountLabel={t("stats.desktop.badgesEarnedCount", { count: earnedBadgeDefinitions.length })}
           emptyLabel={t("stats.desktop.noBadges")}
+          remainingLabel={(remaining) => t("stats.desktop.badgesRemainingCount", { count: remaining })}
           saveLabel={isSharingPoster ? t("stats.desktop.badgeSharePreparing") : t("stats.desktop.badgeSaveAction")}
           shareLabel={isSharingPoster ? t("stats.desktop.badgeSharePreparing") : t("stats.desktop.badgeShareAction")}
           resolveTitle={(badge) => t(`stats.desktop.badge_${badge.id}_title`)}
@@ -282,7 +291,7 @@ export default function BadgesScreen() {
           onShare={handleSharePoster}
         />
       </SafeAreaView>
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -372,6 +381,7 @@ function BadgeWallPoster({
   subtitle,
   countLabel: _countLabel,
   emptyLabel,
+  remainingLabel,
   resolveTitle,
   onBadgePress,
   variant = "wall",
@@ -383,15 +393,20 @@ function BadgeWallPoster({
   subtitle: string;
   countLabel: string;
   emptyLabel: string;
+  remainingLabel: (remaining: number) => string;
   resolveTitle: (badge: BadgeDefinition) => string;
   onBadgePress?: (badge: BadgeDefinition) => void;
   variant?: "wall" | "share";
 }) {
   const columns = 3;
+  const maxRows = variant === "wall" ? 3 : Number.POSITIVE_INFINITY;
   const gap = variant === "share" ? 18 : 14;
+  const maxVisibleCount = Number.isFinite(maxRows) ? columns * maxRows : badges.length;
+  const visibleBadges = variant === "wall" ? badges.slice(0, maxVisibleCount) : badges;
+  const remainingCount = Math.max(0, badges.length - visibleBadges.length);
   const itemWidth = Math.floor((width - gap * (columns - 1)) / columns);
   const iconSize = Math.min(variant === "share" ? 86 : 92, itemWidth * (variant === "share" ? 0.82 : 0.84));
-  const rows = chunkItems(badges, columns);
+  const rows = chunkItems(visibleBadges, columns);
   const titleFontSize = variant === "share" ? 27 : 27;
   const subtitleFontSize = variant === "share" ? 12 : 12;
   const titleLineHeight = variant === "share" ? 29 : 29;
@@ -520,6 +535,20 @@ function BadgeWallPoster({
               ))}
             </View>
           ))}
+          {remainingCount > 0 && variant === "wall" ? (
+            <View style={{ alignItems: "center", marginTop: -2 }}>
+              <Text
+                style={{
+                  fontSize: 13,
+                  lineHeight: 18,
+                  fontWeight: "700",
+                  color: "rgba(255,255,255,0.56)",
+                }}
+              >
+                {remainingLabel(remainingCount)}
+              </Text>
+            </View>
+          ) : null}
         </View>
       )}
     </View>
@@ -538,6 +567,7 @@ function BadgeSharePreviewModal({
   posterSubtitle,
   posterCountLabel,
   emptyLabel,
+  remainingLabel,
   saveLabel,
   shareLabel,
   resolveTitle,
@@ -556,6 +586,7 @@ function BadgeSharePreviewModal({
   posterSubtitle: string;
   posterCountLabel: string;
   emptyLabel: string;
+  remainingLabel: (remaining: number) => string;
   saveLabel: string;
   shareLabel: string;
   resolveTitle: (badge: BadgeDefinition) => string;
@@ -568,8 +599,7 @@ function BadgeSharePreviewModal({
 
   return (
     <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable
-        onPress={onClose}
+      <View
         style={{
           flex: 1,
           backgroundColor: "rgba(0,0,0,0.58)",
@@ -579,7 +609,10 @@ function BadgeSharePreviewModal({
         }}
       >
         <Pressable
-          onPress={() => {}}
+          onPress={onClose}
+          style={StyleSheet.absoluteFill}
+        />
+        <View
           style={{
             width: "100%",
             maxWidth: width + 32,
@@ -626,6 +659,7 @@ function BadgeSharePreviewModal({
                 subtitle={posterSubtitle}
                 countLabel={posterCountLabel}
                 emptyLabel={emptyLabel}
+                remainingLabel={remainingLabel}
                 resolveTitle={resolveTitle}
               />
             </ScrollView>
@@ -677,8 +711,8 @@ function BadgeSharePreviewModal({
               </Text>
             </TouchableOpacity>
           </View>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }
@@ -691,9 +725,10 @@ const BadgeSharePosterCard = React.forwardRef<View, {
   subtitle: string;
   countLabel: string;
   emptyLabel: string;
+  remainingLabel: (remaining: number) => string;
   resolveTitle: (badge: BadgeDefinition) => string;
 }>(
-  ({ width, badges, count, title, subtitle, countLabel, emptyLabel, resolveTitle }, ref) => (
+  ({ width, badges, count, title, subtitle, countLabel, emptyLabel, remainingLabel, resolveTitle }, ref) => (
     <View
       ref={ref}
       collapsable={false}
@@ -719,12 +754,13 @@ const BadgeSharePosterCard = React.forwardRef<View, {
           subtitle={subtitle}
           countLabel={countLabel}
           emptyLabel={emptyLabel}
+          remainingLabel={remainingLabel}
           resolveTitle={resolveTitle}
           variant="share"
         />
         <View
           style={{
-            marginTop: 18,
+            marginTop: 22,
             alignItems: "center",
           }}
         >
@@ -732,31 +768,25 @@ const BadgeSharePosterCard = React.forwardRef<View, {
             style={{
               flexDirection: "row",
               alignItems: "center",
-              gap: 8,
-              paddingHorizontal: 12,
-              paddingVertical: 7,
-              borderRadius: 999,
-              backgroundColor: "rgba(255,255,255,0.07)",
-              borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.08)",
+              gap: 10,
             }}
           >
             <Image
               source={AppIcon}
               style={{
-                width: 18,
-                height: 18,
-                borderRadius: 4,
+                width: 24,
+                height: 24,
+                borderRadius: 6,
               }}
               resizeMode="contain"
             />
             <Text
               style={{
-                fontSize: 11,
-                lineHeight: 14,
+                fontSize: 13,
+                lineHeight: 16,
                 fontWeight: "800",
-                color: "rgba(255,248,237,0.92)",
-                letterSpacing: 0.2,
+                color: "rgba(255,248,237,0.94)",
+                letterSpacing: 0.3,
               }}
             >
               ReadAny
@@ -917,7 +947,7 @@ function BadgeDetailModal({
     progress.value = 0;
 
     progress.value = withTiming(1, {
-      duration: 3200,
+      duration: 1800,
       easing: Easing.bezier(0.16, 1, 0.3, 1),
     });
   }, [badge.id, progress]);
@@ -1062,7 +1092,7 @@ function BadgeDetailModal({
                   backFaceStyle,
                 ]}
               >
-                <BadgeBackIconMobile badge={badge} isEarned={isEarned} size={120} />
+                <BadgeBackIconMobile badge={badge} isEarned size={120} />
               </Animated.View>
             </Animated.View>
           </Animated.View>

@@ -207,7 +207,7 @@ function BadgeDetailContent({
             <BadgeIcon badge={badge} isEarned size={120} />
           </div>
           <div className="badge-flip-face back">
-            <BadgeBackIcon badge={badge} isEarned={isEarned} size={120} />
+            <BadgeBackIcon badge={badge} isEarned size={120} />
           </div>
         </div>
       </div>

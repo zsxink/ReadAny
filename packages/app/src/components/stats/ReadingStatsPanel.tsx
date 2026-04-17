@@ -64,7 +64,6 @@ import {
   MonthCalendarSection,
   RhythmProfileSection,
   TopBooksSection,
-  YearlySnapshotsSection,
 } from "./StatsSections";
 import { BadgesPreview } from "./BadgesPreview";
 import { BadgesDialog } from "./BadgesDialog";
@@ -562,18 +561,6 @@ export function ReadingStatsPanel() {
                         />
                       </StatsCard>
                     )}
-
-                  {/* Yearly snapshots */}
-                  {report.dimension === "lifetime" && report.yearlySnapshots.length > 0 && (
-                    <StatsCard>
-                      <SectionHeader title={copy.annualShelf} description={copy.annualShelfDesc} />
-                      <YearlySnapshotsSection
-                        snapshots={report.yearlySnapshots}
-                        copy={copy}
-                        isZh={isZh}
-                      />
-                    </StatsCard>
-                  )}
 
                   {/* Journey summary */}
                   {report.dimension === "lifetime" && (

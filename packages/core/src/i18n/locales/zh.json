@@ -930,6 +930,7 @@
       "badgesDesc": "阅读旅途中解锁的里程碑。",
       "noBadges": "继续阅读，解锁你的第一枚徽章！",
       "badgesEarnedCount": "已获得 {{count}} 枚",
+      "badgesRemainingCount": "还有 {{count}} 枚",
       "viewAllBadges": "查看全部",
       "badgeCategoryDays": "阅读天数",
       "badgeCategoryStreak": "连续阅读",
