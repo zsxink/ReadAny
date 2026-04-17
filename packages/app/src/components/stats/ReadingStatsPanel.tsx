@@ -1,20 +1,25 @@
+/**
+ * ReadingStatsPanel.tsx — Main orchestrator for the Statistics page.
+ *
+ * Responsibilities:
+ *   1. State management (dimension, anchor date, report loading)
+ *   2. Layout composition — delegates every visual block to sub-components
+ *   3. Period navigation controls
+ *
+ * All formatters → stats-utils.ts
+ * All i18n copy  → stats-copy.ts
+ * All UI atoms   → StatsShared.tsx
+ * All sections   → StatsSections.tsx
+ */
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useResolvedSrc } from "@/hooks/use-resolved-src";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAppStore } from "@/stores/app-store";
 import { useReadingSessionStore } from "@/stores/reading-session-store";
 import {
-  fromLocalDateKey,
   getWeekStartDate,
   readingReportsService,
-  type DailyReadingFact,
-  type MonthReport,
-  type StatsCalendarCell,
-  type StatsChartBlock,
   type StatsDimension,
-  type StatsInsight,
   type StatsReport,
-  type TopBookEntry,
 } from "@readany/core/stats";
 import { cn } from "@readany/core/utils";
 import { eventBus } from "@readany/core/utils/event-bus";
@@ -30,274 +35,40 @@ import {
   ScanSearch,
   TrendingUp,
 } from "lucide-react";
-import type { TFunction } from "i18next";
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { BarChart } from "./BarChart";
-import { HeatmapChart } from "./HeatmapChart";
+import { getStatsCopy } from "./stats-copy";
+import {
+  buildHeroNarrative,
+  DIMENSIONS,
+  formatMinutes,
+  formatPeriodLabel,
+  localizeInsight,
+  shiftAnchorDate,
+  toDateInputValue,
+  toMonthInputValue,
+  type MetricTileData,
+} from "./stats-utils";
+import { EmptyState, MetricTile, SectionHeader, StatsCard } from "./StatsShared";
+import {
+  ChartSurface,
+  DaySummaryPanel,
+  InsightsSection,
+  JourneySummaryPanel,
+  MonthCalendarSection,
+  RhythmProfileSection,
+  TopBooksSection,
+  YearlySnapshotsSection,
+} from "./StatsSections";
+import { formatDateLabel } from "./stats-utils";
 
-type MetricTileData = {
-  id: string;
-  label: string;
-  value: string;
-  sublabel?: string;
-  icon: ReactNode;
-};
+/* ─── Hero metric builder (kept here because it uses lucide icons) ─── */
 
-type StatsCopy = ReturnType<typeof getStatsCopy>;
-
-const DIMENSIONS: StatsDimension[] = ["day", "week", "month", "year", "lifetime"];
-
-function getStatsCopy(t: TFunction) {
-  return {
-    pageTitle: t("stats.desktop.pageTitle"),
-    pageSubtitle: t("stats.desktop.pageSubtitle"),
-    dimensions: {
-      day: t("stats.desktop.dimensions.day"),
-      week: t("stats.desktop.dimensions.week"),
-      month: t("stats.desktop.dimensions.month"),
-      year: t("stats.desktop.dimensions.year"),
-      lifetime: t("stats.desktop.dimensions.lifetime"),
-    } satisfies Record<StatsDimension, string>,
-    dimensionTitles: {
-      day: t("stats.desktop.dimensionTitles.day"),
-      week: t("stats.desktop.dimensionTitles.week"),
-      month: t("stats.desktop.dimensionTitles.month"),
-      year: t("stats.desktop.dimensionTitles.year"),
-      lifetime: t("stats.desktop.dimensionTitles.lifetime"),
-    } satisfies Record<StatsDimension, string>,
-    readingTime: t("stats.desktop.readingTime"),
-    activeDays: t("stats.desktop.activeDays"),
-    sessions: t("stats.desktop.sessions"),
-    books: t("stats.desktop.books"),
-    pages: t("stats.desktop.pages"),
-    streak: t("stats.desktop.streak"),
-    avgActiveDay: t("stats.desktop.avgActiveDay"),
-    longestSession: t("stats.desktop.longestSession"),
-    daysTogether: t("stats.desktop.daysTogether"),
-    periodNavigationHint: t("stats.desktop.periodNavigationHint"),
-    today: t("stats.desktop.today"),
-    thisWeek: t("stats.desktop.thisWeek"),
-    thisMonth: t("stats.desktop.thisMonth"),
-    thisYear: t("stats.desktop.thisYear"),
-    journey: t("stats.desktop.journey"),
-    journeySubtitle: t("stats.desktop.journeySubtitle"),
-    readingCalendar: t("stats.desktop.readingCalendar"),
-    readingCalendarDesc: t("stats.desktop.readingCalendarDesc"),
-    primaryChart: t("stats.desktop.primaryChart"),
-    primaryChartDesc: t("stats.desktop.primaryChartDesc"),
-    readingHeatmap: t("stats.desktop.readingHeatmap"),
-    readingHeatmapDesc: t("stats.desktop.readingHeatmapDesc"),
-    singlePointLabel: t("stats.desktop.singlePointLabel"),
-    singlePointDesc: t("stats.desktop.singlePointDesc"),
-    topBooks: t("stats.desktop.topBooks"),
-    topBooksDesc: t("stats.desktop.topBooksDesc"),
-    insights: t("stats.desktop.insights"),
-    insightsDesc: t("stats.desktop.insightsDesc"),
-    rhythmProfile: t("stats.desktop.rhythmProfile"),
-    rhythmProfileDesc: t("stats.desktop.rhythmProfileDesc"),
-    timeOfDay: t("stats.desktop.timeOfDay"),
-    timeOfDayDesc: t("stats.desktop.timeOfDayDesc"),
-    categoryDistribution: t("stats.desktop.categoryDistribution"),
-    categoryDistributionDesc: t("stats.desktop.categoryDistributionDesc"),
-    annualShelf: t("stats.desktop.annualShelf"),
-    annualShelfDesc: t("stats.desktop.annualShelfDesc"),
-    milestones: t("stats.desktop.milestones"),
-    milestonesDesc: t("stats.desktop.milestonesDesc"),
-    sharePreview: t("stats.desktop.sharePreview"),
-    sharePreviewDesc: t("stats.desktop.sharePreviewDesc"),
-    noDataTitle: t("stats.desktop.noDataTitle"),
-    noDataDesc: t("stats.desktop.noDataDesc"),
-    noTopBooks: t("stats.desktop.noTopBooks"),
-    noInsights: t("stats.desktop.noInsights"),
-    noTimeline: t("stats.desktop.noTimeline"),
-    noDayTopBook: t("stats.desktop.noDayTopBook"),
-    daySummary: t("stats.desktop.daySummary"),
-    daySummaryDesc: t("stats.desktop.daySummaryDesc"),
-    firstSession: t("stats.desktop.firstSession"),
-    lastSession: t("stats.desktop.lastSession"),
-    peakHour: t("stats.desktop.peakHour"),
-    longestRead: t("stats.desktop.longestRead"),
-    topFocus: t("stats.desktop.topFocus"),
-    activeNow: t("stats.desktop.activeNow"),
-    startedOn: t("stats.desktop.startedOn"),
-    activeReadingDays: t("stats.desktop.activeReadingDays"),
-    inactiveReadingDays: t("stats.desktop.inactiveReadingDays"),
-    companionMessage: t("stats.desktop.companionMessage"),
-    exportSoon: t("stats.desktop.exportSoon"),
-    pagesReadSuffix: t("stats.desktop.pagesReadSuffix"),
-    sessionsSuffix: t("stats.desktop.sessionsSuffix"),
-    daysSuffix: t("stats.desktop.daysSuffix"),
-    weekPrefix: t("stats.desktop.weekPrefix"),
-    weekSuffix: t("stats.desktop.weekSuffix"),
-    unknownAuthor: t("stats.desktop.unknownAuthor"),
-    journeyNarrative: (days: number) => t("stats.desktop.journeyNarrative", { days }),
-    insightTitleNoReading: t("stats.desktop.insightTitleNoReading"),
-    insightBodyNoReading: t("stats.desktop.insightBodyNoReading"),
-    insightTitleStreak: t("stats.desktop.insightTitleStreak"),
-    insightBodyStreak: (days: number) => t("stats.desktop.insightBodyStreak", { days }),
-    insightTitleFocus: t("stats.desktop.insightTitleFocus"),
-    insightBodyFocus: (minutes: number) => t("stats.desktop.insightBodyFocus", { minutes }),
-    insightTitleTopBook: t("stats.desktop.insightTitleTopBook"),
-    insightBodyTopBook: (title: string) => t("stats.desktop.insightBodyTopBook", { title }),
-    milestoneTitleJoined: t("stats.desktop.milestoneTitleJoined"),
-    milestoneBodyJoined: (date: string) => t("stats.desktop.milestoneBodyJoined", { date }),
-    heroNarrativeDay: (time: string, sessions: number) =>
-      t("stats.desktop.heroNarrativeDay", { time, sessions }),
-    heroNarrativeWeek: (days: number, longest: string) =>
-      t("stats.desktop.heroNarrativeWeek", { days, longest }),
-    heroNarrativeMonth: (time: string, books: number) =>
-      t("stats.desktop.heroNarrativeMonth", { time, books }),
-    heroNarrativeYear: (time: string, activeDays: number) =>
-      t("stats.desktop.heroNarrativeYear", { time, activeDays }),
-    heroNarrativeLifetime: (date: string) => t("stats.desktop.heroNarrativeLifetime", { date }),
-    chartPeakLabel: (label: string, value: string) =>
-      t("stats.desktop.chartPeakLabel", { label, value }),
-    topBookLead: t("stats.desktop.topBookLead"),
-    heatmapLegendLow: t("stats.desktop.heatmapLegendLow"),
-    heatmapLegendHigh: t("stats.desktop.heatmapLegendHigh"),
-    uncategorized: t("stats.desktop.uncategorized"),
-    timeOfDayLabels: {
-      lateNight: t("stats.desktop.timeOfDayLabels.lateNight"),
-      earlyMorning: t("stats.desktop.timeOfDayLabels.earlyMorning"),
-      morning: t("stats.desktop.timeOfDayLabels.morning"),
-      afternoon: t("stats.desktop.timeOfDayLabels.afternoon"),
-      evening: t("stats.desktop.timeOfDayLabels.evening"),
-      night: t("stats.desktop.timeOfDayLabels.night"),
-    },
-    loadFailed: t("stats.loadFailed"),
-    loading: t("stats.loading"),
-    daySessions: (count: number) => t("stats.desktop.daySessions", { count }),
-    activeDaysSummary: (count: number) => t("stats.desktop.activeDaysSummary", { count }),
-  };
-}
-
-function formatMinutes(minutes: number, isZh: boolean): string {
-  if (minutes <= 0) return isZh ? "0 分钟" : "0m";
-  if (minutes < 60) return isZh ? `${Math.round(minutes)} 分钟` : `${Math.round(minutes)}m`;
-  const hours = Math.floor(minutes / 60);
-  const mins = Math.round(minutes % 60);
-  if (mins <= 0) return isZh ? `${hours} 小时` : `${hours}h`;
-  return isZh ? `${hours} 小时 ${mins} 分钟` : `${hours}h ${mins}m`;
-}
-
-function formatCompactMinutes(minutes: number, isZh = false): string {
-  if (minutes <= 0) return isZh ? "0分" : "0m";
-  if (minutes < 60) return isZh ? `${Math.round(minutes)}分` : `${Math.round(minutes)}m`;
-  const hours = Math.floor(minutes / 60);
-  const mins = Math.round(minutes % 60);
-  if (isZh) {
-    return mins > 0 ? `${hours}时${mins}分` : `${hours}时`;
-  }
-  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
-}
-
-function formatChartMinutes(minutes: number, isZh: boolean): string {
-  if (minutes <= 0) return isZh ? "0分" : "0m";
-  if (minutes < 60) return isZh ? `${Math.round(minutes)}分` : `${Math.round(minutes)}m`;
-  const hours = Math.floor(minutes / 60);
-  const mins = Math.round(minutes % 60);
-  return isZh ? (mins > 0 ? `${hours}时${mins}分` : `${hours}时`) : mins > 0 ? `${hours}h${mins}m` : `${hours}h`;
-}
-
-function formatClock(timestamp: number | undefined, isZh: boolean): string {
-  if (!timestamp) return "—";
-  return new Intl.DateTimeFormat(isZh ? "zh-CN" : "en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: !isZh,
-  }).format(new Date(timestamp));
-}
-
-function formatDateLabel(dateKey: string | undefined, isZh: boolean): string {
-  if (!dateKey) return "—";
-  const date = fromLocalDateKey(dateKey);
-  return new Intl.DateTimeFormat(isZh ? "zh-CN" : "en-US", {
-    year: "numeric",
-    month: isZh ? "long" : "short",
-    day: "numeric",
-  }).format(date);
-}
-
-function formatPeriodLabel(report: StatsReport, isZh: boolean, copy: StatsCopy): string {
-  if (report.dimension === "day") {
-    return formatDateLabel(report.period.startDate, isZh);
-  }
-
-  if (report.dimension === "week") {
-    const start = formatDateLabel(report.period.startDate, isZh);
-    const end = formatDateLabel(report.period.endDate, isZh);
-    const weekKey = report.period.key.split("W")[1] ?? "";
-    return isZh
-      ? `${start} - ${end} · ${copy.weekPrefix}${weekKey}${copy.weekSuffix}`
-      : `${copy.weekPrefix}${weekKey}${copy.weekSuffix} · ${start} - ${end}`;
-  }
-
-  if (report.dimension === "month") {
-    const date = fromLocalDateKey(report.period.startDate);
-    return new Intl.DateTimeFormat(isZh ? "zh-CN" : "en-US", {
-      year: "numeric",
-      month: isZh ? "long" : "long",
-    }).format(date);
-  }
-
-  if (report.dimension === "year") {
-    return report.period.key;
-  }
-
-  return `${copy.companionMessage} ${(report.context.daysSinceJoined || 0).toLocaleString()} ${copy.daysSuffix}`;
-}
-
-function toDateInputValue(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function toMonthInputValue(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  return `${year}-${month}`;
-}
-
-function shiftAnchorDate(date: Date, dimension: StatsDimension, delta: -1 | 1): Date {
-  const next = new Date(date);
-  if (dimension === "day") {
-    next.setDate(next.getDate() + delta);
-    return next;
-  }
-  if (dimension === "week") {
-    next.setDate(next.getDate() + delta * 7);
-    return next;
-  }
-  if (dimension === "month") {
-    next.setMonth(next.getMonth() + delta);
-    return next;
-  }
-  if (dimension === "year") {
-    next.setFullYear(next.getFullYear() + delta);
-  }
-  return next;
-}
-
-function intensityClass(level: StatsCalendarCell["intensity"], inCurrentMonth: boolean): string {
-  if (!inCurrentMonth && level === 0) {
-    return "border-border/40 bg-muted/30 text-muted-foreground";
-  }
-
-  const palette = [
-    "border-border bg-card/80 text-foreground",
-    "border-primary/10 bg-primary/5 text-foreground",
-    "border-primary/15 bg-primary/10 text-foreground",
-    "border-primary/20 bg-primary/15 text-foreground",
-    "border-primary/30 bg-primary/20 text-foreground",
-  ] as const;
-
-  return cn(palette[level], !inCurrentMonth && "opacity-70");
-}
-
-function buildHeroMetrics(report: StatsReport, copy: StatsCopy, isZh: boolean): MetricTileData[] {
+function buildHeroMetrics(
+  report: StatsReport,
+  copy: ReturnType<typeof getStatsCopy>,
+  isZh: boolean,
+): MetricTileData[] {
   const metrics: MetricTileData[] = [];
 
   if (report.dimension === "lifetime") {
@@ -348,10 +119,7 @@ function buildHeroMetrics(report: StatsReport, copy: StatsCopy, isZh: boolean): 
           ? report.summary.longestStreak.toLocaleString()
           : report.summary.currentStreak.toLocaleString()
       } ${copy.daysSuffix}`,
-      sublabel:
-        report.dimension === "lifetime"
-          ? `${copy.longestSession} ${formatMinutes(report.summary.longestSessionTime, isZh)}`
-          : `${copy.longestSession} ${formatMinutes(report.summary.longestSessionTime, isZh)}`,
+      sublabel: `${copy.longestSession} ${formatMinutes(report.summary.longestSessionTime, isZh)}`,
       icon: <Flame className="h-4 w-4" />,
     },
     {
@@ -366,95 +134,9 @@ function buildHeroMetrics(report: StatsReport, copy: StatsCopy, isZh: boolean): 
   return metrics;
 }
 
-function localizeInsight(
-  insight: StatsInsight,
-  report: StatsReport,
-  copy: StatsCopy,
-  isZh: boolean,
-): StatsInsight {
-  if (insight.id === "no-reading") {
-    return { ...insight, title: copy.insightTitleNoReading, body: copy.insightBodyNoReading };
-  }
-  if (insight.id === "streak") {
-    return {
-      ...insight,
-      title: copy.insightTitleStreak,
-      body: copy.insightBodyStreak(report.summary.currentStreak),
-    };
-  }
-  if (insight.id === "focus") {
-    return {
-      ...insight,
-      title: copy.insightTitleFocus,
-      body: copy.insightBodyFocus(Math.round(report.summary.longestSessionTime)),
-    };
-  }
-  if (insight.id === "top-book") {
-    return {
-      ...insight,
-      title: copy.insightTitleTopBook,
-      body: copy.insightBodyTopBook(report.topBooks[0]?.title ?? copy.noDayTopBook),
-    };
-  }
-  if (insight.id === "joined" && report.dimension === "lifetime") {
-    return {
-      ...insight,
-      title: copy.milestoneTitleJoined,
-      body: copy.milestoneBodyJoined(formatDateLabel(report.context.joinedSince, isZh)),
-    };
-  }
-  return insight;
-}
-
-function buildHeroNarrative(report: StatsReport, copy: StatsCopy, isZh: boolean): string {
-  if (report.dimension === "day") {
-    return copy.heroNarrativeDay(
-      formatMinutes(report.summary.totalReadingTime, isZh),
-      report.summary.totalSessions,
-    );
-  }
-
-  if (report.dimension === "week") {
-    return copy.heroNarrativeWeek(
-      report.summary.activeDays,
-      formatMinutes(report.summary.longestSessionTime, isZh),
-    );
-  }
-
-  if (report.dimension === "month") {
-    return copy.heroNarrativeMonth(
-      formatMinutes(report.summary.totalReadingTime, isZh),
-      report.summary.booksTouched,
-    );
-  }
-
-  if (report.dimension === "year") {
-    return copy.heroNarrativeYear(
-      formatMinutes(report.summary.totalReadingTime, isZh),
-      report.summary.activeDays,
-    );
-  }
-
-  return copy.heroNarrativeLifetime(formatDateLabel(report.context.joinedSince, isZh));
-}
-
-function getPeakChartDatum(chart: StatsChartBlock): StatsChartBlock["data"][number] | null {
-  if (chart.data.length === 0) return null;
-  const strongest = [...chart.data].sort((a, b) => b.value - a.value)[0];
-  return strongest && strongest.value > 0 ? strongest : null;
-}
-
-function localizeSemanticLabel(key: string, fallback: string, copy: StatsCopy): string {
-  if (key === "__uncategorized__") {
-    return copy.uncategorized;
-  }
-
-  if (key in copy.timeOfDayLabels) {
-    return copy.timeOfDayLabels[key as keyof typeof copy.timeOfDayLabels];
-  }
-
-  return fallback;
-}
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ *  Main Component
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
 export function ReadingStatsPanel() {
   const { t, i18n } = useTranslation();
@@ -464,17 +146,18 @@ export function ReadingStatsPanel() {
   const saveCurrentSession = useReadingSessionStore((s) => s.saveCurrentSession);
   const currentSession = useReadingSessionStore((s) => s.currentSession);
 
+  /* ── State ── */
   const [dimension, setDimension] = useState<StatsDimension>("month");
   const [anchorDate, setAnchorDate] = useState<Date>(() => new Date());
   const [report, setReport] = useState<StatsReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  /* ── Data loading ── */
   const loadReport = useCallback(async () => {
     if (activeTabId !== "stats") return;
     setLoading(true);
     setError(null);
-
     try {
       let nextReport: StatsReport;
       if (dimension === "day") {
@@ -488,7 +171,6 @@ export function ReadingStatsPanel() {
       } else {
         nextReport = await readingReportsService.getLifetimeReport(currentSession);
       }
-
       setReport(nextReport);
     } catch (statsError) {
       console.error("[ReadingStatsPanel] Failed to load report", statsError);
@@ -500,9 +182,7 @@ export function ReadingStatsPanel() {
 
   useEffect(() => {
     if (activeTabId === "stats") {
-      void saveCurrentSession().finally(() => {
-        void loadReport();
-      });
+      void saveCurrentSession().finally(() => void loadReport());
     }
   }, [activeTabId, saveCurrentSession, loadReport]);
 
@@ -513,6 +193,7 @@ export function ReadingStatsPanel() {
     });
   }, [activeTabId, loadReport]);
 
+  /* ── Derived data ── */
   const heroMetrics = useMemo(
     () => (report ? buildHeroMetrics(report, copy, isZh) : []),
     [report, copy, isZh],
@@ -537,6 +218,7 @@ export function ReadingStatsPanel() {
     primaryChart?.type === "heatmap" ? copy.readingHeatmap : copy.primaryChart;
   const primaryChartDesc =
     primaryChart?.type === "heatmap" ? copy.readingHeatmapDesc : copy.primaryChartDesc;
+
   const localizedInsights = useMemo(
     () => (report ? report.insights.map((item) => localizeInsight(item, report, copy, isZh)) : []),
     [report, copy, isZh],
@@ -549,15 +231,18 @@ export function ReadingStatsPanel() {
     [report, copy, isZh],
   );
 
+  /* ── Period picker handlers ── */
   const onPickPeriod = (event: ChangeEvent<HTMLInputElement>) => {
     const value = event.target.value;
     if (!value) return;
 
     if (dimension === "day" || dimension === "week") {
-      setAnchorDate(getWeekStartDate(value) && dimension === "week" ? getWeekStartDate(value) : new Date(value));
-      if (dimension === "day") {
-        setAnchorDate(new Date(value));
-      }
+      setAnchorDate(
+        getWeekStartDate(value) && dimension === "week"
+          ? getWeekStartDate(value)
+          : new Date(value),
+      );
+      if (dimension === "day") setAnchorDate(new Date(value));
       return;
     }
 
@@ -569,15 +254,11 @@ export function ReadingStatsPanel() {
 
     if (dimension === "year") {
       const nextYear = Number(value);
-      if (!Number.isNaN(nextYear)) {
-        setAnchorDate(new Date(nextYear, 0, 1));
-      }
+      if (!Number.isNaN(nextYear)) setAnchorDate(new Date(nextYear, 0, 1));
     }
   };
 
-  const resetToCurrentPeriod = () => {
-    setAnchorDate(new Date());
-  };
+  const resetToCurrentPeriod = () => setAnchorDate(new Date());
 
   const currentPickerValue =
     dimension === "month"
@@ -586,73 +267,90 @@ export function ReadingStatsPanel() {
         ? String(anchorDate.getFullYear())
         : toDateInputValue(anchorDate);
 
+  /* ━━━━━━━━━━ Render ━━━━━━━━━━ */
+
   return (
     <TooltipProvider delayDuration={120}>
-      <div className="h-full min-w-0 overflow-y-auto overflow-x-hidden bg-background px-4 py-4 sm:px-6 sm:py-6">
-        <div className="mx-auto flex w-full min-w-0 max-w-[1320px] flex-col gap-6 lg:gap-8">
-          <header className="space-y-3">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-              <div className="space-y-1">
-                <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-[30px]">
-                  {copy.pageTitle}
-                </h1>
-                <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{copy.pageSubtitle}</p>
-              </div>
+      <div className="h-full min-w-0 overflow-y-auto overflow-x-hidden bg-background">
+        <div className="mx-auto flex w-full min-w-0 max-w-[1800px] flex-col gap-6 px-5 py-6 sm:px-8 sm:py-8 lg:gap-8">
 
-              <div className="inline-flex w-full max-w-full rounded-full border border-border/70 bg-muted/55 p-1 lg:w-auto">
-                {DIMENSIONS.map((item) => (
-                  <button
-                    key={item}
-                    className={cn(
-                      "min-w-0 flex-1 rounded-full px-3 py-2 text-sm font-medium transition-all lg:flex-none lg:px-4",
-                      dimension === item
-                        ? "bg-background text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                    onClick={() => setDimension(item)}
-                  >
-                    {copy.dimensions[item]}
-                  </button>
-                ))}
-              </div>
+          {/* ════════ Header ════════ */}
+          <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="space-y-1.5">
+              <h1 className="text-[28px] font-bold tracking-tight text-foreground sm:text-[34px]">
+                {copy.pageTitle}
+              </h1>
+              <p className="max-w-xl text-[15px] leading-relaxed text-muted-foreground/55">
+                {copy.pageSubtitle}
+              </p>
             </div>
+
+            {/* Dimension tabs */}
+            <nav className="inline-flex w-full max-w-full rounded-xl border border-border/30 bg-muted/25 p-1 lg:w-auto">
+              {DIMENSIONS.map((dim) => (
+                <button
+                  key={dim}
+                  className={cn(
+                    "min-w-0 flex-1 rounded-[10px] px-4 py-2 text-[13px] font-medium transition-all duration-150 lg:flex-none lg:px-5",
+                    dimension === dim
+                      ? "bg-background text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+                      : "text-muted-foreground/55 hover:text-foreground/70",
+                  )}
+                  onClick={() => setDimension(dim)}
+                >
+                  {copy.dimensions[dim]}
+                </button>
+              ))}
+            </nav>
           </header>
 
+          {/* ════════ Loading ════════ */}
           {loading ? (
-            <div className="flex min-h-[48vh] items-center justify-center rounded-[32px] border border-border bg-card/80 shadow-around">
-              <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-foreground" />
-                {copy.loading}
+            <div className="flex min-h-[50vh] items-center justify-center">
+              <div className="flex flex-col items-center gap-4">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-border/40 border-t-foreground/60" />
+                <span className="text-[13px] text-muted-foreground/40">{copy.loading}</span>
               </div>
             </div>
           ) : error || !report ? (
-            <SectionCard className="min-h-[48vh]">
+            /* ════════ Error / Empty ════════ */
+            <StatsCard className="min-h-[50vh]">
               <EmptyState
                 title={error ?? copy.noDataTitle}
                 description={copy.noDataDesc}
-                icon={<ScanSearch className="h-8 w-8 text-muted-foreground" />}
+                icon={<ScanSearch className="h-7 w-7 text-muted-foreground/45" />}
               />
-            </SectionCard>
+            </StatsCard>
           ) : (
             <>
-              <section className="overflow-hidden rounded-[32px] border border-border/70 bg-card/85 px-5 py-5 shadow-[0_20px_60px_-45px_rgba(122,91,42,0.45)] sm:px-6 sm:py-6">
-                <div className="flex flex-col gap-6">
-                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                    <div className="space-y-1">
-                      <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+              {/* ════════ Hero Section ════════ */}
+              <section className="relative overflow-hidden rounded-2xl border border-border/30 bg-gradient-to-br from-card via-card to-primary/[0.02]">
+                {/* Decorative glow */}
+                <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-primary/[0.04] blur-3xl" />
+
+                <div className="relative space-y-8 px-6 py-6 sm:px-8 sm:py-8">
+                  {/* Period navigation */}
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                    <div className="space-y-0.5">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-primary/45">
                         {copy.dimensionTitles[dimension]}
                       </div>
-                      <div className="text-lg font-semibold text-foreground sm:text-xl">{periodLabel}</div>
+                      <div className="text-lg font-semibold text-foreground/85 sm:text-xl">
+                        {periodLabel}
+                      </div>
                     </div>
 
                     {dimension !== "lifetime" && (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="flex items-center rounded-full border border-border bg-background/80 p-1">
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        {/* Arrow buttons */}
+                        <div className="inline-flex items-center gap-0.5 rounded-xl border border-border/30 bg-background/50 p-0.5">
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="size-8 rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
-                            onClick={() => setAnchorDate((prev) => shiftAnchorDate(prev, dimension, -1))}
+                            className="size-8 rounded-[10px] text-muted-foreground/50 hover:bg-muted/30 hover:text-foreground"
+                            onClick={() =>
+                              setAnchorDate((p) => shiftAnchorDate(p, dimension, -1))
+                            }
                             disabled={!report.navigation.canGoPrev}
                           >
                             <ChevronLeft className="h-4 w-4" />
@@ -660,14 +358,17 @@ export function ReadingStatsPanel() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="size-8 rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
-                            onClick={() => setAnchorDate((prev) => shiftAnchorDate(prev, dimension, 1))}
+                            className="size-8 rounded-[10px] text-muted-foreground/50 hover:bg-muted/30 hover:text-foreground"
+                            onClick={() =>
+                              setAnchorDate((p) => shiftAnchorDate(p, dimension, 1))
+                            }
                             disabled={!report.navigation.canGoNext}
                           >
                             <ChevronRight className="h-4 w-4" />
                           </Button>
                         </div>
 
+                        {/* Date/month/year picker */}
                         {dimension === "year" ? (
                           <input
                             type="number"
@@ -675,21 +376,22 @@ export function ReadingStatsPanel() {
                             max={String(new Date().getFullYear())}
                             value={currentPickerValue}
                             onChange={onPickPeriod}
-                            className="h-10 w-28 rounded-full border border-input bg-background px-4 text-sm text-foreground outline-none transition-colors focus:border-ring"
+                            className="h-9 w-24 rounded-xl border border-border/30 bg-background/50 px-3 text-sm tabular-nums text-foreground outline-none transition-colors focus:border-primary/25 focus:ring-1 focus:ring-primary/15"
                           />
                         ) : (
                           <input
                             type={dimension === "month" ? "month" : "date"}
                             value={currentPickerValue}
                             onChange={onPickPeriod}
-                            className="h-10 rounded-full border border-input bg-background px-4 text-sm text-foreground outline-none transition-colors focus:border-ring"
+                            className="h-9 rounded-xl border border-border/30 bg-background/50 px-3 text-sm text-foreground outline-none transition-colors focus:border-primary/25 focus:ring-1 focus:ring-primary/15"
                           />
                         )}
 
+                        {/* "Today / This week" shortcut */}
                         <Button
                           variant="soft"
                           size="sm"
-                          className="rounded-full border border-border bg-muted px-4 text-foreground hover:bg-muted/80"
+                          className="rounded-xl border border-border/30 bg-background/50 px-3.5 text-[13px] text-muted-foreground/60 hover:bg-muted/30 hover:text-foreground"
                           onClick={resetToCurrentPeriod}
                         >
                           {dimension === "day"
@@ -704,35 +406,50 @@ export function ReadingStatsPanel() {
                     )}
                   </div>
 
-                  <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_420px]">
-                    <div className="min-w-0 space-y-4">
+                  {/* Hero metrics grid */}
+                  <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+                    {/* Headline number */}
+                    <div className="min-w-0 space-y-3">
                       {headlineMetric && (
                         <div className="space-y-2">
-                          <div className="text-5xl font-semibold tracking-tight text-foreground sm:text-6xl">
+                          <div className="text-[48px] font-bold leading-none tracking-tighter text-foreground sm:text-[56px] xl:text-[64px]">
                             {headlineMetric.value}
                           </div>
-                          <div className="text-sm text-muted-foreground">
+                          <div className="flex items-center gap-2 text-[14px] text-muted-foreground/55">
+                            <span className="text-primary/35">{headlineMetric.icon}</span>
                             {headlineMetric.label}
-                            {headlineMetric.sublabel ? ` · ${headlineMetric.sublabel}` : ""}
+                            {headlineMetric.sublabel && (
+                              <>
+                                <span className="text-border/60">·</span>
+                                <span>{headlineMetric.sublabel}</span>
+                              </>
+                            )}
                           </div>
                         </div>
                       )}
-                      <p className="max-w-2xl text-sm leading-7 text-muted-foreground">{heroNarrative}</p>
+                      <p className="max-w-lg text-[14px] leading-relaxed text-muted-foreground/45">
+                        {heroNarrative}
+                      </p>
                     </div>
 
-                    <section className="grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-2">
+                    {/* Supporting metrics — 3 cols on large screens for density */}
+                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-3">
                       {supportMetrics.map((metric) => (
                         <MetricTile key={metric.id} metric={metric} />
                       ))}
-                    </section>
+                    </div>
                   </div>
                 </div>
               </section>
 
-              <div className="grid min-w-0 gap-8 xl:grid-cols-[minmax(0,1.1fr)_360px]">
-                <div className="min-w-0 space-y-8">
+              {/* ════════ Content Grid ════════ */}
+              <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(340px,1fr)] xl:gap-8">
+
+                {/* ─── Main column ─── */}
+                <div className="min-w-0 space-y-6">
+                  {/* Day summary */}
                   {report.dimension === "day" && (
-                    <SectionCard>
+                    <StatsCard>
                       <SectionHeader title={copy.daySummary} description={copy.daySummaryDesc} />
                       <DaySummaryPanel
                         dayFact={report.dayFact}
@@ -740,29 +457,36 @@ export function ReadingStatsPanel() {
                         copy={copy}
                         isZh={isZh}
                       />
-                    </SectionCard>
+                    </StatsCard>
                   )}
 
+                  {/* Primary chart */}
                   {primaryChart && (
-                    <SectionCard>
+                    <StatsCard>
                       <SectionHeader title={primaryChartTitle} description={primaryChartDesc} />
                       <ChartSurface chart={primaryChart} copy={copy} isZh={isZh} />
-                    </SectionCard>
+                    </StatsCard>
                   )}
 
+                  {/* Monthly calendar */}
                   {monthlyReport?.readingCalendar && (
-                    <SectionCard>
+                    <StatsCard>
                       <SectionHeader
                         title={copy.readingCalendar}
                         description={copy.readingCalendarDesc}
                       />
-                      <MonthCalendarSection calendar={monthlyReport.readingCalendar} isZh={isZh} />
-                    </SectionCard>
+                      <MonthCalendarSection
+                        calendar={monthlyReport.readingCalendar}
+                        isZh={isZh}
+                      />
+                    </StatsCard>
                   )}
 
+                  {/* Rhythm profile */}
                   {yearOrLifetimeReport &&
-                    (yearOrLifetimeReport.timeOfDayChart || yearOrLifetimeReport.categoryDistribution) && (
-                      <SectionCard>
+                    (yearOrLifetimeReport.timeOfDayChart ||
+                      yearOrLifetimeReport.categoryDistribution) && (
+                      <StatsCard>
                         <SectionHeader
                           title={copy.rhythmProfile}
                           description={copy.rhythmProfileDesc}
@@ -773,44 +497,50 @@ export function ReadingStatsPanel() {
                           copy={copy}
                           isZh={isZh}
                         />
-                      </SectionCard>
+                      </StatsCard>
                     )}
 
+                  {/* Yearly snapshots */}
                   {report.dimension === "lifetime" && report.yearlySnapshots.length > 0 && (
-                    <SectionCard>
+                    <StatsCard>
                       <SectionHeader title={copy.annualShelf} description={copy.annualShelfDesc} />
                       <YearlySnapshotsSection
                         snapshots={report.yearlySnapshots}
                         copy={copy}
                         isZh={isZh}
                       />
-                    </SectionCard>
+                    </StatsCard>
                   )}
 
+                  {/* Journey summary */}
                   {report.dimension === "lifetime" && (
-                    <SectionCard>
+                    <StatsCard>
                       <SectionHeader title={copy.journey} description={copy.journeySubtitle} />
                       <JourneySummaryPanel report={report} copy={copy} isZh={isZh} />
-                    </SectionCard>
+                    </StatsCard>
                   )}
                 </div>
 
-                <aside className="min-w-0 space-y-8">
-                  <SectionCard>
+                {/* ─── Sidebar ─── */}
+                <aside className="min-w-0 space-y-6">
+                  {/* Top books — featured variant */}
+                  <StatsCard variant="featured">
                     <SectionHeader title={copy.topBooks} description={copy.topBooksDesc} />
                     <TopBooksSection books={report.topBooks} copy={copy} isZh={isZh} />
-                  </SectionCard>
+                  </StatsCard>
 
-                  <SectionCard>
+                  {/* Insights */}
+                  <StatsCard>
                     <SectionHeader title={copy.insights} description={copy.insightsDesc} />
                     <InsightsSection insights={localizedInsights} copy={copy} />
-                  </SectionCard>
+                  </StatsCard>
 
+                  {/* Milestones (lifetime) */}
                   {report.dimension === "lifetime" && localizedMilestones.length > 0 && (
-                    <SectionCard>
+                    <StatsCard>
                       <SectionHeader title={copy.milestones} description={copy.milestonesDesc} />
                       <InsightsSection insights={localizedMilestones} copy={copy} />
-                    </SectionCard>
+                    </StatsCard>
                   )}
                 </aside>
               </div>
@@ -819,659 +549,5 @@ export function ReadingStatsPanel() {
         </div>
       </div>
     </TooltipProvider>
-  );
-}
-
-function SectionCard({
-  children,
-  className,
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <section
-      className={cn(
-        "min-w-0 overflow-hidden rounded-[30px] border border-border/70 bg-card/85 px-5 py-5 shadow-[0_20px_60px_-45px_rgba(122,91,42,0.45)] sm:px-6 sm:py-6",
-        className,
-      )}
-    >
-      {children}
-    </section>
-  );
-}
-
-function SectionHeader({
-  title,
-  description,
-  icon,
-}: {
-  title: string;
-  description?: string;
-  icon?: ReactNode;
-}) {
-  return (
-    <div className="mb-5 flex items-start justify-between gap-4">
-      <div className="space-y-1">
-        <div className="flex items-center gap-2">
-          {icon}
-          <h2 className="text-base font-semibold text-foreground">{title}</h2>
-        </div>
-        {description && <p className="text-sm leading-6 text-muted-foreground">{description}</p>}
-      </div>
-    </div>
-  );
-}
-
-function MetricTile({ metric }: { metric: MetricTileData }) {
-  return (
-    <div className="min-w-0 border-b border-border/70 py-4">
-      <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-        <span className="text-muted-foreground/80">{metric.icon}</span>
-        <span>{metric.label}</span>
-      </div>
-      <div className="mt-3 space-y-1">
-        <div className="truncate text-[28px] font-semibold tracking-tight text-foreground">{metric.value}</div>
-        {metric.sublabel && <p className="text-sm text-muted-foreground">{metric.sublabel}</p>}
-      </div>
-    </div>
-  );
-}
-
-function EmptyState({
-  title,
-  description,
-  icon,
-}: {
-  title: string;
-  description: string;
-  icon: ReactNode;
-}) {
-  return (
-    <div className="flex min-h-[320px] flex-col items-center justify-center gap-4 text-center">
-      <div className="rounded-full border border-border bg-muted/70 p-5">{icon}</div>
-      <div className="space-y-2">
-        <h3 className="text-lg font-semibold text-foreground">{title}</h3>
-        <p className="max-w-md text-sm leading-6 text-muted-foreground">{description}</p>
-      </div>
-    </div>
-  );
-}
-
-function ChartSurface({
-  chart,
-  copy,
-  isZh,
-}: {
-  chart: StatsChartBlock;
-  copy: StatsCopy;
-  isZh: boolean;
-}) {
-  if (chart.type === "heatmap") {
-    const peak = getPeakChartDatum(chart);
-
-    return (
-      <div className="space-y-5">
-        <HeatmapChart
-          data={chart.data}
-          emptyMessage={copy.noDataDesc}
-          isZh={isZh}
-          lowLabel={copy.heatmapLegendLow}
-          highLabel={copy.heatmapLegendHigh}
-          activeDaysLabel={copy.activeDaysSummary}
-        />
-        {peak && (
-          <div className="inline-flex max-w-full rounded-full bg-primary/[0.08] px-4 py-2 text-sm font-medium text-foreground">
-            {copy.chartPeakLabel(peak.label, formatMinutes(peak.value, isZh))}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (chart.data.length <= 1) {
-    const point = chart.data[0];
-
-    if (!point) {
-      return (
-        <div className="flex min-h-[220px] items-center justify-center text-sm text-muted-foreground">
-          {copy.noDataDesc}
-        </div>
-      );
-    }
-
-    return (
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-end">
-        <div className="space-y-3">
-          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{copy.singlePointLabel}</div>
-          <div className="text-4xl font-semibold tracking-tight text-foreground">{formatMinutes(point.value, isZh)}</div>
-          <div className="text-sm text-muted-foreground">{point.label}</div>
-          <p className="max-w-xl text-sm leading-6 text-muted-foreground">{copy.singlePointDesc}</p>
-        </div>
-        <div className="rounded-[22px] bg-primary/[0.06] px-4 py-4">
-          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{copy.primaryChart}</div>
-          <div className="mt-3 h-2 overflow-hidden rounded-full bg-background/80">
-            <div className="h-full w-full rounded-full bg-primary/70" />
-          </div>
-          <div className="mt-3 text-xs leading-5 text-muted-foreground">{copy.readingTime}</div>
-        </div>
-      </div>
-    );
-  }
-
-  const peak = getPeakChartDatum(chart);
-
-  return (
-    <div className="space-y-5">
-      <div className="rounded-[24px] bg-gradient-to-b from-primary/[0.08] via-transparent to-transparent px-2 py-2">
-        <BarChart
-          data={chart.data.map((item) => ({ label: item.label, value: item.value }))}
-          height={220}
-          emptyMessage={copy.noDataDesc}
-          formatValue={(value) => formatChartMinutes(value, isZh)}
-        />
-      </div>
-      {peak && (
-        <div className="inline-flex max-w-full rounded-full bg-primary/[0.08] px-4 py-2 text-sm font-medium text-foreground">
-          {copy.chartPeakLabel(peak.label, formatMinutes(peak.value, isZh))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function RhythmProfileSection({
-  timeOfDayChart,
-  categoryChart,
-  copy,
-  isZh,
-}: {
-  timeOfDayChart?: StatsChartBlock;
-  categoryChart?: StatsChartBlock;
-  copy: StatsCopy;
-  isZh: boolean;
-}) {
-  const columns = [timeOfDayChart ? "time" : null, categoryChart ? "category" : null].filter(Boolean)
-    .length;
-
-  return (
-    <div
-      className={cn(
-        "grid gap-6",
-        columns === 2 ? "xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]" : "grid-cols-1",
-      )}
-    >
-      {timeOfDayChart && (
-        <div className={cn("space-y-4", categoryChart && "xl:border-r xl:border-border/60 xl:pr-6")}>
-          <div className="space-y-1">
-            <h3 className="text-sm font-semibold text-foreground">{copy.timeOfDay}</h3>
-            <p className="text-sm leading-6 text-muted-foreground">{copy.timeOfDayDesc}</p>
-          </div>
-          <BarChart
-            data={timeOfDayChart.data.map((item) => ({
-              label: localizeSemanticLabel(item.key, item.label, copy),
-              value: item.value,
-            }))}
-            height={220}
-            emptyMessage={copy.noDataDesc}
-            formatValue={(value) => formatChartMinutes(value, isZh)}
-          />
-        </div>
-      )}
-
-      {categoryChart && (
-        <div className="space-y-4">
-          <div className="space-y-1">
-            <h3 className="text-sm font-semibold text-foreground">{copy.categoryDistribution}</h3>
-            <p className="text-sm leading-6 text-muted-foreground">{copy.categoryDistributionDesc}</p>
-          </div>
-          <CategoryDistributionList chart={categoryChart} copy={copy} isZh={isZh} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function CategoryDistributionList({
-  chart,
-  copy,
-  isZh,
-}: {
-  chart: StatsChartBlock;
-  copy: StatsCopy;
-  isZh: boolean;
-}) {
-  const maxValue = Math.max(...chart.data.map((item) => item.value), 1);
-
-  return (
-    <div className="space-y-4">
-      {chart.data.map((item, index) => {
-        const label = localizeSemanticLabel(item.key, item.label, copy);
-        const width = `${Math.max(10, (item.value / maxValue) * 100)}%`;
-
-        return (
-          <div key={`${item.key}-${index}`} className="space-y-2">
-            <div className="flex items-end justify-between gap-3">
-              <div className="min-w-0 text-sm font-medium text-foreground">{label}</div>
-              <div className="flex-shrink-0 text-sm text-muted-foreground">
-                {formatCompactMinutes(item.value, isZh)}
-              </div>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-muted/70">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-primary/45 to-primary/80"
-                style={{ width }}
-              />
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function YearlySnapshotsSection({
-  snapshots,
-  copy,
-  isZh,
-}: {
-  snapshots: Extract<StatsReport, { dimension: "lifetime" }>["yearlySnapshots"];
-  copy: StatsCopy;
-  isZh: boolean;
-}) {
-  return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      {snapshots.map((snapshot) => (
-        <article key={snapshot.year} className="border-b border-border/70 pb-4">
-          <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{snapshot.year}</div>
-          <div className="mt-3 text-2xl font-semibold tracking-tight text-foreground">
-            {formatCompactMinutes(snapshot.totalReadingTime, isZh)}
-          </div>
-          <div className="mt-2 text-sm text-muted-foreground">
-            {snapshot.booksTouched.toLocaleString()} {copy.books}
-          </div>
-          <div className="text-sm text-muted-foreground">
-            {snapshot.activeDays.toLocaleString()} {copy.activeDays}
-          </div>
-          {snapshot.topBook && (
-            <div className="mt-4 flex items-center gap-3">
-              <CoverThumb
-                title={snapshot.topBook.title}
-                coverUrl={snapshot.topBook.coverUrl}
-                className="h-16 w-12 rounded-xl shadow-md"
-              />
-              <div className="min-w-0">
-                <div className="truncate text-sm font-medium text-foreground">{snapshot.topBook.title}</div>
-                <div className="truncate text-xs text-muted-foreground">
-                  {formatCompactMinutes(snapshot.topBook.totalTime, isZh)}
-                </div>
-              </div>
-            </div>
-          )}
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function DaySummaryPanel({
-  dayFact,
-  topBook,
-  copy,
-  isZh,
-}: {
-  dayFact: DailyReadingFact | null;
-  topBook?: TopBookEntry;
-  copy: StatsCopy;
-  isZh: boolean;
-}) {
-  if (!dayFact) {
-    return <EmptyState title={copy.noDataTitle} description={copy.noDataDesc} icon={<Clock3 className="h-8 w-8 text-muted-foreground" />} />;
-  }
-
-  const facts = [
-    { label: copy.firstSession, value: formatClock(dayFact.firstSessionAt, isZh) },
-    { label: copy.lastSession, value: formatClock(dayFact.lastSessionAt, isZh) },
-    {
-      label: copy.peakHour,
-      value: dayFact.peakHour !== undefined ? `${String(dayFact.peakHour).padStart(2, "0")}:00` : "—",
-    },
-    { label: copy.longestRead, value: formatMinutes(dayFact.longestSessionTime, isZh) },
-  ];
-
-  return (
-    <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {facts.map((item) => (
-          <div
-            key={item.label}
-            className="border-b border-border/70 px-1 pb-3"
-          >
-            <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{item.label}</div>
-            <div className="mt-2 text-lg font-semibold text-foreground">{item.value}</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="border-l-2 border-primary/25 pl-4">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="space-y-1">
-            <div className="text-xs uppercase tracking-[0.16em] text-primary/70">{copy.topFocus}</div>
-            <div className="text-xl font-semibold text-foreground">
-              {topBook?.title ?? copy.noDayTopBook}
-            </div>
-            <div className="text-sm text-muted-foreground">
-              {topBook ? formatMinutes(topBook.totalTime, isZh) : copy.noTimeline}
-            </div>
-          </div>
-          {dayFact.date === toDateInputValue(new Date()) && (
-            <div className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-              {copy.activeNow}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function JourneySummaryPanel({
-  report,
-  copy,
-  isZh,
-}: {
-  report: Extract<StatsReport, { dimension: "lifetime" }>;
-  copy: StatsCopy;
-  isZh: boolean;
-}) {
-  const metrics = [
-    {
-      label: copy.daysTogether,
-      value: `${report.context.daysSinceJoined.toLocaleString()} ${copy.daysSuffix}`,
-    },
-    {
-      label: copy.activeReadingDays,
-      value: `${report.context.totalActiveDays.toLocaleString()} ${copy.daysSuffix}`,
-    },
-    {
-      label: copy.inactiveReadingDays,
-      value: `${report.context.totalInactiveDays.toLocaleString()} ${copy.daysSuffix}`,
-    },
-    {
-      label: copy.startedOn,
-      value: formatDateLabel(report.context.joinedSince, isZh),
-    },
-  ];
-
-  return (
-    <div className="space-y-4">
-      <div className="border-l-2 border-primary/25 pl-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div className="space-y-2">
-            <div className="text-sm uppercase tracking-[0.18em] text-muted-foreground">{copy.journey}</div>
-            <div className="text-3xl font-semibold tracking-tight text-foreground">
-              {report.context.daysSinceJoined.toLocaleString()} {copy.daysSuffix}
-            </div>
-            <p className="max-w-xl text-sm leading-6 text-muted-foreground">
-              {copy.journeyNarrative(report.context.daysSinceJoined)}
-            </p>
-          </div>
-          <div className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
-            {copy.startedOn} {formatDateLabel(report.context.joinedSince, isZh)}
-          </div>
-        </div>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {metrics.map((item) => (
-          <div
-            key={item.label}
-            className="border-b border-border/70 px-1 pb-3"
-          >
-            <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{item.label}</div>
-            <div className="mt-2 text-lg font-semibold text-foreground">{item.value}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function MonthCalendarSection({
-  calendar,
-  isZh,
-}: {
-  calendar: NonNullable<MonthReport["readingCalendar"]>;
-  isZh: boolean;
-}) {
-  const locale = isZh ? "zh-CN" : "en-US";
-  const weekLabels = useMemo(() => {
-    const monday = new Date(2024, 0, 1);
-    return Array.from({ length: 7 }, (_, index) => {
-      const date = new Date(monday);
-      date.setDate(monday.getDate() + index);
-      return new Intl.DateTimeFormat(locale, { weekday: "short" }).format(date);
-    });
-  }, [locale]);
-
-  return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-7 gap-2 sm:gap-3">
-        {weekLabels.map((label) => (
-          <div key={label} className="px-1.5 text-[11px] font-medium text-muted-foreground sm:px-2 sm:text-xs">
-            {label}
-          </div>
-        ))}
-      </div>
-
-      <div className="space-y-3">
-        {calendar.weeks.map((week, index) => (
-          <div key={`${calendar.monthKey}-${index}`} className="grid grid-cols-7 gap-2 sm:gap-3">
-            {week.map((cell) => (
-              <CalendarDayCell key={cell.date} cell={cell} isZh={isZh} />
-            ))}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function CalendarDayCell({ cell, isZh }: { cell: StatsCalendarCell; isZh: boolean }) {
-  const { t } = useTranslation();
-  const copy = useMemo(() => getStatsCopy(t), [t]);
-  const tooltipText =
-    cell.totalTime > 0
-      ? `${formatDateLabel(cell.date, isZh)} · ${formatMinutes(cell.totalTime, isZh)} · ${cell.sessionsCount.toLocaleString()} ${copy.sessionsSuffix}`
-      : `${formatDateLabel(cell.date, isZh)} · ${t("stats.noReading")}`;
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <div
-          className={cn(
-            "relative min-h-[88px] min-w-0 rounded-[20px] border p-2.5 shadow-sm transition-transform hover:-translate-y-0.5 sm:min-h-[102px] sm:rounded-[22px] sm:p-3",
-            intensityClass(cell.intensity, cell.inCurrentMonth),
-            cell.isToday && "ring-2 ring-primary/30",
-          )}
-        >
-          <div className="flex items-start justify-between gap-2">
-            <div className={cn("text-sm font-semibold text-foreground", !cell.inCurrentMonth && "text-muted-foreground/70")}>
-              {cell.dayOfMonth}
-            </div>
-            {cell.totalTime > 0 && (
-              <div className="rounded-full bg-background/90 px-2 py-0.5 text-[11px] font-medium text-foreground shadow-xs">
-                {formatCompactMinutes(cell.totalTime, isZh)}
-              </div>
-            )}
-          </div>
-
-          <div className="mt-2 text-[11px] leading-5 text-muted-foreground sm:mt-3">
-            {cell.totalTime > 0
-              ? copy.daySessions(cell.sessionsCount)
-              : "\u00A0"}
-          </div>
-
-          {cell.covers.length > 0 && (
-            <div className="absolute bottom-3 left-3 flex items-end">
-              {cell.covers.slice(0, 3).map((cover, index) => (
-                <div
-                  key={`${cover.bookId}-${index}`}
-                  className={cn(
-                    "relative",
-                    index > 0 && "-ml-2",
-                  )}
-                  style={{ zIndex: 5 - index }}
-                >
-                  <CoverThumb
-                    title={cover.title}
-                    coverUrl={cover.coverUrl}
-                    className="h-8 w-6 rounded-md border border-background/90 shadow-md sm:h-9 sm:w-7"
-                    fallbackClassName="text-[9px] font-semibold"
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-[240px] rounded-xl border border-border bg-popover px-3 py-2 text-popover-foreground shadow-xl">
-        <div className="space-y-1">
-          <div className="text-xs font-medium">{tooltipText}</div>
-          {cell.covers.length > 0 && (
-            <div className="text-[11px] text-muted-foreground">
-              {cell.covers.map((cover) => cover.title).join(" · ")}
-            </div>
-          )}
-        </div>
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-function CoverThumb({
-  title,
-  coverUrl,
-  className,
-  fallbackClassName,
-}: {
-  title: string;
-  coverUrl?: string;
-  className?: string;
-  fallbackClassName?: string;
-}) {
-  const resolved = useResolvedSrc(coverUrl);
-
-  return (
-    <div className={cn("overflow-hidden bg-muted/80", className)}>
-      {resolved ? (
-        <img src={resolved} alt="" className="h-full w-full object-cover" />
-      ) : (
-        <div
-          className={cn(
-            "flex h-full w-full items-center justify-center bg-muted text-center text-[10px] font-semibold text-muted-foreground",
-            fallbackClassName,
-          )}
-        >
-          {title.trim().slice(0, 1)}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function TopBooksSection({
-  books,
-  copy,
-  isZh,
-}: {
-  books: TopBookEntry[];
-  copy: StatsCopy;
-  isZh: boolean;
-}) {
-  if (books.length === 0) {
-    return <p className="text-sm leading-6 text-muted-foreground">{copy.noTopBooks}</p>;
-  }
-
-  return (
-    <div className="space-y-3">
-      {books.slice(0, 5).map((book, index) => (
-        <article
-          key={book.bookId}
-          className={cn(
-            "flex min-w-0 items-center gap-3 py-3",
-            index === 0
-              ? "rounded-[24px] bg-primary/[0.06] px-4 py-4"
-              : "border-b border-border/70",
-          )}
-        >
-          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-semibold text-muted-foreground">
-            {String(index + 1).padStart(2, "0")}
-          </div>
-          <CoverThumb
-            title={book.title}
-            coverUrl={book.coverUrl}
-            className={cn("rounded-xl shadow-md", index === 0 ? "h-20 w-14" : "h-16 w-12")}
-          />
-
-          <div className="min-w-0 flex-1">
-            {index === 0 && (
-              <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.16em] text-primary/75">
-                {copy.topBookLead}
-              </div>
-            )}
-            <div className={cn("truncate font-semibold text-foreground", index === 0 ? "text-base" : "text-sm")}>
-              {book.title}
-            </div>
-            <div className="truncate text-xs text-muted-foreground">{book.author || copy.unknownAuthor}</div>
-            <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <span className={cn("font-semibold text-foreground", index === 0 ? "text-2xl" : "text-base")}>
-                {formatCompactMinutes(book.totalTime, isZh)}
-              </span>
-              <span className="text-[11px] text-muted-foreground">
-                {book.pagesRead.toLocaleString()} {copy.pagesReadSuffix} · {book.sessionsCount.toLocaleString()} {copy.sessionsSuffix}
-              </span>
-            </div>
-          </div>
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function InsightsSection({ insights, copy }: { insights: StatsInsight[]; copy: StatsCopy }) {
-  if (insights.length === 0) {
-    return <p className="text-sm leading-6 text-muted-foreground">{copy.noInsights}</p>;
-  }
-
-  return (
-    <div className="space-y-4">
-      {insights.map((insight, index) => (
-        <div
-          key={insight.id}
-          className="grid grid-cols-[16px_minmax(0,1fr)] gap-3 border-b border-border/60 pb-4 last:border-b-0 last:pb-0"
-        >
-          <div className="flex items-start justify-center pt-1">
-            <div
-              className={cn(
-                "mt-1 h-2.5 w-2.5 rounded-full bg-border",
-                insight.tone === "celebration" && "bg-primary",
-                insight.tone === "warning" && "bg-destructive/70",
-                insight.tone === "positive" && "bg-primary/70",
-              )}
-            />
-          </div>
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                {String(index + 1).padStart(2, "0")}
-              </span>
-              <div className="text-sm font-semibold text-foreground">{insight.title}</div>
-            </div>
-            <div className="text-sm leading-6 text-muted-foreground">{insight.body}</div>
-          </div>
-        </div>
-      ))}
-    </div>
   );
 }

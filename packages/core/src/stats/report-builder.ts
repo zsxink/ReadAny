@@ -90,7 +90,7 @@ export function buildStatsSummary(facts: DailyReadingFact[]): StatsSummary {
 
 export function buildTopBooksFromFacts(
   facts: DailyReadingFact[],
-  limit = 5,
+  limit = 20,
 ): TopBookEntry[] {
   const map = new Map<string, TopBookEntry>();
 
