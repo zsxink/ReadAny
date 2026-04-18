@@ -341,6 +341,35 @@ describe("useSyncStore", () => {
     expect(useSyncStore.getState().error).toBe("无法连接到同步服务器，请检查网络和凭据");
   });
 
+  it("syncNow preserves backend connection failure details", async () => {
+    useSyncStore.setState({
+      config: baseConfig,
+      isConfigured: true,
+      backendType: "webdav",
+    });
+    mockPlatformService.kvGetItem.mockImplementation(async (key: string) =>
+      key === "sync_webdav_password" ? "secret" : null,
+    );
+    mockBackend.testConnection.mockRejectedValue(
+      new Error("WebDAV 认证失败，请检查用户名和应用密码是否正确。"),
+    );
+
+    const result = await useSyncStore.getState().syncNow();
+
+    expect(result).toEqual({
+      success: false,
+      direction: "none",
+      filesUploaded: 0,
+      filesDownloaded: 0,
+      durationMs: 0,
+      error: "WebDAV 认证失败，请检查用户名和应用密码是否正确。",
+    });
+    expect(useSyncStore.getState().status).toBe("error");
+    expect(useSyncStore.getState().error).toBe(
+      "WebDAV 认证失败，请检查用户名和应用密码是否正确。",
+    );
+  });
+
   it("returns the same promise when sync is already in progress", async () => {
     useSyncStore.setState({
       config: baseConfig,

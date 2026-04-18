@@ -119,7 +119,7 @@ export function SyncSettings() {
       }
     } catch (e) {
       setTestResult("error");
-      setTestError(String(e));
+      setTestError(e instanceof Error ? e.message : String(e));
     } finally {
       setTesting(false);
     }
@@ -162,7 +162,7 @@ export function SyncSettings() {
       }
     } catch (e) {
       setTestResult("error");
-      setTestError(String(e));
+      setTestError(e instanceof Error ? e.message : String(e));
     } finally {
       setTesting(false);
     }

@@ -301,6 +301,8 @@ export class ExpoPlatformService implements IPlatformService {
       const xhr = new XMLHttpRequest();
       const method = options?.method || "GET";
       let settled = false;
+      let didTimeout = false;
+      let didNetworkError = false;
 
       xhr.open(method, url, true);
       xhr.responseType = responseType;
@@ -316,6 +318,18 @@ export class ExpoPlatformService implements IPlatformService {
 
       const finalizeResponse = () => {
         if (settled || xhr.readyState !== XMLHttpRequest.DONE) return;
+
+        if (xhr.status === 0) {
+          settled = true;
+          if (didTimeout) {
+            reject(new Error(`XHR request timeout (${timeoutMs}ms): ${method} ${url}`));
+            return;
+          }
+          const suffix = didNetworkError ? " (network error)" : "";
+          reject(new Error(`XHR request failed with status 0: ${method} ${url}${suffix}`));
+          return;
+        }
+
         settled = true;
         try {
           let textResponse = "";
@@ -377,12 +391,14 @@ export class ExpoPlatformService implements IPlatformService {
 
       xhr.onerror = () => {
         if (settled) return;
+        didNetworkError = true;
         settled = true;
         reject(new Error(`XHR request failed: ${method} ${url}`));
       };
 
       xhr.ontimeout = () => {
         if (settled) return;
+        didTimeout = true;
         settled = true;
         reject(new Error(`XHR request timeout (${timeoutMs}ms): ${method} ${url}`));
       };

@@ -4,6 +4,7 @@
  */
 
 import { Buffer } from "buffer";
+import i18n from "../i18n";
 import { getPlatformService } from "../services/platform";
 import type { DavResource } from "./sync-types";
 
@@ -16,6 +17,182 @@ export function sanitizeWebDavUrl(url: string): string {
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const TRANSFER_TIMEOUT_MS = 300_000;
+
+type WebDavErrorKind =
+  | "auth"
+  | "forbidden"
+  | "not-found"
+  | "method-not-allowed"
+  | "timeout"
+  | "network"
+  | "tls"
+  | "server"
+  | "http";
+
+export class WebDavError extends Error {
+  readonly kind: WebDavErrorKind;
+  readonly status?: number;
+  readonly method?: string;
+  readonly url?: string;
+  readonly cause?: unknown;
+
+  constructor(
+    kind: WebDavErrorKind,
+    message: string,
+    options?: {
+      status?: number;
+      method?: string;
+      url?: string;
+      cause?: unknown;
+    },
+  ) {
+    super(message);
+    this.name = "WebDavError";
+    this.kind = kind;
+    this.status = options?.status;
+    this.method = options?.method;
+    this.url = options?.url;
+    this.cause = options?.cause;
+  }
+}
+
+function summarizeStatus(status: number, statusText: string): string {
+  return [status, statusText.trim()].filter(Boolean).join(" ");
+}
+
+function createHttpWebDavError(
+  status: number,
+  statusText: string,
+  method: string,
+  url: string,
+): WebDavError {
+  const statusSummary = summarizeStatus(status, statusText);
+  switch (status) {
+    case 401:
+      return new WebDavError(
+        "auth",
+        i18n.t("settings.syncWebdavAuthFailed", {
+          defaultValue: "WebDAV 认证失败，请检查用户名和应用密码是否正确。",
+        }),
+        { status, method, url },
+      );
+    case 403:
+      return new WebDavError(
+        "forbidden",
+        i18n.t("settings.syncWebdavForbidden", {
+          defaultValue: "WebDAV 访问被拒绝，请检查当前账号是否有这个路径的权限。",
+        }),
+        { status, method, url },
+      );
+    case 404:
+      return new WebDavError(
+        "not-found",
+        i18n.t("settings.syncWebdavNotFound", {
+          defaultValue: "WebDAV 地址或路径不存在，请检查服务器地址和根路径。",
+        }),
+        { status, method, url },
+      );
+    case 405:
+      return new WebDavError(
+        "method-not-allowed",
+        i18n.t("settings.syncWebdavMethodNotAllowed", {
+          defaultValue: "服务器没有正确响应 WebDAV 请求，请确认 WebDAV 服务已经开启。",
+        }),
+        { status, method, url },
+      );
+    default:
+      if (status >= 500) {
+        return new WebDavError(
+          "server",
+          i18n.t("settings.syncWebdavServerError", {
+            defaultValue: "WebDAV 服务器异常（{{status}}）。",
+            status: statusSummary,
+          }),
+          { status, method, url },
+        );
+      }
+      return new WebDavError(
+        "http",
+        i18n.t("settings.syncWebdavHttpError", {
+          defaultValue: "WebDAV 请求失败（{{status}}）。",
+          status: statusSummary,
+        }),
+        { status, method, url },
+      );
+  }
+}
+
+function createRequestWebDavError(
+  error: unknown,
+  method: string,
+  url: string,
+  timeoutMs: number,
+): WebDavError {
+  const err = error as { name?: string; message?: string; cause?: { code?: string } };
+  const lowerMessage = err.message?.toLowerCase() ?? "";
+  const connectionMessage = i18n.t(
+    "settings.syncWebdavNetworkError",
+    {
+      defaultValue: "无法连接到 WebDAV 服务器，请检查网络、地址、端口或证书配置。",
+    },
+  );
+
+  if (
+    err.name === "AbortError" ||
+    lowerMessage.includes("timeout") ||
+    lowerMessage.includes("timed out") ||
+    lowerMessage.includes("aborted")
+  ) {
+    return new WebDavError(
+      "timeout",
+      i18n.t("settings.syncWebdavTimeout", {
+        defaultValue: "WebDAV 连接超时（{{seconds}} 秒），请检查服务器地址、端口和网络。",
+        seconds: Math.max(1, Math.round(timeoutMs / 1000)),
+      }),
+      { method, url, cause: error },
+    );
+  }
+
+  if (
+    lowerMessage.includes("certificate") ||
+    lowerMessage.includes("ssl") ||
+    lowerMessage.includes("tls")
+  ) {
+    return new WebDavError(
+      "tls",
+      i18n.t("settings.syncWebdavTlsError", {
+        defaultValue: "WebDAV TLS 证书校验失败，请检查证书，或开启允许不安全连接后再试。",
+      }),
+      { method, url, cause: error },
+    );
+  }
+
+  if (
+    err.cause?.code === "ECONNREFUSED" ||
+    err.cause?.code === "EHOSTUNREACH" ||
+    err.cause?.code === "ENOTFOUND" ||
+    lowerMessage.includes("status 0") ||
+    lowerMessage.includes("xhr request failed") ||
+    lowerMessage.includes("network request failed") ||
+    lowerMessage.includes("failed to fetch") ||
+    lowerMessage.includes("connect")
+  ) {
+    return new WebDavError("network", connectionMessage, {
+      method,
+      url,
+      cause: error,
+    });
+  }
+
+  return new WebDavError(
+    "network",
+    i18n.t("settings.syncWebdavUnknownError", {
+      defaultValue: "WebDAV 请求失败：{{message}}",
+      message: err.message || connectionMessage,
+    }),
+    { method, url, cause: error },
+  );
+}
 
 export class WebDavClient {
   private baseUrl: string;
@@ -80,12 +257,13 @@ export class WebDavClient {
     const startTime = Date.now();
 
     try {
+      const effectiveTimeoutMs = this.getTimeout(method, options.timeoutMs);
       const response = await platform.fetch(url, {
         method,
         headers,
         body: options.body as BodyInit | undefined,
         allowInsecure: this.allowInsecure,
-        timeoutMs: this.getTimeout(method, options.timeoutMs),
+        timeoutMs: effectiveTimeoutMs,
         responseType: options.responseType,
       });
       const elapsed = Date.now() - startTime;
@@ -95,20 +273,17 @@ export class WebDavClient {
       return response;
     } catch (error: unknown) {
       const elapsed = Date.now() - startTime;
-      const err = error as { name?: string; message?: string; cause?: { code?: string } };
-      let errorType = "network";
-      if (err.name === "AbortError" || err.message?.includes("aborted")) {
-        errorType = "timeout";
-      } else if (err.cause?.code === "ECONNREFUSED" || err.message?.includes("connect")) {
-        errorType = "connection";
-      } else if (err.message?.includes("fetch")) {
-        errorType = "request";
-      }
+      const webDavError = createRequestWebDavError(
+        error,
+        method,
+        url,
+        this.getTimeout(method, options.timeoutMs),
+      );
       console.error(
-        `[WebDAV] ${method} ${url} failed (${errorType}) after ${elapsed}ms:`,
+        `[WebDAV] ${method} ${url} failed (${webDavError.kind}) after ${elapsed}ms:`,
         error,
       );
-      throw error;
+      throw webDavError;
     }
   }
 
@@ -120,20 +295,16 @@ export class WebDavClient {
       contentType: "application/xml",
       timeoutMs: 10_000,
     });
-    if (resp.ok || resp.status === 207 || resp.status === 404) {
+    if (resp.ok || resp.status === 207) {
       return;
     }
-    throw new Error(`WebDAV ping failed: ${resp.status} ${resp.statusText}`);
+    throw createHttpWebDavError(resp.status, resp.statusText, "PROPFIND", this.buildUrl("/"));
   }
 
   /** Test connection, returns true if successful */
   async testConnection(): Promise<boolean> {
-    try {
-      await this.ping();
-      return true;
-    } catch {
-      return false;
-    }
+    await this.ping();
+    return true;
   }
 
   /** Create a directory (MKCOL) */

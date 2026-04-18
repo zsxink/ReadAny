@@ -18,6 +18,7 @@ export function SyncPage({ onNext, onPrev, step, totalSteps }: any) {
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [showPassword, setShowPassword] = useState(false);
+  const [testError, setTestError] = useState("");
 
   useEffect(() => {
     const loadExistingConfig = async () => {
@@ -35,11 +36,14 @@ export function SyncPage({ onNext, onPrev, step, totalSteps }: any) {
 
   const handleTest = async () => {
     setStatus("testing");
+    setTestError("");
     try {
       const ok = await testWebDavConnection(url, username, password);
       setStatus(ok ? "success" : "error");
-    } catch {
+      if (!ok) setTestError(t("common.failed", "Failed"));
+    } catch (error) {
       setStatus("error");
+      setTestError(error instanceof Error ? error.message : String(error));
     }
   };
 
@@ -147,7 +151,11 @@ export function SyncPage({ onNext, onPrev, step, totalSteps }: any) {
             {status === "error" && <AlertCircle className="mr-2 h-3.5 w-3.5 text-destructive" />}
             {t("settings.testConnection", "Test Connection")}
           </Button>
-          {status === "error" && <p className="text-xs text-destructive">Connection failed</p>}
+          {status === "error" && (
+            <p className="text-xs text-destructive">
+              {t("settings.syncTestFailed", { error: testError || t("common.failed", "Failed") })}
+            </p>
+          )}
           {status === "success" && <p className="text-xs text-emerald-600">Connected!</p>}
         </div>
       </div>

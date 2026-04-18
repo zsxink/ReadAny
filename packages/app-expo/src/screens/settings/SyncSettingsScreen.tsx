@@ -170,7 +170,7 @@ export default function SyncSettingsScreen() {
       if (!success) setTestError(t("common.failed", "Failed"));
     } catch (e) {
       setTestResult("error");
-      setTestError(String(e));
+      setTestError(e instanceof Error ? e.message : String(e));
     } finally {
       setTesting(false);
     }

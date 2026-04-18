@@ -42,6 +42,7 @@ export function SyncPage() {
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [showPassword, setShowPassword] = useState(false);
+  const [testError, setTestError] = useState("");
 
   useEffect(() => {
     loadConfig();
@@ -63,11 +64,14 @@ export function SyncPage() {
 
   const handleTest = async () => {
     setStatus("testing");
+    setTestError("");
     try {
       const ok = await testWebDavConnection(url, username, password);
       setStatus(ok ? "success" : "error");
-    } catch {
+      if (!ok) setTestError(t("common.failed", "Failed"));
+    } catch (error) {
       setStatus("error");
+      setTestError(error instanceof Error ? error.message : String(error));
     }
   };
 
@@ -194,7 +198,9 @@ export function SyncPage() {
                   ? t("common.testing", "Testing...")
                   : status === "success"
                     ? t("common.success", "Success!")
-                    : t("common.failed", "Failed")}
+                    : t("settings.syncTestFailed", {
+                        error: testError || t("common.failed", "Failed"),
+                      })}
               </Text>
             </View>
           )}
