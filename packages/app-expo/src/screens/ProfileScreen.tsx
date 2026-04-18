@@ -141,10 +141,10 @@ function MiniHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
 
   const getColor = (intensity: number) => {
     if (intensity <= 0) return themeColors.muted;
-    if (intensity < 0.25) return withOpacity(themeColors.emerald, 0.3);
-    if (intensity < 0.5) return withOpacity(themeColors.emerald, 0.5);
-    if (intensity < 0.75) return withOpacity(themeColors.emerald, 0.7);
-    return withOpacity(themeColors.emerald, 0.9);
+    if (intensity < 0.25) return withOpacity(themeColors.primary, 0.3);
+    if (intensity < 0.5) return withOpacity(themeColors.primary, 0.5);
+    if (intensity < 0.75) return withOpacity(themeColors.primary, 0.7);
+    return withOpacity(themeColors.primary, 0.9);
   };
 
   const formatDisplayDate = (dateStr: string) => {

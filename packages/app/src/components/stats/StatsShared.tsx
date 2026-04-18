@@ -37,7 +37,6 @@ export function StatsCard({
 
 export function SectionHeader({
   title,
-  description,
   action,
 }: {
   title: string;
@@ -46,11 +45,8 @@ export function SectionHeader({
 }) {
   return (
     <div className="mb-5 flex items-start justify-between gap-4">
-      <div className="space-y-1">
+      <div>
         <h2 className="text-[15px] font-semibold tracking-tight text-foreground/90">{title}</h2>
-        {description && (
-          <p className="text-[13px] leading-relaxed text-muted-foreground/65">{description}</p>
-        )}
       </div>
       {action}
     </div>

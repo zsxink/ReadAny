@@ -24,7 +24,6 @@ import {
   formatClock,
   formatMinutes,
   getPeakChartDatum,
-  toDateInputValue,
 } from "./stats-utils";
 import { EmptyState } from "./StatsShared";
 
@@ -154,42 +153,61 @@ export function DaySummaryPanel({
     { label: copy.longestRead, value: formatMinutes(dayFact.longestSessionTime, isZh) },
   ];
 
+  const [firstSession, lastSession, peakHour, longestRead] = facts;
+  const topBookDuration = topBook ? formatMinutes(topBook.totalTime, isZh) : copy.noTimeline;
+
   return (
     <div className="space-y-5">
-      {/* Fact chips */}
-      <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
-        {facts.map((item) => (
-          <div key={item.label} className="rounded-xl bg-muted/[0.12] px-3.5 py-2.5">
-            <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground/55">
-              {item.label}
-            </div>
-            <div className="mt-1.5 text-lg font-bold tabular-nums text-foreground/85">
-              {item.value}
-            </div>
+      <div className="rounded-[22px] border border-border/18 bg-gradient-to-b from-primary/[0.03] via-transparent to-transparent px-5 py-5">
+        <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
+          <div className="grid gap-4 sm:grid-cols-2">
+            {[firstSession, lastSession].map((item, index) => (
+              <div
+                key={item.label}
+                className={cn(
+                  "space-y-2 border-border/16 pb-4",
+                  index === 0 ? "sm:border-r sm:pr-5" : "sm:pl-1",
+                )}
+              >
+                <div className="text-[12px] font-medium text-muted-foreground/56">
+                  {item.label}
+                </div>
+                <div className="text-[32px] font-bold tabular-nums tracking-[-0.04em] text-foreground/90">
+                  {item.value}
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
 
-      {/* Top focus highlight */}
-      <div className="rounded-xl border-l-2 border-l-primary/15 bg-primary/[0.02] px-5 py-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="space-y-1">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary/40">
+          <div className="grid gap-4 border-t border-border/14 pt-4 sm:grid-cols-2 lg:border-t-0 lg:border-l lg:pl-5 lg:pt-0">
+            {[peakHour, longestRead].map((item) => (
+              <div key={item.label} className="space-y-1.5">
+                <div className="text-[12px] font-medium text-muted-foreground/56">
+                  {item.label}
+                </div>
+                <div className="text-[32px] font-bold tabular-nums tracking-[-0.04em] text-foreground/90">
+                  {item.value}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 border-t border-border/16 pt-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
+          <div className="min-w-0 space-y-1.5">
+            <div className="text-[12px] font-medium text-muted-foreground/54">
               {copy.topFocus}
             </div>
-            <div className="text-lg font-bold text-foreground/85">
+            <div className="line-clamp-2 text-[22px] font-semibold leading-snug tracking-[-0.03em] text-foreground/88">
               {topBook?.title ?? copy.noDayTopBook}
             </div>
-            <div className="text-[13px] text-muted-foreground/62">
-              {topBook ? formatMinutes(topBook.totalTime, isZh) : copy.noTimeline}
+          </div>
+
+          <div className="flex items-center self-start md:pl-4">
+            <div className="text-[18px] font-semibold text-primary/72">
+              {topBookDuration}
             </div>
           </div>
-          {dayFact.date === toDateInputValue(new Date()) && (
-            <div className="inline-flex items-center gap-1.5 self-start rounded-lg bg-primary/[0.06] px-3 py-1.5 text-[12px] font-medium text-primary/60">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary/50" />
-              {copy.activeNow}
-            </div>
-          )}
         </div>
       </div>
     </div>

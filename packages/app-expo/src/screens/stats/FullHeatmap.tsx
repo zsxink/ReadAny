@@ -69,10 +69,10 @@ export function FullHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
 
   const getColor = (minutes: number) => {
     if (minutes <= 0) return colors.muted;
-    if (minutes < 15) return withOpacity(colors.emerald, 0.3);
-    if (minutes < 30) return withOpacity(colors.emerald, 0.5);
-    if (minutes < 60) return withOpacity(colors.emerald, 0.7);
-    return withOpacity(colors.emerald, 0.9);
+    if (minutes < 15) return withOpacity(colors.primary, 0.3);
+    if (minutes < 30) return withOpacity(colors.primary, 0.5);
+    if (minutes < 60) return withOpacity(colors.primary, 0.7);
+    return withOpacity(colors.primary, 0.9);
   };
 
   const formatDisplayDate = (dateStr: string) => {

@@ -191,7 +191,13 @@ export default function BadgesScreen() {
           paddingVertical: 10,
         }}>
           <TouchableOpacity
-            onPress={() => nav.goBack()}
+            onPress={() => {
+              if (nav.canGoBack()) {
+                nav.goBack();
+              } else {
+                nav.navigate("Tabs" as never);
+              }
+            }}
             style={{
               width: 40,
               height: 40,

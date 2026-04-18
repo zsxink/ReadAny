@@ -364,9 +364,6 @@ export function ReadingStatsPanel() {
                 <h1 className="text-[26px] font-bold tracking-tight text-foreground sm:text-[30px] lg:text-[34px]">
                   {copy.pageTitle}
                 </h1>
-                <p className="max-w-2xl text-[13px] leading-relaxed text-muted-foreground/55 sm:text-[14px] lg:text-[15px]">
-                  {copy.pageSubtitle}
-                </p>
               </header>
 
               <nav className="-mx-1 flex w-full max-w-full items-center gap-1 overflow-x-auto rounded-xl border border-border/30 bg-muted/25 p-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:w-auto md:min-w-[420px] md:max-w-[560px] md:justify-end">

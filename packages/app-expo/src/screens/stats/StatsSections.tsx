@@ -165,27 +165,37 @@ export function DaySummaryPanel({
     { label: copy.longestRead, value: formatTimeLocalized(dayFact.longestSessionTime, isZh) },
   ];
 
+  const [firstSession, lastSession, peakHour, longestRead] = facts;
+  const topBookDuration = topBook ? formatTimeLocalized(topBook.totalTime, isZh) : copy.noTimeline;
+
   return (
-    <View style={{ gap: 12 }}>
-      {/* Fact chips — 2 col grid */}
-      <View style={s.daySummaryGrid}>
-        {facts.map((item) => (
-          <View key={item.label} style={s.daySummaryChip}>
-            <Text style={s.daySummaryChipLabel}>{item.label}</Text>
-            <Text style={s.daySummaryChipValue}>{item.value}</Text>
+    <View style={s.daySummaryPanel}>
+      <View style={s.daySummaryHeroRow}>
+        {[firstSession, lastSession].map((item, index) => (
+          <View key={item.label} style={[s.daySummaryHeroBlock, index === 0 && s.daySummaryHeroBlockDivider]}>
+            <Text style={s.daySummaryHeroLabel}>{item.label}</Text>
+            <Text style={s.daySummaryHeroValue}>{item.value}</Text>
           </View>
         ))}
       </View>
 
-      {/* Top focus highlight */}
-      <View style={s.dayTopFocus}>
-        <Text style={s.dayTopFocusLabel}>{copy.topFocus}</Text>
-        <Text style={s.dayTopFocusTitle} numberOfLines={1}>
-          {topBook?.title ?? copy.noDayTopBook}
-        </Text>
-        <Text style={s.dayTopFocusSub}>
-          {topBook ? formatTimeLocalized(topBook.totalTime, isZh) : copy.noTimeline}
-        </Text>
+      <View style={s.daySummaryMetaRow}>
+        {[peakHour, longestRead].map((item) => (
+          <View key={item.label} style={s.daySummaryMetaBlock}>
+            <Text style={s.daySummaryMetaLabel}>{item.label}</Text>
+            <Text style={s.daySummaryMetaValue}>{item.value}</Text>
+          </View>
+        ))}
+      </View>
+
+      <View style={s.daySummaryBookRow}>
+        <View style={s.daySummaryBookText}>
+          <Text style={s.daySummaryBookLabel}>{copy.topFocus}</Text>
+          <Text style={s.daySummaryBookTitle} numberOfLines={2}>
+            {topBook?.title ?? copy.noDayTopBook}
+          </Text>
+        </View>
+        <Text style={s.daySummaryBookValue}>{topBookDuration}</Text>
       </View>
     </View>
   );
@@ -242,7 +252,6 @@ export function InsightsSection({
 
 export function SectionCard({
   title,
-  description,
   featured,
   action,
   children,
@@ -261,7 +270,6 @@ export function SectionCard({
       <View style={[s.sectionHeader, action ? { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" } : undefined]}>
         <View style={{ flex: 1 }}>
           <Text style={s.sectionTitle}>{title}</Text>
-          {description && <Text style={s.sectionDesc}>{description}</Text>}
         </View>
         {action}
       </View>

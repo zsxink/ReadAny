@@ -393,7 +393,16 @@ export default function StatsScreen() {
     <SafeAreaView style={s.container} edges={["top"]}>
       {/* Header */}
       <View style={s.header}>
-        <TouchableOpacity style={s.backBtn} onPress={() => nav.goBack()}>
+        <TouchableOpacity
+          style={s.backBtn}
+          onPress={() => {
+            if (nav.canGoBack()) {
+              nav.goBack();
+            } else {
+              nav.navigate("Tabs" as never);
+            }
+          }}
+        >
           <ChevronLeftIcon size={20} color={colors.foreground} />
         </TouchableOpacity>
         <Text style={s.headerTitle}>{t("stats.title")}</Text>

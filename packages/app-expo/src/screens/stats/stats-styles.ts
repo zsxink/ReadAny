@@ -478,56 +478,90 @@ export const makeStyles = (colors: ThemeColors) =>
     emptyDesc: { fontSize: 13, color: withOpacity(colors.mutedForeground, 0.5), textAlign: "center", marginTop: 4, maxWidth: 240, lineHeight: 18 },
 
     /* ── Day summary ── */
-    daySummaryGrid: {
+    daySummaryPanel: {
+      gap: 14,
+    },
+    daySummaryHeroRow: {
       flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: withOpacity(colors.border, 0.28),
+      paddingBottom: 14,
     },
-    daySummaryChip: {
-      width: "48%",
-      backgroundColor: withOpacity(colors.muted, 0.12),
-      borderRadius: radius.lg,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
+    daySummaryHeroBlock: {
+      flex: 1,
+      paddingHorizontal: 4,
     },
-    daySummaryChipLabel: {
-      fontSize: 9,
+    daySummaryHeroBlockDivider: {
+      borderRightWidth: StyleSheet.hairlineWidth,
+      borderRightColor: withOpacity(colors.border, 0.24),
+      paddingRight: 14,
+      marginRight: 10,
+    },
+    daySummaryHeroLabel: {
+      fontSize: 11,
       fontWeight: fontWeight.medium,
-      color: withOpacity(colors.mutedForeground, 0.4),
-      textTransform: "uppercase",
-      letterSpacing: 1,
+      color: withOpacity(colors.mutedForeground, 0.55),
+      marginBottom: 8,
     },
-    daySummaryChipValue: {
-      fontSize: 18,
+    daySummaryHeroValue: {
+      fontSize: 30,
+      lineHeight: 32,
       fontWeight: fontWeight.bold,
-      color: withOpacity(colors.foreground, 0.85),
-      marginTop: 4,
+      color: withOpacity(colors.foreground, 0.9),
+      letterSpacing: -0.8,
     },
-    dayTopFocus: {
-      backgroundColor: withOpacity(colors.primary, 0.02),
-      borderLeftWidth: 2,
-      borderLeftColor: withOpacity(colors.primary, 0.15),
-      borderRadius: radius.lg,
-      paddingHorizontal: 14,
-      paddingVertical: 12,
+    daySummaryMetaRow: {
+      flexDirection: "row",
+      gap: 10,
     },
-    dayTopFocusLabel: {
-      fontSize: 9,
+    daySummaryMetaBlock: {
+      flex: 1,
+      paddingVertical: 2,
+    },
+    daySummaryMetaLabel: {
+      fontSize: 11,
+      fontWeight: fontWeight.medium,
+      color: withOpacity(colors.mutedForeground, 0.55),
+      marginBottom: 6,
+    },
+    daySummaryMetaValue: {
+      fontSize: 30,
+      lineHeight: 32,
+      fontWeight: fontWeight.bold,
+      color: withOpacity(colors.foreground, 0.9),
+      letterSpacing: -0.8,
+    },
+    daySummaryBookRow: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+      gap: 12,
+      paddingTop: 14,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: withOpacity(colors.border, 0.24),
+    },
+    daySummaryBookText: {
+      flex: 1,
+      gap: 4,
+    },
+    daySummaryBookLabel: {
+      fontSize: 11,
+      fontWeight: fontWeight.medium,
+      color: withOpacity(colors.mutedForeground, 0.52),
+    },
+    daySummaryBookTitle: {
+      fontSize: 17,
       fontWeight: fontWeight.semibold,
-      color: withOpacity(colors.primary, 0.4),
-      textTransform: "uppercase",
-      letterSpacing: 1.5,
-      marginBottom: 4,
+      color: withOpacity(colors.foreground, 0.88),
+      letterSpacing: -0.2,
+      lineHeight: 23,
     },
-    dayTopFocusTitle: {
+    daySummaryBookValue: {
       fontSize: 16,
-      fontWeight: fontWeight.bold,
-      color: withOpacity(colors.foreground, 0.85),
-    },
-    dayTopFocusSub: {
-      fontSize: 13,
-      color: withOpacity(colors.mutedForeground, 0.62),
-      marginTop: 2,
+      fontWeight: fontWeight.semibold,
+      color: withOpacity(colors.primary, 0.72),
+      paddingTop: 18,
+      paddingBottom: 1,
     },
 
     /* ── Calendar ── */
