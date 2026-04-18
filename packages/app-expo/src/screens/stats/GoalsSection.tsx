@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import { Modal, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import { useColors, withOpacity } from "@/styles/theme";
+import { formatCharacterCount } from "./stats-utils";
 
 const GOAL_TYPE_DEFAULTS: Record<GoalType, number> = {
   books: 24,
@@ -27,9 +28,10 @@ export function GoalsSection({
   onRemoveGoal?: (id: string) => void;
   currentDimension?: StatsDimension;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const colors = useColors();
   const [formOpen, setFormOpen] = useState(false);
+  const isZh = i18n.language.startsWith("zh");
   const supportsGoalPeriod =
     currentDimension === undefined ||
     currentDimension === "month" ||
@@ -62,6 +64,7 @@ export function GoalsSection({
           }
           typeLabel={typeUnit(goal.type)}
           target={goal.target}
+          isZh={isZh}
           onRemove={onRemoveGoal ? () => onRemoveGoal(goal.id) : undefined}
         />
       ))}
@@ -128,6 +131,7 @@ function GoalRow({
   periodLabel,
   typeLabel,
   target,
+  isZh,
   onRemove,
 }: {
   current: number;
@@ -137,6 +141,7 @@ function GoalRow({
   periodLabel: string;
   typeLabel: string;
   target: number;
+  isZh: boolean;
   onRemove?: () => void;
 }) {
   const { t } = useTranslation();
@@ -171,6 +176,15 @@ function GoalRow({
 
   const statusFg =
     percentage >= 100 ? "#059669" : onTrack ? withOpacity(colors.primary, 0.85) : "#d97706";
+
+  const formatGoalValue = (value: number) => {
+    if (typeLabel === t("stats.desktop.goalCharactersUnit")) {
+      return formatCharacterCount(value, isZh);
+    }
+
+    const normalized = Math.round(value * 10) / 10;
+    return `${normalized} ${typeLabel}`;
+  };
 
   return (
     <View
@@ -261,7 +275,7 @@ function GoalRow({
             fontVariant: ["tabular-nums"],
           }}
         >
-          {Math.round(current * 10) / 10} / {target} {typeLabel}
+          {formatGoalValue(current)} / {formatGoalValue(target)}
         </Text>
         {percentage < 100 && (
           <Text
@@ -271,7 +285,7 @@ function GoalRow({
             }}
           >
             {t("stats.desktop.goalRemaining", {
-              remaining: `${Math.round(remaining * 10) / 10} ${typeLabel}`,
+              remaining: formatGoalValue(remaining),
             })}
           </Text>
         )}

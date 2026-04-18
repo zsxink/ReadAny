@@ -48,6 +48,7 @@ import { makeStyles } from "./stats/stats-styles";
 import {
   buildHeroNarrative,
   formatDateLabel,
+  formatCharacterCount,
   formatCharactersPerMinute,
   formatTimeLocalized,
   localizeInsight,
@@ -216,7 +217,7 @@ export default function StatsScreen() {
     const bkC = compMap.get("books");
     const readingVolumeValue =
       (report.summary.totalCharactersRead ?? 0) > 0
-        ? `${(report.summary.totalCharactersRead ?? 0).toLocaleString()} ${t("stats.desktop.charactersReadSuffix")}`
+        ? formatCharacterCount(report.summary.totalCharactersRead ?? 0, isZh)
         : `${report.summary.totalPagesRead} ${t("stats.desktop.pagesReadSuffix")}`;
     const readingSpeedValue =
       (report.summary.avgCharactersPerMinute ?? 0) > 0

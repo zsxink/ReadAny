@@ -48,6 +48,7 @@ import { getStatsCopy } from "./stats-copy";
 import {
   buildHeroNarrative,
   DIMENSIONS,
+  formatCharacterCount,
   formatCharactersPerMinute,
   formatMinutes,
   formatPeriodLabel,
@@ -81,7 +82,7 @@ function buildHeroMetrics(
 ): MetricTileData[] {
   const readingVolumeValue =
     (report.summary.totalCharactersRead ?? 0) > 0
-      ? `${(report.summary.totalCharactersRead ?? 0).toLocaleString()} ${copy.charactersReadSuffix}`
+      ? formatCharacterCount(report.summary.totalCharactersRead ?? 0, isZh)
       : `${report.summary.totalPagesRead.toLocaleString()} ${copy.pagesReadSuffix}`;
   const readingSpeedValue =
     (report.summary.avgCharactersPerMinute ?? 0) > 0

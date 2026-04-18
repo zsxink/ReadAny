@@ -54,6 +54,8 @@ const REFLOWABLE_CHARACTERS_PER_LOCATION = 1500;
 const MAX_TRACKED_LOCATION_DELTA = 20;
 const MAX_TRACKED_PAGE_DELTA = 20;
 const MAX_TRACKED_FRACTION_DELTA = 0.08;
+const INITIAL_PROGRESS_RESTORE_GUARD_MS = 1800;
+const PROGRAMMATIC_NAV_GUARD_MS = 1200;
 
 function countReadableCharacters(doc: Document): number {
   const rawText = doc.body?.textContent ?? "";
@@ -511,6 +513,10 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       }
 
       console.log("[ReaderView] Navigating to CFI:", cfi);
+      progressTrackingGuardUntilRef.current = Math.max(
+        progressTrackingGuardUntilRef.current,
+        Date.now() + PROGRAMMATIC_NAV_GUARD_MS,
+      );
       foliateRef.current.goToCFI(cfi);
     },
     [tabId, readerTab, pushHistory],
@@ -794,8 +800,36 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     mode: "location" | "page" | "characters";
     current: number;
     fraction?: number;
+    section?: number;
+    page?: number;
   } | null>(null);
   const totalBookCharactersRef = useRef<number | null>(null);
+  const progressTrackingGuardUntilRef = useRef(0);
+
+  const suppressProgressTracking = useCallback((duration = PROGRAMMATIC_NAV_GUARD_MS) => {
+    progressTrackingGuardUntilRef.current = Math.max(
+      progressTrackingGuardUntilRef.current,
+      Date.now() + duration,
+    );
+  }, []);
+
+  const goToCFISafely = useCallback(
+    (targetCfi: string) => {
+      if (!targetCfi) return;
+      suppressProgressTracking();
+      foliateRef.current?.goToCFI(targetCfi);
+    },
+    [suppressProgressTracking],
+  );
+
+  const goToHrefSafely = useCallback(
+    (href: string) => {
+      if (!href) return;
+      suppressProgressTracking();
+      foliateRef.current?.goToHref(href);
+    },
+    [suppressProgressTracking],
+  );
 
   useEffect(() => {
     window.localStorage.setItem(TOOLBAR_PIN_STORAGE_KEY, String(isToolbarPinned));
@@ -852,7 +886,8 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
 
   useEffect(() => {
     sessionProgressRef.current = null;
-  }, [bookId, tabId, bookFormat]);
+    suppressProgressTracking(INITIAL_PROGRESS_RESTORE_GUARD_MS);
+  }, [bookId, tabId, bookFormat, suppressProgressTracking]);
 
   useEffect(() => {
     let cancelled = false;
@@ -920,6 +955,8 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
         setCurrentPage(0);
       }
 
+      const trackingSuppressed = Date.now() < progressTrackingGuardUntilRef.current;
+
       // Track reading progress.
       // For fixed layout (PDF/CBZ): use section index (stable real pages)
       // For reflowable (EPUB/TXT): use logical locations for character accumulation
@@ -927,6 +964,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
         const previous = sessionProgressRef.current;
         const currentSection = detail.section.current;
         if (
+          !trackingSuppressed &&
           previous?.mode === "page" &&
           currentSection > previous.current
         ) {
@@ -944,21 +982,42 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
         if (totalBookCharacters && totalBookCharacters > 0) {
           const currentCharacters = Math.round(totalBookCharacters * fraction);
           const previous = sessionProgressRef.current;
-          if (
-            previous?.mode === "characters" &&
-            currentCharacters > previous.current &&
-            Math.abs(fraction - (previous.fraction ?? 0)) <= MAX_TRACKED_FRACTION_DELTA
-          ) {
-            incrementCharactersRead(currentCharacters - previous.current);
+          const currentSection = detail.section?.current ?? 0;
+          const currentRendererPage = detail.page?.current ?? null;
+
+          if (!trackingSuppressed && previous?.mode === "characters" && currentCharacters > previous.current) {
+            if (
+              currentRendererPage != null &&
+              previous.page != null &&
+              previous.section != null
+            ) {
+              const samePage =
+                previous.section === currentSection && previous.page === currentRendererPage;
+              const movedForwardWithinSection =
+                previous.section === currentSection &&
+                currentRendererPage > previous.page &&
+                currentRendererPage - previous.page <= MAX_TRACKED_PAGE_DELTA;
+              const movedForwardAcrossSection =
+                currentSection > previous.section && currentSection - previous.section <= 1;
+
+              if (!samePage && (movedForwardWithinSection || movedForwardAcrossSection)) {
+                incrementCharactersRead(currentCharacters - previous.current);
+              }
+            } else if (Math.abs(fraction - (previous.fraction ?? 0)) <= MAX_TRACKED_FRACTION_DELTA) {
+              incrementCharactersRead(currentCharacters - previous.current);
+            }
           }
           sessionProgressRef.current = {
             mode: "characters",
             current: currentCharacters,
             fraction,
+            section: currentSection,
+            page: currentRendererPage ?? undefined,
           };
         } else {
           const previous = sessionProgressRef.current;
           if (
+            !trackingSuppressed &&
             previous?.mode === "location" &&
             current > previous.current
           ) {
@@ -1174,8 +1233,8 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   }, []);
 
   const handleGoToChapter = useCallback((href: string) => {
-    foliateRef.current?.goToHref(href);
-  }, []);
+    goToHrefSafely(href);
+  }, [goToHrefSafely]);
 
   // --- Selection actions ---
   const handleHighlight = useCallback(
@@ -1660,7 +1719,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
         clearTimeout(pendingTTSContinueSafetyTimerRef.current);
         pendingTTSContinueSafetyTimerRef.current = null;
       }
-      foliateRef.current?.goToCFI(targetCfi);
+      goToCFISafely(targetCfi);
       await new Promise((resolve) => setTimeout(resolve, 280));
       const segments =
         (await foliateRef.current?.getVisibleTTSSegments(targetCfi))?.map((segment) => ({
@@ -1863,7 +1922,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
         ttsLastTextRef.current = nextText;
         if (nextCfi) {
           ttsSetCurrentLocation(nextCfi);
-          foliateRef.current?.goToCFI(nextCfi);
+          goToCFISafely(nextCfi);
           foliateRef.current?.highlightCFITemporarily(nextCfi, 1200);
         }
         setTimeout(() => ttsPlay(allSegments.map((segment) => segment.text)), 0);
@@ -1886,12 +1945,12 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       ttsLastTextRef.current = nextText;
       if (nextCfi) {
         ttsSetCurrentLocation(nextCfi);
-        foliateRef.current?.goToCFI(nextCfi);
+        goToCFISafely(nextCfi);
         foliateRef.current?.highlightCFITemporarily(nextCfi, 1200);
       }
       setTimeout(() => ttsPlay(sliced.map((segment) => segment.text)), 0);
     },
-    [ttsPrevPageSegments, ttsSegments, ttsSetCurrentLocation, ttsPlay],
+    [ttsPrevPageSegments, ttsSegments, ttsSetCurrentLocation, ttsPlay, goToCFISafely],
   );
 
   const handleJumpToTTSLyricSegment = useCallback(
@@ -1930,7 +1989,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
         ttsFutureSegmentsRef.current = [];
         if (nextCfi) {
           ttsSetCurrentLocation(nextCfi);
-          foliateRef.current?.goToCFI(nextCfi);
+          goToCFISafely(nextCfi);
         }
         ttsPlay(allSegments.map((s) => s.text));
         return;
@@ -1957,7 +2016,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
         ttsFutureSegmentsRef.current = [];
         if (nextCfi) {
           ttsSetCurrentLocation(nextCfi);
-          foliateRef.current?.goToCFI(nextCfi);
+          goToCFISafely(nextCfi);
         }
         ttsPlay(remainingFuture.map((s) => s.text));
         void primeDesktopTTSLyricContext(
@@ -1980,6 +2039,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       ttsSegments,
       ttsFutureSegments,
       ttsSetCurrentLocation,
+      goToCFISafely,
     ],
   );
 

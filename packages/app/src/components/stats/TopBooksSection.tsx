@@ -9,7 +9,7 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { StatsCopy } from "./stats-copy";
-import { formatCharactersPerMinute, formatCompactMinutes } from "./stats-utils";
+import { formatCharacterCount, formatCharactersPerMinute, formatCompactMinutes } from "./stats-utils";
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  *  Top Books
@@ -98,7 +98,7 @@ function TopBookItem({
       : null;
   const readingAmountLabel =
     (book.charactersRead ?? 0) > 0
-      ? `${(book.charactersRead ?? 0).toLocaleString()} ${copy.charactersReadSuffix}`
+      ? formatCharacterCount(book.charactersRead ?? 0, isZh)
       : book.pagesRead > 0
         ? `${book.pagesRead.toLocaleString()} ${copy.pagesReadSuffix}`
         : null;

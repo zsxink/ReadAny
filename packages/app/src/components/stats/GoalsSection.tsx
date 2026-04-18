@@ -5,6 +5,7 @@ import type { GoalProgress, StatsDimension } from "@readany/core/stats";
 import { cn } from "@readany/core/utils";
 import { useState } from "react";
 import type { StatsCopy } from "./stats-copy";
+import { formatCharacterCount } from "./stats-utils";
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  *  Goals Section — progress rings + inline goal form
@@ -132,6 +133,7 @@ export function GoalsSection({
   currentDimension?: StatsDimension;
 }) {
   const [showForm, setShowForm] = useState(false);
+  const isZh = copy.goalCharactersUnit === "字";
 
   // Auto-determine default period from current stats dimension
   const defaultPeriod: GoalPeriod = currentDimension === "year" ? "yearly" : "monthly";
@@ -148,6 +150,15 @@ export function GoalsSection({
   const handleSubmit = (type: GoalType, target: number, period: GoalPeriod) => {
     onAddGoal?.(type, target, period);
     setShowForm(false);
+  };
+
+  const formatGoalValue = (value: number, type: string) => {
+    if (type === "characters") {
+      return formatCharacterCount(value, isZh);
+    }
+
+    const normalized = Math.round(value * 10) / 10;
+    return `${normalized} ${goalTypeLabel(type)}`;
   };
 
   return (
@@ -192,11 +203,11 @@ export function GoalsSection({
                 </span>
               </div>
               <div className="text-[15px] font-bold tabular-nums text-foreground/85">
-                {Math.round(current * 10) / 10} / {goal.target} {goalTypeLabel(goal.type)}
+                {formatGoalValue(current, goal.type)} / {formatGoalValue(goal.target, goal.type)}
               </div>
               {percentage < 100 && (
                 <div className="text-[12px] text-muted-foreground/62">
-                  {copy.goalRemaining.replace("{{remaining}}", `${Math.round(remaining * 10) / 10} ${goalTypeLabel(goal.type)}`)}
+                  {copy.goalRemaining.replace("{{remaining}}", formatGoalValue(remaining, goal.type))}
                 </div>
               )}
             </div>

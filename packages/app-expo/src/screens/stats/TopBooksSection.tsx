@@ -10,7 +10,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, TouchableOpacity, View } from "react-native";
 import { makeStyles } from "./stats-styles";
-import { formatCharactersPerMinute, formatTimeLocalized } from "./stats-utils";
+import { formatCharacterCount, formatCharactersPerMinute, formatTimeLocalized } from "./stats-utils";
 import type { StatsCopy } from "./StatsSections";
 import { StatsBookCover } from "./StatsBookCover";
 
@@ -56,7 +56,7 @@ export function TopBooksSection({
             : null;
         const readingAmountLabel =
           (book.charactersRead ?? 0) > 0
-            ? `${(book.charactersRead ?? 0).toLocaleString()} ${copy.charactersReadSuffix}`
+            ? formatCharacterCount(book.charactersRead ?? 0, isZh)
             : book.pagesRead > 0
               ? `${book.pagesRead.toLocaleString()} ${copy.pagesReadSuffix}`
               : null;

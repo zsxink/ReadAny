@@ -73,6 +73,8 @@ const REFLOWABLE_CHARACTERS_PER_LOCATION = 1500;
 const MAX_TRACKED_LOCATION_DELTA = 20;
 const MAX_TRACKED_PAGE_DELTA = 20;
 const MAX_TRACKED_FRACTION_DELTA = 0.08;
+const INITIAL_PROGRESS_RESTORE_GUARD_MS = 1800;
+const PROGRAMMATIC_NAV_GUARD_MS = 1200;
 import { ReaderSettingsPanel } from "./reader/ReaderSettingsPanel";
 import { ReaderTOCPanel } from "./reader/ReaderTOCPanel";
 import {
@@ -191,7 +193,9 @@ export function ReaderScreen({ route, navigation }: Props) {
       before?: number,
       after?: number,
     ) => Promise<{ before: TTSSegment[]; after: TTSSegment[] }>;
+    goToFraction: (fraction: number) => void;
     goToCFI: (cfi: string) => void;
+    goToHref: (href: string) => void;
     flashHighlight: (cfi: string, color?: string, duration?: number) => void;
     addAnnotation: (annotation: {
       value: string;
@@ -247,8 +251,11 @@ export function ReaderScreen({ route, navigation }: Props) {
     mode: "location" | "page" | "characters";
     current: number;
     fraction?: number;
+    section?: number;
+    page?: number;
   } | null>(null);
   const totalBookCharactersRef = useRef<number | null>(null);
+  const progressTrackingGuardUntilRef = useRef(0);
 
   const incrementPagesRead = useReadingSessionStore((s) => s.incrementPagesRead);
   const incrementCharactersRead = useReadingSessionStore((s) => s.incrementCharactersRead);
@@ -288,6 +295,31 @@ export function ReaderScreen({ route, navigation }: Props) {
   });
   const { isBookmarked, bookBookmarks, handleToggleBookmark } = bookmark;
 
+  const suppressProgressTracking = useCallback((duration = PROGRAMMATIC_NAV_GUARD_MS) => {
+    progressTrackingGuardUntilRef.current = Math.max(
+      progressTrackingGuardUntilRef.current,
+      Date.now() + duration,
+    );
+  }, []);
+
+  const goToCFISafely = useCallback(
+    (targetCfi: string) => {
+      if (!targetCfi) return;
+      suppressProgressTracking();
+      bridgeRef.current?.goToCFI(targetCfi);
+    },
+    [suppressProgressTracking],
+  );
+
+  const goToHrefSafely = useCallback(
+    (href: string) => {
+      if (!href) return;
+      suppressProgressTracking();
+      bridgeRef.current?.goToHref(href);
+    },
+    [suppressProgressTracking],
+  );
+
   // ── Search ─────────────────────────────────────────────────────────────────
   // Use bridgeRef for lazy access (bridge is initialized later)
   const search = useReaderSearch({
@@ -296,7 +328,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       search: (q) => bridgeRef.current?.search?.(q),
       clearSearch: () => bridgeRef.current?.clearSearch?.(),
       navigateSearch: (idx) => bridgeRef.current?.navigateSearch?.(idx),
-      goToCFI: (cfi) => bridgeRef.current?.goToCFI(cfi),
+      goToCFI: (cfi) => goToCFISafely(cfi),
     },
   });
 
@@ -307,6 +339,7 @@ export function ReaderScreen({ route, navigation }: Props) {
   useEffect(() => {
     sessionProgressRef.current = null;
     totalBookCharactersRef.current = null;
+    suppressProgressTracking(INITIAL_PROGRESS_RESTORE_GUARD_MS);
   }, [bookId]);
   const chapterTranslation = useChapterTranslation({
     bookId,
@@ -483,27 +516,50 @@ export function ReaderScreen({ route, navigation }: Props) {
         setTotalPages(0);
       }
 
+      const trackingSuppressed = Date.now() < progressTrackingGuardUntilRef.current;
+
       if (detail.location?.total) {
         const totalBookCharacters = totalBookCharactersRef.current;
         const fraction = detail.fraction ?? 0;
         if (totalBookCharacters && totalBookCharacters > 0) {
           const currentCharacters = Math.round(totalBookCharacters * fraction);
           const previous = sessionProgressRef.current;
-          if (
-            previous?.mode === "characters" &&
-            currentCharacters > previous.current &&
-            Math.abs(fraction - (previous.fraction ?? 0)) <= MAX_TRACKED_FRACTION_DELTA
-          ) {
-            incrementCharactersRead(currentCharacters - previous.current);
+          const currentSection = detail.section?.current ?? 0;
+          const currentRendererPage = detail.page?.current ?? null;
+
+          if (!trackingSuppressed && previous?.mode === "characters" && currentCharacters > previous.current) {
+            if (
+              currentRendererPage != null &&
+              previous.page != null &&
+              previous.section != null
+            ) {
+              const samePage =
+                previous.section === currentSection && previous.page === currentRendererPage;
+              const movedForwardWithinSection =
+                previous.section === currentSection &&
+                currentRendererPage > previous.page &&
+                currentRendererPage - previous.page <= MAX_TRACKED_PAGE_DELTA;
+              const movedForwardAcrossSection =
+                currentSection > previous.section && currentSection - previous.section <= 1;
+
+              if (!samePage && (movedForwardWithinSection || movedForwardAcrossSection)) {
+                incrementCharactersRead(currentCharacters - previous.current);
+              }
+            } else if (Math.abs(fraction - (previous.fraction ?? 0)) <= MAX_TRACKED_FRACTION_DELTA) {
+              incrementCharactersRead(currentCharacters - previous.current);
+            }
           }
           sessionProgressRef.current = {
             mode: "characters",
             current: currentCharacters,
             fraction,
+            section: currentSection,
+            page: currentRendererPage ?? undefined,
           };
         } else {
           const previous = sessionProgressRef.current;
           if (
+            !trackingSuppressed &&
             previous?.mode === "location" &&
             detail.location.current > previous.current
           ) {
@@ -521,6 +577,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       } else if (detail.section?.total) {
         const previous = sessionProgressRef.current;
         if (
+          !trackingSuppressed &&
           previous?.mode === "page" &&
           detail.section.current > previous.current
         ) {
@@ -734,19 +791,19 @@ export function ReaderScreen({ route, navigation }: Props) {
       if (lastCfiRef.current) {
         locationHistoryRef.current.push(lastCfiRef.current);
       }
-      bridge.goToHref(href);
+      goToHrefSafely(href);
       setShowTOC(false);
     },
-    [bridge],
+    [goToHrefSafely],
   );
 
   const goBackToPreviousLocation = useCallback(() => {
     if (locationHistoryRef.current.length === 0) return;
     const previousCfi = locationHistoryRef.current.pop();
     if (previousCfi) {
-      bridge.goToCFI(previousCfi);
+      goToCFISafely(previousCfi);
     }
-  }, [bridge]);
+  }, [goToCFISafely]);
 
   const canGoBack = locationHistoryRef.current.length > 0;
 
@@ -909,7 +966,7 @@ export function ReaderScreen({ route, navigation }: Props) {
   // Navigate to CFI when book is loaded (from NotesPage or AI citation navigation)
   useEffect(() => {
     if (!webViewReady || loading || !cfi || cfi === lastNavigatedCfiRef.current) return;
-    bridge.goToCFI(cfi);
+    goToCFISafely(cfi);
     lastNavigatedCfiRef.current = cfi;
     navigation.setParams({ bookId, cfi: undefined, highlight: undefined });
 
@@ -923,7 +980,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       };
       setTimeout(doFlash, 100);
     }
-  }, [webViewReady, loading, cfi, shouldHighlight, bridge, navigation, bookId]);
+  }, [webViewReady, loading, cfi, shouldHighlight, goToCFISafely, navigation, bookId]);
 
   // Open TTS lyrics page when navigating from notification
   useEffect(() => {
@@ -934,7 +991,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       const targetCfi =
         tts.resolvedTTSSegmentCfi || tts.ttsDisplaySegments[0]?.cfi || currentCfi || null;
       if (targetCfi && targetCfi !== currentCfi) {
-        bridge.goToCFI(targetCfi);
+        goToCFISafely(targetCfi);
         await new Promise((resolve) => setTimeout(resolve, 320));
       }
       if (cancelled) return;
@@ -945,7 +1002,7 @@ export function ReaderScreen({ route, navigation }: Props) {
 
     void openLyricsPage();
     return () => { cancelled = true; };
-  }, [bookId, bridge, currentCfi, loading, navigation, openTTS, webViewReady]);
+  }, [bookId, currentCfi, goToCFISafely, loading, navigation, openTTS, webViewReady]);
 
   // Lock navigation when selection is active
   useEffect(() => {
@@ -1479,7 +1536,7 @@ export function ReaderScreen({ route, navigation }: Props) {
                         onPress: () => { search.setSearchStartCfi(null); } },
                       { text: t("common.confirm", "确定"),
                         onPress: () => {
-                          bridge.goToCFI(search.searchStartCfi!);
+                          goToCFISafely(search.searchStartCfi!);
                           search.setSearchStartCfi(null);
                         } },
                     ],
@@ -1514,7 +1571,7 @@ export function ReaderScreen({ route, navigation }: Props) {
         onClose={() => setShowTOC(false)}
         onTabChange={setTocActiveTab}
         onSelectTocItem={goToTocItem}
-        onGoToBookmark={(cfi) => { bridge.goToCFI(cfi); setShowTOC(false); }}
+        onGoToBookmark={(cfi) => { goToCFISafely(cfi); setShowTOC(false); }}
         onDeleteBookmark={(id) => removeBookmark(id)}
       />
 

@@ -66,6 +66,27 @@ export function formatChartMinutes(minutes: number, isZh: boolean): string {
       : `${hours}h`;
 }
 
+export function formatCharacterCount(value: number, isZh: boolean): string {
+  const rounded = Math.max(0, Math.round(value));
+
+  if (isZh) {
+    if (rounded >= 10000) {
+      const wan = rounded / 10000;
+      const digits = wan >= 100 ? 0 : 1;
+      return `${wan.toFixed(digits).replace(/\.0$/, "")} 万字`;
+    }
+    return `${rounded.toLocaleString()} 字`;
+  }
+
+  if (rounded >= 1000) {
+    const thousands = rounded / 1000;
+    const digits = thousands >= 100 ? 0 : 1;
+    return `${thousands.toFixed(digits).replace(/\.0$/, "")}k chars`;
+  }
+
+  return `${rounded.toLocaleString()} chars`;
+}
+
 export function formatCharactersPerMinute(value: number, isZh: boolean): string {
   const rounded = Math.max(0, Math.round(value));
   return isZh ? `${rounded.toLocaleString()} 字/分` : `${rounded.toLocaleString()} chars/min`;
