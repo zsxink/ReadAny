@@ -11,6 +11,7 @@ export interface ReadingSession {
   pausedAt?: number;
   totalActiveTime: number; // ms
   pagesRead: number;
+  charactersRead?: number;
   startCfi?: string;
   endCfi?: string;
 }
@@ -20,6 +21,7 @@ export interface ReadingStats {
   totalReadingTime: number; // ms
   totalSessions: number;
   totalPagesRead: number;
+  totalCharactersRead?: number;
   averageSessionTime: number;
   lastReadAt: number;
   readingStreak: number; // days
@@ -30,6 +32,7 @@ export interface DailyReadingStat {
   date: string; // YYYY-MM-DD
   readingTime: number; // ms
   pagesRead: number;
+  charactersRead?: number;
   sessions: number;
 }
 

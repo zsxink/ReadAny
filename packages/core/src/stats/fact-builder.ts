@@ -19,6 +19,7 @@ function createUnknownBookBreakdown(bookId: string): DailyBookBreakdown {
     subjects: [],
     totalTime: 0,
     pagesRead: 0,
+    charactersRead: 0,
     sessionsCount: 0,
   };
 }
@@ -31,6 +32,7 @@ interface DayAccumulator {
   date: string;
   totalTime: number;
   pagesRead: number;
+  charactersRead: number;
   sessionsCount: number;
   longestSessionTime: number;
   firstSessionAt?: number;
@@ -44,6 +46,7 @@ function createDayAccumulator(date: string): DayAccumulator {
     date,
     totalTime: 0,
     pagesRead: 0,
+    charactersRead: 0,
     sessionsCount: 0,
     longestSessionTime: 0,
     hourBuckets: new Map(),
@@ -89,6 +92,7 @@ export function buildDailyReadingFacts(
 
     day.totalTime += totalTime;
     day.pagesRead += session.pagesRead;
+    day.charactersRead += session.charactersRead ?? 0;
     day.sessionsCount += 1;
     day.longestSessionTime = Math.max(day.longestSessionTime, totalTime);
     day.firstSessionAt =
@@ -110,6 +114,7 @@ export function buildDailyReadingFacts(
             subjects: book.meta.subjects,
             totalTime: 0,
             pagesRead: 0,
+            charactersRead: 0,
             sessionsCount: 0,
             progressEnd: book.progress,
             totalPages: book.meta.totalPages,
@@ -118,6 +123,7 @@ export function buildDailyReadingFacts(
 
     existingBook.totalTime += totalTime;
     existingBook.pagesRead += session.pagesRead;
+    existingBook.charactersRead = (existingBook.charactersRead ?? 0) + (session.charactersRead ?? 0);
     existingBook.sessionsCount += 1;
 
     day.books.set(session.bookId, existingBook);
@@ -136,6 +142,7 @@ export function buildDailyReadingFacts(
         yearKey: getYearKey(day.date),
         totalTime: day.totalTime,
         pagesRead: day.pagesRead,
+        charactersRead: day.charactersRead,
         sessionsCount: day.sessionsCount,
         booksTouched: day.books.size,
         completedBooks: 0,

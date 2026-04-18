@@ -61,6 +61,9 @@ function computeCurrentValue(facts: DailyReadingFact[], goal: ReadingGoal): numb
   if (goal.type === "pages") {
     return facts.reduce((sum, f) => sum + f.pagesRead, 0);
   }
+  if (goal.type === "characters") {
+    return facts.reduce((sum, f) => sum + (f.charactersRead ?? 0), 0);
+  }
   return 0;
 }
 

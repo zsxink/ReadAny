@@ -99,6 +99,7 @@ export interface RelocateDetail {
   fraction?: number;
   section?: { current: number; total: number };
   location?: { current: number; next: number; total: number };
+  page?: { current: number; total: number };
   tocItem?: { label?: string; href?: string; id?: number };
   cfi?: string;
   time?: { section: number; total: number };
@@ -1145,7 +1146,25 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
     // --- Relocate handler ---
     const relocateHandlerImpl = useCallback(
       (event: Event) => {
-        const detail = (event as CustomEvent).detail as RelocateDetail;
+        const rawDetail = (event as CustomEvent).detail as RelocateDetail;
+        const rendererPage =
+          viewRef.current?.renderer && typeof viewRef.current.renderer.page === "number"
+            ? viewRef.current.renderer.page
+            : null;
+        const rendererPages =
+          viewRef.current?.renderer && typeof viewRef.current.renderer.pages === "number"
+            ? viewRef.current.renderer.pages
+            : null;
+        const detail: RelocateDetail =
+          rendererPage != null && rendererPages != null && rendererPages > 2
+            ? {
+                ...rawDetail,
+                page: {
+                  current: Math.max(1, Math.min(rendererPage, rendererPages - 2)),
+                  total: Math.max(1, rendererPages - 2),
+                },
+              }
+            : rawDetail;
         onRelocate?.(detail);
 
         // Update reading context service

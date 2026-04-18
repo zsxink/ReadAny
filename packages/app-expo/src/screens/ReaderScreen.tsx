@@ -68,6 +68,10 @@ import { WebView } from "react-native-webview";
 
 // ── Extracted modules ──
 import { ReaderNoteViewModal } from "./reader/ReaderNoteViewModal";
+
+const REFLOWABLE_CHARACTERS_PER_LOCATION = 1500;
+const MAX_TRACKED_LOCATION_DELTA = 20;
+const MAX_TRACKED_PAGE_DELTA = 20;
 import { ReaderSettingsPanel } from "./reader/ReaderSettingsPanel";
 import { ReaderTOCPanel } from "./reader/ReaderTOCPanel";
 import {
@@ -145,8 +149,8 @@ export function ReaderScreen({ route, navigation }: Props) {
   const [showChapterTranslation, setShowChapterTranslation] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentChapter, setCurrentChapter] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
   const [toc, setToc] = useState<TOCItem[]>([]);
   const [bookTitle, setBookTitle] = useState("");
   const [webViewReady, setWebViewReady] = useState(false);
@@ -238,8 +242,10 @@ export function ReaderScreen({ route, navigation }: Props) {
   const progressRef = useRef(0);
   const locationHistoryRef = useRef<string[]>([]);
   const lastNavigatedCfiRef = useRef<string | undefined>(undefined);
+  const sessionProgressRef = useRef<{ mode: "location" | "page"; current: number } | null>(null);
 
-  const {} = useReadingSessionStore(); // Removed startSession and stopSession
+  const incrementPagesRead = useReadingSessionStore((s) => s.incrementPagesRead);
+  const incrementCharactersRead = useReadingSessionStore((s) => s.incrementCharactersRead);
   const { sendEvent } = useReadingSession(bookId); // Added useReadingSession hook
   const { books, updateBook } = useLibraryStore();
   const setGoToCfiFn = useReaderStore((s) => s.setGoToCfiFn);
@@ -291,6 +297,10 @@ export function ReaderScreen({ route, navigation }: Props) {
   useEffect(() => {
     progressRef.current = progress;
   }, [progress]);
+
+  useEffect(() => {
+    sessionProgressRef.current = null;
+  }, [bookId]);
   const chapterTranslation = useChapterTranslation({
     bookId,
     sectionIndex: currentSectionIndex,
@@ -449,12 +459,44 @@ export function ReaderScreen({ route, navigation }: Props) {
       }
 
       if (detail.fraction != null) setProgress(detail.fraction);
-      if (detail.location?.total) {
-        setCurrentPage(Math.max(1, detail.location.current));
-        setTotalPages(Math.max(1, detail.location.total));
-      } else if (detail.page) {
+
+      if (detail.page) {
         setCurrentPage(Math.max(1, detail.page.current));
         setTotalPages(Math.max(1, detail.page.total));
+      } else if (detail.section?.total && !detail.location?.total) {
+        // Fixed-layout documents can still expose stable section pages.
+        setCurrentPage(Math.max(1, detail.section.current + 1));
+        setTotalPages(Math.max(1, detail.section.total));
+      } else {
+        // Reflowable books without renderer-backed pagination should fall back to percent.
+        setCurrentPage(0);
+        setTotalPages(0);
+      }
+
+      if (detail.location?.total) {
+        const previous = sessionProgressRef.current;
+        if (
+          previous?.mode === "location" &&
+          detail.location.current > previous.current
+        ) {
+          const delta = detail.location.current - previous.current;
+          if (delta <= MAX_TRACKED_LOCATION_DELTA) {
+            incrementCharactersRead(delta * REFLOWABLE_CHARACTERS_PER_LOCATION);
+          }
+        }
+        sessionProgressRef.current = { mode: "location", current: detail.location.current };
+      } else if (detail.section?.total) {
+        const previous = sessionProgressRef.current;
+        if (
+          previous?.mode === "page" &&
+          detail.section.current > previous.current
+        ) {
+          const delta = detail.section.current - previous.current;
+          if (delta <= MAX_TRACKED_PAGE_DELTA) {
+            incrementPagesRead(delta);
+          }
+        }
+        sessionProgressRef.current = { mode: "page", current: detail.section.current };
       }
       if (detail.tocItem?.label) setCurrentChapter(detail.tocItem.label);
       if (detail.cfi) {

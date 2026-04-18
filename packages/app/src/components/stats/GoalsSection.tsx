@@ -10,10 +10,15 @@ import type { StatsCopy } from "./stats-copy";
  *  Goals Section — progress rings + inline goal form
  * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
-type GoalType = "books" | "time" | "pages";
+type GoalType = "books" | "time" | "characters" | "pages";
 type GoalPeriod = "monthly" | "yearly";
 
-const GOAL_TYPE_DEFAULTS: Record<GoalType, number> = { books: 24, time: 100, pages: 5000 };
+const GOAL_TYPE_DEFAULTS: Record<GoalType, number> = {
+  books: 24,
+  time: 100,
+  characters: 300000,
+  pages: 5000,
+};
 
 function GoalAddForm({
   copy,
@@ -32,7 +37,7 @@ function GoalAddForm({
   const typeOptions: { key: GoalType; label: string }[] = [
     { key: "books", label: copy.goalBooks },
     { key: "time", label: copy.goalTime },
-    { key: "pages", label: copy.goalPages },
+    { key: "characters", label: copy.goalCharacters },
   ];
 
   const handleTypeChange = (t: GoalType) => {
@@ -82,7 +87,13 @@ function GoalAddForm({
           className="h-9 w-24 rounded-lg border border-border/30 bg-background/50 px-3 text-center text-[15px] font-bold tabular-nums text-foreground outline-none transition-colors focus:border-primary/30 focus:ring-1 focus:ring-primary/15"
         />
         <span className="text-[13px] text-muted-foreground/65">
-          {type === "books" ? copy.goalBooksUnit : type === "time" ? copy.goalTimeUnit : copy.goalPagesUnit}
+          {type === "books"
+            ? copy.goalBooksUnit
+            : type === "time"
+              ? copy.goalTimeUnit
+              : type === "characters"
+                ? copy.goalCharactersUnit
+                : copy.goalPagesUnit}
           {" / "}
           {periodLabel.toLowerCase()}
         </span>
@@ -126,7 +137,13 @@ export function GoalsSection({
   const defaultPeriod: GoalPeriod = currentDimension === "year" ? "yearly" : "monthly";
 
   const goalTypeLabel = (type: string) =>
-    type === "books" ? copy.goalBooksUnit : type === "time" ? copy.goalTimeUnit : copy.goalPagesUnit;
+    type === "books"
+      ? copy.goalBooksUnit
+      : type === "time"
+        ? copy.goalTimeUnit
+        : type === "characters"
+          ? copy.goalCharactersUnit
+          : copy.goalPagesUnit;
 
   const handleSubmit = (type: GoalType, target: number, period: GoalPeriod) => {
     onAddGoal?.(type, target, period);

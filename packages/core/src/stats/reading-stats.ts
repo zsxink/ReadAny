@@ -7,6 +7,7 @@ export interface DailyStats {
   date: string; // YYYY-MM-DD
   totalTime: number; // minutes
   pagesRead: number;
+  charactersRead?: number;
   sessionsCount: number;
 }
 
@@ -17,6 +18,7 @@ export interface BookStats {
   sessions: number;
   avgSessionTime: number; // minutes
   pagesRead: number;
+  charactersRead?: number;
 }
 
 export interface OverallStats {
@@ -57,11 +59,13 @@ export class ReadingStatsService {
         date,
         totalTime: 0,
         pagesRead: 0,
+        charactersRead: 0,
         sessionsCount: 0,
       };
 
       existing.totalTime += session.totalActiveTime / 60000; // ms -> minutes
       existing.pagesRead += session.pagesRead;
+      existing.charactersRead = (existing.charactersRead ?? 0) + (session.charactersRead ?? 0);
       existing.sessionsCount += 1;
 
       grouped.set(date, existing);
@@ -77,6 +81,7 @@ export class ReadingStatsService {
           date: dateStr,
           totalTime: 0,
           pagesRead: 0,
+          charactersRead: 0,
           sessionsCount: 0,
         },
       );
@@ -101,6 +106,7 @@ export class ReadingStatsService {
       sessions: sessions.length,
       avgSessionTime: sessions.length > 0 ? totalTime / sessions.length / 60000 : 0,
       pagesRead: sessions.reduce((sum, s) => sum + s.pagesRead, 0),
+      charactersRead: sessions.reduce((sum, s) => sum + (s.charactersRead ?? 0), 0),
     };
   }
 

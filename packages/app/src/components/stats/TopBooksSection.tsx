@@ -96,6 +96,12 @@ function TopBookItem({
     allFacts && book.progress !== undefined && book.progress < 1
       ? computeBookETA(book.bookId, book.progress, book.totalPages, allFacts)
       : null;
+  const readingAmountLabel =
+    (book.charactersRead ?? 0) > 0
+      ? `${(book.charactersRead ?? 0).toLocaleString()} ${copy.charactersReadSuffix}`
+      : book.pagesRead > 0
+        ? `${book.pagesRead.toLocaleString()} ${copy.pagesReadSuffix}`
+        : null;
 
   return (
     <article
@@ -157,7 +163,7 @@ function TopBookItem({
             {formatCompactMinutes(book.totalTime, isZh)}
           </span>
           <span className="text-[10px] text-muted-foreground/52">
-            {book.pagesRead > 0 && <>{book.pagesRead.toLocaleString()} {copy.pagesReadSuffix} · </>}
+            {readingAmountLabel && <>{readingAmountLabel} · </>}
             {book.sessionsCount.toLocaleString()} {copy.sessionsSuffix}
           </span>
         </div>

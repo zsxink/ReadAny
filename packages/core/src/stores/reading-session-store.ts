@@ -24,6 +24,7 @@ export interface ReadingSessionState {
   stopSession: () => void;
   updateActiveTime: () => void;
   incrementPagesRead: (count: number) => void;
+  incrementCharactersRead: (count: number) => void;
   loadStats: (bookId: string) => Promise<void>;
   /** Save current session to DB without stopping (for periodic saves) */
   saveCurrentSession: () => Promise<void>;
@@ -42,6 +43,7 @@ export const useReadingSessionStore = create<ReadingSessionState>((set, get) => 
       startedAt: Date.now(),
       totalActiveTime: 0,
       pagesRead: 0,
+      charactersRead: 0,
     };
     set({ currentSession: session, sessionState: "ACTIVE" });
   },
@@ -97,6 +99,16 @@ export const useReadingSessionStore = create<ReadingSessionState>((set, get) => 
         : null,
     })),
 
+  incrementCharactersRead: (count) =>
+    set((state) => ({
+      currentSession: state.currentSession
+        ? {
+            ...state.currentSession,
+            charactersRead: (state.currentSession.charactersRead ?? 0) + count,
+          }
+        : null,
+    })),
+
   saveCurrentSession: async () => {
     const { currentSession } = get();
     if (currentSession && currentSession.totalActiveTime > 0) {
@@ -114,6 +126,7 @@ export const useReadingSessionStore = create<ReadingSessionState>((set, get) => 
             startedAt: Date.now(),
             totalActiveTime: 0,
             pagesRead: 0,
+            charactersRead: 0,
           },
         });
       } catch (err) {
@@ -127,19 +140,21 @@ export const useReadingSessionStore = create<ReadingSessionState>((set, get) => 
       const sessions = await db.getReadingSessions(bookId);
       const totalReadingTime = sessions.reduce((sum, s) => sum + s.totalActiveTime, 0);
       const totalPagesRead = sessions.reduce((sum, s) => sum + s.pagesRead, 0);
+      const totalCharactersRead = sessions.reduce((sum, s) => sum + (s.charactersRead ?? 0), 0);
       const totalSessions = sessions.length;
       const averageSessionTime = totalSessions > 0 ? totalReadingTime / totalSessions : 0;
 
       const dailyStatsMap = new Map<
         string,
-        { readingTime: number; pagesRead: number; sessions: number }
+        { readingTime: number; pagesRead: number; charactersRead: number; sessions: number }
       >();
       for (const s of sessions) {
         const day = new Date(s.startedAt).toISOString().split("T")[0];
-        const existing = dailyStatsMap.get(day) || { readingTime: 0, pagesRead: 0, sessions: 0 };
+        const existing = dailyStatsMap.get(day) || { readingTime: 0, pagesRead: 0, charactersRead: 0, sessions: 0 };
         dailyStatsMap.set(day, {
           readingTime: existing.readingTime + s.totalActiveTime,
           pagesRead: existing.pagesRead + s.pagesRead,
+          charactersRead: existing.charactersRead + (s.charactersRead ?? 0),
           sessions: existing.sessions + 1,
         });
       }
@@ -148,6 +163,7 @@ export const useReadingSessionStore = create<ReadingSessionState>((set, get) => 
         date,
         readingTime: data.readingTime,
         pagesRead: data.pagesRead,
+        charactersRead: data.charactersRead,
         sessions: data.sessions,
       }));
 
@@ -159,6 +175,7 @@ export const useReadingSessionStore = create<ReadingSessionState>((set, get) => 
           bookId,
           totalReadingTime,
           totalPagesRead,
+          totalCharactersRead,
           totalSessions,
           averageSessionTime,
           lastReadAt,

@@ -9,7 +9,12 @@ import { Modal, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View }
 import Svg, { Circle } from "react-native-svg";
 import { useColors, withOpacity } from "@/styles/theme";
 
-const GOAL_TYPE_DEFAULTS: Record<GoalType, number> = { books: 24, time: 100, pages: 5000 };
+const GOAL_TYPE_DEFAULTS: Record<GoalType, number> = {
+  books: 24,
+  time: 100,
+  characters: 300000,
+  pages: 5000,
+};
 
 export function GoalsSection({
   progress,
@@ -37,6 +42,8 @@ export function GoalsSection({
       ? t("stats.desktop.goalBooksUnit")
       : type === "time"
         ? t("stats.desktop.goalTimeUnit")
+        : type === "characters"
+          ? t("stats.desktop.goalCharactersUnit")
         : t("stats.desktop.goalPagesUnit");
 
   return (
@@ -318,7 +325,7 @@ function GoalAddFormModal({
   const typeOptions: { key: GoalType; label: string }[] = [
     { key: "books", label: t("stats.desktop.goalBooks") },
     { key: "time", label: t("stats.desktop.goalTime") },
-    { key: "pages", label: t("stats.desktop.goalPages") },
+    { key: "characters", label: t("stats.desktop.goalCharacters") },
   ];
 
   const unitLabel =
@@ -326,6 +333,8 @@ function GoalAddFormModal({
       ? t("stats.desktop.goalBooksUnit")
       : type === "time"
         ? t("stats.desktop.goalTimeUnit")
+        : type === "characters"
+          ? t("stats.desktop.goalCharactersUnit")
         : t("stats.desktop.goalPagesUnit");
 
   const periodLabel =

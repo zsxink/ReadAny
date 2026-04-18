@@ -19,6 +19,7 @@ function createBookBreakdown(
     subjects: book?.meta.subjects ?? [],
     totalTime: 0,
     pagesRead: 0,
+    charactersRead: 0,
     sessionsCount: 0,
     progressEnd: book?.progress,
   };
@@ -46,6 +47,7 @@ function createDailyFact(date: string): DailyReadingFact {
     yearKey: getYearKey(date),
     totalTime: 0,
     pagesRead: 0,
+    charactersRead: 0,
     sessionsCount: 0,
     booksTouched: 0,
     completedBooks: 0,
@@ -84,6 +86,7 @@ export function mergeCurrentSessionIntoDailyFacts(
 
   target.totalTime += sessionMinutes;
   target.pagesRead += currentSession.pagesRead;
+  target.charactersRead = (target.charactersRead ?? 0) + (currentSession.charactersRead ?? 0);
   target.sessionsCount += 1;
   target.longestSessionTime = Math.max(target.longestSessionTime, sessionMinutes);
   target.firstSessionAt =
@@ -105,6 +108,7 @@ export function mergeCurrentSessionIntoDailyFacts(
 
   targetBook.totalTime += sessionMinutes;
   targetBook.pagesRead += currentSession.pagesRead;
+  targetBook.charactersRead = (targetBook.charactersRead ?? 0) + (currentSession.charactersRead ?? 0);
   targetBook.sessionsCount += 1;
   targetBook.tags = book?.tags ?? targetBook.tags;
   targetBook.subjects = book?.meta.subjects ?? targetBook.subjects;

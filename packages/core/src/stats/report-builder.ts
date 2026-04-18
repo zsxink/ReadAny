@@ -63,6 +63,7 @@ export function buildStatsSummary(facts: DailyReadingFact[]): StatsSummary {
   const totalReadingTime = sum(facts.map((fact) => fact.totalTime));
   const totalSessions = sum(facts.map((fact) => fact.sessionsCount));
   const totalPagesRead = sum(facts.map((fact) => fact.pagesRead));
+  const totalCharactersRead = sum(facts.map((fact) => fact.charactersRead ?? 0));
   const activeDays = facts.filter((fact) => fact.totalTime > 0).length;
   const bookIds = new Set<string>();
 
@@ -78,6 +79,7 @@ export function buildStatsSummary(facts: DailyReadingFact[]): StatsSummary {
     totalReadingTime,
     totalSessions,
     totalPagesRead,
+    totalCharactersRead,
     activeDays,
     booksTouched: bookIds.size,
     completedBooks: sum(facts.map((fact) => fact.completedBooks)),
@@ -104,6 +106,7 @@ export function buildTopBooksFromFacts(
         coverUrl: book.coverUrl,
         totalTime: 0,
         pagesRead: 0,
+        charactersRead: 0,
         sessionsCount: 0,
         progress: book.progressEnd,
         totalPages: book.totalPages,
@@ -111,6 +114,7 @@ export function buildTopBooksFromFacts(
 
       existing.totalTime += book.totalTime;
       existing.pagesRead += book.pagesRead;
+      existing.charactersRead = (existing.charactersRead ?? 0) + (book.charactersRead ?? 0);
       existing.sessionsCount += book.sessionsCount;
       existing.progress = book.progressEnd ?? existing.progress;
       existing.totalPages = book.totalPages ?? existing.totalPages;
@@ -450,6 +454,7 @@ function buildMonthReadingCalendar(
         isToday: key === todayKey,
         totalTime: fact?.totalTime ?? 0,
         pagesRead: fact?.pagesRead ?? 0,
+        charactersRead: fact?.charactersRead ?? 0,
         sessionsCount: fact?.sessionsCount ?? 0,
         intensity: getCalendarIntensity(fact?.totalTime ?? 0, maxTotalTime),
         covers,

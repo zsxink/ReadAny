@@ -213,10 +213,14 @@ export default function StatsScreen() {
     const adC = compMap.get("activeDays");
     const ssC = compMap.get("sessions");
     const bkC = compMap.get("books");
+    const readingVolumeValue =
+      (report.summary.totalCharactersRead ?? 0) > 0
+        ? `${(report.summary.totalCharactersRead ?? 0).toLocaleString()} ${t("stats.desktop.charactersReadSuffix")}`
+        : `${report.summary.totalPagesRead} ${t("stats.desktop.pagesReadSuffix")}`;
     return [
       { label: t("stats.desktop.activeDays"), value: `${report.summary.activeDays} ${t("stats.desktop.daysSuffix")}`, delta: adC?.delta, deltaLabel: adC?.deltaLabel },
       { label: t("stats.desktop.sessions"), value: `${report.summary.totalSessions} ${t("stats.desktop.sessionsSuffix")}`, delta: ssC?.delta, deltaLabel: ssC?.deltaLabel },
-      { label: t("stats.desktop.books"), value: String(report.summary.booksTouched), sublabel: `${report.summary.totalPagesRead} ${t("stats.desktop.pagesReadSuffix")}`, delta: bkC?.delta, deltaLabel: bkC?.deltaLabel },
+      { label: t("stats.desktop.books"), value: String(report.summary.booksTouched), sublabel: readingVolumeValue, delta: bkC?.delta, deltaLabel: bkC?.deltaLabel },
       { label: t("stats.desktop.streak"), value: `${report.dimension === "lifetime" ? report.summary.longestStreak : report.summary.currentStreak} ${t("stats.desktop.daysSuffix")}` },
       { label: t("stats.desktop.avgActiveDay"), value: formatTimeLocalized(report.summary.avgActiveDayTime, isZh) },
     ];
@@ -329,6 +333,7 @@ export default function StatsScreen() {
     noTopBooks: t("stats.desktop.noTopBooks"),
     unknownAuthor: t("stats.desktop.unknownAuthor"),
     pagesReadSuffix: t("stats.desktop.pagesReadSuffix"),
+    charactersReadSuffix: t("stats.desktop.charactersReadSuffix"),
     sessionsSuffix: t("stats.desktop.sessionsSuffix"),
     noInsights: t("stats.desktop.noInsights"),
     // Day summary

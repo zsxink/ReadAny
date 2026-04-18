@@ -36,6 +36,7 @@ export interface StatsSummary {
   totalReadingTime: number; // minutes
   totalSessions: number;
   totalPagesRead: number;
+  totalCharactersRead?: number;
   activeDays: number;
   booksTouched: number;
   completedBooks: number;
@@ -55,6 +56,7 @@ export interface DailyBookBreakdown {
   subjects?: string[];
   totalTime: number; // minutes
   pagesRead: number;
+  charactersRead?: number;
   sessionsCount: number;
   progressStart?: number;
   progressEnd?: number;
@@ -70,6 +72,7 @@ export interface DailyReadingFact {
 
   totalTime: number; // minutes
   pagesRead: number;
+  charactersRead?: number;
   sessionsCount: number;
   booksTouched: number;
   completedBooks: number;
@@ -139,6 +142,7 @@ export interface StatsCalendarCell {
   isToday?: boolean;
   totalTime: number; // minutes
   pagesRead: number;
+  charactersRead?: number;
   sessionsCount: number;
   intensity: 0 | 1 | 2 | 3 | 4;
   covers: StatsCalendarCover[];
@@ -159,6 +163,7 @@ export interface TopBookEntry {
   coverUrl?: string;
   totalTime: number; // minutes
   pagesRead: number;
+  charactersRead?: number;
   sessionsCount: number;
   progress?: number;
   totalPages?: number;
@@ -274,7 +279,7 @@ export type StatsReport =
 
 /* ─── Reading Goals ─── */
 
-export type GoalType = "books" | "time" | "pages";
+export type GoalType = "books" | "time" | "characters" | "pages";
 export type GoalPeriod = "monthly" | "yearly";
 
 export interface ReadingGoal {

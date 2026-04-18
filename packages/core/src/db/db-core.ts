@@ -461,6 +461,7 @@ export async function initDatabase(): Promise<void> {
       ended_at INTEGER,
       total_active_time INTEGER DEFAULT 0,
       pages_read INTEGER DEFAULT 0,
+      characters_read INTEGER DEFAULT 0,
       state TEXT DEFAULT 'active',
       updated_at INTEGER NOT NULL DEFAULT 0,
       FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
@@ -618,6 +619,13 @@ export async function initDatabase(): Promise<void> {
         );
         await database.execute(
           "UPDATE reading_sessions SET updated_at = started_at WHERE updated_at = 0",
+        );
+      } catch {
+        // Column already exists or table doesn't exist yet
+      }
+      try {
+        await database.execute(
+          "ALTER TABLE reading_sessions ADD COLUMN characters_read INTEGER DEFAULT 0",
         );
       } catch {
         // Column already exists or table doesn't exist yet

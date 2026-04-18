@@ -8,6 +8,7 @@ type ReadingSessionRow = {
   ended_at: number | null;
   total_active_time: number;
   pages_read: number;
+  characters_read: number | null;
   state: string;
 };
 
@@ -19,6 +20,7 @@ function mapReadingSessionRow(r: ReadingSessionRow): ReadingSession {
     endedAt: r.ended_at || undefined,
     totalActiveTime: r.total_active_time,
     pagesRead: r.pages_read,
+    charactersRead: r.characters_read ?? 0,
     state: r.state as ReadingSession["state"],
   };
 }
@@ -58,7 +60,7 @@ export async function insertReadingSession(session: ReadingSession): Promise<voi
   const deviceId = await getDeviceId();
   const syncVersion = await nextSyncVersion(database, "reading_sessions");
   await database.execute(
-    "INSERT INTO reading_sessions (id, book_id, started_at, ended_at, total_active_time, pages_read, state, updated_at, sync_version, last_modified_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO reading_sessions (id, book_id, started_at, ended_at, total_active_time, pages_read, characters_read, state, updated_at, sync_version, last_modified_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
       session.id,
       session.bookId,
@@ -66,6 +68,7 @@ export async function insertReadingSession(session: ReadingSession): Promise<voi
       session.endedAt || null,
       session.totalActiveTime,
       session.pagesRead,
+      session.charactersRead ?? 0,
       session.state,
       now,
       syncVersion,
@@ -95,6 +98,10 @@ export async function updateReadingSession(
   if (updates.pagesRead !== undefined) {
     sets.push("pages_read = ?");
     values.push(updates.pagesRead);
+  }
+  if (updates.charactersRead !== undefined) {
+    sets.push("characters_read = ?");
+    values.push(updates.charactersRead);
   }
   if (updates.state !== undefined) {
     sets.push("state = ?");

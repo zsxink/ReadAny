@@ -77,6 +77,7 @@ export function mergeCurrentSessionIntoDailyStats(
             ...day,
             totalTime: day.totalTime + sessionMinutes,
             pagesRead: day.pagesRead + currentSession.pagesRead,
+            charactersRead: (day.charactersRead ?? 0) + (currentSession.charactersRead ?? 0),
             sessionsCount: day.sessionsCount + 1,
           }
         : day,
@@ -89,6 +90,7 @@ export function mergeCurrentSessionIntoDailyStats(
       date: sessionDate,
       totalTime: sessionMinutes,
       pagesRead: currentSession.pagesRead,
+      charactersRead: currentSession.charactersRead ?? 0,
       sessionsCount: 1,
     },
   ].sort((a, b) => a.date.localeCompare(b.date));

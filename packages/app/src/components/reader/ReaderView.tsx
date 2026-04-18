@@ -28,7 +28,7 @@ import { useNotebookStore } from "@/stores/notebook-store";
 import { useReaderStore } from "@/stores/reader-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useTTSStore } from "@/stores/tts-store";
-import { useFontStore, getCSSFontFace } from "@readany/core/stores";
+import { useFontStore, getCSSFontFace, useReadingSessionStore } from "@readany/core/stores";
 import { useChapterTranslation } from "@readany/core/hooks";
 import { splitNarrationText } from "@readany/core/tts";
 import type { CitationPart, HighlightColor } from "@readany/core/types";
@@ -49,6 +49,10 @@ import { SelectionPopover } from "./SelectionPopover";
 import { TOCPanel } from "./TOCPanel";
 import { TTSPage } from "./TTSPage";
 import { TranslationPopover } from "./TranslationPopover";
+
+const REFLOWABLE_CHARACTERS_PER_LOCATION = 1500;
+const MAX_TRACKED_LOCATION_DELTA = 20;
+const MAX_TRACKED_PAGE_DELTA = 20;
 
 // --- Tauri file loading ---
 async function loadFileAsBlob(filePath: string): Promise<Blob> {
@@ -753,6 +757,9 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   const toolbarVisible = controlsVisible || isToolbarPinned;
   const readingHeaderTitle = (readerTab?.chapterTitle || book?.meta.title || "").trim();
   const contentTopPadding = isToolbarPinned ? 78 : 56;
+  const incrementPagesRead = useReadingSessionStore((s) => s.incrementPagesRead);
+  const incrementCharactersRead = useReadingSessionStore((s) => s.incrementCharactersRead);
+  const sessionProgressRef = useRef<{ mode: "location" | "page"; current: number } | null>(null);
 
   useEffect(() => {
     window.localStorage.setItem(TOOLBAR_PIN_STORAGE_KEY, String(isToolbarPinned));
@@ -807,6 +814,10 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     });
   }, [bookId, loadAnnotations]);
 
+  useEffect(() => {
+    sessionProgressRef.current = null;
+  }, [bookId, tabId, bookFormat]);
+
   // Load annotations
   useEffect(() => {
     loadAnnotations(bookId);
@@ -839,22 +850,48 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
         setChapter(tabId, detail.section?.current ?? 0, detail.tocItem.label, detail.tocItem.href);
       }
 
-      // Track pages (reference: Readest progressRelocateHandler)
-      // For fixed layout (PDF/CBZ): use section index (real pages)
-      // For reflowable (EPUB): use location (virtual loc based on sizePerLoc=1500)
-      //   location.current is 0-based; display as current+1 / total
-      //   At end of book, clamp to total to prevent overflow
-      if (isFixedLayoutFormat(bookFormat) && detail.section) {
+      // Display true pages only when the renderer exposes them.
+      if (detail.page) {
+        setTotalPages(detail.page.total);
+        setCurrentPage(detail.page.current);
+      } else if (isFixedLayoutFormat(bookFormat) && detail.section) {
         setTotalPages(detail.section.total);
         setCurrentPage(detail.section.current + 1);
+      } else {
+        // Reflowable documents without renderer-backed pagination should use percent instead.
+        setTotalPages(0);
+        setCurrentPage(0);
+      }
+
+      // Track reading progress.
+      // For fixed layout (PDF/CBZ): use section index (stable real pages)
+      // For reflowable (EPUB/TXT): use logical locations for character accumulation
+      if (isFixedLayoutFormat(bookFormat) && detail.section) {
+        const previous = sessionProgressRef.current;
+        const currentSection = detail.section.current;
+        if (
+          previous?.mode === "page" &&
+          currentSection > previous.current
+        ) {
+          const delta = currentSection - previous.current;
+          if (delta <= MAX_TRACKED_PAGE_DELTA) {
+            incrementPagesRead(delta);
+          }
+        }
+        sessionProgressRef.current = { mode: "page", current: currentSection };
       } else if (detail.location) {
-        const { current, total } = detail.location;
-        // Check if renderer is at the very end (same as Readest's atEnd check)
-        const view = foliateRef.current?.getView();
-        const atEnd = view?.renderer?.atEnd || false;
-        const currentLoc = atEnd && total > 0 ? total : current + 1;
-        setTotalPages(total);
-        setCurrentPage(currentLoc);
+        const { current } = detail.location;
+        const previous = sessionProgressRef.current;
+        if (
+          previous?.mode === "location" &&
+          current > previous.current
+        ) {
+          const delta = current - previous.current;
+          if (delta <= MAX_TRACKED_LOCATION_DELTA) {
+            incrementCharactersRead(delta * REFLOWABLE_CHARACTERS_PER_LOCATION);
+          }
+        }
+        sessionProgressRef.current = { mode: "location", current };
       }
 
       // Throttled save to DB

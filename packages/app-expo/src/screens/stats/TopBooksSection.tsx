@@ -54,6 +54,12 @@ export function TopBooksSection({
           allFacts && book.progress !== undefined && book.progress < 1
             ? computeBookETA(book.bookId, book.progress, book.totalPages, allFacts)
             : null;
+        const readingAmountLabel =
+          (book.charactersRead ?? 0) > 0
+            ? `${(book.charactersRead ?? 0).toLocaleString()} ${copy.charactersReadSuffix}`
+            : book.pagesRead > 0
+              ? `${book.pagesRead.toLocaleString()} ${copy.pagesReadSuffix}`
+              : null;
         return (
           <View
             key={book.bookId}
@@ -87,7 +93,7 @@ export function TopBooksSection({
                   {formatTimeLocalized(book.totalTime, isZh)}
                 </Text>
                 <Text style={s.bookMeta}>
-                  {book.pagesRead > 0 && `${book.pagesRead} ${copy.pagesReadSuffix} · `}
+                  {readingAmountLabel ? `${readingAmountLabel} · ` : ""}
                   {book.sessionsCount} {copy.sessionsSuffix}
                 </Text>
               </View>

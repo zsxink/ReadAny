@@ -23,6 +23,7 @@ import {
   evaluateStreakStatus,
   ALL_BADGE_DEFINITIONS,
   buildStatsSummary,
+  type GoalType,
   type StatsDimension,
   type StatsReport,
 } from "@readany/core/stats";
@@ -77,6 +78,10 @@ function buildHeroMetrics(
   copy: ReturnType<typeof getStatsCopy>,
   isZh: boolean,
 ): MetricTileData[] {
+  const readingVolumeValue =
+    (report.summary.totalCharactersRead ?? 0) > 0
+      ? `${(report.summary.totalCharactersRead ?? 0).toLocaleString()} ${copy.charactersReadSuffix}`
+      : `${report.summary.totalPagesRead.toLocaleString()} ${copy.pagesReadSuffix}`;
   const metrics: MetricTileData[] = [];
 
   // Build comparison lookup from previousPeriodComparison
@@ -133,7 +138,7 @@ function buildHeroMetrics(
       id: "books",
       label: copy.books,
       value: report.summary.booksTouched.toLocaleString(),
-      sublabel: `${report.summary.totalPagesRead.toLocaleString()} ${copy.pagesReadSuffix}`,
+      sublabel: readingVolumeValue,
       icon: <LibraryBig className="h-4 w-4" />,
       delta: bkComp?.delta,
       deltaLabel: bkComp?.deltaLabel,
@@ -289,7 +294,7 @@ export function ReadingStatsPanel() {
     [goalProgress, activeGoalPeriod],
   );
 
-  const handleAddGoal = (type: "books" | "time" | "pages", target: number, period: "monthly" | "yearly") => {
+  const handleAddGoal = (type: GoalType, target: number, period: "monthly" | "yearly") => {
     addGoalAction({
       id: `goal-${Date.now()}`,
       type,
