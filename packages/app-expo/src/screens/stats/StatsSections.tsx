@@ -48,6 +48,7 @@ export type StatsCopy = {
   unknownAuthor: string;
   pagesReadSuffix: string;
   charactersReadSuffix: string;
+  charactersPerMinuteSuffix: string;
   sessionsSuffix: string;
   noInsights: string;
   // Day summary

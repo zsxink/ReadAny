@@ -46,6 +46,7 @@ export interface VisibleTTSContext {
 
 export interface ReaderBridgeCallbacks {
   onRelocate?: (detail: RelocateEvent) => void;
+  onBookTextMetrics?: (detail: { totalCharacters: number }) => void;
   onTocReady?: (items: TOCItem[]) => void;
   onSelection?: (detail: SelectionEvent) => void;
   onSelectionCleared?: () => void;
@@ -589,6 +590,11 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
           break;
         case "relocate":
           cb.onRelocate?.(msg);
+          break;
+        case "bookTextMetrics":
+          cb.onBookTextMetrics?.({
+            totalCharacters: Number(msg.totalCharacters) || 0,
+          });
           break;
         case "toc":
           cb.onTocReady?.(msg.items || []);

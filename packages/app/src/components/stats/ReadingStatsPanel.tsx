@@ -48,6 +48,7 @@ import { getStatsCopy } from "./stats-copy";
 import {
   buildHeroNarrative,
   DIMENSIONS,
+  formatCharactersPerMinute,
   formatMinutes,
   formatPeriodLabel,
   localizeInsight,
@@ -82,6 +83,10 @@ function buildHeroMetrics(
     (report.summary.totalCharactersRead ?? 0) > 0
       ? `${(report.summary.totalCharactersRead ?? 0).toLocaleString()} ${copy.charactersReadSuffix}`
       : `${report.summary.totalPagesRead.toLocaleString()} ${copy.pagesReadSuffix}`;
+  const readingSpeedValue =
+    (report.summary.avgCharactersPerMinute ?? 0) > 0
+      ? formatCharactersPerMinute(report.summary.avgCharactersPerMinute ?? 0, isZh)
+      : null;
   const metrics: MetricTileData[] = [];
 
   // Build comparison lookup from previousPeriodComparison
@@ -156,9 +161,9 @@ function buildHeroMetrics(
     },
     {
       id: "avg-day",
-      label: copy.avgActiveDay,
-      value: formatMinutes(report.summary.avgActiveDayTime, isZh),
-      sublabel: copy.readingTime,
+      label: readingSpeedValue ? copy.readingSpeed : copy.avgActiveDay,
+      value: readingSpeedValue ?? formatMinutes(report.summary.avgActiveDayTime, isZh),
+      sublabel: readingSpeedValue ? copy.characters : copy.readingTime,
       icon: <BookOpenText className="h-4 w-4" />,
     },
   );

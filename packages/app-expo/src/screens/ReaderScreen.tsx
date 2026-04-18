@@ -72,6 +72,7 @@ import { ReaderNoteViewModal } from "./reader/ReaderNoteViewModal";
 const REFLOWABLE_CHARACTERS_PER_LOCATION = 1500;
 const MAX_TRACKED_LOCATION_DELTA = 20;
 const MAX_TRACKED_PAGE_DELTA = 20;
+const MAX_TRACKED_FRACTION_DELTA = 0.08;
 import { ReaderSettingsPanel } from "./reader/ReaderSettingsPanel";
 import { ReaderTOCPanel } from "./reader/ReaderTOCPanel";
 import {
@@ -242,7 +243,12 @@ export function ReaderScreen({ route, navigation }: Props) {
   const progressRef = useRef(0);
   const locationHistoryRef = useRef<string[]>([]);
   const lastNavigatedCfiRef = useRef<string | undefined>(undefined);
-  const sessionProgressRef = useRef<{ mode: "location" | "page"; current: number } | null>(null);
+  const sessionProgressRef = useRef<{
+    mode: "location" | "page" | "characters";
+    current: number;
+    fraction?: number;
+  } | null>(null);
+  const totalBookCharactersRef = useRef<number | null>(null);
 
   const incrementPagesRead = useReadingSessionStore((s) => s.incrementPagesRead);
   const incrementCharactersRead = useReadingSessionStore((s) => s.incrementCharactersRead);
@@ -300,6 +306,7 @@ export function ReaderScreen({ route, navigation }: Props) {
 
   useEffect(() => {
     sessionProgressRef.current = null;
+    totalBookCharactersRef.current = null;
   }, [bookId]);
   const chapterTranslation = useChapterTranslation({
     bookId,
@@ -442,6 +449,9 @@ export function ReaderScreen({ route, navigation }: Props) {
         customFontFamily: fontFamily,
       });
     },
+    onBookTextMetrics: ({ totalCharacters }) => {
+      totalBookCharactersRef.current = totalCharacters > 0 ? totalCharacters : null;
+    },
     onRelocate: (detail: RelocateEvent) => {
       console.log("[ReaderScreen] onRelocate", {
         section: detail.section,
@@ -474,17 +484,40 @@ export function ReaderScreen({ route, navigation }: Props) {
       }
 
       if (detail.location?.total) {
-        const previous = sessionProgressRef.current;
-        if (
-          previous?.mode === "location" &&
-          detail.location.current > previous.current
-        ) {
-          const delta = detail.location.current - previous.current;
-          if (delta <= MAX_TRACKED_LOCATION_DELTA) {
-            incrementCharactersRead(delta * REFLOWABLE_CHARACTERS_PER_LOCATION);
+        const totalBookCharacters = totalBookCharactersRef.current;
+        const fraction = detail.fraction ?? 0;
+        if (totalBookCharacters && totalBookCharacters > 0) {
+          const currentCharacters = Math.round(totalBookCharacters * fraction);
+          const previous = sessionProgressRef.current;
+          if (
+            previous?.mode === "characters" &&
+            currentCharacters > previous.current &&
+            Math.abs(fraction - (previous.fraction ?? 0)) <= MAX_TRACKED_FRACTION_DELTA
+          ) {
+            incrementCharactersRead(currentCharacters - previous.current);
           }
+          sessionProgressRef.current = {
+            mode: "characters",
+            current: currentCharacters,
+            fraction,
+          };
+        } else {
+          const previous = sessionProgressRef.current;
+          if (
+            previous?.mode === "location" &&
+            detail.location.current > previous.current
+          ) {
+            const delta = detail.location.current - previous.current;
+            if (delta <= MAX_TRACKED_LOCATION_DELTA) {
+              incrementCharactersRead(delta * REFLOWABLE_CHARACTERS_PER_LOCATION);
+            }
+          }
+          sessionProgressRef.current = {
+            mode: "location",
+            current: detail.location.current,
+            fraction,
+          };
         }
-        sessionProgressRef.current = { mode: "location", current: detail.location.current };
       } else if (detail.section?.total) {
         const previous = sessionProgressRef.current;
         if (

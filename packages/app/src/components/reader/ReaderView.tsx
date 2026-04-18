@@ -53,6 +53,37 @@ import { TranslationPopover } from "./TranslationPopover";
 const REFLOWABLE_CHARACTERS_PER_LOCATION = 1500;
 const MAX_TRACKED_LOCATION_DELTA = 20;
 const MAX_TRACKED_PAGE_DELTA = 20;
+const MAX_TRACKED_FRACTION_DELTA = 0.08;
+
+function countReadableCharacters(doc: Document): number {
+  const rawText = doc.body?.textContent ?? "";
+  const normalizedText = rawText.replace(/\s+/g, "");
+  return normalizedText.length;
+}
+
+async function measureReflowableBookCharacters(bookDoc: BookDoc): Promise<number | null> {
+  const sections = bookDoc.sections ?? [];
+  if (sections.length === 0) return null;
+
+  let totalCharacters = 0;
+
+  for (const section of sections) {
+    try {
+      const doc = await section.createDocument();
+      const sectionCharacters = countReadableCharacters(doc);
+      if (sectionCharacters > 0) {
+        totalCharacters += sectionCharacters;
+      }
+    } catch (error) {
+      console.warn("[ReaderView] Failed to measure section characters", {
+        href: section.href,
+        error,
+      });
+    }
+  }
+
+  return totalCharacters > 0 ? totalCharacters : null;
+}
 
 // --- Tauri file loading ---
 async function loadFileAsBlob(filePath: string): Promise<Blob> {
@@ -759,7 +790,12 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   const contentTopPadding = isToolbarPinned ? 78 : 56;
   const incrementPagesRead = useReadingSessionStore((s) => s.incrementPagesRead);
   const incrementCharactersRead = useReadingSessionStore((s) => s.incrementCharactersRead);
-  const sessionProgressRef = useRef<{ mode: "location" | "page"; current: number } | null>(null);
+  const sessionProgressRef = useRef<{
+    mode: "location" | "page" | "characters";
+    current: number;
+    fraction?: number;
+  } | null>(null);
+  const totalBookCharactersRef = useRef<number | null>(null);
 
   useEffect(() => {
     window.localStorage.setItem(TOOLBAR_PIN_STORAGE_KEY, String(isToolbarPinned));
@@ -817,6 +853,27 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   useEffect(() => {
     sessionProgressRef.current = null;
   }, [bookId, tabId, bookFormat]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!bookDoc || isFixedLayoutFormat(bookFormat)) {
+      totalBookCharactersRef.current = null;
+      return;
+    }
+
+    totalBookCharactersRef.current = null;
+
+    void measureReflowableBookCharacters(bookDoc).then((totalCharacters) => {
+      if (!cancelled) {
+        totalBookCharactersRef.current = totalCharacters;
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bookDoc, bookFormat]);
 
   // Load annotations
   useEffect(() => {
@@ -881,17 +938,37 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
         sessionProgressRef.current = { mode: "page", current: currentSection };
       } else if (detail.location) {
         const { current } = detail.location;
-        const previous = sessionProgressRef.current;
-        if (
-          previous?.mode === "location" &&
-          current > previous.current
-        ) {
-          const delta = current - previous.current;
-          if (delta <= MAX_TRACKED_LOCATION_DELTA) {
-            incrementCharactersRead(delta * REFLOWABLE_CHARACTERS_PER_LOCATION);
+        const fraction = detail.fraction ?? 0;
+        const totalBookCharacters = totalBookCharactersRef.current;
+
+        if (totalBookCharacters && totalBookCharacters > 0) {
+          const currentCharacters = Math.round(totalBookCharacters * fraction);
+          const previous = sessionProgressRef.current;
+          if (
+            previous?.mode === "characters" &&
+            currentCharacters > previous.current &&
+            Math.abs(fraction - (previous.fraction ?? 0)) <= MAX_TRACKED_FRACTION_DELTA
+          ) {
+            incrementCharactersRead(currentCharacters - previous.current);
           }
+          sessionProgressRef.current = {
+            mode: "characters",
+            current: currentCharacters,
+            fraction,
+          };
+        } else {
+          const previous = sessionProgressRef.current;
+          if (
+            previous?.mode === "location" &&
+            current > previous.current
+          ) {
+            const delta = current - previous.current;
+            if (delta <= MAX_TRACKED_LOCATION_DELTA) {
+              incrementCharactersRead(delta * REFLOWABLE_CHARACTERS_PER_LOCATION);
+            }
+          }
+          sessionProgressRef.current = { mode: "location", current, fraction };
         }
-        sessionProgressRef.current = { mode: "location", current };
       }
 
       // Throttled save to DB

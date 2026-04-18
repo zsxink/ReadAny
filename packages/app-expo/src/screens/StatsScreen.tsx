@@ -48,6 +48,7 @@ import { makeStyles } from "./stats/stats-styles";
 import {
   buildHeroNarrative,
   formatDateLabel,
+  formatCharactersPerMinute,
   formatTimeLocalized,
   localizeInsight,
 } from "./stats/stats-utils";
@@ -217,12 +218,19 @@ export default function StatsScreen() {
       (report.summary.totalCharactersRead ?? 0) > 0
         ? `${(report.summary.totalCharactersRead ?? 0).toLocaleString()} ${t("stats.desktop.charactersReadSuffix")}`
         : `${report.summary.totalPagesRead} ${t("stats.desktop.pagesReadSuffix")}`;
+    const readingSpeedValue =
+      (report.summary.avgCharactersPerMinute ?? 0) > 0
+        ? formatCharactersPerMinute(report.summary.avgCharactersPerMinute ?? 0, isZh)
+        : null;
     return [
       { label: t("stats.desktop.activeDays"), value: `${report.summary.activeDays} ${t("stats.desktop.daysSuffix")}`, delta: adC?.delta, deltaLabel: adC?.deltaLabel },
       { label: t("stats.desktop.sessions"), value: `${report.summary.totalSessions} ${t("stats.desktop.sessionsSuffix")}`, delta: ssC?.delta, deltaLabel: ssC?.deltaLabel },
       { label: t("stats.desktop.books"), value: String(report.summary.booksTouched), sublabel: readingVolumeValue, delta: bkC?.delta, deltaLabel: bkC?.deltaLabel },
       { label: t("stats.desktop.streak"), value: `${report.dimension === "lifetime" ? report.summary.longestStreak : report.summary.currentStreak} ${t("stats.desktop.daysSuffix")}` },
-      { label: t("stats.desktop.avgActiveDay"), value: formatTimeLocalized(report.summary.avgActiveDayTime, isZh) },
+      {
+        label: readingSpeedValue ? t("stats.desktop.readingSpeed") : t("stats.desktop.avgActiveDay"),
+        value: readingSpeedValue ?? formatTimeLocalized(report.summary.avgActiveDayTime, isZh),
+      },
     ];
   }, [report, isZh, t]);
 
@@ -334,6 +342,7 @@ export default function StatsScreen() {
     unknownAuthor: t("stats.desktop.unknownAuthor"),
     pagesReadSuffix: t("stats.desktop.pagesReadSuffix"),
     charactersReadSuffix: t("stats.desktop.charactersReadSuffix"),
+    charactersPerMinuteSuffix: t("stats.desktop.charactersPerMinuteSuffix"),
     sessionsSuffix: t("stats.desktop.sessionsSuffix"),
     noInsights: t("stats.desktop.noInsights"),
     // Day summary

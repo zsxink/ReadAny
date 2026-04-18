@@ -37,6 +37,7 @@ export interface StatsSummary {
   totalSessions: number;
   totalPagesRead: number;
   totalCharactersRead?: number;
+  avgCharactersPerMinute?: number;
   activeDays: number;
   booksTouched: number;
   completedBooks: number;
@@ -164,6 +165,7 @@ export interface TopBookEntry {
   totalTime: number; // minutes
   pagesRead: number;
   charactersRead?: number;
+  avgCharactersPerMinute?: number;
   sessionsCount: number;
   progress?: number;
   totalPages?: number;

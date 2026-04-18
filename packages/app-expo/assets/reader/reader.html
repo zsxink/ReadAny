@@ -445,6 +445,33 @@
       }
     }
 
+    function countReadableCharacters(doc) {
+      const rawText = doc && doc.body && typeof doc.body.textContent === 'string'
+        ? doc.body.textContent
+        : '';
+      return rawText.replace(/\s+/g, '').length;
+    }
+
+    async function computeBookTextMetrics(book) {
+      if (!book || !book.sections || !book.sections.length) return 0;
+      let totalCharacters = 0;
+
+      for (const section of book.sections) {
+        if (!section || !section.createDocument) continue;
+        try {
+          const doc = await section.createDocument();
+          const sectionCharacters = countReadableCharacters(doc);
+          if (sectionCharacters > 0) {
+            totalCharacters += sectionCharacters;
+          }
+        } catch (error) {
+          console.warn('[WebView] Failed to measure section characters:', section && section.href, error);
+        }
+      }
+
+      return totalCharacters;
+    }
+
     async function followTTSLocation(cfi) {
       if (!view || !view.renderer || !cfi) return;
       const resolved = resolveRangeForCfi(cfi);
@@ -915,6 +942,12 @@
         view = el;
 
         await el.open(book);
+
+        void computeBookTextMetrics(book).then((totalCharacters) => {
+          if (totalCharacters > 0) {
+            postToRN('bookTextMetrics', { totalCharacters });
+          }
+        });
 
         if (book.sections) {
           totalSections = book.sections.length;

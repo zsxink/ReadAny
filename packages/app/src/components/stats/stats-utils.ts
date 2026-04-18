@@ -66,6 +66,11 @@ export function formatChartMinutes(minutes: number, isZh: boolean): string {
       : `${hours}h`;
 }
 
+export function formatCharactersPerMinute(value: number, isZh: boolean): string {
+  const rounded = Math.max(0, Math.round(value));
+  return isZh ? `${rounded.toLocaleString()} 字/分` : `${rounded.toLocaleString()} chars/min`;
+}
+
 export function formatClock(timestamp: number | undefined, isZh: boolean): string {
   if (!timestamp) return "—";
   return new Intl.DateTimeFormat(isZh ? "zh-CN" : "en-US", {

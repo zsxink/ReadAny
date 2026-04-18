@@ -80,6 +80,7 @@ export function buildStatsSummary(facts: DailyReadingFact[]): StatsSummary {
     totalSessions,
     totalPagesRead,
     totalCharactersRead,
+    avgCharactersPerMinute: totalReadingTime > 0 ? totalCharactersRead / totalReadingTime : 0,
     activeDays,
     booksTouched: bookIds.size,
     completedBooks: sum(facts.map((fact) => fact.completedBooks)),
@@ -118,12 +119,21 @@ export function buildTopBooksFromFacts(
       existing.sessionsCount += book.sessionsCount;
       existing.progress = book.progressEnd ?? existing.progress;
       existing.totalPages = book.totalPages ?? existing.totalPages;
+      existing.avgCharactersPerMinute =
+        existing.totalTime > 0
+          ? (existing.charactersRead ?? 0) / existing.totalTime
+          : 0;
 
       map.set(book.bookId, existing);
     }
   }
 
   return Array.from(map.values())
+    .map((book) => ({
+      ...book,
+      avgCharactersPerMinute:
+        book.totalTime > 0 ? (book.charactersRead ?? 0) / book.totalTime : 0,
+    }))
     .sort((a, b) => b.totalTime - a.totalTime)
     .slice(0, limit);
 }
