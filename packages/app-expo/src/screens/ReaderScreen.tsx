@@ -769,6 +769,7 @@ export function ReaderScreen({ route, navigation }: Props) {
     bookId,
     bookTitle: bookTitle || book?.meta.title || "",
     currentChapter,
+    currentSectionIndex,
     currentCfi,
     webViewReady,
     showTTS,
