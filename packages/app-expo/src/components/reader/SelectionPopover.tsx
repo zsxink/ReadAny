@@ -47,6 +47,10 @@ const POPOVER_MARGIN = 8;
 const POPOVER_PADDING = 4;
 const BUTTON_SIZE = 36;
 const GAP = 2;
+const SAFE_TOP = 14;
+const SAFE_BOTTOM = 20;
+const SELECTION_POPOVER_ABOVE_OFFSET = 14;
+const SELECTION_POPOVER_BELOW_OFFSET = 6;
 
 interface Props {
   selection: SelectionEvent;
@@ -95,8 +99,6 @@ export function SelectionPopover({
     const selTop = selection.position.selectionTop;
     const selBottom = selection.position.selectionBottom;
     const selCenterX = selection.position.x;
-    const safeTop = 48;
-    const safeBottom = 48;
 
     const x = Math.max(
       POPOVER_MARGIN,
@@ -104,17 +106,21 @@ export function SelectionPopover({
     );
 
     let y: number;
-    const yAbove = selTop - popoverHeight - GAP;
-    const yBelow = selBottom + GAP;
-    const aboveValid = yAbove >= safeTop;
-    const belowValid = yBelow + popoverHeight + POPOVER_MARGIN <= SCREEN_HEIGHT - safeBottom;
+    const yAbove = selTop - popoverHeight + SELECTION_POPOVER_ABOVE_OFFSET;
+    const yBelow = selBottom + SELECTION_POPOVER_BELOW_OFFSET;
+    const aboveValid = yAbove >= SAFE_TOP;
+    const belowValid =
+      yBelow + popoverHeight + POPOVER_MARGIN <= SCREEN_HEIGHT - SAFE_BOTTOM;
 
     if (aboveValid) {
       y = yAbove;
     } else if (belowValid) {
       y = yBelow;
     } else {
-      y = Math.max(safeTop, Math.min(yBelow, SCREEN_HEIGHT - popoverHeight - POPOVER_MARGIN));
+      y = Math.max(
+        SAFE_TOP,
+        Math.min(yBelow, SCREEN_HEIGHT - popoverHeight - POPOVER_MARGIN),
+      );
     }
 
     return { x, y };

@@ -1,4 +1,5 @@
 import { ClockIcon } from "@/components/ui/Icon";
+import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { useTTSStore } from "@/stores";
 import { fontSize, fontWeight, radius, useColors, withOpacity } from "@/styles/theme";
 import { useEffect, useMemo, useState } from "react";
@@ -39,6 +40,7 @@ export function TTSSleepTimerSheet({ visible, onClose }: TTSSleepTimerSheetProps
   const { t } = useTranslation();
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const layout = useResponsiveLayout();
   const sleepTimerEndsAt = useTTSStore((s) => s.sleepTimerEndsAt);
   const sleepTimerDurationMinutes = useTTSStore((s) => s.sleepTimerDurationMinutes);
   const setSleepTimer = useTTSStore((s) => s.setSleepTimer);
@@ -205,7 +207,17 @@ export function TTSSleepTimerSheet({ visible, onClose }: TTSSleepTimerSheetProps
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={s.overlay} onPress={onClose}>
-        <Pressable style={s.sheet} onPress={(event) => event.stopPropagation()}>
+        <Pressable
+          style={[
+            s.sheet,
+            layout.isTablet && {
+              width: "100%",
+              maxWidth: Math.min(layout.centeredContentWidth, 680),
+              alignSelf: "center",
+            },
+          ]}
+          onPress={(event) => event.stopPropagation()}
+        >
           <View style={s.handle} />
           <View style={s.header}>
             <ClockIcon size={18} color={colors.primary} />

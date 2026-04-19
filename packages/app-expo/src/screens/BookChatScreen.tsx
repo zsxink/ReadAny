@@ -9,11 +9,12 @@ import { useTranslation } from "react-i18next";
 import {
   Alert,
   Animated,
-  Dimensions,
   Image,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -27,10 +28,14 @@ import { useChatStore } from "@/stores/chat-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { resolveActiveAIConfig } from "@/lib/ai/resolve-active-ai-config";
 import { useStreamingChat } from "@/hooks";
+import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import type { AttachedQuote } from "@readany/core/types";
 import type { CitationPart, MessageV2 } from "@readany/core/types/message";
 import {
   convertToMessageV2,
+  formatRelativeTimeShort,
+  getMonthLabel,
+  groupThreadsByTime,
   mergeMessagesWithStreaming,
 } from "@readany/core/utils";
 
@@ -41,15 +46,21 @@ import {
   ChevronLeftIcon,
   HistoryIcon,
   MessageCirclePlusIcon,
+  Trash2Icon,
+  XIcon,
 } from "@/components/ui/Icon";
-import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from "@/styles/theme";
+import {
+  fontSize as fs,
+  fontWeight as fw,
+  radius,
+  useColors,
+  useTheme,
+  withOpacity,
+} from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
-import { ThreadSidebar } from "./chat/ThreadSidebar";
 
 const THINK_PNG = require("../../assets/think.png");
-
-const SCREEN_WIDTH = Dimensions.get("window").width;
-const SIDEBAR_WIDTH = Math.min(SCREEN_WIDTH * 0.75, 300);
+const THINK_DARK_PNG = require("../../assets/think-dark.png");
 
 type Props = NativeStackScreenProps<RootStackParamList, "BookChat">;
 
@@ -57,24 +68,26 @@ export function BookChatScreen({ route, navigation }: Props) {
   const { bookId, selectedText, chapterTitle } = route.params;
   const { t } = useTranslation();
   const colors = useColors();
+  const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const s = useMemo(() => makeStyles(colors), [colors]);
+  const layout = useResponsiveLayout();
+  const isTabletLandscape = layout.isTabletLandscape;
+  const sidebarWidth = isTabletLandscape
+    ? Math.min(360, layout.width * 0.28)
+    : Math.min(layout.width * 0.75, 300);
+  const s = useMemo(
+    () => makeStyles(colors, { isTabletLandscape, sidebarWidth }),
+    [colors, isTabletLandscape, sidebarWidth],
+  );
 
   const { books } = useLibraryStore();
   const book = useMemo(() => books.find((b) => b.id === bookId), [books, bookId]);
 
-  // Debug: log received params
-  useEffect(() => {
-    console.log("[BookChatScreen] params:", { bookId, selectedText, chapterTitle });
-  }, [bookId, selectedText, chapterTitle]);
-
   // Initial quote from reader selection
   const [quotes, setQuotes] = useState<AttachedQuote[]>([]);
 
-  // Initialize quotes when selectedText is available
   useEffect(() => {
     if (selectedText && quotes.length === 0) {
-      console.log("[BookChatScreen] Initializing quotes with selectedText:", selectedText);
       setQuotes([
         {
           id: `quote-${Date.now()}`,
@@ -110,15 +123,50 @@ export function BookChatScreen({ route, navigation }: Props) {
   );
   const bookThreads = useMemo(
     () => getThreadsForContext(bookId),
-    [threads, getThreadsForContext, bookId],
+    [bookId, getThreadsForContext, threads],
   );
+  const groupedThreads = useMemo(() => {
+    const grouped = groupThreadsByTime(bookThreads);
+    const sections: { key: string; label: string; threads: typeof bookThreads }[] = [
+      { key: "today", label: t("chat.today", "今天"), threads: grouped.today },
+      { key: "yesterday", label: t("chat.yesterday", "昨天"), threads: grouped.yesterday },
+      { key: "last7Days", label: t("chat.last7Days", "7 天内"), threads: grouped.last7Days },
+      { key: "last30Days", label: t("chat.last30Days", "30 天内"), threads: grouped.last30Days },
+    ];
+
+    const olderByMonth = new Map<string, typeof bookThreads>();
+    for (const thread of grouped.older) {
+      const monthLabel = getMonthLabel(thread.updatedAt);
+      if (!olderByMonth.has(monthLabel)) olderByMonth.set(monthLabel, []);
+      olderByMonth.get(monthLabel)!.push(thread);
+    }
+
+    const sortedMonths = [...olderByMonth.keys()].sort((a, b) => b.localeCompare(a));
+    for (const month of sortedMonths) {
+      sections.push({ key: month, label: month, threads: olderByMonth.get(month)! });
+    }
+    return sections;
+  }, [bookThreads, t]);
+  const formatTime = useCallback((ts: number) => formatRelativeTimeShort(ts, t), [t]);
 
   // Sidebar animation
   const [showSidebar, setShowSidebar] = useState(false);
-  const sidebarAnim = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
+  const sidebarAnim = useRef(new Animated.Value(-sidebarWidth)).current;
   const backdropAnim = useRef(new Animated.Value(0)).current;
 
+  useEffect(() => {
+    if (isTabletLandscape) {
+      setShowSidebar(false);
+      sidebarAnim.setValue(0);
+      backdropAnim.setValue(0);
+      return;
+    }
+
+    sidebarAnim.setValue(showSidebar ? 0 : -sidebarWidth);
+  }, [backdropAnim, isTabletLandscape, showSidebar, sidebarAnim, sidebarWidth]);
+
   const openSidebar = useCallback(() => {
+    if (isTabletLandscape) return;
     setShowSidebar(true);
     Animated.parallel([
       Animated.spring(sidebarAnim, {
@@ -133,12 +181,13 @@ export function BookChatScreen({ route, navigation }: Props) {
         useNativeDriver: true,
       }),
     ]).start();
-  }, [sidebarAnim, backdropAnim]);
+  }, [backdropAnim, isTabletLandscape, sidebarAnim]);
 
   const closeSidebar = useCallback(() => {
+    if (isTabletLandscape) return;
     Animated.parallel([
       Animated.spring(sidebarAnim, {
-        toValue: -SIDEBAR_WIDTH,
+        toValue: -sidebarWidth,
         useNativeDriver: true,
         tension: 65,
         friction: 11,
@@ -149,7 +198,7 @@ export function BookChatScreen({ route, navigation }: Props) {
         useNativeDriver: true,
       }),
     ]).start(() => setShowSidebar(false));
-  }, [sidebarAnim, backdropAnim]);
+  }, [backdropAnim, isTabletLandscape, sidebarAnim, sidebarWidth]);
 
   // Streaming chat
   const { isStreaming, currentMessage, currentStep, error, sendMessage, stopStream } =
@@ -160,19 +209,13 @@ export function BookChatScreen({ route, navigation }: Props) {
     const keyboardDidShow = Keyboard.addListener(
       Platform.OS === "ios" ? "keyboardDidShow" : "keyboardDidShow",
       () => {
-        // Scroll to bottom when keyboard shows
-        setTimeout(() => {
-          // This will be handled by MessageList component
-        }, 100);
+        setTimeout(() => {}, 100);
       },
     );
     const keyboardDidHide = Keyboard.addListener(
       Platform.OS === "ios" ? "keyboardDidHide" : "keyboardDidHide",
       () => {
-        // Ensure proper layout after keyboard hides
-        setTimeout(() => {
-          // This will be handled by MessageList component
-        }, 100);
+        setTimeout(() => {}, 100);
       },
     );
 
@@ -189,10 +232,9 @@ export function BookChatScreen({ route, navigation }: Props) {
 
   const allMessages = useMemo(
     () => mergeMessagesWithStreaming(messagesV2, currentMessage, isStreaming),
-    [messagesV2, currentMessage, isStreaming],
+    [currentMessage, isStreaming, messagesV2],
   );
 
-  // Handlers
   const handleSend = useCallback(
     async (text: string, deepThinking: boolean, spoilerFree: boolean, quotes?: AttachedQuote[]) => {
       const state = useSettingsStore.getState();
@@ -214,13 +256,13 @@ export function BookChatScreen({ route, navigation }: Props) {
       }
       await sendMessage(text, bookId, deepThinking, spoilerFree, quotes, resolvedAIConfig);
     },
-    [sendMessage, bookId, navigation, t],
+    [bookId, navigation, sendMessage, t],
   );
 
   const handleNewThread = useCallback(async () => {
     if (activeThread && activeThread.messages.length === 0) return;
     await createThread(bookId);
-  }, [bookId, activeThread, createThread]);
+  }, [activeThread, bookId, createThread]);
 
   const handleCitationClick = useCallback(
     (citation: CitationPart) => {
@@ -242,10 +284,10 @@ export function BookChatScreen({ route, navigation }: Props) {
       setBookActiveThread(bookId, threadId);
       closeSidebar();
     },
-    [bookId, setBookActiveThread, closeSidebar],
+    [bookId, closeSidebar, setBookActiveThread],
   );
 
-  const SUGGESTIONS = useMemo(
+  const suggestions = useMemo(
     () => [
       t("chat.suggestions.summarizeChapter"),
       t("chat.suggestions.explainConcepts"),
@@ -254,109 +296,232 @@ export function BookChatScreen({ route, navigation }: Props) {
     [t],
   );
 
+  const renderSidebarContent = useCallback(
+    (closable: boolean) => (
+      <>
+        <View style={s.sidebarHeader}>
+          <Text style={s.sidebarTitle}>{t("chat.history", "历史记录")}</Text>
+          {closable ? (
+            <TouchableOpacity style={s.iconBtn} onPress={closeSidebar}>
+              <XIcon size={16} color={colors.foreground} />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={s.newChatBtn} onPress={handleNewThread} activeOpacity={0.75}>
+              <MessageCirclePlusIcon size={15} color={colors.foreground} />
+            </TouchableOpacity>
+          )}
+        </View>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingBottom: 20 }}
+          showsVerticalScrollIndicator={false}
+        >
+          {bookThreads.length === 0 ? (
+            <View style={s.sidebarEmpty}>
+              <Text style={s.sidebarEmptyText}>{t("chat.noConversations", "暂无对话")}</Text>
+            </View>
+          ) : (
+            groupedThreads.map(({ key, label, threads: sectionThreads }) => {
+              if (sectionThreads.length === 0) return null;
+              return (
+                <View key={key}>
+                  <Text style={s.sectionLabel}>{label}</Text>
+                  {sectionThreads.map((thread) => {
+                    const isActive = thread.id === activeThreadId;
+                    const lastMsg =
+                      thread.messages.length > 0
+                        ? thread.messages[thread.messages.length - 1]
+                        : null;
+                    const preview = lastMsg?.content?.slice(0, 60) || "";
+                    return (
+                      <TouchableOpacity
+                        key={thread.id}
+                        style={[s.threadItem, isActive && s.threadItemActive]}
+                        onPress={() => handleSelectThread(thread.id)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={s.threadContent}>
+                          <View style={s.threadTitleRow}>
+                            <Text
+                              style={[s.threadTitle, isActive && s.threadTitleActive]}
+                              numberOfLines={1}
+                            >
+                              {thread.title || t("chat.newChat", "新对话")}
+                            </Text>
+                            <Text style={s.threadTime}>{formatTime(thread.updatedAt)}</Text>
+                          </View>
+                          {preview ? (
+                            <Text style={s.threadPreview} numberOfLines={1}>
+                              {preview}
+                            </Text>
+                          ) : null}
+                        </View>
+                        <TouchableOpacity
+                          style={s.threadDeleteBtn}
+                          onPress={() => removeThread(thread.id)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Trash2Icon size={12} color={colors.mutedForeground} />
+                        </TouchableOpacity>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              );
+            })
+          )}
+        </ScrollView>
+      </>
+    ),
+    [
+      activeThreadId,
+      bookThreads.length,
+      closeSidebar,
+      colors.foreground,
+      colors.mutedForeground,
+      formatTime,
+      groupedThreads,
+      handleNewThread,
+      handleSelectThread,
+      removeThread,
+      s,
+      t,
+    ],
+  );
+
   return (
     <SafeAreaView style={s.container} edges={["top", "bottom"]}>
-      {/* Header */}
-      <View style={s.header}>
-        <View style={s.headerLeft}>
-          <TouchableOpacity
-            style={s.iconBtn}
-            onPress={() => navigation.goBack()}
-            activeOpacity={0.7}
+      <View style={s.shell}>
+        {isTabletLandscape && (
+          <View style={[s.sidebarDocked, { paddingTop: insets.top }]}>
+            {renderSidebarContent(false)}
+          </View>
+        )}
+
+        <View style={s.mainColumn}>
+          <View style={s.header}>
+            <View style={s.headerLeft}>
+              <TouchableOpacity
+                style={s.iconBtn}
+                onPress={() => navigation.goBack()}
+                activeOpacity={0.7}
+              >
+                <ChevronLeftIcon size={20} color={colors.foreground} />
+              </TouchableOpacity>
+              {!isTabletLandscape && (
+                <TouchableOpacity style={s.iconBtn} onPress={openSidebar} activeOpacity={0.7}>
+                  <HistoryIcon size={16} color={colors.foreground} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <Text style={s.headerTitle} numberOfLines={1}>
+              {t("chat.aiAssistant", "AI 助手")}
+            </Text>
+
+            <View style={s.headerRight}>
+              <ModelSelector onNavigateToSettings={() => navigation.navigate("AISettings")} />
+              <TouchableOpacity style={s.iconBtn} onPress={handleNewThread} activeOpacity={0.7}>
+                <MessageCirclePlusIcon size={16} color={colors.foreground} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <KeyboardAvoidingView
+            style={s.content}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            keyboardVerticalOffset={0}
           >
-            <ChevronLeftIcon size={20} color={colors.foreground} />
-          </TouchableOpacity>
-          <TouchableOpacity style={s.iconBtn} onPress={openSidebar} activeOpacity={0.7}>
-            <HistoryIcon size={16} color={colors.foreground} />
-          </TouchableOpacity>
-        </View>
-
-        <Text style={s.headerTitle} numberOfLines={1}>
-          {t("chat.aiAssistant", "AI 助手")}
-        </Text>
-
-        <View style={s.headerRight}>
-          <ModelSelector onNavigateToSettings={() => navigation.navigate("AISettings")} />
-          <TouchableOpacity style={s.iconBtn} onPress={handleNewThread} activeOpacity={0.7}>
-            <MessageCirclePlusIcon size={16} color={colors.foreground} />
-          </TouchableOpacity>
+            <View style={s.content}>
+              {allMessages.length > 0 ? (
+                <MessageList
+                  messages={allMessages}
+                  isStreaming={isStreaming}
+                  currentStep={currentStep}
+                  onCitationClick={handleCitationClick}
+                />
+              ) : (
+                <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                  <View style={[s.emptyContainer, isTabletLandscape && s.emptyContainerCompact]}>
+                    <View style={s.emptyInner}>
+                      <Image
+                        source={isDark ? THINK_DARK_PNG : THINK_PNG}
+                        style={{ width: 120, height: 120 }}
+                      />
+                      <Text style={s.emptyTitle}>{t("chat.aiAssistant", "AI 阅读助手")}</Text>
+                      <Text style={s.emptySubtitle}>
+                        {t("chat.aiAssistantDesc", "分析内容、回答问题...")}
+                      </Text>
+                    </View>
+                    <View style={s.suggestionsContainer}>
+                      {suggestions.map((text) => (
+                        <TouchableOpacity
+                          key={text}
+                          style={s.suggestionCard}
+                          onPress={() => handleSend(text, false, false)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={s.suggestionText}>{text}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                </TouchableWithoutFeedback>
+              )}
+            </View>
+            <ChatInput
+              onSend={handleSend}
+              onStop={stopStream}
+              isStreaming={isStreaming}
+              placeholder={t("chat.askAboutBook", "询问关于这本书的问题...")}
+              quotes={quotes}
+              onRemoveQuote={handleRemoveQuote}
+            />
+          </KeyboardAvoidingView>
         </View>
       </View>
 
-      {/* Content */}
-      <KeyboardAvoidingView
-        style={s.content}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={0}
-      >
-        <View style={s.content}>
-          {allMessages.length > 0 ? (
-            <MessageList
-              messages={allMessages}
-              isStreaming={isStreaming}
-              currentStep={currentStep}
-              onCitationClick={handleCitationClick}
-            />
-          ) : (
-            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-              <View style={s.emptyContainer}>
-                <View style={s.emptyInner}>
-                  <Image source={THINK_PNG} style={{ width: 120, height: 120 }} />
-                  <Text style={s.emptyTitle}>{t("chat.aiAssistant", "AI 阅读助手")}</Text>
-                  <Text style={s.emptySubtitle}>
-                    {t("chat.aiAssistantDesc", "分析内容、回答问题...")}
-                  </Text>
-                </View>
-                <View style={s.suggestionsContainer}>
-                  {SUGGESTIONS.map((text) => (
-                    <TouchableOpacity
-                      key={text}
-                      style={s.suggestionCard}
-                      onPress={() => handleSend(text, false, false)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={s.suggestionText}>{text}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            </TouchableWithoutFeedback>
-          )}
+      {showSidebar && !isTabletLandscape && (
+        <View style={[StyleSheet.absoluteFill, { zIndex: 20 }]} pointerEvents="box-none">
+          <Animated.View style={[s.sidebarBackdrop, { opacity: backdropAnim }]}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={closeSidebar} />
+          </Animated.View>
+          <Animated.View
+            style={[
+              s.sidebar,
+              { paddingTop: insets.top, transform: [{ translateX: sidebarAnim }] },
+            ]}
+          >
+            {renderSidebarContent(true)}
+          </Animated.View>
         </View>
-        <ChatInput
-          onSend={handleSend}
-          onStop={stopStream}
-          isStreaming={isStreaming}
-          placeholder={t("chat.askAboutBook", "询问关于这本书的问题...")}
-          quotes={quotes}
-          onRemoveQuote={handleRemoveQuote}
-        />
-      </KeyboardAvoidingView>
-
-      <ThreadSidebar
-        visible={showSidebar}
-        threads={bookThreads}
-        activeThreadId={activeThreadId}
-        sidebarAnim={sidebarAnim}
-        backdropAnim={backdropAnim}
-        insetTop={insets.top}
-        onClose={closeSidebar}
-        onSelectThread={handleSelectThread}
-        onRemoveThread={removeThread}
-      />
+      )}
     </SafeAreaView>
   );
 }
 
-const makeStyles = (colors: ThemeColors) =>
+const makeStyles = (
+  colors: ThemeColors,
+  layout: { isTabletLandscape: boolean; sidebarWidth: number },
+) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
+    shell: { flex: 1, flexDirection: layout.isTabletLandscape ? "row" : "column" },
+    sidebarDocked: {
+      width: layout.sidebarWidth,
+      backgroundColor: colors.background,
+      borderRightWidth: StyleSheet.hairlineWidth,
+      borderRightColor: colors.border,
+      paddingHorizontal: 12,
+      paddingBottom: 12,
+    },
+    mainColumn: { flex: 1 },
     header: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
       height: 48,
-      paddingHorizontal: 8,
+      paddingHorizontal: layout.isTabletLandscape ? 20 : 8,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.border,
       backgroundColor: colors.background,
@@ -387,13 +552,15 @@ const makeStyles = (colors: ThemeColors) =>
       justifyContent: "center",
     },
     content: { flex: 1 },
-
-    // Empty state
     emptyContainer: {
       flex: 1,
       justifyContent: "center",
       paddingHorizontal: 24,
       gap: 24,
+    },
+    emptyContainerCompact: {
+      paddingHorizontal: 52,
+      gap: 20,
     },
     emptyInner: {
       alignItems: "center",
@@ -411,9 +578,12 @@ const makeStyles = (colors: ThemeColors) =>
       textAlign: "center",
     },
     suggestionsContainer: {
+      flexDirection: layout.isTabletLandscape ? "row" : "column",
+      flexWrap: layout.isTabletLandscape ? "wrap" : "nowrap",
       gap: 6,
     },
     suggestionCard: {
+      width: layout.isTabletLandscape ? "48%" : undefined,
       backgroundColor: colors.muted,
       borderRadius: radius.lg,
       paddingHorizontal: 14,
@@ -423,8 +593,6 @@ const makeStyles = (colors: ThemeColors) =>
       fontSize: fs.sm,
       color: colors.foreground,
     },
-
-    // Sidebar
     sidebarBackdrop: {
       ...StyleSheet.absoluteFillObject,
       backgroundColor: "rgba(0,0,0,0.2)",
@@ -434,7 +602,7 @@ const makeStyles = (colors: ThemeColors) =>
       left: 0,
       top: 0,
       bottom: 0,
-      width: SIDEBAR_WIDTH,
+      width: layout.sidebarWidth,
       backgroundColor: colors.background,
       borderRightWidth: StyleSheet.hairlineWidth,
       borderRightColor: colors.border,
@@ -445,6 +613,14 @@ const makeStyles = (colors: ThemeColors) =>
       shadowOpacity: 0.1,
       shadowRadius: 8,
       elevation: 8,
+    },
+    newChatBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: radius.full,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: withOpacity(colors.muted, 0.72),
     },
     sidebarHeader: {
       flexDirection: "row",

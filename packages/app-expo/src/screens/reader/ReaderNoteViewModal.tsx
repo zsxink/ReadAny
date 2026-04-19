@@ -3,6 +3,7 @@
  */
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import { CheckIcon, EditIcon, XIcon } from "@/components/ui/Icon";
+import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { useAnnotationStore } from "@/stores";
 import { useColors } from "@/styles/theme";
@@ -46,6 +47,7 @@ export function ReaderNoteViewModal({
   const colors = useColors();
   const s = makeStyles(colors);
   const insets = useSafeAreaInsets();
+  const layout = useResponsiveLayout();
   const { t } = useTranslation();
 
   return (
@@ -64,7 +66,17 @@ export function ReaderNoteViewModal({
           activeOpacity={1}
           onPress={onClose}
         />
-        <View style={[s.noteViewModal, { paddingBottom: insets.bottom || 16 }]}>
+        <View
+          style={[
+            s.noteViewModal,
+            { paddingBottom: insets.bottom || 16 },
+            layout.isTablet && {
+              width: "100%",
+              maxWidth: Math.min(layout.centeredContentWidth, 760),
+              alignSelf: "center",
+            },
+          ]}
+        >
           <View style={s.noteViewHeader}>
             <Text style={s.noteViewTitle}>{t("reader.viewNote", "查看笔记")}</Text>
             <TouchableOpacity style={s.noteViewCloseBtn} onPress={onClose}>

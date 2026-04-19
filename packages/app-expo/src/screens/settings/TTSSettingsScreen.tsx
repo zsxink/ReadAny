@@ -1,4 +1,5 @@
 import { useTTSStore } from "@/stores";
+import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import {
   DEFAULT_SYSTEM_VOICE_VALUE,
   findSystemVoiceLabel,
@@ -49,6 +50,7 @@ export default function TTSSettingsScreen() {
   const colors = useColors();
   const styles = makeStyles(colors);
   const { t, i18n } = useTranslation();
+  const layout = useResponsiveLayout();
   const { config, updateConfig, stop } = useTTSStore();
   const [systemVoices, setSystemVoices] = useState<NativeSystemVoiceOption[]>([]);
 
@@ -98,35 +100,36 @@ export default function TTSSettingsScreen() {
       >
         <ScrollView
           style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { alignItems: "center" }]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
-          {/* Engine Selection */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t("tts.ttsEngine", "TTS 引擎")}</Text>
-            <View style={styles.engineGrid}>
-              {ENGINES.map((eng) => {
-                const active = config.engine === eng.id;
-                return (
-                  <TouchableOpacity
-                    key={eng.id}
-                    style={[styles.engineCard, active && styles.engineCardActive]}
-                    onPress={() => updateConfig({ engine: eng.id })}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.engineLabel, active && styles.engineLabelActive]}>
-                      {t(eng.labelKey, eng.id)}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+          <View style={{ width: "100%", maxWidth: layout.centeredContentWidth }}>
+            {/* Engine Selection */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{t("tts.ttsEngine", "TTS 引擎")}</Text>
+              <View style={styles.engineGrid}>
+                {ENGINES.map((eng) => {
+                  const active = config.engine === eng.id;
+                  return (
+                    <TouchableOpacity
+                      key={eng.id}
+                      style={[styles.engineCard, active && styles.engineCardActive]}
+                      onPress={() => updateConfig({ engine: eng.id })}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.engineLabel, active && styles.engineLabelActive]}>
+                        {t(eng.labelKey, eng.id)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </View>
-          </View>
 
-          {/* Voice Selection */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t("tts.voiceSelect", "声音选择")}</Text>
+            {/* Voice Selection */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{t("tts.voiceSelect", "声音选择")}</Text>
 
             {config.engine === "edge" && (
               <ScrollView style={styles.voiceList} nestedScrollEnabled>
@@ -261,51 +264,52 @@ export default function TTSSettingsScreen() {
                 ))}
               </ScrollView>
             )}
-          </View>
+            </View>
 
-          {/* Rate & Pitch */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t("tts.params", "语音参数")}</Text>
-            <View style={styles.paramsCard}>
-              {/* Rate */}
-              <View style={styles.paramRow}>
-                <View style={styles.paramHeader}>
-                  <Text style={styles.paramLabel}>{t("tts.rate", "语速")}</Text>
-                  <Text style={styles.paramValue}>{config.rate.toFixed(1)}x</Text>
-                </View>
-                <TextInput
-                  style={styles.input}
-                  keyboardType="decimal-pad"
-                  value={String(config.rate)}
-                  onChangeText={(v) => {
-                    const n = Number.parseFloat(v);
-                    if (!Number.isNaN(n) && n >= 0.5 && n <= 2) updateConfig({ rate: n });
-                  }}
-                  placeholder="0.5 - 2.0"
-                  placeholderTextColor={colors.mutedForeground}
-                />
-              </View>
-
-              {/* Pitch (system only) */}
-              {config.engine === "system" && (
+            {/* Rate & Pitch */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{t("tts.params", "语音参数")}</Text>
+              <View style={styles.paramsCard}>
+                {/* Rate */}
                 <View style={styles.paramRow}>
                   <View style={styles.paramHeader}>
-                    <Text style={styles.paramLabel}>{t("tts.pitch", "音调")}</Text>
-                    <Text style={styles.paramValue}>{config.pitch.toFixed(1)}</Text>
+                    <Text style={styles.paramLabel}>{t("tts.rate", "语速")}</Text>
+                    <Text style={styles.paramValue}>{config.rate.toFixed(1)}x</Text>
                   </View>
                   <TextInput
                     style={styles.input}
                     keyboardType="decimal-pad"
-                    value={String(config.pitch)}
+                    value={String(config.rate)}
                     onChangeText={(v) => {
                       const n = Number.parseFloat(v);
-                      if (!Number.isNaN(n) && n >= 0.5 && n <= 2) updateConfig({ pitch: n });
+                      if (!Number.isNaN(n) && n >= 0.5 && n <= 2) updateConfig({ rate: n });
                     }}
                     placeholder="0.5 - 2.0"
                     placeholderTextColor={colors.mutedForeground}
                   />
                 </View>
-              )}
+
+                {/* Pitch (system only) */}
+                {config.engine === "system" && (
+                  <View style={styles.paramRow}>
+                    <View style={styles.paramHeader}>
+                      <Text style={styles.paramLabel}>{t("tts.pitch", "音调")}</Text>
+                      <Text style={styles.paramValue}>{config.pitch.toFixed(1)}</Text>
+                    </View>
+                    <TextInput
+                      style={styles.input}
+                      keyboardType="decimal-pad"
+                      value={String(config.pitch)}
+                      onChangeText={(v) => {
+                        const n = Number.parseFloat(v);
+                        if (!Number.isNaN(n) && n >= 0.5 && n <= 2) updateConfig({ pitch: n });
+                      }}
+                      placeholder="0.5 - 2.0"
+                      placeholderTextColor={colors.mutedForeground}
+                    />
+                  </View>
+                )}
+              </View>
             </View>
           </View>
         </ScrollView>

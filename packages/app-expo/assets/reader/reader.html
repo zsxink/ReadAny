@@ -613,6 +613,15 @@
       return null;
     }
 
+    function armNoteTapGuard(doc, duration = 750) {
+      if (!doc) return;
+      doc.__readany_noteTapGuardUntil = Date.now() + duration;
+    }
+
+    function isNoteTapGuardActive(doc) {
+      return !!doc?.__readany_noteTapGuardUntil && doc.__readany_noteTapGuardUntil > Date.now();
+    }
+
     // Attach long-press note tooltip detection to each doc
     function attachNoteLongPress(doc) {
       if (doc.__readany_noteLongPress) return;
@@ -632,6 +641,7 @@
           timer = null;
           const hit = isPointInNoteRange(doc, startX, startY);
           if (!hit) return;
+          armNoteTapGuard(doc, 900);
 
           // Prevent subsequent click / show-annotation
           e.preventDefault && e.preventDefault();
@@ -963,6 +973,7 @@
         el.addEventListener('show-annotation', (e) => {
           const { value, index, range } = e.detail;
           if (!value || !range) return;
+          armNoteTapGuard(range.startContainer.ownerDocument, 900);
           const rect = range.getBoundingClientRect();
           const iframe = range.startContainer.ownerDocument?.defaultView?.frameElement;
           const iframeRect = iframe ? iframe.getBoundingClientRect() : { left: 0, top: 0 };
@@ -1309,23 +1320,34 @@ a { color: ${primary} !important; }
           tapState = null;
           return;
         }
+        if (doc.__readany_selection_interaction) {
+          tapState = null;
+          return;
+        }
         if (e.touches.length !== 1) {
           tapState = null;
           return;
         }
         const touch = e.touches[0];
+        const hitNote = isPointInNoteRange(doc, touch.clientX, touch.clientY);
         tapState = {
           startedAt: Date.now(),
           startX: touch.clientX,
           startY: touch.clientY,
           moved: false,
           target: e.target,
+          noteRangeHit: !!hitNote,
         };
+        if (hitNote) armNoteTapGuard(doc);
       }, { passive: true });
 
       doc.addEventListener('touchmove', (e) => {
         if (!tapState || e.touches.length !== 1) return;
         if (bookmarkPullGestureActive) {
+          tapState = null;
+          return;
+        }
+        if (doc.__readany_selection_interaction) {
           tapState = null;
           return;
         }
@@ -1347,11 +1369,20 @@ a { color: ${primary} !important; }
           tapState = null;
           return;
         }
+        if (doc.__readany_selection_interaction) {
+          tapState = null;
+          return;
+        }
 
         const state = tapState;
         tapState = null;
         if (!state || state.moved || e.changedTouches.length !== 1) return;
         if (Date.now() - state.startedAt > MAX_TAP_MS) return;
+        if (state.noteRangeHit || isNoteTapGuardActive(doc)) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
 
         const touch = e.changedTouches[0];
         const target = e.target || state.target;
@@ -1518,6 +1549,125 @@ a { color: ${primary} !important; }
 
       let selTimer = null;
       let iosHackPending = false;
+      let originalScrollLeft = 0;
+      let pageDebounceTimer = null;
+      let pendingAdvanceDirection = null;
+      let selectionMonitorTimer = null;
+      let preventScroll = null;
+      let pointerUpCleanup = null;
+      let selectionDragPoint = null;
+      let pageAdvanceLockUntil = 0;
+      let lockedContainer = null;
+      let lockedContainerStyles = null;
+
+      function markSelectionInteraction(active) {
+        doc.__readany_selection_interaction = !!active;
+      }
+
+      function setSelectionDragPoint(x, y) {
+        selectionDragPoint = {
+          x,
+          y,
+          updatedAt: Date.now(),
+        };
+      }
+
+      function clearSelectionDragPoint() {
+        selectionDragPoint = null;
+      }
+
+      function cancelPendingPageAdvance() {
+        if (pageDebounceTimer) {
+          clearTimeout(pageDebounceTimer);
+          pageDebounceTimer = null;
+        }
+        pendingAdvanceDirection = null;
+      }
+
+      function startSelectionMonitor() {
+        if (selectionMonitorTimer || !supportsCrossPageSelection()) return;
+        selectionMonitorTimer = setInterval(() => {
+          try {
+            evaluateCrossPageSelection();
+          } catch {}
+        }, 120);
+      }
+
+      function stopSelectionMonitor() {
+        if (!selectionMonitorTimer) return;
+        clearInterval(selectionMonitorTimer);
+        selectionMonitorTimer = null;
+      }
+
+      function releasePreventScroll() {
+        const container = getPaginatedContainer();
+        if (container && preventScroll) {
+          container.removeEventListener('scroll', preventScroll);
+        }
+        preventScroll = null;
+
+        if (pointerUpCleanup) {
+          doc.removeEventListener('pointerup', pointerUpCleanup);
+        }
+        pointerUpCleanup = null;
+      }
+
+      function applySelectionContainerLock(container) {
+        if (!container || lockedContainer === container) return;
+
+        if (lockedContainer && lockedContainerStyles) {
+          lockedContainer.style.scrollSnapType = lockedContainerStyles.scrollSnapType;
+          lockedContainer.style.scrollBehavior = lockedContainerStyles.scrollBehavior;
+          lockedContainer.style.overscrollBehaviorX = lockedContainerStyles.overscrollBehaviorX;
+        }
+
+        lockedContainer = container;
+        lockedContainerStyles = {
+          scrollSnapType: container.style.scrollSnapType,
+          scrollBehavior: container.style.scrollBehavior,
+          overscrollBehaviorX: container.style.overscrollBehaviorX,
+          overflowX: container.style.overflowX,
+        };
+
+        container.style.scrollSnapType = 'none';
+        container.style.scrollBehavior = 'auto';
+        container.style.overscrollBehaviorX = 'contain';
+        container.style.overflowX = 'hidden';
+      }
+
+      function releaseSelectionContainerLock() {
+        if (!lockedContainer || !lockedContainerStyles) return;
+        lockedContainer.style.scrollSnapType = lockedContainerStyles.scrollSnapType;
+        lockedContainer.style.scrollBehavior = lockedContainerStyles.scrollBehavior;
+        lockedContainer.style.overscrollBehaviorX = lockedContainerStyles.overscrollBehaviorX;
+        lockedContainer.style.overflowX = lockedContainerStyles.overflowX;
+        lockedContainer = null;
+        lockedContainerStyles = null;
+      }
+
+      function clearCrossPageSelectionState(options) {
+        const opts = options || {};
+        cancelPendingPageAdvance();
+        stopSelectionMonitor();
+        releasePreventScroll();
+        if (!opts.keepContainerLock) {
+          releaseSelectionContainerLock();
+        }
+        clearSelectionDragPoint();
+        if (!opts.keepInteraction) {
+          markSelectionInteraction(false);
+        }
+      }
+
+      function supportsCrossPageSelection() {
+        return !!(
+          view &&
+          !view.isFixedLayout &&
+          view.renderer &&
+          view.renderer.getAttribute &&
+          view.renderer.getAttribute('flow') === 'paginated'
+        );
+      }
 
       doc.addEventListener('touchend', () => {
         setTimeout(() => {
@@ -1545,6 +1695,9 @@ a { color: ${primary} !important; }
         selTimer = setTimeout(() => {
           const sel = doc.getSelection();
           if (!sel || sel.isCollapsed || !sel.toString().trim()) {
+            if (!pendingAdvanceDirection && Date.now() >= pageAdvanceLockUntil) {
+              clearCrossPageSelectionState();
+            }
             postToRN('selectionCleared', {});
             return;
           }
@@ -1553,6 +1706,137 @@ a { color: ${primary} !important; }
           emitSelection(doc, sel, range);
         }, 300);
       });
+
+      doc.addEventListener('selectstart', () => {
+        if (!supportsCrossPageSelection()) return;
+        const container = getPaginatedContainer();
+        if (!container) return;
+        originalScrollLeft = container.scrollLeft;
+        clearCrossPageSelectionState({ keepInteraction: true, keepContainerLock: true });
+        applySelectionContainerLock(container);
+        markSelectionInteraction(true);
+        startSelectionMonitor();
+      });
+
+      function scheduleSelectionPageAdvance(direction) {
+        if (!direction || !supportsCrossPageSelection()) return;
+        if (Date.now() < pageAdvanceLockUntil) return;
+        if (pendingAdvanceDirection === direction && pageDebounceTimer) return;
+
+        cancelPendingPageAdvance();
+        pendingAdvanceDirection = direction;
+        markSelectionInteraction(true);
+        pageDebounceTimer = setTimeout(async () => {
+          const advanceDirection = pendingAdvanceDirection;
+          cancelPendingPageAdvance();
+          pageAdvanceLockUntil = Date.now() + 420;
+          releasePreventScroll();
+          try {
+            if (advanceDirection === 'prev') await view.prev();
+            else await view.next();
+            await new Promise(resolve => setTimeout(resolve, 180));
+            const nextContainer = getPaginatedContainer();
+            if (nextContainer) {
+              originalScrollLeft = nextContainer.scrollLeft;
+            }
+          } catch {}
+          finally {
+            const activeSelectionRange = getSelectionRange(doc.getSelection());
+            if (!activeSelectionRange) {
+              clearCrossPageSelectionState();
+            } else {
+              clearSelectionDragPoint();
+              releaseSelectionContainerLock();
+              markSelectionInteraction(false);
+            }
+          }
+        }, 260);
+      }
+
+      function evaluateCrossPageSelection() {
+        const lastLocation = view && view.lastLocation;
+        const selectionRange = getSelectionRange(doc.getSelection());
+        const container = getPaginatedContainer();
+        if (!container) {
+          clearCrossPageSelectionState();
+          return false;
+        }
+        if (!lastLocation || !lastLocation.range) return false;
+        if (!selectionRange) {
+          if (!pendingAdvanceDirection && Date.now() >= pageAdvanceLockUntil) {
+            clearCrossPageSelectionState();
+          }
+          return false;
+        }
+
+        applySelectionContainerLock(container);
+        markSelectionInteraction(true);
+
+        if (Date.now() < pageAdvanceLockUntil) {
+          return false;
+        }
+
+        const advanceDirection = getSelectionAdvanceIntent(
+          selectionRange,
+          lastLocation.range,
+          selectionDragPoint,
+        );
+
+        if (advanceDirection) {
+          scheduleSelectionPageAdvance(advanceDirection);
+          return true;
+        }
+
+        cancelPendingPageAdvance();
+        releasePreventScroll();
+        preventScroll = () => {
+          const activeSelectionRange = getSelectionRange(doc.getSelection());
+          if (!activeSelectionRange) return;
+          container.scrollLeft = originalScrollLeft;
+        };
+
+        container.addEventListener('scroll', preventScroll);
+        pointerUpCleanup = () => {
+          clearCrossPageSelectionState();
+        };
+        doc.addEventListener('pointerup', pointerUpCleanup);
+        return false;
+      }
+
+      doc.addEventListener('pointermove', (e) => {
+        if (!supportsCrossPageSelection()) return;
+        if (!doc.__readany_selection_interaction && !getSelectionRange(doc.getSelection())) return;
+        setSelectionDragPoint(e.clientX, e.clientY);
+        evaluateCrossPageSelection();
+      }, { passive: true });
+
+      doc.addEventListener('touchmove', (e) => {
+        if (!supportsCrossPageSelection() || !e.touches || !e.touches.length) return;
+        if (!doc.__readany_selection_interaction && !getSelectionRange(doc.getSelection())) return;
+        const touch = e.touches[0];
+        setSelectionDragPoint(touch.clientX, touch.clientY);
+        evaluateCrossPageSelection();
+      }, { passive: true, capture: true });
+
+      doc.addEventListener('selectionchange', () => {
+        if (doc.__readany_isJiggling) return;
+        if (iosHackPending) return;
+        if (!supportsCrossPageSelection()) return;
+        evaluateCrossPageSelection();
+      });
+
+      doc.addEventListener('touchend', () => {
+        setTimeout(() => {
+          if (!getSelectionRange(doc.getSelection())) {
+            markSelectionInteraction(false);
+            clearCrossPageSelectionState();
+          }
+        }, 80);
+      }, { passive: true });
+
+      doc.addEventListener('touchcancel', () => {
+        clearCrossPageSelectionState();
+      }, { passive: true });
     }
 
     function emitSelection(doc, sel, range) {
@@ -1560,6 +1844,9 @@ a { color: ${primary} !important; }
       if (!text) return;
 
       const rect = range.getBoundingClientRect();
+      const rects = Array.from(range.getClientRects()).filter(r => r.width > 0 && r.height > 0);
+      const firstRect = rects[0] || rect;
+      const lastRect = rects[rects.length - 1] || rect;
       const iframe = doc.defaultView && doc.defaultView.frameElement;
       const iframeRect = iframe ? iframe.getBoundingClientRect() : { left: 0, top: 0 };
 
@@ -1577,9 +1864,9 @@ a { color: ${primary} !important; }
         cfi,
         position: {
           x: iframeRect.left + rect.left + rect.width / 2,
-          y: iframeRect.top + rect.top - 8,
-          selectionTop: iframeRect.top + rect.top,
-          selectionBottom: iframeRect.top + rect.bottom,
+          y: iframeRect.top + firstRect.top - 4,
+          selectionTop: iframeRect.top + firstRect.top,
+          selectionBottom: iframeRect.top + lastRect.bottom,
         },
       });
     }
@@ -1645,6 +1932,94 @@ a { color: ${primary} !important; }
     // ─── Utility ───
     function escapeHtml(s) {
       return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function getSelectionRange(selection) {
+      if (!selection || !selection.rangeCount) return null;
+      const range = selection.getRangeAt(0);
+      return range && !range.collapsed ? range : null;
+    }
+
+    function getSelectionEndRect(range) {
+      if (!range) return null;
+      try {
+        const caretRange = range.cloneRange();
+        caretRange.collapse(false);
+        const caretRects = Array.from(caretRange.getClientRects()).filter(r => r.width >= 0 && r.height > 0);
+        if (caretRects.length) return caretRects[caretRects.length - 1];
+      } catch {}
+
+      const rects = Array.from(range.getClientRects()).filter(r => r.width > 0 && r.height > 0);
+      return rects[rects.length - 1] || range.getBoundingClientRect();
+    }
+
+    function getSelectionAdvanceIntent(selectionRange, lastLocationRange, dragPoint) {
+      if (!selectionRange || !lastLocationRange) return null;
+
+      try {
+        if (selectionRange.compareBoundaryPoints(Range.END_TO_END, lastLocationRange) >= 0) {
+          return 'next';
+        }
+        if (selectionRange.compareBoundaryPoints(Range.START_TO_START, lastLocationRange) <= 0) {
+          return 'prev';
+        }
+      } catch {}
+
+      try {
+        const edgeRect = getSelectionEndRect(selectionRange);
+        const doc = selectionRange.endContainer && selectionRange.endContainer.ownerDocument
+          ? selectionRange.endContainer.ownerDocument
+          : null;
+        const win = doc ? doc.defaultView : null;
+        const viewportWidth = Math.max(
+          (win && win.innerWidth) || 0,
+          (doc && doc.documentElement && doc.documentElement.clientWidth) || 0
+        );
+        const viewportHeight = Math.max(
+          (win && win.innerHeight) || 0,
+          (doc && doc.documentElement && doc.documentElement.clientHeight) || 0
+        );
+        if (viewportWidth <= 0 || viewportHeight <= 0) return null;
+
+        const point = dragPoint && Date.now() - dragPoint.updatedAt < 1000
+          ? dragPoint
+          : edgeRect
+            ? { x: edgeRect.right, y: edgeRect.bottom }
+            : null;
+        if (!point) return null;
+
+        const isRtl = !!(view.book && view.book.dir === 'rtl');
+        const horizontalInset = Math.max(132, Math.min(420, viewportWidth * 0.30));
+        const verticalInset = Math.max(140, Math.min(360, viewportHeight * 0.28));
+        const inBottomBand = point.y >= viewportHeight - verticalInset;
+
+        if (isRtl) {
+          if (point.x <= horizontalInset) return 'next';
+          if (dragPoint && point.x >= viewportWidth - horizontalInset) return 'prev';
+          if (inBottomBand && point.x <= viewportWidth * 0.74) return 'next';
+          if (dragPoint && inBottomBand && point.x >= viewportWidth * 0.88) return 'prev';
+        } else {
+          if (point.x >= viewportWidth - horizontalInset) return 'next';
+          if (dragPoint && point.x <= horizontalInset) return 'prev';
+          if (inBottomBand && point.x >= viewportWidth * 0.26) return 'next';
+          if (dragPoint && inBottomBand && point.x <= viewportWidth * 0.12) return 'prev';
+        }
+
+        return null;
+      } catch {
+        return null;
+      }
+    }
+
+    function getPaginatedContainer() {
+      try {
+        if (!view || !view.shadowRoot) return null;
+        const paginator = view.shadowRoot.querySelector('foliate-paginator');
+        if (!paginator || !paginator.shadowRoot) return null;
+        return paginator.shadowRoot.querySelector('#container');
+      } catch {
+        return null;
+      }
     }
 
     function getVisibleTextSnippet(maxLen) {

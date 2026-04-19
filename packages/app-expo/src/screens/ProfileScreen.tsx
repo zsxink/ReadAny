@@ -12,11 +12,16 @@ import {
   LanguagesIcon,
   PaletteIcon,
   PuzzleIcon,
-  TrendingUpIcon,
   TypeIcon,
   Volume2Icon,
 } from "@/components/ui/Icon";
+import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
+import {
+  formatCharacterCount,
+  formatCharactersPerMinute,
+  formatTimeLocalized,
+} from "@/screens/stats/stats-utils";
 import { useReadingSessionStore } from "@/stores";
 import {
   mergeCurrentSessionIntoDailyStats,
@@ -47,44 +52,58 @@ import {
   ActivityIndicator,
   Linking,
   ScrollView,
+  type StyleProp,
   StyleSheet,
   Text,
   TouchableOpacity,
+  type ViewStyle,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-function formatTime(minutes: number): string {
-  if (minutes < 60) return `${Math.round(minutes)}m`;
-  const h = Math.floor(minutes / 60);
-  const m = Math.round(minutes % 60);
-  return m > 0 ? `${h}h${m}m` : `${h}h`;
-}
-
 function StatCard({
   icon,
   title,
   value,
   unit,
+  metaLabel,
+  metaValue,
+  style,
 }: {
   icon: React.ReactNode;
   title: string;
   value: string;
   unit?: string;
+  metaLabel: string;
+  metaValue: string;
+  style?: StyleProp<ViewStyle>;
 }) {
   const colors = useColors();
   const s = makeStyles(colors);
   return (
-    <View style={s.statCard}>
+    <View style={[s.statCard, style]}>
       <View style={s.statCardHeader}>
-        <Text style={s.statCardTitle}>{title}</Text>
-        {icon}
+        <View style={s.statCardTitleRow}>
+          <View style={s.statCardIconWrap}>{icon}</View>
+          <Text style={s.statCardTitle} numberOfLines={1}>
+            {title}
+          </Text>
+        </View>
       </View>
       <View style={s.statCardBody}>
-        <Text style={s.statCardValue}>{value}</Text>
+        <Text style={s.statCardValue} numberOfLines={1}>
+          {value}
+        </Text>
         {unit && <Text style={s.statCardUnit}>{unit}</Text>}
+      </View>
+      <View style={s.statCardMetaRow}>
+        <Text style={s.statCardMetaText} numberOfLines={1}>
+          <Text style={s.statCardMetaLabel}>{metaLabel}</Text>
+          <Text style={s.statCardMetaDivider}> · </Text>
+          <Text style={s.statCardMetaValue}>{metaValue}</Text>
+        </Text>
       </View>
     </View>
   );
@@ -263,6 +282,7 @@ export function ProfileScreen() {
   const colors = useColors();
   const s = makeStyles(colors);
   const { t, i18n } = useTranslation();
+  const layout = useResponsiveLayout();
   const nav = useNavigation<Nav>();
   const [overall, setOverall] = useState<OverallStats | null>(null);
   const [dailyStats, setDailyStats] = useState<DailyStats[]>([]);
@@ -312,6 +332,7 @@ export function ProfileScreen() {
     () => mergeCurrentSessionIntoOverallStats(overall, dailyStats, currentSession),
     [overall, dailyStats, currentSession],
   );
+  const isZh = i18n.language.startsWith("zh");
 
   // Settings menu — matching Tauri ProfilePage exactly
   const menuSections = useMemo(
@@ -370,9 +391,54 @@ export function ProfileScreen() {
   );
 
   const booksRead = liveOverall?.totalBooks ?? 0;
-  const totalTime = liveOverall ? formatTime(liveOverall.totalReadingTime) : "0m";
+  const totalTime = liveOverall ? formatTimeLocalized(liveOverall.totalReadingTime, isZh) : formatTimeLocalized(0, isZh);
+  const totalCharacters = liveOverall
+    ? formatCharacterCount(liveOverall.totalCharactersRead ?? 0, isZh)
+    : formatCharacterCount(0, isZh);
   const streak = liveOverall?.currentStreak ?? 0;
-  const avgDaily = liveOverall ? formatTime(liveOverall.avgDailyTime) : "0m";
+  const activeDays = liveOverall?.totalReadingDays ?? 0;
+  const totalSessions = liveOverall?.totalSessions ?? 0;
+  const avgSpeed = liveOverall
+    ? formatCharactersPerMinute(liveOverall.avgCharactersPerMinute ?? 0, isZh)
+    : formatCharactersPerMinute(0, isZh);
+  const longestStreak = liveOverall?.longestStreak ?? 0;
+  const statCardWidth = layout.isTabletLandscape ? "23.2%" : "48.2%";
+  const overviewCards = [
+    {
+      key: "time",
+      icon: <ClockIcon size={16} color={colors.primary} />,
+      title: t("profile.totalTime", "总时长"),
+      value: totalTime,
+      metaLabel: t("profile.activeDays", "活跃天数"),
+      metaValue: `${activeDays} ${t("profile.daysUnit", "天")}`,
+    },
+    {
+      key: "volume",
+      icon: <TypeIcon size={16} color={colors.primary} />,
+      title: t("profile.readingVolume", "阅读字数"),
+      value: totalCharacters,
+      metaLabel: t("profile.readingSpeed", "阅读速度"),
+      metaValue: avgSpeed,
+    },
+    {
+      key: "books",
+      icon: <BookOpenIcon size={16} color={colors.primary} />,
+      title: t("profile.booksRead", "已读"),
+      value: String(booksRead),
+      unit: t("profile.booksUnit", "本"),
+      metaLabel: t("profile.sessions", "阅读会话"),
+      metaValue: `${totalSessions}`,
+    },
+    {
+      key: "streak",
+      icon: <FlameIcon size={16} color={colors.primary} />,
+      title: t("profile.streak", "连续阅读"),
+      value: String(streak),
+      unit: t("profile.daysUnit", "天"),
+      metaLabel: t("profile.longestStreak", "最长连续"),
+      metaValue: `${longestStreak} ${t("profile.daysUnit", "天")}`,
+    },
+  ];
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={["top"]}>
@@ -380,7 +446,11 @@ export function ProfileScreen() {
         <Text style={s.headerTitle}>{t("profile.title", "我的")}</Text>
       </View>
 
-      <ScrollView style={s.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={s.scrollView}
+        contentContainerStyle={{ paddingBottom: 24 }}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Stats cards */}
         <View style={s.statsSection}>
           {statsLoading ? (
@@ -389,28 +459,18 @@ export function ProfileScreen() {
             </View>
           ) : (
             <View style={s.statsGrid}>
-              <StatCard
-                icon={<BookOpenIcon size={16} color={colors.mutedForeground} />}
-                title={t("profile.booksRead", "已读")}
-                value={String(booksRead)}
-                unit={t("profile.booksUnit", "本")}
-              />
-              <StatCard
-                icon={<ClockIcon size={16} color={colors.mutedForeground} />}
-                title={t("profile.totalTime", "总时长")}
-                value={totalTime}
-              />
-              <StatCard
-                icon={<FlameIcon size={16} color={colors.mutedForeground} />}
-                title={t("profile.streak", "连续")}
-                value={String(streak)}
-                unit={t("profile.daysUnit", "天")}
-              />
-              <StatCard
-                icon={<TrendingUpIcon size={16} color={colors.mutedForeground} />}
-                title={t("profile.avgDaily", "日均")}
-                value={avgDaily}
-              />
+              {overviewCards.map((card) => (
+                <StatCard
+                  key={card.key}
+                  icon={card.icon}
+                  title={card.title}
+                  value={card.value}
+                  unit={card.unit}
+                  metaLabel={card.metaLabel}
+                  metaValue={card.metaValue}
+                  style={{ width: statCardWidth }}
+                />
+              ))}
             </View>
           )}
         </View>
@@ -487,27 +547,68 @@ const makeStyles = (colors: ThemeColors) =>
     statsLoading: { alignItems: "center", justifyContent: "center", paddingVertical: 32 },
     statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
     statCard: {
-      width: "47%",
       backgroundColor: colors.card,
       borderRadius: radius.xl,
       borderWidth: 0.5,
       borderColor: colors.border,
-      padding: 14,
+      paddingHorizontal: 12,
+      paddingTop: 12,
+      paddingBottom: 10,
+      minHeight: 102,
     },
     statCardHeader: {
+      marginBottom: 10,
+    },
+    statCardTitleRow: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "space-between",
-      marginBottom: 6,
+      gap: 8,
+      minWidth: 0,
     },
-    statCardTitle: { fontSize: fontSize.xs, color: colors.mutedForeground },
+    statCardIconWrap: {
+      width: 24,
+      height: 24,
+      borderRadius: radius.md,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: withOpacity(colors.primary, 0.1),
+    },
+    statCardTitle: {
+      flex: 1,
+      fontSize: 11,
+      fontWeight: fontWeight.medium,
+      color: withOpacity(colors.mutedForeground, 0.8),
+    },
     statCardBody: { flexDirection: "row", alignItems: "baseline", gap: 4 },
     statCardValue: {
-      fontSize: fontSize["2xl"],
+      flexShrink: 1,
+      fontSize: 25,
       fontWeight: fontWeight.bold,
       color: colors.foreground,
+      letterSpacing: -0.8,
     },
-    statCardUnit: { fontSize: fontSize.sm, color: colors.mutedForeground },
+    statCardUnit: {
+      fontSize: 12,
+      color: withOpacity(colors.mutedForeground, 0.78),
+      fontWeight: fontWeight.medium,
+    },
+    statCardMetaRow: {
+      marginTop: 6,
+    },
+    statCardMetaText: {
+      fontSize: 11,
+      color: withOpacity(colors.mutedForeground, 0.72),
+    },
+    statCardMetaLabel: {
+      color: withOpacity(colors.mutedForeground, 0.72),
+    },
+    statCardMetaDivider: {
+      color: withOpacity(colors.mutedForeground, 0.46),
+    },
+    statCardMetaValue: {
+      fontWeight: fontWeight.semibold,
+      color: withOpacity(colors.foreground, 0.78),
+    },
     // Heatmap
     heatmapSection: {
       marginHorizontal: 16,

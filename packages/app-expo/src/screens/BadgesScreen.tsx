@@ -2,6 +2,7 @@
  * BadgesScreen.tsx — Mobile badge wall + share poster preview.
  */
 import { ChevronLeftIcon, ShareIcon } from "@/components/ui/Icon";
+import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { useReadingSessionStore } from "@/stores";
 import {
   ALL_BADGE_DEFINITIONS,
@@ -79,6 +80,7 @@ const RIGHT_LAUREL_PATH = "M382.72 909.226667c-35.84-20.906667-66.986667-13.2266
 export default function BadgesScreen() {
   const { t } = useTranslation();
   const nav = useNavigation();
+  const layout = useResponsiveLayout();
   const { width } = useWindowDimensions();
   const currentSession = useReadingSessionStore((s) => s.currentSession);
 
@@ -103,7 +105,10 @@ export default function BadgesScreen() {
     const earned = new Set(earnedBadges.map((badge) => badge.id));
     return ALL_BADGE_DEFINITIONS.filter((badge) => earned.has(badge.id));
   }, [earnedBadges]);
-  const posterWidth = Math.min(width - 32, 360);
+  const posterWidth = Math.min(width - 32, layout.isTablet ? 520 : 360);
+  const categorySectionWidth = layout.isTabletLandscape
+    ? Math.floor((layout.centeredContentWidth - 16) / 2)
+    : layout.centeredContentWidth;
 
   const capturePosterFile = React.useCallback(async () => {
     if (earnedBadgeDefinitions.length === 0 || !sharePosterRef.current) return null;
@@ -183,47 +188,52 @@ export default function BadgesScreen() {
         pointerEvents="none"
       />
       <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }} edges={["top"]}>
-        <View style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          paddingHorizontal: 12,
-          paddingVertical: 10,
-        }}>
-          <TouchableOpacity
-            onPress={() => {
-              if (nav.canGoBack()) {
-                nav.goBack();
-              } else {
-                nav.navigate("Tabs" as never);
-              }
-            }}
+        <View style={{ alignItems: "center", paddingVertical: 10 }}>
+          <View
             style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
+              width: "100%",
+              maxWidth: layout.centeredContentWidth,
+              flexDirection: "row",
               alignItems: "center",
-              justifyContent: "center",
+              justifyContent: "space-between",
+              paddingHorizontal: 12,
             }}
           >
-            <ChevronLeftIcon size={20} color="#fff7ea" />
-          </TouchableOpacity>
-          <View style={{ flex: 1 }} />
-          <TouchableOpacity
-            activeOpacity={0.8}
-            disabled={earnedBadgeDefinitions.length === 0}
-            onPress={() => setSharePreviewOpen(true)}
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              alignItems: "center",
-              justifyContent: "center",
-              opacity: earnedBadgeDefinitions.length === 0 ? 0.35 : 1,
-            }}
-          >
-            <ShareIcon size={18} color="#f8e4ba" />
-          </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                if (nav.canGoBack()) {
+                  nav.goBack();
+                } else {
+                  nav.navigate("Tabs" as never);
+                }
+              }}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <ChevronLeftIcon size={20} color="#fff7ea" />
+            </TouchableOpacity>
+            <View style={{ flex: 1 }} />
+            <TouchableOpacity
+              activeOpacity={0.8}
+              disabled={earnedBadgeDefinitions.length === 0}
+              onPress={() => setSharePreviewOpen(true)}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: earnedBadgeDefinitions.length === 0 ? 0.35 : 1,
+              }}
+            >
+              <ShareIcon size={18} color="#f8e4ba" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <ScrollView
@@ -232,38 +242,50 @@ export default function BadgesScreen() {
             paddingHorizontal: 20,
             paddingTop: 18,
             paddingBottom: 42,
+            alignItems: "center",
           }}
           showsVerticalScrollIndicator={false}
         >
-          <BadgeWallPoster
-            width={Math.min(width - 40, 420)}
-            badges={earnedBadgeDefinitions}
-            count={earnedBadgeDefinitions.length}
-            title={t("stats.desktop.myBadges")}
-            subtitle={t("stats.desktop.myBadgesDesc")}
-            countLabel={t("stats.desktop.badgesEarnedCount", { count: earnedBadgeDefinitions.length })}
-            emptyLabel={t("stats.desktop.noBadges")}
-            remainingLabel={(remaining) => t("stats.desktop.badgesRemainingCount", { count: remaining })}
-            resolveTitle={(badge) => t(`stats.desktop.badge_${badge.id}_title`)}
-            onBadgePress={setSelectedBadge}
-          />
+          <View style={{ width: "100%", maxWidth: layout.centeredContentWidth }}>
+            <BadgeWallPoster
+              width={Math.min(layout.centeredContentWidth, layout.isTablet ? 560 : 420)}
+              badges={earnedBadgeDefinitions}
+              count={earnedBadgeDefinitions.length}
+              title={t("stats.desktop.myBadges")}
+              subtitle={t("stats.desktop.myBadgesDesc")}
+              countLabel={t("stats.desktop.badgesEarnedCount", { count: earnedBadgeDefinitions.length })}
+              emptyLabel={t("stats.desktop.noBadges")}
+              remainingLabel={(remaining) => t("stats.desktop.badgesRemainingCount", { count: remaining })}
+              resolveTitle={(badge) => t(`stats.desktop.badge_${badge.id}_title`)}
+              onBadgePress={setSelectedBadge}
+            />
 
-          <View style={{ marginTop: 28, gap: 16 }}>
-            {BADGE_CATEGORIES.map(({ key, titleKey }) => {
-              const badges = grouped.get(key);
-              if (!badges || badges.length === 0) return null;
+            <View
+              style={{
+                marginTop: 28,
+                gap: 16,
+                flexDirection: layout.isTabletLandscape ? "row" : "column",
+                flexWrap: layout.isTabletLandscape ? "wrap" : "nowrap",
+                alignItems: "flex-start",
+              }}
+            >
+              {BADGE_CATEGORIES.map(({ key, titleKey }) => {
+                const badges = grouped.get(key);
+                if (!badges || badges.length === 0) return null;
 
-              return (
-                <BadgeCategorySection
-                  key={key}
-                  title={t(titleKey)}
-                  badges={badges}
-                  earnedIds={earnedIds}
-                  resolveTitle={(badge) => t(`stats.desktop.badge_${badge.id}_title`)}
-                  onBadgePress={setSelectedBadge}
-                />
-              );
-            })}
+                return (
+                  <BadgeCategorySection
+                    key={key}
+                    width={categorySectionWidth}
+                    title={t(titleKey)}
+                    badges={badges}
+                    earnedIds={earnedIds}
+                    resolveTitle={(badge) => t(`stats.desktop.badge_${badge.id}_title`)}
+                    onBadgePress={setSelectedBadge}
+                  />
+                );
+              })}
+            </View>
           </View>
         </ScrollView>
 
@@ -302,12 +324,14 @@ export default function BadgesScreen() {
 }
 
 function BadgeCategorySection({
+  width,
   title,
   badges,
   earnedIds,
   resolveTitle,
   onBadgePress,
 }: {
+  width?: number;
   title: string;
   badges: BadgeDefinition[];
   earnedIds: Set<string>;
@@ -317,6 +341,7 @@ function BadgeCategorySection({
   return (
     <View
       style={{
+        width: width ?? "100%",
         borderRadius: 22,
         paddingHorizontal: 16,
         paddingVertical: 18,

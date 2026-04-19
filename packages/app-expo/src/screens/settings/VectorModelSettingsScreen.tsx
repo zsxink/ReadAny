@@ -5,6 +5,7 @@ import {
   Trash2Icon,
   XIcon,
 } from "@/components/ui/Icon";
+import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { useVectorModelStore } from "@/stores/vector-model-store";
 import { type ThemeColors, fontSize, fontWeight, radius, useColors, withOpacity } from "@/styles/theme";
 import { useNavigation } from "@react-navigation/native";
@@ -34,6 +35,7 @@ export default function VectorModelSettingsScreen() {
   const s = makeStyles(colors);
   const nav = useNavigation();
   const { t } = useTranslation();
+  const layout = useResponsiveLayout();
   const {
     vectorModelEnabled,
     setVectorModelEnabled,
@@ -43,10 +45,12 @@ export default function VectorModelSettingsScreen() {
     <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={["top"]}>
       {/* Header */}
       <View style={s.header}>
-        <TouchableOpacity style={s.backBtn} onPress={() => nav.goBack()}>
-          <ChevronLeftIcon size={20} color={colors.foreground} />
-        </TouchableOpacity>
-        <Text style={s.headerTitle}>{t("settings.vm_title", "向量模型")}</Text>
+        <View style={[s.headerInner, { maxWidth: layout.centeredContentWidth }]}>
+          <TouchableOpacity style={s.backBtn} onPress={() => nav.goBack()}>
+            <ChevronLeftIcon size={20} color={colors.foreground} />
+          </TouchableOpacity>
+          <Text style={s.headerTitle}>{t("settings.vm_title", "向量模型")}</Text>
+        </View>
       </View>
 
       <KeyboardAvoidingView
@@ -55,29 +59,32 @@ export default function VectorModelSettingsScreen() {
       >
         <ScrollView
           style={s.scrollView}
+          contentContainerStyle={s.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
-          {/* Enable switch */}
-          <View style={s.section}>
-            <View style={s.enableCard}>
-              <View style={s.enableInfo}>
-                <Text style={s.enableTitle}>{t("settings.vm_title", "向量模型")}</Text>
-                <Text style={s.enableDesc}>{t("settings.vm_desc", "启用向量搜索和知识检索")}</Text>
+          <View style={{ width: "100%", maxWidth: layout.centeredContentWidth }}>
+            {/* Enable switch */}
+            <View style={s.section}>
+              <View style={s.enableCard}>
+                <View style={s.enableInfo}>
+                  <Text style={s.enableTitle}>{t("settings.vm_title", "向量模型")}</Text>
+                  <Text style={s.enableDesc}>{t("settings.vm_desc", "启用向量搜索和知识检索")}</Text>
+                </View>
+                <Switch
+                  value={vectorModelEnabled}
+                  onValueChange={setVectorModelEnabled}
+                  trackColor={{ false: colors.muted, true: colors.primary }}
+                  thumbColor={colors.card}
+                />
               </View>
-              <Switch
-                value={vectorModelEnabled}
-                onValueChange={setVectorModelEnabled}
-                trackColor={{ false: colors.muted, true: colors.primary }}
-                thumbColor={colors.card}
-              />
             </View>
+
+            {vectorModelEnabled && <RemoteModelsSection />}
+
+            <View style={{ height: 24 }} />
           </View>
-
-          {vectorModelEnabled && <RemoteModelsSection />}
-
-          <View style={{ height: 24 }} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -315,13 +322,17 @@ const makeStyles = (colors: ThemeColors) =>
     container: { flex: 1, backgroundColor: colors.background },
     keyboardView: { flex: 1 },
     header: {
-      flexDirection: "row",
       alignItems: "center",
-      gap: 12,
       paddingHorizontal: 16,
       paddingVertical: 12,
       borderBottomWidth: 0.5,
       borderBottomColor: colors.border,
+    },
+    headerInner: {
+      width: "100%",
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
     },
     backBtn: { padding: 4 },
     headerTitle: {
@@ -330,6 +341,10 @@ const makeStyles = (colors: ThemeColors) =>
       color: colors.foreground,
     },
     scrollView: { flex: 1 },
+    scrollContent: {
+      paddingBottom: 12,
+      alignItems: "center",
+    },
     section: { paddingHorizontal: 16, paddingTop: 16 },
     sectionTitle: {
       fontSize: fontSize.sm,

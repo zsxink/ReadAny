@@ -54,6 +54,7 @@ interface BookCardProps {
   isVectorizing?: boolean;
   isQueued?: boolean;
   vectorProgress?: { status: string; processedChunks: number; totalChunks: number } | null;
+  cardWidth?: number;
 }
 
 export const BookCard = memo(function BookCard({
@@ -65,9 +66,10 @@ export const BookCard = memo(function BookCard({
   isVectorizing,
   isQueued,
   vectorProgress,
+  cardWidth = 96,
 }: BookCardProps) {
   const colors = useColors();
-  const s = makeStyles(colors);
+  const s = makeStyles(colors, cardWidth);
   const { t } = useTranslation();
   const [imageError, setImageError] = useState(false);
   const [showActions, setShowActions] = useState(false);
@@ -281,4 +283,3 @@ export const BookCard = memo(function BookCard({
     </>
   );
 });
-

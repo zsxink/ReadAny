@@ -108,11 +108,15 @@ export function mergeCurrentSessionIntoOverallStats(
   const mergedDaily = mergeCurrentSessionIntoDailyStats(dailyStats, currentSession);
   const totalReadingDays = mergedDaily.filter((day) => day.totalTime > 0).length;
   const totalReadingTime = overallStats.totalReadingTime + currentSession.totalActiveTime / 60000;
+  const totalCharactersRead =
+    (overallStats.totalCharactersRead ?? 0) + (currentSession.charactersRead ?? 0);
   const { longestStreak, currentStreak } = calculateStreaks(mergedDaily);
 
   return {
     ...overallStats,
     totalReadingTime,
+    totalCharactersRead,
+    avgCharactersPerMinute: totalReadingTime > 0 ? totalCharactersRead / totalReadingTime : 0,
     totalSessions: overallStats.totalSessions + 1,
     totalReadingDays,
     avgDailyTime: totalReadingTime / Math.max(1, totalReadingDays),

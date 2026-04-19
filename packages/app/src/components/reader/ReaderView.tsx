@@ -1040,6 +1040,11 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       // that the renderer has fully updated its position (renderer.start reflects new page).
       if (pendingTTSContinueCallbackRef.current) {
         const cb = pendingTTSContinueCallbackRef.current;
+        pendingTTSContinueCallbackRef.current = null;
+        if (pendingTTSContinueSafetyTimerRef.current) {
+          clearTimeout(pendingTTSContinueSafetyTimerRef.current);
+          pendingTTSContinueSafetyTimerRef.current = null;
+        }
         void cb();
       }
     },
@@ -1543,6 +1548,91 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     [filterDistinctTTSSegments],
   );
 
+  const queueDesktopTTSChapterTransition = useCallback(
+    (targetIndex: number, options?: { autoResume?: boolean }) => {
+      const target = tocItems[targetIndex];
+      if (!target?.href) return false;
+
+      const autoResume = options?.autoResume !== false;
+      const nextChapterTitle = target.title || readerTab?.chapterTitle || "";
+
+      if (pendingTTSContinueSafetyTimerRef.current) {
+        clearTimeout(pendingTTSContinueSafetyTimerRef.current);
+        pendingTTSContinueSafetyTimerRef.current = null;
+      }
+
+      pendingTTSContinueCallbackRef.current = () => {
+        pendingTTSContinueCallbackRef.current = null;
+        if (pendingTTSContinueSafetyTimerRef.current) {
+          clearTimeout(pendingTTSContinueSafetyTimerRef.current);
+          pendingTTSContinueSafetyTimerRef.current = null;
+        }
+
+        void (async () => {
+          const segments =
+            (await foliateRef.current?.getVisibleTTSSegments())?.map((segment) => ({
+              text: segment.text.trim(),
+              cfi: segment.cfi,
+            })) ?? [];
+          const normalizedSegments = segments.filter((segment) => segment.text.length > 0);
+          if (!normalizedSegments.length) {
+            ttsContinuousRef.current = false;
+            ttsSetOnEnd(null);
+            ttsStop();
+            return;
+          }
+
+          const nextText = normalizedSegments.map((segment) => segment.text).join(" ").trim();
+          const firstVisibleCfi = normalizedSegments[0]?.cfi || "";
+          const lastVisibleCfi =
+            normalizedSegments[normalizedSegments.length - 1]?.cfi || firstVisibleCfi;
+
+          setTtsSourceKind("page");
+          setTtsContinuousEnabled(autoResume);
+          setTtsLastText(nextText);
+          setTtsSegments(normalizedSegments);
+          setTtsFutureSegments([]);
+          ttsLastTextRef.current = nextText;
+          ttsSegmentsRef.current = normalizedSegments;
+          ttsFutureSegmentsRef.current = [];
+          ttsStartChapterRef.current = nextChapterTitle;
+          ttsContinuousRef.current = autoResume;
+          ttsSetCurrentBook(book?.meta.title ?? "", nextChapterTitle, bookId);
+          ttsSetCurrentLocation(firstVisibleCfi);
+
+          void primeDesktopTTSLyricContext(lastVisibleCfi);
+
+          if (autoResume) {
+            ttsPlay(normalizedSegments.map((segment) => segment.text));
+          }
+        })();
+      };
+
+      pendingTTSContinueSafetyTimerRef.current = setTimeout(() => {
+        const cb = pendingTTSContinueCallbackRef.current;
+        pendingTTSContinueCallbackRef.current = null;
+        if (cb) void cb();
+      }, 1200);
+
+      void foliateRef.current?.setTTSHighlight(null);
+      handleGoToChapter(target.href);
+      return true;
+    },
+    [
+      book?.meta.title,
+      bookId,
+      handleGoToChapter,
+      primeDesktopTTSLyricContext,
+      readerTab?.chapterTitle,
+      tocItems,
+      ttsPlay,
+      ttsSetCurrentBook,
+      ttsSetCurrentLocation,
+      ttsSetOnEnd,
+      ttsStop,
+    ],
+  );
+
   const handleTTSPageEnd = useCallback(() => {
     if (!ttsContinuousRef.current) return;
     const previousSegments = ttsSegmentsRef.current;
@@ -1589,12 +1679,29 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
         return;
       }
 
+      const nextChapterIndex =
+        (readerTab?.chapterIndex ?? -1) >= 0 && (readerTab?.chapterIndex ?? -1) < tocItems.length - 1
+          ? (readerTab?.chapterIndex ?? -1) + 1
+          : -1;
+      if (nextChapterIndex >= 0 && queueDesktopTTSChapterTransition(nextChapterIndex, { autoResume: true })) {
+        return;
+      }
+
       // No more text (end of book) — stop TTS
       ttsContinuousRef.current = false;
       ttsSetOnEnd(null);
       ttsStop();
     })();
-  }, [currentTTSSegment?.cfi, mergeUniqueTTSSegments, readerTab?.currentCfi, ttsSetOnEnd, ttsStop]);
+  }, [
+    currentTTSSegment?.cfi,
+    mergeUniqueTTSSegments,
+    queueDesktopTTSChapterTransition,
+    readerTab?.chapterIndex,
+    readerTab?.currentCfi,
+    tocItems.length,
+    ttsSetOnEnd,
+    ttsStop,
+  ]);
 
   useEffect(() => {
     const shouldContinue = ttsContinuousRef.current && ttsSourceKind === "page";
@@ -1604,21 +1711,43 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   const handleTTSPrevChapter = useCallback(() => {
     const currentIdx = readerTab?.chapterIndex ?? -1;
     const idx = currentIdx > 0 ? currentIdx - 1 : 0;
+    if (ttsSourceKind === "page" && ttsPlayState !== "stopped") {
+      queueDesktopTTSChapterTransition(idx, { autoResume: true });
+      return;
+    }
     const prevHref = tocItems[idx]?.href;
     if (prevHref) {
       handleGoToChapter(prevHref);
     }
-  }, [readerTab?.chapterIndex, tocItems, handleGoToChapter]);
+  }, [
+    handleGoToChapter,
+    queueDesktopTTSChapterTransition,
+    readerTab?.chapterIndex,
+    tocItems,
+    ttsPlayState,
+    ttsSourceKind,
+  ]);
 
   const handleTTSNextChapter = useCallback(() => {
     const currentIdx = readerTab?.chapterIndex ?? -1;
     const idx =
       currentIdx >= 0 && currentIdx < tocItems.length - 1 ? currentIdx + 1 : tocItems.length - 1;
+    if (ttsSourceKind === "page" && ttsPlayState !== "stopped") {
+      queueDesktopTTSChapterTransition(idx, { autoResume: true });
+      return;
+    }
     const nextHref = tocItems[idx]?.href;
     if (nextHref) {
       handleGoToChapter(nextHref);
     }
-  }, [readerTab?.chapterIndex, tocItems, handleGoToChapter]);
+  }, [
+    handleGoToChapter,
+    queueDesktopTTSChapterTransition,
+    readerTab?.chapterIndex,
+    tocItems,
+    ttsPlayState,
+    ttsSourceKind,
+  ]);
 
   const startSelectionTTS = useCallback(
     (text: string) => {

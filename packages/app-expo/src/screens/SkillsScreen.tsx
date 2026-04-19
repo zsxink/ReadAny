@@ -1,4 +1,5 @@
 import { ChevronLeftIcon, EditIcon, PlusIcon, PuzzleIcon, Trash2Icon } from "@/components/ui/Icon";
+import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { type ThemeColors, fontSize, fontWeight, radius, useColors } from "@/styles/theme";
 import { useNavigation } from "@react-navigation/native";
 import { builtinSkills } from "@readany/core/ai/skills/builtin-skills";
@@ -39,6 +40,7 @@ const SKILL_ICONS: Record<string, string> = {
 export default function SkillsScreen() {
   const colors = useColors();
   const s = makeStyles(colors);
+  const layout = useResponsiveLayout();
   const nav = useNavigation();
   const { t } = useTranslation();
   const [skills, setSkills] = useState<Skill[]>([]);
@@ -161,6 +163,7 @@ export default function SkillsScreen() {
 
   const builtInList = skills.filter((s) => s.builtIn);
   const customList = skills.filter((s) => !s.builtIn);
+  const useTwoColumnLayout = layout.isTabletLandscape;
 
   if (loading) {
     return (
@@ -172,99 +175,121 @@ export default function SkillsScreen() {
     );
   }
 
-  return (
-    <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={["top"]}>
-      {/* Header */}
-      <View style={s.header}>
-        <View style={s.headerLeft}>
-          <TouchableOpacity
-            style={s.backBtn}
-            onPress={() => {
-              if (nav.canGoBack()) {
-                nav.goBack();
-              } else {
-                nav.navigate("Tabs" as never);
-              }
-            }}
-          >
-            <ChevronLeftIcon size={20} color={colors.foreground} />
-          </TouchableOpacity>
-          <Text style={s.headerTitle}>{t("skills.title", "技能")}</Text>
-        </View>
-        <TouchableOpacity style={s.addBtn} onPress={handleCreateSkill}>
-          <PlusIcon size={14} color={colors.foreground} />
-          <Text style={s.addBtnText}>{t("settings.addSkill", "添加技能")}</Text>
+  const builtInSection = (
+    <View style={s.section}>
+      <Text style={s.sectionTitle}>{t("skills.builtinSkills", "内置技能")}</Text>
+      {builtInList.map((skill) => (
+        <TouchableOpacity
+          key={skill.id}
+          style={s.skillCard}
+          onPress={() => handleEditSkill(skill)}
+          activeOpacity={0.7}
+        >
+          <Text style={s.skillEmoji}>{SKILL_ICONS[skill.id] || "🔧"}</Text>
+          <View style={s.skillInfo}>
+            <Text style={s.skillName}>{skill.name}</Text>
+            <Text style={s.skillDesc} numberOfLines={1}>
+              {skill.description}
+            </Text>
+          </View>
+          <Switch
+            value={skill.enabled}
+            onValueChange={(v) => handleToggle(skill.id, v)}
+            trackColor={{ false: colors.muted, true: colors.primary }}
+            thumbColor={colors.card}
+          />
         </TouchableOpacity>
-      </View>
+      ))}
+    </View>
+  );
 
-      <ScrollView style={s.scrollView} showsVerticalScrollIndicator={false}>
-        {/* Built-in skills */}
-        <View style={s.section}>
-          <Text style={s.sectionTitle}>{t("skills.builtinSkills", "内置技能")}</Text>
-          {builtInList.map((skill) => (
-            <TouchableOpacity
-              key={skill.id}
-              style={s.skillCard}
-              onPress={() => handleEditSkill(skill)}
-              activeOpacity={0.7}
-            >
-              <Text style={s.skillEmoji}>{SKILL_ICONS[skill.id] || "🔧"}</Text>
-              <View style={s.skillInfo}>
-                <Text style={s.skillName}>{skill.name}</Text>
-                <Text style={s.skillDesc} numberOfLines={1}>
-                  {skill.description}
-                </Text>
-              </View>
+  const customSection = (
+    <View style={s.section}>
+      <Text style={s.sectionTitle}>{t("skills.customSkills", "自定义技能")}</Text>
+      {customList.length === 0 ? (
+        <View style={s.customEmpty}>
+          <View style={s.customEmptyIcon}>
+            <PuzzleIcon size={28} color={colors.mutedForeground} />
+          </View>
+          <Text style={s.customEmptyText}>{t("skills.noCustomSkills", "暂无自定义技能")}</Text>
+          <TouchableOpacity style={s.customEmptyBtn} onPress={handleCreateSkill}>
+            <PlusIcon size={16} color={colors.primaryForeground} />
+            <Text style={s.customEmptyBtnText}>{t("settings.addSkill", "添加技能")}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        customList.map((skill) => (
+          <View key={skill.id} style={s.skillCard}>
+            <Text style={s.skillEmoji}>{SKILL_ICONS[skill.id] || "🔧"}</Text>
+            <TouchableOpacity style={s.skillInfo} onPress={() => handleEditSkill(skill)}>
+              <Text style={s.skillName}>{skill.name}</Text>
+              <Text style={s.skillDesc} numberOfLines={1}>
+                {skill.description}
+              </Text>
+            </TouchableOpacity>
+            <View style={s.customActions}>
+              <TouchableOpacity style={s.iconBtn} onPress={() => handleEditSkill(skill)}>
+                <EditIcon size={14} color={colors.mutedForeground} />
+              </TouchableOpacity>
+              <TouchableOpacity style={s.iconBtn} onPress={() => handleDeleteSkill(skill.id)}>
+                <Trash2Icon size={14} color={colors.mutedForeground} />
+              </TouchableOpacity>
               <Switch
                 value={skill.enabled}
                 onValueChange={(v) => handleToggle(skill.id, v)}
                 trackColor={{ false: colors.muted, true: colors.primary }}
                 thumbColor={colors.card}
               />
-            </TouchableOpacity>
-          ))}
-        </View>
+            </View>
+          </View>
+        ))
+      )}
+    </View>
+  );
 
-        {/* Custom skills */}
-        <View style={s.section}>
-          <Text style={s.sectionTitle}>{t("skills.customSkills", "自定义技能")}</Text>
-          {customList.length === 0 ? (
-            <View style={s.customEmpty}>
-              <View style={s.customEmptyIcon}>
-                <PuzzleIcon size={28} color={colors.mutedForeground} />
-              </View>
-              <Text style={s.customEmptyText}>{t("skills.noCustomSkills", "暂无自定义技能")}</Text>
-              <TouchableOpacity style={s.customEmptyBtn} onPress={handleCreateSkill}>
-                <PlusIcon size={16} color={colors.primaryForeground} />
-                <Text style={s.customEmptyBtnText}>{t("settings.addSkill", "添加技能")}</Text>
-              </TouchableOpacity>
+  return (
+    <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={["top"]}>
+      {/* Header */}
+      <View style={s.header}>
+        <View style={[s.headerInner, { maxWidth: layout.centeredContentWidth }]}>
+          <View style={s.headerLeft}>
+            <TouchableOpacity
+              style={s.backBtn}
+              onPress={() => {
+                if (nav.canGoBack()) {
+                  nav.goBack();
+                } else {
+                  nav.navigate("Tabs" as never);
+                }
+              }}
+            >
+              <ChevronLeftIcon size={20} color={colors.foreground} />
+            </TouchableOpacity>
+            <Text style={s.headerTitle}>{t("skills.title", "技能")}</Text>
+          </View>
+          <TouchableOpacity style={s.addBtn} onPress={handleCreateSkill}>
+            <PlusIcon size={14} color={colors.foreground} />
+            <Text style={s.addBtnText}>{t("settings.addSkill", "添加技能")}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <ScrollView
+        style={s.scrollView}
+        contentContainerStyle={s.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={[s.contentInner, { maxWidth: layout.centeredContentWidth }]}>
+          {useTwoColumnLayout ? (
+            <View style={s.sectionGrid}>
+              <View style={s.sectionColumn}>{builtInSection}</View>
+              <View style={s.sectionColumn}>{customSection}</View>
             </View>
           ) : (
-            customList.map((skill) => (
-              <View key={skill.id} style={s.skillCard}>
-                <Text style={s.skillEmoji}>{SKILL_ICONS[skill.id] || "🔧"}</Text>
-                <TouchableOpacity style={s.skillInfo} onPress={() => handleEditSkill(skill)}>
-                  <Text style={s.skillName}>{skill.name}</Text>
-                  <Text style={s.skillDesc} numberOfLines={1}>
-                    {skill.description}
-                  </Text>
-                </TouchableOpacity>
-                <View style={s.customActions}>
-                  <TouchableOpacity style={s.iconBtn} onPress={() => handleEditSkill(skill)}>
-                    <EditIcon size={14} color={colors.mutedForeground} />
-                  </TouchableOpacity>
-                  <TouchableOpacity style={s.iconBtn} onPress={() => handleDeleteSkill(skill.id)}>
-                    <Trash2Icon size={14} color={colors.mutedForeground} />
-                  </TouchableOpacity>
-                  <Switch
-                    value={skill.enabled}
-                    onValueChange={(v) => handleToggle(skill.id, v)}
-                    trackColor={{ false: colors.muted, true: colors.primary }}
-                    thumbColor={colors.card}
-                  />
-                </View>
-              </View>
-            ))
+            <>
+              {builtInSection}
+              {customSection}
+            </>
           )}
         </View>
         <View style={{ height: 24 }} />
@@ -278,7 +303,7 @@ export default function SkillsScreen() {
         onRequestClose={() => setEditorOpen(false)}
       >
         <Pressable style={s.editorOverlay} onPress={() => setEditorOpen(false)} />
-        <View style={s.editorSheet}>
+        <View style={[s.editorSheet, layout.isTablet && s.editorSheetTablet]}>
           <View style={s.editorHandle} />
           <Text style={s.editorTitle}>
             {editingSkill ? t("skills.editSkill", "编辑技能") : t("skills.createSkill", "创建技能")}
@@ -338,13 +363,17 @@ const makeStyles = (colors: ThemeColors) =>
     container: { flex: 1, backgroundColor: colors.background },
     loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
     header: {
+      alignItems: "center",
+      paddingVertical: 12,
+      borderBottomWidth: 0.5,
+      borderBottomColor: colors.border,
+    },
+    headerInner: {
+      width: "100%",
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
       paddingHorizontal: 16,
-      paddingVertical: 12,
-      borderBottomWidth: 0.5,
-      borderBottomColor: colors.border,
     },
     headerLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
     backBtn: { padding: 4 },
@@ -365,6 +394,10 @@ const makeStyles = (colors: ThemeColors) =>
     },
     addBtnText: { fontSize: fontSize.xs, color: colors.foreground },
     scrollView: { flex: 1 },
+    scrollContent: { paddingBottom: 8, alignItems: "center" },
+    contentInner: { width: "100%" },
+    sectionGrid: { flexDirection: "row", gap: 16, alignItems: "flex-start" },
+    sectionColumn: { flex: 1, minWidth: 0 },
     section: { paddingHorizontal: 16, paddingTop: 16 },
     sectionTitle: {
       fontSize: fontSize.sm,
@@ -420,6 +453,13 @@ const makeStyles = (colors: ThemeColors) =>
       borderTopRightRadius: 16,
       maxHeight: "80%",
       paddingBottom: 34,
+    },
+    editorSheetTablet: {
+      width: "100%",
+      maxWidth: 720,
+      alignSelf: "center",
+      borderRadius: 20,
+      marginBottom: 28,
     },
     editorHandle: {
       width: 40,

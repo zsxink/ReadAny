@@ -1,5 +1,6 @@
 import { getPlatformService } from "@readany/core/services";
 import { checkForUpdate } from "@readany/core/update";
+import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -44,6 +45,7 @@ export default function AboutScreen() {
   const colors = useColors();
   const styles = makeStyles(colors);
   const { t } = useTranslation();
+  const layout = useResponsiveLayout();
   const [version, setVersion] = useState("1.0.0");
   const [checking, setChecking] = useState(false);
 
@@ -81,86 +83,88 @@ export default function AboutScreen() {
     >
       <SettingsHeader title={t("about.title", "关于")} />
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-        {/* Logo & Version */}
-        <View style={styles.logoSection}>
-          <View style={styles.logoBadge}>
-            <Image source={AppIcon} style={{ width: 80, height: 80, borderRadius: 18 }} resizeMode="contain" />
-          </View>
-          <Text style={styles.appName}>ReadAny</Text>
-          <Text style={styles.version}>v{version}</Text>
-          <Text style={styles.desc}>
-            {t("about.desc", "一个跨平台的智能电子书阅读器，支持 AI 对话、TTS 朗读、多语言翻译")}
-          </Text>
-        </View>
-
-        {/* Check for Updates */}
-        <View style={styles.section}>
-          <TouchableOpacity
-            style={styles.updateBtn}
-            onPress={handleCheckUpdate}
-            disabled={checking}
-            activeOpacity={0.7}
-          >
-            {checking && <ActivityIndicator size="small" color={colors.primaryForeground} />}
-            <Text style={styles.updateBtnText}>
-              {checking ? t("settings.updateChecking") : t("settings.checkUpdate")}
+      <ScrollView style={styles.scroll} contentContainerStyle={[styles.scrollContent, { alignItems: "center" }]}>
+        <View style={{ width: "100%", maxWidth: layout.centeredContentWidth }}>
+          {/* Logo & Version */}
+          <View style={styles.logoSection}>
+            <View style={styles.logoBadge}>
+              <Image source={AppIcon} style={{ width: 80, height: 80, borderRadius: 18 }} resizeMode="contain" />
+            </View>
+            <Text style={styles.appName}>ReadAny</Text>
+            <Text style={styles.version}>v{version}</Text>
+            <Text style={styles.desc}>
+              {t("about.desc", "一个跨平台的智能电子书阅读器，支持 AI 对话、TTS 朗读、多语言翻译")}
             </Text>
-          </TouchableOpacity>
-          {checkResult?.hasUpdate && checkResult.release && (
+          </View>
+
+          {/* Check for Updates */}
+          <View style={styles.section}>
             <TouchableOpacity
-              style={styles.updateBanner}
-              onPress={() => showDialog()}
+              style={styles.updateBtn}
+              onPress={handleCheckUpdate}
+              disabled={checking}
               activeOpacity={0.7}
             >
-              <Text style={styles.updateBannerText}>
-                {t("settings.newVersionAvailable", { version: checkResult.latestVersion })}
+              {checking && <ActivityIndicator size="small" color={colors.primaryForeground} />}
+              <Text style={styles.updateBtnText}>
+                {checking ? t("settings.updateChecking") : t("settings.checkUpdate")}
               </Text>
-              <Text style={styles.linkArrow}>→</Text>
             </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Tech Stack */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t("about.techStack", "技术栈")}</Text>
-          <View style={styles.techGrid}>
-            {TECH_STACK.map((item) => (
-              <View key={item.label} style={styles.techCard}>
-                <Text style={styles.techLabel}>{item.label}</Text>
-                <Text style={styles.techDesc}>{t(item.descKey, item.label)}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        {/* Links */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t("about.links", "链接")}</Text>
-          <View style={styles.linksCard}>
-            {LINKS.map((link, idx) => (
+            {checkResult?.hasUpdate && checkResult.release && (
               <TouchableOpacity
-                key={link.url}
-                style={[styles.linkItem, idx < LINKS.length - 1 && styles.linkItemBorder]}
-                onPress={() => Linking.openURL(link.url)}
+                style={styles.updateBanner}
+                onPress={() => showDialog()}
                 activeOpacity={0.7}
               >
-                <Text style={styles.linkText}>{link.label}</Text>
+                <Text style={styles.updateBannerText}>
+                  {t("settings.newVersionAvailable", { version: checkResult.latestVersion })}
+                </Text>
                 <Text style={styles.linkArrow}>→</Text>
               </TouchableOpacity>
-            ))}
-            <TouchableOpacity
-              style={styles.linkItem}
-              onPress={() => Linking.openURL("https://github.com/nicepkg/ReadAny/issues")}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.linkText}>{t("about.feedback", "问题反馈")}</Text>
-              <Text style={styles.linkArrow}>→</Text>
-            </TouchableOpacity>
+            )}
           </View>
-        </View>
 
-        <Text style={styles.madeBy}>{t("about.madeBy", "Made with love by nicepkg")}</Text>
+          {/* Tech Stack */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{t("about.techStack", "技术栈")}</Text>
+            <View style={styles.techGrid}>
+              {TECH_STACK.map((item) => (
+                <View key={item.label} style={styles.techCard}>
+                  <Text style={styles.techLabel}>{item.label}</Text>
+                  <Text style={styles.techDesc}>{t(item.descKey, item.label)}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          {/* Links */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{t("about.links", "链接")}</Text>
+            <View style={styles.linksCard}>
+              {LINKS.map((link, idx) => (
+                <TouchableOpacity
+                  key={link.url}
+                  style={[styles.linkItem, idx < LINKS.length - 1 && styles.linkItemBorder]}
+                  onPress={() => Linking.openURL(link.url)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.linkText}>{link.label}</Text>
+                  <Text style={styles.linkArrow}>→</Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity
+                style={styles.linkItem}
+                onPress={() => Linking.openURL("https://github.com/nicepkg/ReadAny/issues")}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.linkText}>{t("about.feedback", "问题反馈")}</Text>
+                <Text style={styles.linkArrow}>→</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <Text style={styles.madeBy}>{t("about.madeBy", "Made with love by nicepkg")}</Text>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );

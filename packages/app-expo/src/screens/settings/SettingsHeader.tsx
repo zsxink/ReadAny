@@ -1,6 +1,7 @@
 import { useNavigation } from "@react-navigation/native";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { ChevronLeftIcon } from "../../components/ui/Icon";
+import { useResponsiveLayout } from "../../hooks/use-responsive-layout";
 import { fontSize, fontWeight, spacing, useColors } from "../../styles/theme";
 
 interface Props {
@@ -12,6 +13,7 @@ interface Props {
 export function SettingsHeader({ title, subtitle, right }: Props) {
   const nav = useNavigation();
   const colors = useColors();
+  const layout = useResponsiveLayout();
 
   return (
     <View
@@ -20,37 +22,43 @@ export function SettingsHeader({ title, subtitle, right }: Props) {
         { borderBottomColor: colors.border, backgroundColor: colors.background },
       ]}
     >
-      <TouchableOpacity
-        onPress={() => nav.goBack()}
-        style={styles.backBtn}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      >
-        <ChevronLeftIcon size={20} color={colors.foreground} />
-      </TouchableOpacity>
-      <View style={styles.titleWrap}>
-        <Text style={[styles.title, { color: colors.foreground }]} numberOfLines={1}>
-          {title}
-        </Text>
-        {subtitle ? (
-          <Text style={[styles.subtitle, { color: colors.mutedForeground }]} numberOfLines={1}>
-            {subtitle}
+      <View style={[styles.headerInner, { maxWidth: layout.centeredContentWidth }]}>
+        <TouchableOpacity
+          onPress={() => nav.goBack()}
+          style={styles.backBtn}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <ChevronLeftIcon size={20} color={colors.foreground} />
+        </TouchableOpacity>
+        <View style={styles.titleWrap}>
+          <Text style={[styles.title, { color: colors.foreground }]} numberOfLines={1}>
+            {title}
           </Text>
-        ) : null}
+          {subtitle ? (
+            <Text style={[styles.subtitle, { color: colors.mutedForeground }]} numberOfLines={1}>
+              {subtitle}
+            </Text>
+          ) : null}
+        </View>
+        <View style={styles.rightSlot}>{right}</View>
       </View>
-      <View style={styles.rightSlot}>{right}</View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   header: {
+    alignItems: "center",
+    paddingBottom: 12,
+    paddingTop: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  headerInner: {
+    width: "100%",
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
     paddingHorizontal: spacing.lg,
-    paddingBottom: 12,
-    paddingTop: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   backBtn: {
     padding: 4,

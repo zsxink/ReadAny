@@ -22,6 +22,7 @@ import {
   FlameIcon,
   SearchIcon,
 } from "@/components/ui/Icon";
+import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { useReadingSessionStore } from "@/stores";
 import { useColors, withOpacity } from "@/styles/theme";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
@@ -100,10 +101,22 @@ function shiftAnchor(date: Date, dim: StatsDimension, delta: -1 | 1): Date {
 
 export default function StatsScreen() {
   const colors = useColors();
-  const s = makeStyles(colors);
   const { t, i18n } = useTranslation();
   const isZh = i18n.language.startsWith("zh");
   const nav = useNavigation();
+  const layout = useResponsiveLayout();
+  const statsContentWidth = Math.min(
+    layout.centeredContentWidth,
+    layout.isTabletLandscape ? 1040 : layout.isTablet ? 860 : layout.centeredContentWidth,
+  );
+  const useTabletSectionGrid = layout.isTablet;
+  const sectionGap = 12;
+  const halfSectionWidth = Math.floor((statsContentWidth - sectionGap) / 2);
+  const primarySectionWidth = Math.floor((statsContentWidth - sectionGap) * 0.58);
+  const secondarySectionWidth = statsContentWidth - sectionGap - primarySectionWidth;
+  const metricColumns = layout.isTabletLandscape ? 5 : layout.isTablet ? 4 : 3;
+  const metricTileWidth = Math.floor((statsContentWidth - 8 * (metricColumns - 1)) / metricColumns);
+  const s = makeStyles(colors);
   const saveCurrentSession = useReadingSessionStore((ss) => ss.saveCurrentSession);
   const currentSession = useReadingSessionStore((ss) => ss.currentSession);
 
@@ -415,36 +428,45 @@ export default function StatsScreen() {
   const monthlyReport = report?.dimension === "month" ? report : null;
   const yearOrLifetimeReport =
     report?.dimension === "year" || report?.dimension === "lifetime" ? report : null;
+  const hasRhythmProfile = Boolean(
+    yearOrLifetimeReport &&
+      (yearOrLifetimeReport.timeOfDayChart || yearOrLifetimeReport.categoryDistribution),
+  );
 
   /* ━━━━━━━━━━ Render ━━━━━━━━━━ */
 
   return (
     <SafeAreaView style={s.container} edges={["top"]}>
       {/* Header */}
-      <View style={s.header}>
-        <TouchableOpacity
-          style={s.backBtn}
-          onPress={() => {
-            if (nav.canGoBack()) {
-              nav.goBack();
-            } else {
-              nav.navigate("Tabs" as never);
-            }
-          }}
-        >
-          <ChevronLeftIcon size={20} color={colors.foreground} />
-        </TouchableOpacity>
-        <Text style={s.headerTitle}>{t("stats.title")}</Text>
-        <View style={{ width: 36 }} />
+      <View style={[s.header, { paddingHorizontal: layout.horizontalPadding }]}>
+        <View style={[s.headerInner, { maxWidth: statsContentWidth }]}>
+          <TouchableOpacity
+            style={s.backBtn}
+            onPress={() => {
+              if (nav.canGoBack()) {
+                nav.goBack();
+              } else {
+                nav.navigate("Tabs" as never);
+              }
+            }}
+          >
+            <ChevronLeftIcon size={20} color={colors.foreground} />
+          </TouchableOpacity>
+          <Text style={s.headerTitle}>{t("stats.title")}</Text>
+          <View style={{ width: 36 }} />
+        </View>
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={s.scrollContent}
+        contentContainerStyle={[
+          s.scrollContent,
+          { paddingHorizontal: layout.horizontalPadding, alignItems: "center" },
+        ]}
         stickyHeaderIndices={[0]}
       >
         {/* Dimension tabs — sticky */}
-        <View style={s.dimTabsSticky}>
+        <View style={[s.dimTabsSticky, { width: "100%", maxWidth: statsContentWidth }]}>
           <View style={s.dimTabs}>
             {DIMENSIONS.map((dim) => (
               <TouchableOpacity
@@ -472,7 +494,7 @@ export default function StatsScreen() {
             icon={<SearchIcon size={24} color={withOpacity(colors.mutedForeground, 0.45)} />}
           />
         ) : (
-          <>
+          <View style={{ width: "100%", maxWidth: statsContentWidth }}>
             {/* ═══ Streak at risk banner ═══ */}
             {streakStatus?.atRisk && streakStatus.streakCount > 0 && (
               <View
@@ -551,13 +573,21 @@ export default function StatsScreen() {
               {/* Supporting metrics grid */}
               <View style={s.metricsGrid}>
                 {supportMetrics.map((m) => (
-                  <MetricTile key={m.label} label={m.label} value={m.value} sublabel={m.sublabel} delta={m.delta} deltaLabel={m.deltaLabel} />
+                  <MetricTile
+                    key={m.label}
+                    label={m.label}
+                    value={m.value}
+                    sublabel={m.sublabel}
+                    delta={m.delta}
+                    deltaLabel={m.deltaLabel}
+                    style={{ width: metricTileWidth }}
+                  />
                 ))}
               </View>
             </View>
 
             {/* ═══ Reading Goals (month/year only) ═══ */}
-            {activeGoalPeriod && (
+            {activeGoalPeriod && !(useTabletSectionGrid && report.dimension === "month") && (
               <SectionCard
                 title={goalSectionTitle}
                 description={goalSectionDescription}
@@ -572,7 +602,7 @@ export default function StatsScreen() {
             )}
 
             {/* ═══ Day Summary (day dimension) ═══ */}
-            {report.dimension === "day" && (
+            {report.dimension === "day" && !useTabletSectionGrid && (
               <SectionCard
                 title={copy.daySummary}
                 description={copy.daySummaryDesc}
@@ -587,7 +617,13 @@ export default function StatsScreen() {
             )}
 
             {/* ═══ Primary Chart ═══ */}
-            {primaryChart && (
+            {primaryChart &&
+              !(
+                useTabletSectionGrid &&
+                (report.dimension === "day" ||
+                  report.dimension === "month" ||
+                  report.dimension === "year")
+              ) && (
               <SectionCard
                 title={primaryChart.type === "heatmap"
                   ? t("stats.desktop.readingHeatmap")
@@ -602,6 +638,133 @@ export default function StatsScreen() {
                   copy={copy}
                 />
               </SectionCard>
+            )}
+
+            {useTabletSectionGrid && report.dimension === "day" && (
+              <View style={s.sectionGrid}>
+                {primaryChart && (
+                  <SectionCard
+                    title={primaryChart.type === "heatmap"
+                      ? t("stats.desktop.readingHeatmap")
+                      : t("stats.desktop.primaryChart")}
+                    description={primaryChart.type === "heatmap"
+                      ? t("stats.desktop.readingHeatmapDesc")
+                      : t("stats.desktop.primaryChartDesc")}
+                    style={{
+                      width: primarySectionWidth,
+                      marginBottom: 0,
+                    }}
+                  >
+                    <ChartSurface
+                      chart={primaryChart}
+                      isZh={isZh}
+                      copy={copy}
+                    />
+                  </SectionCard>
+                )}
+
+                <SectionCard
+                  title={copy.daySummary}
+                  description={copy.daySummaryDesc}
+                  style={{
+                    width: primaryChart ? secondarySectionWidth : statsContentWidth,
+                    marginBottom: 0,
+                  }}
+                >
+                  <DaySummaryPanel
+                    dayFact={report.dayFact}
+                    topBook={report.topBooks[0]}
+                    isZh={isZh}
+                    copy={copy}
+                  />
+                </SectionCard>
+              </View>
+            )}
+
+            {useTabletSectionGrid && report.dimension === "month" && (
+              <View style={s.sectionGrid}>
+                {primaryChart && (
+                  <SectionCard
+                    title={primaryChart.type === "heatmap"
+                      ? t("stats.desktop.readingHeatmap")
+                      : t("stats.desktop.primaryChart")}
+                    description={primaryChart.type === "heatmap"
+                      ? t("stats.desktop.readingHeatmapDesc")
+                      : t("stats.desktop.primaryChartDesc")}
+                    style={{
+                      width: activeGoalPeriod ? primarySectionWidth : statsContentWidth,
+                      marginBottom: 0,
+                    }}
+                  >
+                    <ChartSurface
+                      chart={primaryChart}
+                      isZh={isZh}
+                      copy={copy}
+                    />
+                  </SectionCard>
+                )}
+
+                {activeGoalPeriod && (
+                  <SectionCard
+                    title={goalSectionTitle}
+                    description={goalSectionDescription}
+                    style={{
+                      width: primaryChart ? secondarySectionWidth : statsContentWidth,
+                      marginBottom: 0,
+                    }}
+                  >
+                    <GoalsSection
+                      progress={visibleGoalProgress}
+                      onAddGoal={handleAddGoal}
+                      onRemoveGoal={removeGoalAction}
+                      currentDimension={dimension}
+                    />
+                  </SectionCard>
+                )}
+              </View>
+            )}
+
+            {useTabletSectionGrid && report.dimension === "year" && (
+              <View style={s.sectionGrid}>
+                {primaryChart && (
+                  <SectionCard
+                    title={primaryChart.type === "heatmap"
+                      ? t("stats.desktop.readingHeatmap")
+                      : t("stats.desktop.primaryChart")}
+                    description={primaryChart.type === "heatmap"
+                      ? t("stats.desktop.readingHeatmapDesc")
+                      : t("stats.desktop.primaryChartDesc")}
+                    style={{
+                      width: hasRhythmProfile ? primarySectionWidth : statsContentWidth,
+                      marginBottom: 0,
+                    }}
+                  >
+                    <ChartSurface
+                      chart={primaryChart}
+                      isZh={isZh}
+                      copy={copy}
+                    />
+                  </SectionCard>
+                )}
+
+                {hasRhythmProfile && (
+                  <SectionCard
+                    title={t("stats.desktop.rhythmProfile")}
+                    description={t("stats.desktop.rhythmProfileDesc")}
+                    style={{
+                      width: primaryChart ? secondarySectionWidth : statsContentWidth,
+                      marginBottom: 0,
+                    }}
+                  >
+                    <RhythmProfileSection
+                      timeOfDayChart={yearOrLifetimeReport?.timeOfDayChart}
+                      categoryChart={yearOrLifetimeReport?.categoryDistribution}
+                      isZh={isZh}
+                      copy={copy}
+                    />
+                  </SectionCard>
+                )}
+              </View>
             )}
 
             {/* ═══ Month Calendar (month dimension) ═══ */}
@@ -619,97 +782,128 @@ export default function StatsScreen() {
             )}
 
             {/* ═══ Rhythm Profile (year/lifetime) ═══ */}
-            {yearOrLifetimeReport &&
-              (yearOrLifetimeReport.timeOfDayChart || yearOrLifetimeReport.categoryDistribution) && (
-              <SectionCard
-                title={t("stats.desktop.rhythmProfile")}
-                description={t("stats.desktop.rhythmProfileDesc")}
-              >
-                <RhythmProfileSection
-                  timeOfDayChart={yearOrLifetimeReport.timeOfDayChart}
-                  categoryChart={yearOrLifetimeReport.categoryDistribution}
-                  isZh={isZh}
-                  copy={copy}
-                />
-              </SectionCard>
-            )}
-
-            {/* ═══ Journey Summary (lifetime) ═══ */}
-            {report.dimension === "lifetime" && (
-              <SectionCard
-                title={t("stats.desktop.journey")}
-                description={t("stats.desktop.journeySubtitle")}
-              >
-                <JourneySummaryPanel
-                  report={report}
-                  isZh={isZh}
-                  copy={copy}
-                />
-              </SectionCard>
-            )}
-
-            {/* ═══ Top Books ═══ */}
-            <SectionCard
-              title={t("stats.desktop.topBooks")}
-              description={t("stats.desktop.topBooksDesc")}
-              featured
-            >
-              <TopBooksSection
-                books={report.topBooks}
-                resolvedCovers={resolvedCovers}
-                isZh={isZh}
-                copy={copy}
-                allFacts={allFacts}
-              />
-            </SectionCard>
-
-            {/* ═══ Insights ═══ */}
-            {localizedInsights.length > 0 && (
-              <SectionCard
-                title={t("stats.desktop.insights")}
-                description={t("stats.desktop.insightsDesc")}
-              >
-                <InsightsSection insights={localizedInsights} copy={copy} />
-              </SectionCard>
-            )}
-
-            {/* ═══ Milestones (lifetime) ═══ */}
-            {report.dimension === "lifetime" && localizedMilestones.length > 0 && (
-              <SectionCard
-                title={t("stats.desktop.milestones")}
-                description={t("stats.desktop.milestonesDesc")}
-              >
-                <InsightsSection insights={localizedMilestones} copy={copy} />
-              </SectionCard>
-            )}
-
-            {/* ═══ Badges preview — lifetime only ═══ */}
-            {report.dimension === "lifetime" && (
-              <SectionCard
-                title={t("stats.desktop.badges")}
-                description={t("stats.desktop.badgesDesc")}
-                action={
-                  <TouchableOpacity
-                    onPress={() => (nav as any).navigate("Badges")}
-                    style={{ flexDirection: "row", alignItems: "center", gap: 2 }}
-                    activeOpacity={0.6}
+            {(yearOrLifetimeReport &&
+              (yearOrLifetimeReport.timeOfDayChart || yearOrLifetimeReport.categoryDistribution)) ||
+            report.dimension === "lifetime" ? (
+              <View style={useTabletSectionGrid ? s.sectionGrid : undefined}>
+                {yearOrLifetimeReport &&
+                  (yearOrLifetimeReport.timeOfDayChart || yearOrLifetimeReport.categoryDistribution) &&
+                  report.dimension === "lifetime" && (
+                  <SectionCard
+                    title={t("stats.desktop.rhythmProfile")}
+                    description={t("stats.desktop.rhythmProfileDesc")}
+                    style={useTabletSectionGrid ? { width: primarySectionWidth, marginBottom: 0 } : undefined}
                   >
-                    <Text style={{ fontSize: 12, fontWeight: "500", color: withOpacity(colors.primary, 0.6) }}>
-                      {t("stats.desktop.viewAllBadges")}
-                    </Text>
-                    <ChevronRightIcon size={14} color={withOpacity(colors.primary, 0.6)} />
-                  </TouchableOpacity>
+                    <RhythmProfileSection
+                      timeOfDayChart={yearOrLifetimeReport.timeOfDayChart}
+                      categoryChart={yearOrLifetimeReport.categoryDistribution}
+                      isZh={isZh}
+                      copy={copy}
+                    />
+                  </SectionCard>
+                )}
+
+                {report.dimension === "lifetime" && (
+                  <SectionCard
+                    title={t("stats.desktop.journey")}
+                    description={t("stats.desktop.journeySubtitle")}
+                    style={useTabletSectionGrid ? { width: hasRhythmProfile ? secondarySectionWidth : statsContentWidth, marginBottom: 0 } : undefined}
+                  >
+                    <JourneySummaryPanel
+                      report={report}
+                      isZh={isZh}
+                      copy={copy}
+                    />
+                  </SectionCard>
+                )}
+              </View>
+            ) : null}
+
+            <View style={useTabletSectionGrid ? s.sectionGrid : undefined}>
+              <SectionCard
+                title={t("stats.desktop.topBooks")}
+                description={t("stats.desktop.topBooksDesc")}
+                featured
+                style={
+                  useTabletSectionGrid
+                    ? {
+                        width:
+                          localizedInsights.length > 0 ? primarySectionWidth : statsContentWidth,
+                        marginBottom: 0,
+                      }
+                    : undefined
                 }
               >
-                <BadgesPreview
-                  earned={earnedBadges}
-                  t={t}
-                  onViewAll={() => (nav as any).navigate("Badges")}
+                <TopBooksSection
+                  books={report.topBooks}
+                  resolvedCovers={resolvedCovers}
+                  isZh={isZh}
+                  copy={copy}
+                  allFacts={allFacts}
                 />
               </SectionCard>
-            )}
 
-          </>
+              {localizedInsights.length > 0 && (
+                <SectionCard
+                  title={t("stats.desktop.insights")}
+                  description={t("stats.desktop.insightsDesc")}
+                  style={useTabletSectionGrid ? { width: secondarySectionWidth, marginBottom: 0 } : undefined}
+                >
+                  <InsightsSection insights={localizedInsights} copy={copy} />
+                </SectionCard>
+              )}
+            </View>
+
+            {report.dimension === "lifetime" &&
+            (localizedMilestones.length > 0 || earnedBadges.length > 0) ? (
+              <View style={useTabletSectionGrid ? s.sectionGrid : undefined}>
+                {localizedMilestones.length > 0 && (
+                  <SectionCard
+                    title={t("stats.desktop.milestones")}
+                    description={t("stats.desktop.milestonesDesc")}
+                    style={useTabletSectionGrid ? { width: halfSectionWidth, marginBottom: 0 } : undefined}
+                  >
+                    <InsightsSection insights={localizedMilestones} copy={copy} />
+                  </SectionCard>
+                )}
+
+                {report.dimension === "lifetime" && (
+                  <SectionCard
+                    title={t("stats.desktop.badges")}
+                    description={t("stats.desktop.badgesDesc")}
+                    style={
+                      useTabletSectionGrid
+                        ? {
+                            width:
+                              localizedMilestones.length > 0 ? halfSectionWidth : statsContentWidth,
+                            marginBottom: 0,
+                          }
+                        : undefined
+                    }
+                    action={
+                      <TouchableOpacity
+                        onPress={() => (nav as any).navigate("Badges")}
+                        style={{ flexDirection: "row", alignItems: "center", gap: 2 }}
+                        activeOpacity={0.6}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: "500", color: withOpacity(colors.primary, 0.6) }}>
+                          {t("stats.desktop.viewAllBadges")}
+                        </Text>
+                        <ChevronRightIcon size={14} color={withOpacity(colors.primary, 0.6)} />
+                      </TouchableOpacity>
+                    }
+                  >
+                    <BadgesPreview
+                      earned={earnedBadges}
+                      t={t}
+                      onViewAll={() => (nav as any).navigate("Badges")}
+                    />
+                  </SectionCard>
+                )}
+              </View>
+            ) : null}
+
+          </View>
         )}
       </ScrollView>
     </SafeAreaView>

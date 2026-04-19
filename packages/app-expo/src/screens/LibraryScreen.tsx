@@ -12,6 +12,7 @@ import {
 import { setCallback, setExtractorRef } from "@/lib/rag/auto-vectorize-service";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore } from "@/stores/library-store";
+import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import {
   type ThemeColors,
   fontSize,
@@ -36,7 +37,6 @@ import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   Animated,
-  Dimensions,
   FlatList,
   Image,
   Keyboard,
@@ -61,8 +61,6 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const NUM_COLUMNS = 3;
 const GRID_GAP = 12;
-const SCREEN_PADDING = 16;
-const screenWidth = Dimensions.get("window").width;
 
 const SORT_OPTIONS: { field: SortField; labelKey: string }[] = [
   { field: "lastOpenedAt", labelKey: "library.sortRecent" },
@@ -75,9 +73,27 @@ const SORT_OPTIONS: { field: SortField; labelKey: string }[] = [
 export function LibraryScreen() {
   const colors = useColors();
   const { isDark } = useTheme();
-  const s = makeStyles(colors);
   const { t } = useTranslation();
   const nav = useNavigation<Nav>();
+  const layout = useResponsiveLayout();
+  const gridGap = layout.isTablet ? 16 : GRID_GAP;
+  const columnCount = layout.isTabletLandscape ? 5 : layout.isTablet ? 4 : NUM_COLUMNS;
+  const contentWidth = layout.centeredContentWidth;
+  const gridItemWidth = Math.floor((contentWidth - gridGap * (columnCount - 1)) / columnCount);
+  const searchExpandedWidth = Math.min(
+    layout.isTabletLandscape ? 420 : layout.isTablet ? 360 : layout.width - 210,
+    Math.max(180, contentWidth - 220),
+  );
+  const s = useMemo(
+    () =>
+      makeStyles(colors, {
+        horizontalPadding: layout.horizontalPadding,
+        contentWidth,
+        gridGap,
+        gridItemWidth,
+      }),
+    [colors, contentWidth, gridGap, gridItemWidth, layout.horizontalPadding],
+  );
   const [showSearch, setShowSearch] = useState(false);
   const [showSort, setShowSort] = useState(false);
   const searchAnim = useRef(new Animated.Value(0)).current;
@@ -237,6 +253,7 @@ export function LibraryScreen() {
       <View style={s.gridItem}>
         <BookCard
           book={item}
+          cardWidth={gridItemWidth}
           onOpen={handleOpen}
           onDelete={removeBook}
           onManageTags={handleManageTags}
@@ -247,7 +264,7 @@ export function LibraryScreen() {
         />
       </View>
     ),
-    [handleOpen, removeBook, handleManageTags, handleVectorize, vectorizingBookId, vectorQueue, vectorProgress],
+    [gridItemWidth, handleOpen, removeBook, handleManageTags, handleVectorize, vectorizingBookId, vectorQueue, vectorProgress],
   );
 
   return (
@@ -266,85 +283,87 @@ export function LibraryScreen() {
 
       {/* Header */}
       <View style={[s.header, { zIndex: 20 }]}>
-        <View style={s.headerRow}>
-          <Text style={s.headerTitle}>{t("sidebar.library", "书库")}</Text>
-          <View style={s.headerActions}>
-            {hasBooks && (
-              <Animated.View
-                style={[
-                  s.animatedSearchWrap,
-                  {
-                    width: searchAnim.interpolate({ inputRange: [0, 1], outputRange: [36, screenWidth - 210] }),
-                    borderBottomColor: searchAnim.interpolate({ inputRange: [0, 1], outputRange: ["transparent", colors.primary] }),
-                    borderBottomWidth: searchAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 1] }),
-                  },
-                ]}
-              >
-                <TouchableOpacity
-                  style={s.headerBtn}
-                  onPress={() => {
-                    if (showSearch) {
-                      if (!filter.search.trim()) { closeSearch(); Keyboard.dismiss(); }
-                    } else {
-                      openSearch();
-                    }
-                  }}
-                  activeOpacity={0.7}
+        <View style={s.headerInner}>
+          <View style={s.headerRow}>
+            <Text style={s.headerTitle}>{t("sidebar.library", "书库")}</Text>
+            <View style={s.headerActions}>
+              {hasBooks && (
+                <Animated.View
+                  style={[
+                    s.animatedSearchWrap,
+                    {
+                      width: searchAnim.interpolate({ inputRange: [0, 1], outputRange: [36, searchExpandedWidth] }),
+                      borderBottomColor: searchAnim.interpolate({ inputRange: [0, 1], outputRange: ["transparent", colors.primary] }),
+                      borderBottomWidth: searchAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 1] }),
+                    },
+                  ]}
                 >
-                  <SearchIcon size={18} color={showSearch ? colors.primary : colors.mutedForeground} />
-                </TouchableOpacity>
-                <Animated.View style={{ flex: 1, opacity: searchAnim, flexDirection: "row", alignItems: "center" }}>
-                  <TextInput
-                    ref={searchInputRef}
-                    style={s.searchInputInline}
-                    placeholder={t("library.searchPlaceholder", "搜索...")}
-                    placeholderTextColor={colors.mutedForeground}
-                    value={filter.search}
-                    onChangeText={(text) => setFilter({ search: text })}
-                    onBlur={() => { if (!filter.search.trim()) closeSearch(); }}
-                    returnKeyType="search"
-                  />
-                  {filter.search.length > 0 && showSearch && (
-                    <TouchableOpacity style={s.clearSearchBtn} onPress={() => { setFilter({ search: "" }); searchInputRef.current?.focus(); }}>
-                      <XIcon size={14} color={colors.mutedForeground} />
-                    </TouchableOpacity>
-                  )}
+                  <TouchableOpacity
+                    style={s.headerBtn}
+                    onPress={() => {
+                      if (showSearch) {
+                        if (!filter.search.trim()) { closeSearch(); Keyboard.dismiss(); }
+                      } else {
+                        openSearch();
+                      }
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <SearchIcon size={18} color={showSearch ? colors.primary : colors.mutedForeground} />
+                  </TouchableOpacity>
+                  <Animated.View style={{ flex: 1, opacity: searchAnim, flexDirection: "row", alignItems: "center" }}>
+                    <TextInput
+                      ref={searchInputRef}
+                      style={s.searchInputInline}
+                      placeholder={t("library.searchPlaceholder", "搜索...")}
+                      placeholderTextColor={colors.mutedForeground}
+                      value={filter.search}
+                      onChangeText={(text) => setFilter({ search: text })}
+                      onBlur={() => { if (!filter.search.trim()) closeSearch(); }}
+                      returnKeyType="search"
+                    />
+                    {filter.search.length > 0 && showSearch && (
+                      <TouchableOpacity style={s.clearSearchBtn} onPress={() => { setFilter({ search: "" }); searchInputRef.current?.focus(); }}>
+                        <XIcon size={14} color={colors.mutedForeground} />
+                      </TouchableOpacity>
+                    )}
+                  </Animated.View>
                 </Animated.View>
-              </Animated.View>
-            )}
-            {hasBooks && (
-              <TouchableOpacity style={s.headerBtn} onPress={() => setShowSort(!showSort)}>
-                <SortAscIcon size={18} color={colors.mutedForeground} />
+              )}
+              {hasBooks && (
+                <TouchableOpacity style={s.headerBtn} onPress={() => setShowSort(!showSort)}>
+                  <SortAscIcon size={18} color={colors.mutedForeground} />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={s.importBtn} onPress={handleImport} disabled={isImporting} activeOpacity={0.8}>
+                {isImporting
+                  ? <ActivityIndicator size="small" color={colors.primaryForeground} />
+                  : <PlusIcon size={18} color={colors.primaryForeground} />}
               </TouchableOpacity>
-            )}
-            <TouchableOpacity style={s.importBtn} onPress={handleImport} disabled={isImporting} activeOpacity={0.8}>
-              {isImporting
-                ? <ActivityIndicator size="small" color={colors.primaryForeground} />
-                : <PlusIcon size={18} color={colors.primaryForeground} />}
-            </TouchableOpacity>
+            </View>
           </View>
-        </View>
 
-        {hasBooks && allTags.length > 0 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.tagScroll} contentContainerStyle={s.tagScrollContent}>
-            <TouchableOpacity style={[s.tagChip, !activeTag && s.tagChipActive]} onPress={() => setActiveTag("")}>
-              <Text style={[s.tagChipText, !activeTag && s.tagChipTextActive]}>{t("library.all", "全部")}</Text>
-            </TouchableOpacity>
-            {allTags.map((tag) => (
-              <TouchableOpacity key={tag} style={[s.tagChip, activeTag === tag && s.tagChipActive]} onPress={() => setActiveTag(activeTag === tag ? "" : tag)}>
-                <Text style={[s.tagChipText, activeTag === tag && s.tagChipTextActive]}>{tag}</Text>
+          {hasBooks && allTags.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.tagScroll} contentContainerStyle={s.tagScrollContent}>
+              <TouchableOpacity style={[s.tagChip, !activeTag && s.tagChipActive]} onPress={() => setActiveTag("")}>
+                <Text style={[s.tagChipText, !activeTag && s.tagChipTextActive]}>{t("library.all", "全部")}</Text>
               </TouchableOpacity>
-            ))}
-            <TouchableOpacity
-              style={[s.tagChip, activeTag === "__uncategorized__" && s.tagChipActive]}
-              onPress={() => setActiveTag(activeTag === "__uncategorized__" ? "" : "__uncategorized__")}
-            >
-              <Text style={[s.tagChipText, activeTag === "__uncategorized__" && s.tagChipTextActive]}>
-                {t("sidebar.uncategorized", "未分类")}
-              </Text>
-            </TouchableOpacity>
-          </ScrollView>
-        )}
+              {allTags.map((tag) => (
+                <TouchableOpacity key={tag} style={[s.tagChip, activeTag === tag && s.tagChipActive]} onPress={() => setActiveTag(activeTag === tag ? "" : tag)}>
+                  <Text style={[s.tagChipText, activeTag === tag && s.tagChipTextActive]}>{tag}</Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity
+                style={[s.tagChip, activeTag === "__uncategorized__" && s.tagChipActive]}
+                onPress={() => setActiveTag(activeTag === "__uncategorized__" ? "" : "__uncategorized__")}
+              >
+                <Text style={[s.tagChipText, activeTag === "__uncategorized__" && s.tagChipTextActive]}>
+                  {t("sidebar.uncategorized", "未分类")}
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          )}
+        </View>
       </View>
 
       {/* Sort dropdown */}
@@ -372,6 +391,7 @@ export function LibraryScreen() {
 
       {/* Content */}
       <View style={s.content}>
+        <View style={s.contentInner}>
         {!isLoaded && (
           <View style={s.loadingWrap}>
             <ActivityIndicator size="large" color={colors.mutedForeground} />
@@ -418,12 +438,14 @@ export function LibraryScreen() {
             data={filteredBooks}
             renderItem={renderBookCard}
             keyExtractor={(item) => item.id}
-            numColumns={NUM_COLUMNS}
+            key={`library-grid-${columnCount}`}
+            numColumns={columnCount}
             columnWrapperStyle={s.gridRow}
             contentContainerStyle={s.gridContent}
             showsVerticalScrollIndicator={false}
           />
         )}
+        </View>
       </View>
 
       <TagManagementSheet
@@ -441,10 +463,14 @@ export function LibraryScreen() {
   );
 }
 
-const makeStyles = (colors: ThemeColors) =>
+const makeStyles = (
+  colors: ThemeColors,
+  layout: { horizontalPadding: number; contentWidth: number; gridGap: number; gridItemWidth: number },
+) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    header: { paddingHorizontal: SCREEN_PADDING, paddingTop: 12, paddingBottom: 8 },
+    header: { paddingHorizontal: layout.horizontalPadding, paddingTop: 12, paddingBottom: 8, alignItems: "center" },
+    headerInner: { width: "100%", maxWidth: layout.contentWidth },
     headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
     headerTitle: { fontSize: fontSize["2xl"], fontWeight: fontWeight.bold, color: colors.foreground },
     headerActions: { flexDirection: "row", alignItems: "center", gap: 4 },
@@ -461,7 +487,7 @@ const makeStyles = (colors: ThemeColors) =>
     tagChipTextActive: { color: colors.primaryForeground },
     sortOverlay: { flex: 1 },
     sortDropdown: {
-      position: "absolute", top: 110, right: 16, minWidth: 160,
+      position: "absolute", top: 110, right: layout.horizontalPadding, minWidth: 180,
       backgroundColor: colors.card, borderRadius: radius.xl, borderWidth: 0.5, borderColor: colors.border,
       padding: 4, elevation: 5, shadowColor: "#000", shadowOffset: { width: 0, height: 4 },
       shadowOpacity: 0.3, shadowRadius: 8,
@@ -470,7 +496,8 @@ const makeStyles = (colors: ThemeColors) =>
     sortItemActive: { backgroundColor: colors.muted },
     sortText: { fontSize: fontSize.xs, color: colors.foreground },
     sortTextActive: { fontWeight: fontWeight.medium },
-    content: { flex: 1, paddingHorizontal: SCREEN_PADDING },
+    content: { flex: 1, paddingHorizontal: layout.horizontalPadding, alignItems: "center" },
+    contentInner: { flex: 1, width: "100%", maxWidth: layout.contentWidth },
     loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
     importBanner: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.muted + "0D", borderRadius: radius.lg, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 12 },
     importBannerText: { fontSize: fontSize.xs, color: colors.primary },
@@ -495,7 +522,7 @@ const makeStyles = (colors: ThemeColors) =>
     noResultsWrap: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 80 },
     noResultsText: { fontSize: fontSize.sm, color: colors.mutedForeground, marginTop: 12 },
     resultsCount: { fontSize: fontSize.xs, color: colors.mutedForeground, marginBottom: 8 },
-    gridRow: { gap: GRID_GAP },
-    gridContent: { paddingBottom: 16, paddingTop: 4 },
-    gridItem: { width: (screenWidth - SCREEN_PADDING * 2 - GRID_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS, marginBottom: 4 },
+    gridRow: { gap: layout.gridGap, justifyContent: "flex-start" },
+    gridContent: { paddingBottom: 24, paddingTop: 4, width: "100%" },
+    gridItem: { width: layout.gridItemWidth, marginBottom: layout.gridGap },
   });

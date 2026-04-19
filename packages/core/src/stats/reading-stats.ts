@@ -24,6 +24,8 @@ export interface BookStats {
 export interface OverallStats {
   totalBooks: number;
   totalReadingTime: number; // minutes
+  totalCharactersRead?: number;
+  avgCharactersPerMinute?: number;
   totalSessions: number;
   totalReadingDays: number; // days
   avgDailyTime: number; // minutes
@@ -117,6 +119,7 @@ export class ReadingStatsService {
     let totalTime = 0;
     let totalSessions = 0;
     let totalPages = 0;
+    let totalCharactersRead = 0;
     const readingDays = new Set<string>();
     const readBookIds = new Set<string>();
 
@@ -130,6 +133,7 @@ export class ReadingStatsService {
         totalTime += session.totalActiveTime;
         totalSessions++;
         totalPages += session.pagesRead;
+        totalCharactersRead += session.charactersRead ?? 0;
         readingDays.add(new Date(session.startedAt).toISOString().split("T")[0]);
         readBookIds.add(book.id);
       }
@@ -143,6 +147,8 @@ export class ReadingStatsService {
     return {
       totalBooks: readBookIds.size,
       totalReadingTime: totalTime / 60000,
+      totalCharactersRead,
+      avgCharactersPerMinute: totalTime > 0 ? totalCharactersRead / (totalTime / 60000) : 0,
       totalSessions,
       totalReadingDays: readingDays.size,
       avgDailyTime: totalTime / 60000 / daysCount,

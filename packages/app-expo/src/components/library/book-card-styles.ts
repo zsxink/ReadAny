@@ -1,15 +1,16 @@
 import { type ThemeColors, fontSize, fontWeight, radius } from "@/styles/theme";
-import { Dimensions, StyleSheet } from "react-native";
+import { StyleSheet } from "react-native";
 
-const SCREEN_PADDING = 16;
-const NUM_COLUMNS = 3;
-const GRID_GAP = 12;
-const screenWidth = Dimensions.get("window").width;
-export const coverWidth = (screenWidth - SCREEN_PADDING * 2 - GRID_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
-export const coverHeight = coverWidth * (41 / 28);
+export function getBookCardMetrics(cardWidth: number) {
+  const coverWidth = cardWidth;
+  const coverHeight = coverWidth * (41 / 28);
+  return { coverWidth, coverHeight };
+}
 
-export const makeStyles = (colors: ThemeColors) =>
-  StyleSheet.create({
+export const makeStyles = (colors: ThemeColors, cardWidth: number) => {
+  const { coverWidth, coverHeight } = getBookCardMetrics(cardWidth);
+
+  return StyleSheet.create({
     container: { width: coverWidth },
     coverWrap: {
       width: coverWidth,
@@ -115,3 +116,4 @@ export const makeStyles = (colors: ThemeColors) =>
     newText: { fontSize: 8, fontWeight: fontWeight.medium, color: colors.primary },
     formatText: { fontSize: 8, color: `${colors.mutedForeground}99`, textTransform: "uppercase", letterSpacing: 0.5 },
   });
+};

@@ -1,5 +1,6 @@
 import { getPlatformService } from "@readany/core/services";
 import { useSyncStore } from "@readany/core/stores";
+import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import type { S3Config, WebDavConfig } from "@readany/core/sync/sync-backend";
 import { SYNC_SECRET_KEYS } from "@readany/core/sync/sync-backend";
 /**
@@ -49,6 +50,7 @@ export default function SyncSettingsScreen() {
   const colors = useColors();
   const styles = makeStyles(colors);
   const { t } = useTranslation();
+  const layout = useResponsiveLayout();
 
   const {
     config,
@@ -308,85 +310,86 @@ export default function SyncSettingsScreen() {
       >
         <ScrollView
           style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { alignItems: "center" }]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
-          {/* Backend Type Selector */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t("settings.syncBackendType")}</Text>
-            <View style={styles.backendSelector}>
-              {(["webdav", "s3", "lan"] as const).map((backend) => (
-                <TouchableOpacity
-                  key={backend}
-                  style={[styles.backendBtn, selectedBackend === backend && styles.backendBtnActive]}
-                  onPress={() => setSelectedBackend(backend)}
-                >
-                  <Text
-                    style={[
-                      styles.backendBtnText,
-                      selectedBackend === backend && styles.backendBtnTextActive,
-                    ]}
+          <View style={{ width: "100%", maxWidth: layout.centeredContentWidth }}>
+            {/* Backend Type Selector */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{t("settings.syncBackendType")}</Text>
+              <View style={styles.backendSelector}>
+                {(["webdav", "s3", "lan"] as const).map((backend) => (
+                  <TouchableOpacity
+                    key={backend}
+                    style={[styles.backendBtn, selectedBackend === backend && styles.backendBtnActive]}
+                    onPress={() => setSelectedBackend(backend)}
                   >
-                    {backend === "webdav" ? "WebDAV" : backend === "s3" ? "S3" : "LAN"}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Text
+                      style={[
+                        styles.backendBtnText,
+                        selectedBackend === backend && styles.backendBtnTextActive,
+                      ]}
+                    >
+                      {backend === "webdav" ? "WebDAV" : backend === "s3" ? "S3" : "LAN"}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
-          </View>
 
-          {selectedBackend === "webdav" && (
-            <WebDavForm
-              url={url}
-              username={username}
-              password={password}
-              allowInsecure={allowInsecure}
-              testing={testing}
-              testResult={testResult}
-              testError={testError}
-              saving={saving}
-              onChangeUrl={setUrl}
-              onChangeUsername={setUsername}
-              onChangePassword={setPassword}
-              onToggleAllowInsecure={() => setAllowInsecure(!allowInsecure)}
-              onTest={handleTest}
-              onSave={handleSave}
-            />
-          )}
+            {selectedBackend === "webdav" && (
+              <WebDavForm
+                url={url}
+                username={username}
+                password={password}
+                allowInsecure={allowInsecure}
+                testing={testing}
+                testResult={testResult}
+                testError={testError}
+                saving={saving}
+                onChangeUrl={setUrl}
+                onChangeUsername={setUsername}
+                onChangePassword={setPassword}
+                onToggleAllowInsecure={() => setAllowInsecure(!allowInsecure)}
+                onTest={handleTest}
+                onSave={handleSave}
+              />
+            )}
 
-          {selectedBackend === "s3" && (
-            <S3Form
-              s3Endpoint={s3Endpoint}
-              s3Region={s3Region}
-              s3Bucket={s3Bucket}
-              s3AccessKeyId={s3AccessKeyId}
-              s3SecretAccessKey={s3SecretAccessKey}
-              testing={testing}
-              testResult={testResult}
-              testError={testError}
-              saving={saving}
-              onChangeEndpoint={setS3Endpoint}
-              onChangeRegion={setS3Region}
-              onChangeBucket={setS3Bucket}
-              onChangeAccessKeyId={setS3AccessKeyId}
-              onChangeSecretAccessKey={setS3SecretAccessKey}
-              onTest={handleTest}
-              onSave={handleSave}
-            />
-          )}
+            {selectedBackend === "s3" && (
+              <S3Form
+                s3Endpoint={s3Endpoint}
+                s3Region={s3Region}
+                s3Bucket={s3Bucket}
+                s3AccessKeyId={s3AccessKeyId}
+                s3SecretAccessKey={s3SecretAccessKey}
+                testing={testing}
+                testResult={testResult}
+                testError={testError}
+                saving={saving}
+                onChangeEndpoint={setS3Endpoint}
+                onChangeRegion={setS3Region}
+                onChangeBucket={setS3Bucket}
+                onChangeAccessKeyId={setS3AccessKeyId}
+                onChangeSecretAccessKey={setS3SecretAccessKey}
+                onTest={handleTest}
+                onSave={handleSave}
+              />
+            )}
 
-          {selectedBackend === "lan" && (
-            <LanSection
-              isBusy={isBusy}
-              progress={progress}
-              pulseAnim={pulseAnim}
-              progressLabel={progressLabel}
-              onSyncWithBackend={syncWithBackend}
-            />
-          )}
+            {selectedBackend === "lan" && (
+              <LanSection
+                isBusy={isBusy}
+                progress={progress}
+                pulseAnim={pulseAnim}
+                progressLabel={progressLabel}
+                onSyncWithBackend={syncWithBackend}
+              />
+            )}
 
-          {/* Conflict Resolution */}
-          {pendingDirection === "conflict" && (
+            {/* Conflict Resolution */}
+            {pendingDirection === "conflict" && (
             <View style={styles.section}>
               <View style={styles.conflictCard}>
                 <Text style={styles.conflictTitle}>{t("settings.syncConflictTitle")}</Text>
@@ -409,10 +412,10 @@ export default function SyncSettingsScreen() {
                 </View>
               </View>
             </View>
-          )}
+            )}
 
-          {/* Sync Status */}
-          {selectedBackend !== "lan" && (isConfigured || isBusy || lastSyncAt) && (
+            {/* Sync Status */}
+            {selectedBackend !== "lan" && (isConfigured || isBusy || lastSyncAt) && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>
                 {isLanContext ? t("settings.syncLANImportStatus") : t("settings.syncStatus")}
@@ -535,10 +538,10 @@ export default function SyncSettingsScreen() {
                 )}
               </View>
             </View>
-          )}
+            )}
 
-          {/* Advanced */}
-          {isConfigured && selectedBackend !== "lan" && (
+            {/* Advanced */}
+            {isConfigured && selectedBackend !== "lan" && (
             <View style={styles.section}>
               <TouchableOpacity
                 style={styles.advancedHeader}
@@ -582,7 +585,8 @@ export default function SyncSettingsScreen() {
                 </View>
               )}
             </View>
-          )}
+            )}
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

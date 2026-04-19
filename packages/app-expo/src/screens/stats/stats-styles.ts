@@ -16,13 +16,18 @@ export const makeStyles = (colors: ThemeColors) =>
 
     /* ── Header ── */
     header: {
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 12,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    headerInner: {
+      width: "100%",
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      paddingHorizontal: 12,
       paddingVertical: 10,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.border,
     },
     backBtn: {
       width: 36,
@@ -233,6 +238,12 @@ export const makeStyles = (colors: ThemeColors) =>
       marginTop: 2,
     },
     sectionHeader: { marginBottom: 14 },
+    sectionGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 12,
+      marginBottom: 12,
+    },
 
     /* ── Chart toggle ── */
     toggleRow: {

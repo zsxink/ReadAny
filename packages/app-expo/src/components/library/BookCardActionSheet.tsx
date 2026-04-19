@@ -1,4 +1,5 @@
 import { DatabaseIcon, HashIcon, Trash2Icon } from "@/components/ui/Icon";
+import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { type ThemeColors, fontSize, fontWeight, radius, useColors } from "@/styles/theme";
 import type { Book } from "@readany/core/types";
 import { useTranslation } from "react-i18next";
@@ -23,12 +24,22 @@ export function BookCardActionSheet({
 }: BookCardActionSheetProps) {
   const colors = useColors();
   const s = makeStyles(colors);
+  const layout = useResponsiveLayout();
   const { t } = useTranslation();
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={s.overlay} onPress={onClose} />
-      <View style={s.sheet}>
+      <View
+        style={[
+          s.sheet,
+          layout.isTablet && {
+            width: "100%",
+            maxWidth: Math.min(layout.centeredContentWidth, 640),
+            alignSelf: "center",
+          },
+        ]}
+      >
         <View style={s.handle} />
         <View style={s.header}>
           <Text style={s.title} numberOfLines={1}>{book.meta.title}</Text>

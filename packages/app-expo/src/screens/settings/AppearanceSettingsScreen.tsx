@@ -1,4 +1,5 @@
 import { BookOpenIcon, MoonIcon, SunIcon } from "@/components/ui/Icon";
+import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { useTheme } from "@/styles/ThemeContext";
 import type { ThemeMode } from "@/styles/ThemeContext";
 import { fontSize, fontWeight, radius, spacing } from "@/styles/theme";
@@ -22,6 +23,7 @@ const LANGUAGES = [
 export default function AppearanceSettingsScreen() {
   const { t, i18n } = useTranslation();
   const { mode, setMode, colors } = useTheme();
+  const layout = useResponsiveLayout();
   const [lang, setLang] = useState(() => (i18n.language?.startsWith("zh") ? "zh" : "en"));
 
   // Update lang state when i18n.language changes
@@ -49,77 +51,79 @@ export default function AppearanceSettingsScreen() {
         subtitle={t("settings.realtimeHint")}
       />
 
-      <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent}>
-        {/* Theme */}
-        <View style={s.section}>
-          <Text style={[s.sectionTitle, { color: colors.mutedForeground }]}>
-            {t("settings.theme", "主题")}
-          </Text>
-          <View style={s.themeGrid}>
-            {THEMES.map((item) => {
-              const active = mode === item.id;
-              return (
+      <ScrollView style={s.scroll} contentContainerStyle={[s.scrollContent, { alignItems: "center" }]}>
+        <View style={{ width: "100%", maxWidth: layout.centeredContentWidth, gap: 24 }}>
+          {/* Theme */}
+          <View style={s.section}>
+            <Text style={[s.sectionTitle, { color: colors.mutedForeground }]}>
+              {t("settings.theme", "主题")}
+            </Text>
+            <View style={s.themeGrid}>
+              {THEMES.map((item) => {
+                const active = mode === item.id;
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={[
+                      s.themeCard,
+                      { borderColor: colors.border, backgroundColor: colors.card },
+                      active && {
+                        borderColor: colors.primary,
+                        backgroundColor: colors.primary + "0D",
+                      },
+                    ]}
+                    onPress={() => setMode(item.id)}
+                    activeOpacity={0.7}
+                  >
+                    <item.Icon size={24} color={active ? colors.primary : colors.mutedForeground} />
+                    <Text
+                      style={[
+                        s.themeLabel,
+                        { color: colors.foreground },
+                        active && { fontWeight: fontWeight.medium, color: colors.primary },
+                      ]}
+                    >
+                      {t(item.labelKey, item.fallback)}
+                    </Text>
+                    {active && (
+                      <View style={s.checkBadge}>
+                        <Text style={[s.checkMark, { color: colors.primary }]}>✓</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Language */}
+          <View style={s.section}>
+            <Text style={[s.sectionTitle, { color: colors.mutedForeground }]}>
+              {t("settings.language", "语言")}
+            </Text>
+            <View style={[s.listCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              {LANGUAGES.map((l, idx) => (
                 <TouchableOpacity
-                  key={item.id}
+                  key={l.code}
                   style={[
-                    s.themeCard,
-                    { borderColor: colors.border, backgroundColor: colors.card },
-                    active && {
-                      borderColor: colors.primary,
-                      backgroundColor: colors.primary + "0D",
+                    s.listItem,
+                    idx < LANGUAGES.length - 1 && {
+                      borderBottomWidth: StyleSheet.hairlineWidth,
+                      borderBottomColor: colors.border,
                     },
                   ]}
-                  onPress={() => setMode(item.id)}
+                  onPress={() => handleLangChange(l.code)}
                   activeOpacity={0.7}
                 >
-                  <item.Icon size={24} color={active ? colors.primary : colors.mutedForeground} />
-                  <Text
-                    style={[
-                      s.themeLabel,
-                      { color: colors.foreground },
-                      active && { fontWeight: fontWeight.medium, color: colors.primary },
-                    ]}
-                  >
-                    {t(item.labelKey, item.fallback)}
+                  <Text style={[s.listItemText, { color: colors.foreground }]}>
+                    {t(l.labelKey, l.fallback)}
                   </Text>
-                  {active && (
-                    <View style={s.checkBadge}>
-                      <Text style={[s.checkMark, { color: colors.primary }]}>✓</Text>
-                    </View>
+                  {lang === l.code && (
+                    <Text style={[s.checkPrimary, { color: colors.primary }]}>✓</Text>
                   )}
                 </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* Language */}
-        <View style={s.section}>
-          <Text style={[s.sectionTitle, { color: colors.mutedForeground }]}>
-            {t("settings.language", "语言")}
-          </Text>
-          <View style={[s.listCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            {LANGUAGES.map((l, idx) => (
-              <TouchableOpacity
-                key={l.code}
-                style={[
-                  s.listItem,
-                  idx < LANGUAGES.length - 1 && {
-                    borderBottomWidth: StyleSheet.hairlineWidth,
-                    borderBottomColor: colors.border,
-                  },
-                ]}
-                onPress={() => handleLangChange(l.code)}
-                activeOpacity={0.7}
-              >
-                <Text style={[s.listItemText, { color: colors.foreground }]}>
-                  {t(l.labelKey, l.fallback)}
-                </Text>
-                {lang === l.code && (
-                  <Text style={[s.checkPrimary, { color: colors.primary }]}>✓</Text>
-                )}
-              </TouchableOpacity>
-            ))}
+              ))}
+            </View>
           </View>
         </View>
       </ScrollView>

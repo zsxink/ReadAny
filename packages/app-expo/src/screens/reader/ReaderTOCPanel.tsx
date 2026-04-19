@@ -7,6 +7,7 @@ import {
   Trash2Icon,
   XIcon,
 } from "@/components/ui/Icon";
+import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { useColors } from "@/styles/theme";
 import { fontSize } from "@/styles/theme";
 import type { TOCItem } from "@readany/core/types";
@@ -55,6 +56,7 @@ export function ReaderTOCPanel({
   const colors = useColors();
   const s = makeStyles(colors);
   const insets = useSafeAreaInsets();
+  const layout = useResponsiveLayout();
   const { t, i18n } = useTranslation();
 
   return (
@@ -69,6 +71,11 @@ export function ReaderTOCPanel({
         style={[
           s.bottomSheet,
           { maxHeight: SCREEN_HEIGHT * 0.7, paddingBottom: insets.bottom || 16 },
+          layout.isTablet && {
+            width: "100%",
+            maxWidth: Math.min(layout.centeredContentWidth, 760),
+            alignSelf: "center",
+          },
         ]}
       >
         <View style={s.sheetHeader}>

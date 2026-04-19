@@ -75,6 +75,11 @@ const MAX_TRACKED_PAGE_DELTA = 20;
 const MAX_TRACKED_FRACTION_DELTA = 0.08;
 const INITIAL_PROGRESS_RESTORE_GUARD_MS = 1800;
 const PROGRAMMATIC_NAV_GUARD_MS = 1200;
+const NOTE_TOOLTIP_WIDTH = 300;
+const NOTE_TOOLTIP_SIDE_PADDING = 12;
+const NOTE_TOOLTIP_ABOVE_OFFSET = 2;
+const NOTE_TOOLTIP_BELOW_OFFSET = 8;
+const NOTE_TOOLTIP_TOP_THRESHOLD = 180;
 import { ReaderSettingsPanel } from "./reader/ReaderSettingsPanel";
 import { ReaderTOCPanel } from "./reader/ReaderTOCPanel";
 import {
@@ -172,6 +177,8 @@ export function ReaderScreen({ route, navigation }: Props) {
     position: { x: number; y: number; selectionTop: number; selectionBottom: number };
   } | null>(null);
   const noteTooltipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const noteTooltipVisibleRef = useRef(false);
+  const suppressReaderTapUntilRef = useRef(0);
   const assetLoadedRef = useRef(false);
   // Mediator ref so onRelocate can fire TTS continuation without direct hook dependency
   const ttsPendingContinueRef = useRef<{
@@ -661,6 +668,12 @@ export function ReaderScreen({ route, navigation }: Props) {
       readingContextService.clearSelection();
     },
     onTap: () => {
+      if (
+        noteTooltipVisibleRef.current ||
+        Date.now() < suppressReaderTapUntilRef.current
+      ) {
+        return;
+      }
       sendEvent({ type: "activity" });
       if (selection) {
         setSelection(null);
@@ -700,6 +713,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       value: string;
       position: { x: number; y: number; selectionTop: number; selectionBottom: number };
     }) => {
+      suppressReaderTapUntilRef.current = Date.now() + 650;
       const highlight = highlights.find((h) => h.cfi === detail.value);
       if (!highlight) return;
       if (highlight.note) {
@@ -721,6 +735,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       }
     },
     onNoteTooltip: (detail) => {
+      suppressReaderTapUntilRef.current = Date.now() + 900;
       // Dismiss any existing tooltip
       if (noteTooltipTimer.current) {
         clearTimeout(noteTooltipTimer.current);
@@ -743,6 +758,10 @@ export function ReaderScreen({ route, navigation }: Props) {
       bookmark.onBookmarkSnippet(text);
     },
   });
+
+  useEffect(() => {
+    noteTooltipVisibleRef.current = !!noteTooltip;
+  }, [noteTooltip]);
 
 
   // ── Volume button paging ─────────────────────────────────────────────────
@@ -769,6 +788,7 @@ export function ReaderScreen({ route, navigation }: Props) {
     bookId,
     bookTitle: bookTitle || book?.meta.title || "",
     currentChapter,
+    currentSectionIndex,
     currentCfi,
     webViewReady,
     showTTS,
@@ -1096,6 +1116,28 @@ export function ReaderScreen({ route, navigation }: Props) {
   const readerBottomInset =
     !showSearch && showBottomTimeBattery ? Math.max(insets.bottom, 8) + 14 : 0;
   const batteryLabel = batteryLevel == null ? "--%" : `${Math.round(batteryLevel * 100)}%`;
+  const selectionPopoverSelection = selection
+    ? {
+        ...selection,
+        position: {
+          ...selection.position,
+          y: selection.position.y + readerTopMargin,
+          selectionTop: selection.position.selectionTop + readerTopMargin,
+          selectionBottom: selection.position.selectionBottom + readerTopMargin,
+        },
+      }
+    : null;
+  const adjustedNoteTooltip = noteTooltip
+    ? {
+        ...noteTooltip,
+        position: {
+          ...noteTooltip.position,
+          y: noteTooltip.position.y + readerTopMargin,
+          selectionTop: noteTooltip.position.selectionTop + readerTopMargin,
+          selectionBottom: noteTooltip.position.selectionBottom + readerTopMargin,
+        },
+      }
+    : null;
 
   return (
     <View style={[s.container, { paddingBottom: insets.bottom }]}>
@@ -1226,16 +1268,16 @@ export function ReaderScreen({ route, navigation }: Props) {
       )}
 
       {/* Selection Popover */}
-      {selection && (
+      {selectionPopoverSelection && (
         <SelectionPopover
-          selection={selection}
+          selection={selectionPopoverSelection}
           onHighlight={handleHighlight}
           onDismiss={handleDismissSelection}
           onCopy={() => {
             setSelection(null);
           }}
           onAIChat={() => {
-            const selectedText = selection.text;
+            const selectedText = selectionPopoverSelection.text;
             const chapter = currentChapter;
             setSelection(null);
             navigation.navigate("BookChat", {
@@ -1248,7 +1290,7 @@ export function ReaderScreen({ route, navigation }: Props) {
             const mutation = createSelectionNoteMutation({
               bookId,
               cfi,
-              text: selection.text,
+              text: selectionPopoverSelection.text,
               note: text,
               chapterTitle: currentChapter,
               existingHighlight: existingSelectionHighlight,
@@ -1288,7 +1330,7 @@ export function ReaderScreen({ route, navigation }: Props) {
               : null
           }
           onRemoveHighlight={() => {
-            const existing = highlights.find((h) => h.cfi === selection.cfi);
+            const existing = highlights.find((h) => h.cfi === selectionPopoverSelection.cfi);
             if (existing) {
               removeHighlight(existing.id);
               bridge.removeAnnotation({ value: existing.cfi });
@@ -1298,38 +1340,64 @@ export function ReaderScreen({ route, navigation }: Props) {
       )}
 
       {/* Note Tooltip (long-press on wavy underline) */}
-      {noteTooltip && (
-        <TouchableOpacity
-          style={StyleSheet.absoluteFill}
-          activeOpacity={1}
-          onPress={() => {
-            if (noteTooltipTimer.current) {
-              clearTimeout(noteTooltipTimer.current);
-              noteTooltipTimer.current = null;
-            }
-            setNoteTooltip(null);
-          }}
-        >
-          <View
+      {adjustedNoteTooltip && (
+        <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => {
+              suppressReaderTapUntilRef.current = Date.now() + 350;
+              if (noteTooltipTimer.current) {
+                clearTimeout(noteTooltipTimer.current);
+                noteTooltipTimer.current = null;
+              }
+              setNoteTooltip(null);
+            }}
+          />
+          <Pressable
             style={[
               s.noteTooltip,
               {
-                left: Math.max(12, Math.min(noteTooltip.position.x - 150, SCREEN_WIDTH - 312)),
-                ...(noteTooltip.position.selectionTop > 220
-                  ? { bottom: SCREEN_HEIGHT - noteTooltip.position.selectionTop + 8 }
-                  : { top: noteTooltip.position.selectionBottom + 12 }),
+                left: Math.max(
+                  NOTE_TOOLTIP_SIDE_PADDING,
+                  Math.min(
+                    adjustedNoteTooltip.position.x - NOTE_TOOLTIP_WIDTH / 2,
+                    SCREEN_WIDTH - NOTE_TOOLTIP_WIDTH - NOTE_TOOLTIP_SIDE_PADDING,
+                  ),
+                ),
+                ...(adjustedNoteTooltip.position.selectionTop > NOTE_TOOLTIP_TOP_THRESHOLD
+                  ? {
+                      bottom:
+                        SCREEN_HEIGHT -
+                        adjustedNoteTooltip.position.selectionTop +
+                        NOTE_TOOLTIP_ABOVE_OFFSET,
+                    }
+                  : {
+                      top:
+                        adjustedNoteTooltip.position.selectionBottom +
+                        NOTE_TOOLTIP_BELOW_OFFSET,
+                    }),
               },
             ]}
+            onPress={(event) => {
+              event.stopPropagation();
+              suppressReaderTapUntilRef.current = Date.now() + 550;
+            }}
+            onPressIn={(event) => {
+              event.stopPropagation();
+              suppressReaderTapUntilRef.current = Date.now() + 550;
+            }}
             onStartShouldSetResponder={() => true}
+            onMoveShouldSetResponder={() => true}
+            onResponderTerminationRequest={() => false}
           >
             <View style={s.noteTooltipContent}>
               <MarkdownRenderer
-                content={noteTooltip.note || ""}
+                content={adjustedNoteTooltip.note || ""}
                 styleOverrides={noteTooltipMdStyles}
               />
             </View>
-          </View>
-        </TouchableOpacity>
+          </Pressable>
+        </View>
       )}
 
       {!showSearch && (
