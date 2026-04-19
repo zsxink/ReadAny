@@ -493,6 +493,9 @@ export function ReaderScreen({ route, navigation }: Props) {
         routeCfi: cfi,
         lastNavigated: lastNavigatedCfiRef.current,
       });
+      if (loading) {
+        setLoading(false);
+      }
       // Track section changes for chapter translation reset
       const newSection = detail.section?.current ?? 0;
       if (newSection !== currentSectionIndex) {
@@ -899,6 +902,8 @@ export function ReaderScreen({ route, navigation }: Props) {
 
     const loadBook = async () => {
       try {
+        setLoading(true);
+        setError(null);
         const platform = getPlatformService();
         const appData = await platform.getAppDataDir();
         const absPath = await platform.joinPath(appData, book.filePath);

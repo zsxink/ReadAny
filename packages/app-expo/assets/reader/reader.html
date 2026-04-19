@@ -162,6 +162,8 @@
     let tapNavigationInFlight = false;
     let tapNavigationResetTimer = null;
     let readerElement = null;
+    let bookTextMetricsJobId = 0;
+    let bookTextMetricsTimer = null;
     let bookmarkPullGestureActive = false;
     let pullBookmarkResetTimer = null;
     let bookmarkPullStateMeta = {
@@ -452,11 +454,13 @@
       return rawText.replace(/\s+/g, '').length;
     }
 
-    async function computeBookTextMetrics(book) {
+    async function computeBookTextMetrics(book, jobId) {
       if (!book || !book.sections || !book.sections.length) return 0;
       let totalCharacters = 0;
 
-      for (const section of book.sections) {
+      for (let index = 0; index < book.sections.length; index++) {
+        if (jobId !== bookTextMetricsJobId || currentBook !== book) return 0;
+        const section = book.sections[index];
         if (!section || !section.createDocument) continue;
         try {
           const doc = await section.createDocument();
@@ -467,9 +471,30 @@
         } catch (error) {
           console.warn('[WebView] Failed to measure section characters:', section && section.href, error);
         }
+
+        if (index > 0 && index % 3 === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
       }
 
       return totalCharacters;
+    }
+
+    function scheduleBookTextMetrics(book) {
+      if (bookTextMetricsTimer) {
+        clearTimeout(bookTextMetricsTimer);
+        bookTextMetricsTimer = null;
+      }
+
+      const jobId = ++bookTextMetricsJobId;
+      bookTextMetricsTimer = setTimeout(async () => {
+        bookTextMetricsTimer = null;
+        const totalCharacters = await computeBookTextMetrics(book, jobId);
+        if (jobId !== bookTextMetricsJobId || currentBook !== book) return;
+        if (totalCharacters > 0) {
+          postToRN('bookTextMetrics', { totalCharacters });
+        }
+      }, 900);
     }
 
     async function followTTSLocation(cfi) {
@@ -783,8 +808,22 @@
     async function openBook(msg) {
       const container = document.getElementById('reader-container');
       const loading = document.getElementById('loading');
+      bookTextMetricsJobId += 1;
+      if (bookTextMetricsTimer) {
+        clearTimeout(bookTextMetricsTimer);
+        bookTextMetricsTimer = null;
+      }
 
       try {
+        let hasSignalledLoaded = false;
+        const markLoaded = () => {
+          if (loading) loading.classList.add('hidden');
+          if (!hasSignalledLoaded) {
+            hasSignalledLoaded = true;
+            postToRN('loaded', {});
+          }
+        };
+
         let file;
         if (msg.base64) {
           const binary = atob(msg.base64);
@@ -813,7 +852,7 @@
 
         el.addEventListener('load', (e) => {
           const { doc, index } = e.detail;
-          loading.classList.add('hidden');
+          markLoaded();
           applyDocStyles(doc);
           attachTapListener(doc);
           attachPullBookmarkListener(doc);
@@ -830,11 +869,11 @@
           if (ttsHighlightState.cfi) {
             setTTSHighlight(ttsHighlightState.cfi, ttsHighlightState.color);
           }
-          postToRN('loaded', {});
         });
 
         var snippetTimer = null;
         el.addEventListener('relocate', (e) => {
+          markLoaded();
           const detail = e.detail;
           if (tapNavigationInFlight) {
             setTimeout(() => {
@@ -943,12 +982,6 @@
 
         await el.open(book);
 
-        void computeBookTextMetrics(book).then((totalCharacters) => {
-          if (totalCharacters > 0) {
-            postToRN('bookTextMetrics', { totalCharacters });
-          }
-        });
-
         if (book.sections) {
           totalSections = book.sections.length;
         } else if (book.toc) {
@@ -988,6 +1021,8 @@
         } else {
           await el.goToFraction(0);
         }
+
+        scheduleBookTextMetrics(book);
 
       } catch (err) {
         console.error('[WebView] Error in openBook:', err);

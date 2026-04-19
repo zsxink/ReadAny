@@ -80,10 +80,7 @@ function buildHeroMetrics(
   copy: ReturnType<typeof getStatsCopy>,
   isZh: boolean,
 ): MetricTileData[] {
-  const readingVolumeValue =
-    (report.summary.totalCharactersRead ?? 0) > 0
-      ? formatCharacterCount(report.summary.totalCharactersRead ?? 0, isZh)
-      : `${report.summary.totalPagesRead.toLocaleString()} ${copy.pagesReadSuffix}`;
+  const readingVolumeValue = formatCharacterCount(report.summary.totalCharactersRead ?? 0, isZh);
   const readingSpeedValue =
     (report.summary.avgCharactersPerMinute ?? 0) > 0
       ? formatCharactersPerMinute(report.summary.avgCharactersPerMinute ?? 0, isZh)

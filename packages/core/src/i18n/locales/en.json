@@ -1060,6 +1060,7 @@
       "goalBooksUnit": "books",
       "goalTimeUnit": "hours",
       "goalCharactersUnit": "chars",
+      "goalCharactersInputUnit": "10k chars",
       "goalPagesUnit": "pages",
       "noGoals": "No goals set yet. Tap \"Set goal\" to get started.",
       "goalCancel": "Cancel",

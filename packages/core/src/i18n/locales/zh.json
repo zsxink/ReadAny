@@ -940,6 +940,7 @@
       "goalBooksUnit": "本",
       "goalTimeUnit": "小时",
       "goalCharactersUnit": "字",
+      "goalCharactersInputUnit": "万字",
       "goalPagesUnit": "页",
       "noGoals": "还没有设定目标。点击「设定目标」开始吧。",
       "goalCancel": "取消",

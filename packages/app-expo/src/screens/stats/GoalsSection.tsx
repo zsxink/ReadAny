@@ -16,6 +16,21 @@ const GOAL_TYPE_DEFAULTS: Record<GoalType, number> = {
   characters: 300000,
   pages: 5000,
 };
+const CHARACTER_GOAL_SCALE = 10000;
+
+function formatGoalInputValue(type: GoalType, target: number): string {
+  if (type === "characters") {
+    const normalized = Math.round((target / CHARACTER_GOAL_SCALE) * 10) / 10;
+    return `${normalized}`.replace(/\.0$/, "");
+  }
+  return String(target);
+}
+
+function parseGoalInputValue(type: GoalType, value: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  return type === "characters" ? Math.round(parsed * CHARACTER_GOAL_SCALE) : parsed;
+}
 
 export function GoalsSection({
   progress,
@@ -327,12 +342,12 @@ function GoalAddFormModal({
   const { t } = useTranslation();
   const colors = useColors();
   const [type, setType] = useState<GoalType>("books");
-  const [target, setTarget] = useState(String(GOAL_TYPE_DEFAULTS.books));
+  const [target, setTarget] = useState(formatGoalInputValue("books", GOAL_TYPE_DEFAULTS.books));
 
   useEffect(() => {
     if (visible) {
       setType("books");
-      setTarget(String(GOAL_TYPE_DEFAULTS.books));
+      setTarget(formatGoalInputValue("books", GOAL_TYPE_DEFAULTS.books));
     }
   }, [visible, defaultPeriod]);
 
@@ -348,7 +363,7 @@ function GoalAddFormModal({
       : type === "time"
         ? t("stats.desktop.goalTimeUnit")
         : type === "characters"
-          ? t("stats.desktop.goalCharactersUnit")
+          ? t("stats.desktop.goalCharactersInputUnit")
         : t("stats.desktop.goalPagesUnit");
 
   const periodLabel =
@@ -358,11 +373,11 @@ function GoalAddFormModal({
 
   const handleTypeChange = (next: GoalType) => {
     setType(next);
-    setTarget(String(GOAL_TYPE_DEFAULTS[next]));
+    setTarget(formatGoalInputValue(next, GOAL_TYPE_DEFAULTS[next]));
   };
 
   const handleSubmit = () => {
-    const n = Number(target);
+    const n = parseGoalInputValue(type, target);
     if (Number.isFinite(n) && n > 0) {
       onSubmit(type, n, defaultPeriod);
     }
@@ -456,7 +471,7 @@ function GoalAddFormModal({
             <TextInput
               value={target}
               onChangeText={setTarget}
-              keyboardType="number-pad"
+              keyboardType="decimal-pad"
               selectTextOnFocus
               style={{
                 width: 96,

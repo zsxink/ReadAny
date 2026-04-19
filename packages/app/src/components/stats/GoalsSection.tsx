@@ -20,6 +20,21 @@ const GOAL_TYPE_DEFAULTS: Record<GoalType, number> = {
   characters: 300000,
   pages: 5000,
 };
+const CHARACTER_GOAL_SCALE = 10000;
+
+function formatGoalInputValue(type: GoalType, target: number): string {
+  if (type === "characters") {
+    const normalized = Math.round((target / CHARACTER_GOAL_SCALE) * 10) / 10;
+    return `${normalized}`.replace(/\.0$/, "");
+  }
+  return String(target);
+}
+
+function parseGoalInputValue(type: GoalType, value: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  return type === "characters" ? Math.round(parsed * CHARACTER_GOAL_SCALE) : parsed;
+}
 
 function GoalAddForm({
   copy,
@@ -33,7 +48,7 @@ function GoalAddForm({
   period: GoalPeriod;
 }) {
   const [type, setType] = useState<GoalType>("books");
-  const [target, setTarget] = useState(String(GOAL_TYPE_DEFAULTS.books));
+  const [target, setTarget] = useState(formatGoalInputValue("books", GOAL_TYPE_DEFAULTS.books));
 
   const typeOptions: { key: GoalType; label: string }[] = [
     { key: "books", label: copy.goalBooks },
@@ -43,11 +58,11 @@ function GoalAddForm({
 
   const handleTypeChange = (t: GoalType) => {
     setType(t);
-    setTarget(String(GOAL_TYPE_DEFAULTS[t]));
+    setTarget(formatGoalInputValue(t, GOAL_TYPE_DEFAULTS[t]));
   };
 
   const handleSubmit = () => {
-    const val = Number(target);
+    const val = parseGoalInputValue(type, target);
     if (val > 0) onSubmit(type, val, period);
   };
 
@@ -83,6 +98,7 @@ function GoalAddForm({
         <input
           type="number"
           min={1}
+          step={type === "characters" ? 0.1 : 1}
           value={target}
           onChange={(e) => setTarget(e.target.value)}
           className="h-9 w-24 rounded-lg border border-border/30 bg-background/50 px-3 text-center text-[15px] font-bold tabular-nums text-foreground outline-none transition-colors focus:border-primary/30 focus:ring-1 focus:ring-primary/15"
@@ -93,7 +109,7 @@ function GoalAddForm({
             : type === "time"
               ? copy.goalTimeUnit
               : type === "characters"
-                ? copy.goalCharactersUnit
+                ? copy.goalCharactersInputUnit
                 : copy.goalPagesUnit}
           {" / "}
           {periodLabel.toLowerCase()}

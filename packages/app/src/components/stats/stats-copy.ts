@@ -157,6 +157,7 @@ export function getStatsCopy(t: TFunction) {
     goalBooksUnit: t("stats.desktop.goalBooksUnit"),
     goalTimeUnit: t("stats.desktop.goalTimeUnit"),
     goalCharactersUnit: t("stats.desktop.goalCharactersUnit"),
+    goalCharactersInputUnit: t("stats.desktop.goalCharactersInputUnit"),
     goalPagesUnit: t("stats.desktop.goalPagesUnit"),
     noGoals: t("stats.desktop.noGoals"),
     goalCancel: t("stats.desktop.goalCancel"),

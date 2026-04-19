@@ -99,9 +99,7 @@ function TopBookItem({
   const readingAmountLabel =
     (book.charactersRead ?? 0) > 0
       ? formatCharacterCount(book.charactersRead ?? 0, isZh)
-      : book.pagesRead > 0
-        ? `${book.pagesRead.toLocaleString()} ${copy.pagesReadSuffix}`
-        : null;
+      : null;
   const readingSpeedLabel =
     (book.avgCharactersPerMinute ?? 0) > 0
       ? formatCharactersPerMinute(book.avgCharactersPerMinute ?? 0, isZh)

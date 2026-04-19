@@ -215,22 +215,36 @@ export default function StatsScreen() {
     const adC = compMap.get("activeDays");
     const ssC = compMap.get("sessions");
     const bkC = compMap.get("books");
-    const readingVolumeValue =
-      (report.summary.totalCharactersRead ?? 0) > 0
-        ? formatCharacterCount(report.summary.totalCharactersRead ?? 0, isZh)
-        : `${report.summary.totalPagesRead} ${t("stats.desktop.pagesReadSuffix")}`;
+    const readingVolumeValue = formatCharacterCount(report.summary.totalCharactersRead ?? 0, isZh);
     const readingSpeedValue =
       (report.summary.avgCharactersPerMinute ?? 0) > 0
         ? formatCharactersPerMinute(report.summary.avgCharactersPerMinute ?? 0, isZh)
         : null;
     return [
-      { label: t("stats.desktop.activeDays"), value: `${report.summary.activeDays} ${t("stats.desktop.daysSuffix")}`, delta: adC?.delta, deltaLabel: adC?.deltaLabel },
-      { label: t("stats.desktop.sessions"), value: `${report.summary.totalSessions} ${t("stats.desktop.sessionsSuffix")}`, delta: ssC?.delta, deltaLabel: ssC?.deltaLabel },
+      {
+        label: t("stats.desktop.activeDays"),
+        value: `${report.summary.activeDays} ${t("stats.desktop.daysSuffix")}`,
+        sublabel: t("stats.desktop.avgActiveDay"),
+        delta: adC?.delta,
+        deltaLabel: adC?.deltaLabel,
+      },
+      {
+        label: t("stats.desktop.sessions"),
+        value: `${report.summary.totalSessions} ${t("stats.desktop.sessionsSuffix")}`,
+        sublabel: formatTimeLocalized(report.summary.avgSessionTime, isZh),
+        delta: ssC?.delta,
+        deltaLabel: ssC?.deltaLabel,
+      },
       { label: t("stats.desktop.books"), value: String(report.summary.booksTouched), sublabel: readingVolumeValue, delta: bkC?.delta, deltaLabel: bkC?.deltaLabel },
-      { label: t("stats.desktop.streak"), value: `${report.dimension === "lifetime" ? report.summary.longestStreak : report.summary.currentStreak} ${t("stats.desktop.daysSuffix")}` },
+      {
+        label: t("stats.desktop.streak"),
+        value: `${report.dimension === "lifetime" ? report.summary.longestStreak : report.summary.currentStreak} ${t("stats.desktop.daysSuffix")}`,
+        sublabel: `${t("stats.desktop.longestSession")} ${formatTimeLocalized(report.summary.longestSessionTime, isZh)}`,
+      },
       {
         label: readingSpeedValue ? t("stats.desktop.readingSpeed") : t("stats.desktop.avgActiveDay"),
         value: readingSpeedValue ?? formatTimeLocalized(report.summary.avgActiveDayTime, isZh),
+        sublabel: readingSpeedValue ? t("stats.desktop.characters") : t("stats.desktop.readingTime"),
       },
     ];
   }, [report, isZh, t]);
