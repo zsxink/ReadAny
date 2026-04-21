@@ -45,14 +45,19 @@
     "dialog:allow-open",
     "updater:default",
     "process:default",
-    "http:default",
     {
-      "identifier": "http:allow-fetch",
+      "identifier": "http:default",
       "allow": [
-        { "url": "https://**" },
-        { "url": "http://**" },
+        { "url": "https://*" },
+        { "url": "https://*:*" },
+        { "url": "https://*:*/*" },
+        { "url": "http://*" },
+        { "url": "http://*:*" },
+        { "url": "http://*:*/*" },
         { "url": "http://localhost:*" },
-        { "url": "http://127.0.0.1:*" }
+        { "url": "http://localhost:*/*" },
+        { "url": "http://127.0.0.1:*" },
+        { "url": "http://127.0.0.1:*/*" }
       ]
     },
     "websocket:default"

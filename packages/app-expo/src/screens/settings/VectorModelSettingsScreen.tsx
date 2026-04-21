@@ -342,7 +342,8 @@ const makeStyles = (colors: ThemeColors) =>
     },
     scrollView: { flex: 1 },
     scrollContent: {
-      paddingBottom: 12,
+      paddingTop: 24,
+      paddingBottom: 48,
       alignItems: "center",
     },
     section: { paddingHorizontal: 16, paddingTop: 16 },

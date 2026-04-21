@@ -82,6 +82,32 @@ function shouldRunSyncCleanup(): boolean {
   }
 }
 
+const tableColumnCache = new Map<string, Set<string>>();
+
+async function getTableColumns(
+  db: Awaited<ReturnType<typeof getDB>>,
+  table: string,
+): Promise<Set<string>> {
+  const cached = tableColumnCache.get(table);
+  if (cached) return cached;
+
+  const rows = await db.select<{ name: string }>(`PRAGMA table_info(${table})`);
+  const columns = new Set(rows.map((row) => row.name));
+  tableColumnCache.set(table, columns);
+  return columns;
+}
+
+async function filterRecordToExistingColumns(
+  db: Awaited<ReturnType<typeof getDB>>,
+  table: string,
+  record: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const existingColumns = await getTableColumns(db, table);
+  return Object.fromEntries(
+    Object.entries(record).filter(([column]) => existingColumns.has(column)),
+  );
+}
+
 async function withDatabaseLockRetry<T>(
   operation: () => Promise<T>,
   label: string,
@@ -305,13 +331,24 @@ async function upsertRecord(
   record: Record<string, unknown>,
   pk: string,
 ): Promise<void> {
-  const columns = Object.keys(record);
-  const values = Object.values(record);
+  const filteredRecord = await filterRecordToExistingColumns(db, table, record);
+  const columns = Object.keys(filteredRecord);
+  if (columns.length === 0 || !columns.includes(pk)) return;
+
+  const values = Object.values(filteredRecord);
   const placeholders = columns.map(() => "?").join(", ");
-  const updateSet = columns
-    .filter((c) => c !== pk)
-    .map((c) => `${c} = excluded.${c}`)
-    .join(", ");
+  const updateColumns = columns.filter((c) => c !== pk);
+  const updateSet = updateColumns.map((c) => `${c} = excluded.${c}`).join(", ");
+
+  if (updateColumns.length === 0) {
+    await db.execute(
+      `INSERT INTO ${table} (${columns.join(", ")})
+       VALUES (${placeholders})
+       ON CONFLICT(${pk}) DO NOTHING`,
+      values,
+    );
+    return;
+  }
 
   await db.execute(
     `INSERT INTO ${table} (${columns.join(", ")})

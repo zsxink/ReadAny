@@ -104,7 +104,7 @@ export default function TTSSettingsScreen() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
-          <View style={{ width: "100%", maxWidth: layout.centeredContentWidth }}>
+          <View style={[styles.contentColumn, { width: "100%", maxWidth: layout.centeredContentWidth }]}>
             {/* Engine Selection */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>{t("tts.ttsEngine", "TTS 引擎")}</Text>
@@ -323,7 +323,15 @@ const makeStyles = (colors: ThemeColors) =>
     container: { flex: 1, backgroundColor: colors.background },
     keyboardView: { flex: 1 },
     scroll: { flex: 1 },
-    scrollContent: { padding: spacing.lg, gap: 24 },
+    scrollContent: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.xxl,
+      paddingBottom: 56,
+      gap: 24,
+    },
+    contentColumn: {
+      gap: spacing.xl,
+    },
     previewBtn: {
       flexDirection: "row",
       alignItems: "center",
@@ -333,13 +341,11 @@ const makeStyles = (colors: ThemeColors) =>
       fontSize: fontSize.sm,
       color: colors.primary,
     },
-    section: { gap: 12 },
+    section: { gap: 14 },
     sectionTitle: {
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.medium,
-      color: colors.mutedForeground,
-      textTransform: "uppercase",
-      letterSpacing: 1,
+      fontSize: fontSize.base,
+      fontWeight: fontWeight.semibold,
+      color: colors.foreground,
     },
     engineGrid: {
       flexDirection: "row",
@@ -360,7 +366,7 @@ const makeStyles = (colors: ThemeColors) =>
       backgroundColor: colors.accent,
     },
     engineLabel: {
-      fontSize: fontSize.xs,
+      fontSize: fontSize.sm,
       color: colors.foreground,
     },
     engineLabelActive: {
@@ -381,7 +387,7 @@ const makeStyles = (colors: ThemeColors) =>
       paddingVertical: 6,
     },
     voiceGroupLabel: {
-      fontSize: fontSize.xs,
+      fontSize: fontSize.sm,
       fontWeight: fontWeight.medium,
       color: colors.mutedForeground,
     },
@@ -401,9 +407,10 @@ const makeStyles = (colors: ThemeColors) =>
       fontWeight: fontWeight.medium,
     },
     voiceSubLabel: {
-      fontSize: fontSize.xs,
+      fontSize: fontSize.sm,
       color: colors.mutedForeground,
       marginTop: 2,
+      lineHeight: 20,
     },
     micIcon: {
       fontSize: 14,
@@ -417,11 +424,13 @@ const makeStyles = (colors: ThemeColors) =>
       fontSize: fontSize.sm,
       color: colors.mutedForeground,
       textAlign: "center",
+      lineHeight: 20,
     },
     fieldGroup: { gap: 6, marginTop: 12 },
     fieldLabel: {
-      fontSize: fontSize.xs,
-      color: colors.mutedForeground,
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.foreground,
     },
     input: {
       borderRadius: radius.lg,
@@ -453,7 +462,8 @@ const makeStyles = (colors: ThemeColors) =>
     },
     paramValue: {
       fontSize: fontSize.sm,
-      color: colors.mutedForeground,
+      color: colors.foreground,
+      fontWeight: fontWeight.medium,
       fontVariant: ["tabular-nums"],
     },
   });

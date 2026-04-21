@@ -11,6 +11,8 @@ import {
 } from "@/components/ui/Icon";
 import { setCallback, setExtractorRef } from "@/lib/rag/auto-vectorize-service";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
+import { WebDavConnectSheet } from "@/screens/library/WebDavConnectSheet";
+import { WebDavImportSourceSheet } from "@/screens/library/WebDavImportSourceSheet";
 import { useLibraryStore } from "@/stores/library-store";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import {
@@ -25,6 +27,13 @@ import {
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { onLibraryChanged } from "@readany/core/events/library-events";
+import {
+  DEFAULT_WEBDAV_IMPORT_REMOTE_ROOT,
+  getPlatformService,
+  type WebDavImportSource,
+} from "@readany/core";
+import { useSyncStore } from "@readany/core/stores";
+import { SYNC_SECRET_KEYS } from "@readany/core/sync/sync-backend";
 import type { Book, SortField } from "@readany/core/types";
 import * as DocumentPicker from "expo-document-picker";
 /**
@@ -32,15 +41,17 @@ import * as DocumentPicker from "expo-document-picker";
  * Features: header search/sort/import, tag filter, vectorization progress banner,
  * tag management sheet, book grid (3 cols), empty/loading states.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   FlatList,
   Image,
   Keyboard,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -61,6 +72,37 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const NUM_COLUMNS = 3;
 const GRID_GAP = 12;
+
+function splitUrlPathSegments(pathname: string): string[] {
+  return pathname.split("/").filter(Boolean);
+}
+
+function deriveImportBaseUrl(url: string, remoteRoot?: string): string {
+  if (!remoteRoot?.trim()) return url;
+
+  try {
+    const parsed = new URL(url);
+    const baseSegments = splitUrlPathSegments(parsed.pathname.replace(/\/+$/, ""));
+    const rootSegments = splitUrlPathSegments(remoteRoot.trim());
+
+    if (
+      rootSegments.length > 0 &&
+      baseSegments.length >= rootSegments.length &&
+      rootSegments.every(
+        (segment, index) =>
+          baseSegments[baseSegments.length - rootSegments.length + index] === segment,
+      )
+    ) {
+      const nextSegments = baseSegments.slice(0, baseSegments.length - rootSegments.length);
+      parsed.pathname = nextSegments.length > 0 ? `/${nextSegments.join("/")}` : "/";
+      return parsed.toString().replace(/\/$/, parsed.pathname === "/" ? "/" : "");
+    }
+  } catch {
+    return url;
+  }
+
+  return url;
+}
 
 const SORT_OPTIONS: { field: SortField; labelKey: string }[] = [
   { field: "lastOpenedAt", labelKey: "library.sortRecent" },
@@ -101,8 +143,24 @@ export function LibraryScreen() {
 
   const [tagSheetOpen, setTagSheetOpen] = useState(false);
   const [tagSheetBook, setTagSheetBook] = useState<Book | null>(null);
+  const [sourceSheetOpen, setSourceSheetOpen] = useState(false);
+  const [sourceSheetAnchor, setSourceSheetAnchor] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const [temporaryWebDavOpen, setTemporaryWebDavOpen] = useState(false);
+  const [isPickingImport, setIsPickingImport] = useState(false);
+  const [pendingLocalImport, setPendingLocalImport] = useState(false);
+  const importButtonAnchorRef = useRef<View>(null);
+  const emptyImportAnchorRef = useRef<View>(null);
+  const localImportInFlightRef = useRef(false);
 
   const extractorRef = useRef<ExtractorRef>(null);
+  const loadSyncConfig = useSyncStore((state) => state.loadConfig);
+  const syncConfig = useSyncStore((state) => state.config);
+  const syncBackendType = useSyncStore((state) => state.backendType);
 
   const {
     books,
@@ -146,6 +204,9 @@ export function LibraryScreen() {
   }, [searchAnim, setFilter]);
 
   useEffect(() => { loadBooks(); }, [loadBooks]);
+  useEffect(() => {
+    void loadSyncConfig();
+  }, [loadSyncConfig]);
 
   useEffect(() => {
     setExtractorRef(extractorRef.current);
@@ -193,7 +254,11 @@ export function LibraryScreen() {
     return result;
   }, [books, filter, activeTag]);
 
-  const handleImport = useCallback(async () => {
+  const handleLocalImport = useCallback(async () => {
+    if (localImportInFlightRef.current) return;
+    localImportInFlightRef.current = true;
+    setIsPickingImport(true);
+
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: [
@@ -213,9 +278,125 @@ export function LibraryScreen() {
       const files = result.assets.map((a) => ({ uri: a.uri, name: a.name }));
       await importBooks(files);
     } catch (err) {
-      console.error("Import failed:", err);
+      const message = err instanceof Error ? err.message : String(err);
+      if (!message.includes("Different document picking in progress")) {
+        console.error("Import failed:", err);
+      }
+    } finally {
+      localImportInFlightRef.current = false;
+      setIsPickingImport(false);
     }
   }, [importBooks]);
+
+  const handlePickLocalFromSourceMenu = useCallback(() => {
+    if (localImportInFlightRef.current || pendingLocalImport) return;
+    setPendingLocalImport(true);
+    setSourceSheetOpen(false);
+  }, [pendingLocalImport]);
+
+  useEffect(() => {
+    if (Platform.OS === "ios" || !pendingLocalImport || sourceSheetOpen) return;
+
+    const timer = setTimeout(() => {
+      setPendingLocalImport(false);
+      void handleLocalImport();
+    }, 180);
+
+    return () => clearTimeout(timer);
+  }, [handleLocalImport, pendingLocalImport, sourceSheetOpen]);
+
+  const handleSourceSheetDismiss = useCallback(() => {
+    if (!pendingLocalImport || Platform.OS !== "ios") return;
+
+    requestAnimationFrame(() => {
+      setPendingLocalImport(false);
+      void handleLocalImport();
+    });
+  }, [handleLocalImport, pendingLocalImport]);
+
+  const handleOpenImportSources = useCallback((anchorRef?: RefObject<View | null>) => {
+    const openWithFallback = () => {
+      setSourceSheetAnchor(null);
+      setSourceSheetOpen(true);
+    };
+
+    if (!anchorRef?.current || typeof anchorRef.current.measureInWindow !== "function") {
+      openWithFallback();
+      return;
+    }
+
+    anchorRef.current.measureInWindow((x, y, width, height) => {
+      if ([x, y, width, height].some((value) => Number.isNaN(value) || value <= 0)) {
+        openWithFallback();
+        return;
+      }
+
+      setSourceSheetAnchor({ x, y, width, height });
+      setSourceSheetOpen(true);
+    });
+  }, []);
+
+  const handleOpenSavedWebDav = useCallback(async () => {
+    setSourceSheetOpen(false);
+
+    if (syncBackendType !== "webdav" || syncConfig?.type !== "webdav") {
+      Alert.alert(
+        t("library.importSourceSavedWebDavMissingTitle", "还没有可用的 WebDAV 书库"),
+        t(
+          "library.importSourceSavedWebDavMissing",
+          "还没有可用的 WebDAV 配置，先去同步设置里连上你的书库。",
+        ),
+        [
+          { text: t("common.cancel", "取消"), style: "cancel" },
+          { text: t("settings.syncTitle", "WebDAV 同步"), onPress: () => nav.navigate("SyncSettings") },
+        ],
+      );
+      return;
+    }
+
+    const platform = getPlatformService();
+    const password = await platform.kvGetItem(SYNC_SECRET_KEYS.webdav);
+    if (!password) {
+      Alert.alert(
+        t("library.importSourceSavedWebDavMissingTitle", "还没有可用的 WebDAV 书库"),
+        t(
+          "library.importSourceSavedWebDavMissingSecret",
+          "已经找到 WebDAV 地址，但缺少密码。去同步设置里重新保存一次就能继续。",
+        ),
+        [
+          { text: t("common.cancel", "取消"), style: "cancel" },
+          { text: t("settings.syncTitle", "WebDAV 同步"), onPress: () => nav.navigate("SyncSettings") },
+        ],
+      );
+      return;
+    }
+
+    const source: WebDavImportSource = {
+      kind: "saved",
+      url: deriveImportBaseUrl(syncConfig.url, syncConfig.remoteRoot),
+      username: syncConfig.username,
+      password,
+      remoteRoot: DEFAULT_WEBDAV_IMPORT_REMOTE_ROOT,
+      allowInsecure: syncConfig.allowInsecure ?? false,
+    };
+    nav.navigate("WebDavImportBrowser", { source });
+  }, [nav, syncBackendType, syncConfig, t]);
+
+  const handleOpenTemporaryWebDav = useCallback(() => {
+    setSourceSheetOpen(false);
+    setTemporaryWebDavOpen(true);
+  }, []);
+
+  const handleConnectTemporaryWebDav = useCallback(
+    async (source: WebDavImportSource) => {
+      const { WebDavImportService } = await import("@readany/core");
+      const service = new WebDavImportService(source);
+      await service.testConnection();
+      setTemporaryWebDavOpen(false);
+      nav.navigate("WebDavImportBrowser", { source });
+    },
+    [nav],
+  );
 
   const handleOpen = useCallback(
     async (book: Book) => {
@@ -335,11 +516,18 @@ export function LibraryScreen() {
                   <SortAscIcon size={18} color={colors.mutedForeground} />
                 </TouchableOpacity>
               )}
-              <TouchableOpacity style={s.importBtn} onPress={handleImport} disabled={isImporting} activeOpacity={0.8}>
-                {isImporting
-                  ? <ActivityIndicator size="small" color={colors.primaryForeground} />
-                  : <PlusIcon size={18} color={colors.primaryForeground} />}
-              </TouchableOpacity>
+              <View ref={importButtonAnchorRef} collapsable={false}>
+                <TouchableOpacity
+                  style={s.importBtn}
+                  onPress={() => handleOpenImportSources(importButtonAnchorRef)}
+                  disabled={isImporting || isPickingImport}
+                  activeOpacity={0.8}
+                >
+                  {isImporting || isPickingImport
+                    ? <ActivityIndicator size="small" color={colors.primaryForeground} />
+                    : <PlusIcon size={18} color={colors.primaryForeground} />}
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
 
@@ -417,9 +605,16 @@ export function LibraryScreen() {
             <Image source={isDark ? BOOK_DARK_PNG : BOOK_PNG} style={{ width: 160, height: 160 }} />
             <Text style={s.emptyTitle}>{t("library.empty", "暂无书籍")}</Text>
             <Text style={s.emptyHint}>{t("library.emptyHint", "导入电子书开始阅读之旅")}</Text>
-            <TouchableOpacity style={s.emptyImportBtn} onPress={handleImport} activeOpacity={0.8}>
-              <Text style={s.emptyImportText}>{t("library.importFirst", "导入书籍")}</Text>
-            </TouchableOpacity>
+            <View ref={emptyImportAnchorRef} collapsable={false}>
+              <TouchableOpacity
+                style={s.emptyImportBtn}
+                onPress={() => handleOpenImportSources(emptyImportAnchorRef)}
+                disabled={isPickingImport}
+                activeOpacity={0.8}
+              >
+                <Text style={s.emptyImportText}>{t("library.importFirst", "导入书籍")}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
         {isLoaded && hasBooks && isEmpty && (
@@ -458,6 +653,22 @@ export function LibraryScreen() {
         onRemoveTagFromBook={removeTagFromBook}
         onRemoveTag={removeTag}
         onRenameTag={renameTag}
+      />
+      <WebDavImportSourceSheet
+        visible={sourceSheetOpen}
+        hasSavedWebDav={syncBackendType === "webdav" && syncConfig?.type === "webdav"}
+        anchor={sourceSheetAnchor}
+        localImportBusy={isPickingImport}
+        onClose={() => setSourceSheetOpen(false)}
+        onDismiss={handleSourceSheetDismiss}
+        onPickLocal={handlePickLocalFromSourceMenu}
+        onPickSavedWebDav={() => void handleOpenSavedWebDav()}
+        onPickTemporaryWebDav={handleOpenTemporaryWebDav}
+      />
+      <WebDavConnectSheet
+        visible={temporaryWebDavOpen}
+        onClose={() => setTemporaryWebDavOpen(false)}
+        onSubmit={handleConnectTemporaryWebDav}
       />
     </SafeAreaView>
   );

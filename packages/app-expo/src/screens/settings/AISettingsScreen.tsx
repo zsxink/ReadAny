@@ -117,49 +117,51 @@ export default function AISettingsScreen() {
           overScrollMode="never"
           bounces={true}
         >
-          <View style={{ width: "100%", maxWidth: layout.centeredContentWidth }}>
+          <View style={[styles.contentColumn, { width: "100%", maxWidth: layout.centeredContentWidth }]}>
             {/* Endpoints */}
-            {aiConfig.endpoints.map((ep) => {
-              const isActive = ep.id === aiConfig.activeEndpointId;
-              const isExpanded = expandedId === ep.id;
-              return (
-                <View key={ep.id} style={[styles.endpointCard, isActive && styles.endpointCardActive]}>
-                  <TouchableOpacity
-                    style={styles.endpointHeader}
-                    onPress={() => setExpandedId(isExpanded ? null : ep.id)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.endpointInfo}>
-                      <View style={styles.endpointNameRow}>
-                        <Text style={styles.endpointName}>{ep.name || t("common.unnamed", "未命名")}</Text>
-                        {isActive && (
-                          <View style={styles.currentBadge}>
-                            <Text style={styles.currentBadgeText}>{t("common.current", "当前")}</Text>
-                          </View>
-                        )}
+            <View style={styles.endpointList}>
+              {aiConfig.endpoints.map((ep) => {
+                const isActive = ep.id === aiConfig.activeEndpointId;
+                const isExpanded = expandedId === ep.id;
+                return (
+                  <View key={ep.id} style={[styles.endpointCard, isActive && styles.endpointCardActive]}>
+                    <TouchableOpacity
+                      style={styles.endpointHeader}
+                      onPress={() => setExpandedId(isExpanded ? null : ep.id)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.endpointInfo}>
+                        <View style={styles.endpointNameRow}>
+                          <Text style={styles.endpointName}>{ep.name || t("common.unnamed", "未命名")}</Text>
+                          {isActive && (
+                            <View style={styles.currentBadge}>
+                              <Text style={styles.currentBadgeText}>{t("common.current", "当前")}</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={styles.endpointProvider}>{ep.provider}</Text>
                       </View>
-                      <Text style={styles.endpointProvider}>{ep.provider}</Text>
-                    </View>
-                    <Text style={styles.chevron}>{isExpanded ? "▲" : "▼"}</Text>
-                  </TouchableOpacity>
+                      <Text style={styles.chevron}>{isExpanded ? "▲" : "▼"}</Text>
+                    </TouchableOpacity>
 
-                  {isExpanded && (
-                    <EndpointEditor
-                      ep={ep}
-                      isActive={isActive}
-                      onUpdate={updateEndpoint}
-                      onDelete={removeEndpoint}
-                      onFetchModels={handleFetchModels}
-                      aiConfig={aiConfig}
-                      setActiveEndpoint={setActiveEndpoint}
-                      setActiveModel={setActiveModel}
-                      colors={colors}
-                      t={t}
-                    />
-                  )}
-                </View>
-              );
-            })}
+                    {isExpanded && (
+                      <EndpointEditor
+                        ep={ep}
+                        isActive={isActive}
+                        onUpdate={updateEndpoint}
+                        onDelete={removeEndpoint}
+                        onFetchModels={handleFetchModels}
+                        aiConfig={aiConfig}
+                        setActiveEndpoint={setActiveEndpoint}
+                        setActiveModel={setActiveModel}
+                        colors={colors}
+                        t={t}
+                      />
+                    )}
+                  </View>
+                );
+              })}
+            </View>
 
             {fetchError ? <Text style={styles.errorText}>{fetchError}</Text> : null}
 

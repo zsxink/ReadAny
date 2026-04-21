@@ -135,13 +135,16 @@ function makeStyles(_colors: ReturnType<typeof useTheme>["colors"]) {
   return StyleSheet.create({
     container: { flex: 1 },
     scroll: { flex: 1 },
-    scrollContent: { padding: spacing.lg, gap: 24 },
+    scrollContent: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.xxl,
+      paddingBottom: 56,
+      gap: 24,
+    },
     section: { gap: 12 },
     sectionTitle: {
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.medium,
-      textTransform: "uppercase",
-      letterSpacing: 1,
+      fontSize: fontSize.base,
+      fontWeight: fontWeight.semibold,
     },
     themeGrid: { flexDirection: "row", gap: 12 },
     themeCard: {

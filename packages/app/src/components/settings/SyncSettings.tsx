@@ -41,6 +41,7 @@ export function SyncSettings() {
   const [webdavUrl, setWebdavUrl] = useState("");
   const [webdavUsername, setWebdavUsername] = useState("");
   const [webdavPassword, setWebdavPassword] = useState("");
+  const [webdavRemoteRoot, setWebdavRemoteRoot] = useState("readany");
   const [webdavAllowInsecure, setWebdavAllowInsecure] = useState(false);
 
   // S3 state
@@ -75,6 +76,7 @@ export function SyncSettings() {
       if (config.type === "webdav") {
         setWebdavUrl(config.url);
         setWebdavUsername(config.username);
+        setWebdavRemoteRoot(config.remoteRoot ?? "readany");
         setWebdavAllowInsecure(config.allowInsecure ?? false);
         setSyncIntervalInput(String(config.syncIntervalMins ?? 30));
         getPlatformService()
@@ -112,6 +114,7 @@ export function SyncSettings() {
         webdavUsername,
         webdavPassword,
         webdavAllowInsecure,
+        webdavRemoteRoot,
       );
       setTestResult(success ? "success" : "error");
       if (!success) {
@@ -128,6 +131,7 @@ export function SyncSettings() {
     webdavUsername,
     webdavPassword,
     webdavAllowInsecure,
+    webdavRemoteRoot,
     testWebDavConnection,
     t,
   ]);
@@ -135,11 +139,24 @@ export function SyncSettings() {
   const handleSaveWebDav = useCallback(async () => {
     setSaving(true);
     try {
-      await saveWebDavConfig(webdavUrl, webdavUsername, webdavPassword, webdavAllowInsecure);
+      await saveWebDavConfig(
+        webdavUrl,
+        webdavUsername,
+        webdavPassword,
+        webdavAllowInsecure,
+        webdavRemoteRoot,
+      );
     } finally {
       setSaving(false);
     }
-  }, [webdavUrl, webdavUsername, webdavPassword, webdavAllowInsecure, saveWebDavConfig]);
+  }, [
+    webdavUrl,
+    webdavUsername,
+    webdavPassword,
+    webdavAllowInsecure,
+    webdavRemoteRoot,
+    saveWebDavConfig,
+  ]);
 
   const handleTestS3 = useCallback(async () => {
     setTesting(true);
@@ -213,6 +230,7 @@ export function SyncSettings() {
       setWebdavUrl("");
       setWebdavUsername("");
       setWebdavPassword("");
+      setWebdavRemoteRoot("readany");
       setS3Endpoint("");
       setS3Region("auto");
       setS3Bucket("");
@@ -387,6 +405,17 @@ export function SyncSettings() {
             />
           </div>
         </div>
+        <div>
+          <label className="mb-1 block text-sm text-foreground">{t("settings.syncRemoteRoot")}</label>
+          <input
+            type="text"
+            value={webdavRemoteRoot}
+            onChange={(e) => setWebdavRemoteRoot(e.target.value)}
+            placeholder={t("settings.syncRemoteRootPlaceholder")}
+            className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground outline-none focus:border-primary"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">{t("settings.syncRemoteRootDesc")}</p>
+        </div>
         <div className="flex items-center justify-between pt-1">
           <div>
             <span className="text-sm text-foreground">{t("settings.syncAllowInsecure")}</span>
@@ -397,28 +426,30 @@ export function SyncSettings() {
             onCheckedChange={(checked) => setWebdavAllowInsecure(checked)}
           />
         </div>
-        <div className="flex items-center gap-2 pt-1">
-          <button
-            onClick={handleTestWebDav}
-            disabled={testing || !webdavUrl}
-            className="rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground transition-colors hover:bg-muted disabled:opacity-50"
-          >
-            {testing ? t("settings.syncTesting") : t("settings.syncTestConnection")}
-          </button>
-          <button
-            onClick={handleSaveWebDav}
-            disabled={saving || !webdavUrl || !webdavUsername}
-            className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-          >
-            {t("settings.syncSave")}
-          </button>
+        <div className="space-y-2 pt-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleTestWebDav}
+              disabled={testing || !webdavUrl}
+              className="rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+            >
+              {testing ? t("settings.syncTesting") : t("settings.syncTestConnection")}
+            </button>
+            <button
+              onClick={handleSaveWebDav}
+              disabled={saving || !webdavUrl || !webdavUsername}
+              className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+            >
+              {t("settings.syncSave")}
+            </button>
+          </div>
           {testResult === "success" && (
-            <span className="text-xs text-green-600">{t("settings.syncTestSuccess")}</span>
+            <p className="text-xs text-green-600">{t("settings.syncTestSuccess")}</p>
           )}
           {testResult === "error" && (
-            <span className="text-xs text-red-500">
+            <p className="text-xs leading-5 break-words text-red-500">
               {t("settings.syncTestFailed", { error: testError })}
-            </span>
+            </p>
           )}
         </div>
       </div>

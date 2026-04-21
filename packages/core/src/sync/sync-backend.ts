@@ -61,6 +61,7 @@ export interface WebDavConfig {
   type: "webdav";
   url: string;
   username: string;
+  remoteRoot?: string;
   allowInsecure?: boolean;
   autoSync: boolean;
   syncIntervalMins: number;
@@ -97,6 +98,8 @@ export const DEFAULT_SYNC_CONFIG = {
   wifiOnly: false,
   notifyOnComplete: true,
 } as const;
+
+export const DEFAULT_WEBDAV_REMOTE_ROOT = "readany";
 
 /** Secret keys for each backend type */
 export const SYNC_SECRET_KEYS = {

@@ -74,7 +74,7 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: fontSize.xs,
     marginTop: 1,
-    opacity: 0.6,
+    opacity: 0.82,
   },
   rightSlot: {
     flexDirection: "row",

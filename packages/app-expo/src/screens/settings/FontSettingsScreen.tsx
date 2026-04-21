@@ -291,7 +291,7 @@ export default function FontSettingsScreen() {
 
             {/* Preset fonts */}
             {availablePresetFonts.length > 0 && (
-              <View style={{ gap: 8 }}>
+              <View style={s.presetSection}>
                 <Text style={[s.hint, { color: colors.mutedForeground, fontWeight: fontWeight.medium }]}>
                   {t("fonts.presets", "推荐字体（在线，点击即可添加）")}
                 </Text>
@@ -517,9 +517,17 @@ function makeStyles(colors: ReturnType<typeof useColors>) {
   return StyleSheet.create({
     container: { flex: 1 },
     scroll: { flex: 1 },
-    scrollContent: { padding: spacing.lg, gap: 16, paddingBottom: 48 },
-    section: { gap: 8 },
-    hint: { fontSize: fontSize.sm, lineHeight: 20 },
+    scrollContent: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.xxl,
+      paddingBottom: 56,
+      gap: 20,
+    },
+    section: { gap: 10 },
+    hint: {
+      fontSize: fontSize.sm,
+      lineHeight: 22,
+    },
     loadingState: {
       flexDirection: "row",
       alignItems: "center",
@@ -528,7 +536,8 @@ function makeStyles(colors: ReturnType<typeof useColors>) {
       paddingVertical: 20,
     },
     loadingText: { fontSize: fontSize.sm },
-    buttonRow: { flexDirection: "row", gap: 12 },
+    buttonRow: { flexDirection: "row", gap: 12, marginBottom: 16 },
+    presetSection: { gap: 8 },
     importBtn: {
       flexDirection: "row", alignItems: "center", justifyContent: "center",
       gap: 8, borderRadius: radius.lg, paddingVertical: 14,

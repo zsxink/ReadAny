@@ -88,7 +88,7 @@ export default function TranslationSettingsScreen() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
-          <View style={{ width: "100%", maxWidth: layout.centeredContentWidth }}>
+          <View style={[styles.contentColumn, { width: "100%", maxWidth: layout.centeredContentWidth }]}>
             {/* Provider */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>{t("translation.engine", "翻译引擎")}</Text>
@@ -121,7 +121,7 @@ export default function TranslationSettingsScreen() {
 
             {/* DeepL API Key */}
             {translationConfig.provider.id === "deepl" && (
-              <View style={styles.section}>
+              <View style={[styles.section, styles.sectionSpaced]}>
                 <Text style={styles.sectionTitle}>{t("translation.deeplApiKey", "DeepL API Key")}</Text>
                 <PasswordInput
                   style={styles.apiKeyInput}
@@ -172,7 +172,7 @@ export default function TranslationSettingsScreen() {
 
             {/* AI Model Selection */}
             {isAIProvider && (
-              <View style={styles.section}>
+              <View style={[styles.section, styles.sectionSpaced]}>
                 <Text style={styles.sectionTitle}>{t("settings.translationModel", "翻译模型")}</Text>
                 {endpointsWithModels.length > 0 ? (
                   <TouchableOpacity
@@ -196,7 +196,7 @@ export default function TranslationSettingsScreen() {
             )}
 
             {/* Target Language */}
-            <View style={styles.section}>
+            <View style={[styles.section, styles.sectionSpaced]}>
               <Text style={styles.sectionTitle}>{t("translation.targetLanguage", "目标语言")}</Text>
               <View style={[styles.listCard, { maxHeight: 320 }]}>
                 <ScrollView nestedScrollEnabled>
@@ -283,14 +283,22 @@ const makeStyles = (colors: ThemeColors) =>
     container: { flex: 1, backgroundColor: colors.background },
     keyboardView: { flex: 1 },
     scroll: { flex: 1 },
-    scrollContent: { padding: spacing.lg, gap: 24 },
-    section: { gap: 12 },
+    scrollContent: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.xxl,
+      paddingBottom: 56,
+      gap: 24,
+    },
+    contentColumn: {},
+    section: {},
+    sectionSpaced: {
+      marginTop: spacing.xl,
+    },
     sectionTitle: {
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.medium,
-      color: colors.mutedForeground,
-      textTransform: "uppercase",
-      letterSpacing: 1,
+      fontSize: fontSize.base,
+      fontWeight: fontWeight.semibold,
+      color: colors.foreground,
+      marginBottom: 10,
     },
     listCard: {
       borderRadius: radius.xl,
@@ -315,9 +323,10 @@ const makeStyles = (colors: ThemeColors) =>
       color: colors.foreground,
     },
     listItemSub: {
-      fontSize: fontSize.xs,
+      fontSize: fontSize.sm,
       color: colors.mutedForeground,
       marginTop: 2,
+      lineHeight: 20,
     },
     check: {
       fontSize: 14,
@@ -334,12 +343,14 @@ const makeStyles = (colors: ThemeColors) =>
       color: colors.foreground,
     },
     fieldHint: {
-      fontSize: fontSize.xs,
+      fontSize: fontSize.sm,
       color: colors.mutedForeground,
       marginTop: 6,
+      lineHeight: 20,
     },
     subSectionTitle: {
-      marginTop: 8,
+      marginTop: 16,
+      marginBottom: 10,
     },
     langItem: {
       flexDirection: "row",
@@ -395,8 +406,8 @@ const makeStyles = (colors: ThemeColors) =>
       overflow: "hidden",
     },
     modalTitle: {
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.medium,
+      fontSize: fontSize.base,
+      fontWeight: fontWeight.semibold,
       color: colors.foreground,
       textAlign: "center",
       paddingVertical: 12,
@@ -404,11 +415,9 @@ const makeStyles = (colors: ThemeColors) =>
       borderBottomColor: colors.border,
     },
     endpointLabel: {
-      fontSize: fontSize.xs,
+      fontSize: fontSize.sm,
       fontWeight: fontWeight.medium,
       color: colors.mutedForeground,
-      textTransform: "uppercase",
-      letterSpacing: 0.5,
       paddingHorizontal: spacing.lg,
       paddingTop: 10,
       paddingBottom: 4,

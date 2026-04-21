@@ -15,6 +15,15 @@ export function sanitizeWebDavUrl(url: string): string {
     .replace(/\/+$/, "");
 }
 
+export function sanitizeWebDavRemoteRoot(remoteRoot: string): string {
+  const normalized = remoteRoot
+    .replace(/[\u0000-\u001F\u007F]/g, "")
+    .trim()
+    .replace(/^\/+|\/+$/g, "")
+    .replace(/\/{2,}/g, "/");
+  return normalized;
+}
+
 const DEFAULT_TIMEOUT_MS = 30_000;
 const TRANSFER_TIMEOUT_MS = 300_000;
 
@@ -171,13 +180,22 @@ function createRequestWebDavError(
     err.cause?.code === "ECONNREFUSED" ||
     err.cause?.code === "EHOSTUNREACH" ||
     err.cause?.code === "ENOTFOUND" ||
+    lowerMessage.includes("configured scope") ||
+    lowerMessage.includes("url not allowed") ||
     lowerMessage.includes("status 0") ||
     lowerMessage.includes("xhr request failed") ||
     lowerMessage.includes("network request failed") ||
     lowerMessage.includes("failed to fetch") ||
     lowerMessage.includes("connect")
   ) {
-    return new WebDavError("network", connectionMessage, {
+    const message =
+      lowerMessage.includes("configured scope") || lowerMessage.includes("url not allowed")
+        ? i18n.t("settings.syncWebdavDesktopScopeError", {
+            defaultValue:
+              "桌面端当前没有放行这个 WebDAV 地址，请更新到最新版本后重试，或重新启动应用。",
+          })
+        : connectionMessage;
+    return new WebDavError("network", message, {
       method,
       url,
       cause: error,

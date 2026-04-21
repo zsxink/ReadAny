@@ -66,6 +66,7 @@ const baseConfig: SyncConfig = {
   type: "webdav",
   url: "http://example.com",
   username: "alice",
+  remoteRoot: "readany",
   autoSync: false,
   syncIntervalMins: 30,
   wifiOnly: false,
@@ -212,6 +213,32 @@ describe("useSyncStore", () => {
       type: "webdav",
       url: "https://dav.example.com/root",
       username: "alice",
+      remoteRoot: "readany",
+    });
+  });
+
+  it("saves custom WebDAV remote root and trims nested path", async () => {
+    mockPlatformService.kvGetItem.mockResolvedValue("saved-secret");
+
+    await useSyncStore
+      .getState()
+      .saveWebDavConfig(
+        "https://dav.example.com/root/",
+        "alice",
+        "password",
+        false,
+        " /apps//readany-sync/ ",
+      );
+
+    const savedConfigCall = mockPlatformService.kvSetItem.mock.calls.find(
+      ([key]) => key === "sync_config",
+    );
+    expect(savedConfigCall).toBeTruthy();
+    expect(JSON.parse(savedConfigCall![1] as string)).toMatchObject({
+      type: "webdav",
+      url: "https://dav.example.com/root",
+      username: "alice",
+      remoteRoot: "apps/readany-sync",
     });
   });
 

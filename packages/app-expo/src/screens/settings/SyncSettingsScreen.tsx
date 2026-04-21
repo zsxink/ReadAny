@@ -81,6 +81,7 @@ export default function SyncSettingsScreen() {
   const [url, setUrl] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [remoteRoot, setRemoteRoot] = useState("readany");
   const [allowInsecure, setAllowInsecure] = useState(false);
 
   // S3 state
@@ -126,6 +127,7 @@ export default function SyncSettingsScreen() {
       if (config.type === "webdav") {
         setUrl(config.url);
         setUsername(config.username);
+        setRemoteRoot(config.remoteRoot ?? "readany");
         setAllowInsecure(config.allowInsecure ?? false);
         setSyncIntervalInput(String(config.syncIntervalMins ?? 30));
         getPlatformService()
@@ -161,7 +163,7 @@ export default function SyncSettingsScreen() {
         if (Platform.OS === "android" && isExpoGo && normalizedUrl.startsWith("http://")) {
           throw new Error(t("settings.syncAndroidExpoGoHttpUnsupported"));
         }
-        success = await testWebDavConnection(url, username, password, allowInsecure);
+        success = await testWebDavConnection(url, username, password, allowInsecure, remoteRoot);
       } else if (selectedBackend === "s3") {
         success = await testS3Connection(
           { endpoint: s3Endpoint, region: s3Region, bucket: s3Bucket, accessKeyId: s3AccessKeyId },
@@ -177,7 +179,7 @@ export default function SyncSettingsScreen() {
       setTesting(false);
     }
   }, [
-    selectedBackend, url, username, password, allowInsecure,
+    selectedBackend, url, username, password, allowInsecure, remoteRoot,
     s3Endpoint, s3Region, s3Bucket, s3AccessKeyId, s3SecretAccessKey,
     testWebDavConnection, testS3Connection, t,
   ]);
@@ -186,7 +188,7 @@ export default function SyncSettingsScreen() {
     setSaving(true);
     try {
       if (selectedBackend === "webdav") {
-        await saveWebDavConfig(url, username, password, allowInsecure);
+        await saveWebDavConfig(url, username, password, allowInsecure, remoteRoot);
       } else if (selectedBackend === "s3") {
         await saveS3Config(
           { endpoint: s3Endpoint, region: s3Region, bucket: s3Bucket, accessKeyId: s3AccessKeyId },
@@ -197,7 +199,7 @@ export default function SyncSettingsScreen() {
       setSaving(false);
     }
   }, [
-    selectedBackend, url, username, password, allowInsecure,
+    selectedBackend, url, username, password, allowInsecure, remoteRoot,
     s3Endpoint, s3Region, s3Bucket, s3AccessKeyId, s3SecretAccessKey,
     saveWebDavConfig, saveS3Config,
   ]);
@@ -214,7 +216,24 @@ export default function SyncSettingsScreen() {
   const handleReset = useCallback(() => {
     Alert.alert(t("settings.syncReset"), t("settings.syncResetConfirm"), [
       { text: t("common.cancel"), style: "cancel" },
-      { text: t("common.confirm"), style: "destructive", onPress: () => resetSync() },
+      {
+        text: t("common.confirm"),
+        style: "destructive",
+        onPress: () => {
+          setSelectedBackend("webdav");
+          setUrl("");
+          setUsername("");
+          setPassword("");
+          setRemoteRoot("readany");
+          setAllowInsecure(false);
+          setS3Endpoint("");
+          setS3Region("auto");
+          setS3Bucket("");
+          setS3AccessKeyId("");
+          setS3SecretAccessKey("");
+          void resetSync();
+        },
+      },
     ]);
   }, [t, resetSync]);
 
@@ -314,7 +333,7 @@ export default function SyncSettingsScreen() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
-          <View style={{ width: "100%", maxWidth: layout.centeredContentWidth }}>
+          <View style={[styles.contentColumn, { width: "100%", maxWidth: layout.centeredContentWidth }]}>
             {/* Backend Type Selector */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>{t("settings.syncBackendType")}</Text>
@@ -343,6 +362,7 @@ export default function SyncSettingsScreen() {
                 url={url}
                 username={username}
                 password={password}
+                remoteRoot={remoteRoot}
                 allowInsecure={allowInsecure}
                 testing={testing}
                 testResult={testResult}
@@ -351,6 +371,7 @@ export default function SyncSettingsScreen() {
                 onChangeUrl={setUrl}
                 onChangeUsername={setUsername}
                 onChangePassword={setPassword}
+                onChangeRemoteRoot={setRemoteRoot}
                 onToggleAllowInsecure={() => setAllowInsecure(!allowInsecure)}
                 onTest={handleTest}
                 onSave={handleSave}
@@ -390,7 +411,7 @@ export default function SyncSettingsScreen() {
 
             {/* Conflict Resolution */}
             {pendingDirection === "conflict" && (
-            <View style={styles.section}>
+            <View style={[styles.section, styles.sectionSpaced]}>
               <View style={styles.conflictCard}>
                 <Text style={styles.conflictTitle}>{t("settings.syncConflictTitle")}</Text>
                 <Text style={styles.conflictDesc}>{t("settings.syncConflictDesc")}</Text>
@@ -416,7 +437,7 @@ export default function SyncSettingsScreen() {
 
             {/* Sync Status */}
             {selectedBackend !== "lan" && (isConfigured || isBusy || lastSyncAt) && (
-            <View style={styles.section}>
+            <View style={[styles.section, styles.sectionSpaced]}>
               <Text style={styles.sectionTitle}>
                 {isLanContext ? t("settings.syncLANImportStatus") : t("settings.syncStatus")}
               </Text>
@@ -542,7 +563,7 @@ export default function SyncSettingsScreen() {
 
             {/* Advanced */}
             {isConfigured && selectedBackend !== "lan" && (
-            <View style={styles.section}>
+            <View style={[styles.section, styles.sectionSpaced]}>
               <TouchableOpacity
                 style={styles.advancedHeader}
                 onPress={() => setShowAdvanced(!showAdvanced)}

@@ -8,6 +8,7 @@ interface WebDavFormProps {
   url: string;
   username: string;
   password: string;
+  remoteRoot: string;
   allowInsecure: boolean;
   testing: boolean;
   testResult: "success" | "error" | null;
@@ -16,6 +17,7 @@ interface WebDavFormProps {
   onChangeUrl: (v: string) => void;
   onChangeUsername: (v: string) => void;
   onChangePassword: (v: string) => void;
+  onChangeRemoteRoot: (v: string) => void;
   onToggleAllowInsecure: () => void;
   onTest: () => void;
   onSave: () => void;
@@ -25,6 +27,7 @@ export function WebDavForm({
   url,
   username,
   password,
+  remoteRoot,
   allowInsecure,
   testing,
   testResult,
@@ -33,6 +36,7 @@ export function WebDavForm({
   onChangeUrl,
   onChangeUsername,
   onChangePassword,
+  onChangeRemoteRoot,
   onToggleAllowInsecure,
   onTest,
   onSave,
@@ -42,7 +46,7 @@ export function WebDavForm({
   const { t } = useTranslation();
 
   return (
-    <View style={styles.section}>
+    <View style={[styles.section, styles.sectionSpaced]}>
       <Text style={styles.sectionTitle}>{t("settings.syncConnection")}</Text>
       <View style={styles.card}>
         <View style={styles.fieldGroup}>
@@ -79,6 +83,21 @@ export function WebDavForm({
             placeholder={t("settings.syncPassword")}
             placeholderTextColor={colors.mutedForeground}
           />
+        </View>
+
+        <View style={styles.fieldGroup}>
+          <Text style={styles.fieldLabel}>{t("settings.syncRemoteRoot")}</Text>
+          <TextInput
+            style={styles.input}
+            value={remoteRoot}
+            onChangeText={onChangeRemoteRoot}
+            placeholder={t("settings.syncRemoteRootPlaceholder")}
+            placeholderTextColor={colors.mutedForeground}
+            autoCapitalize="none"
+          />
+          <Text style={[styles.autoSyncDesc, { marginTop: 6 }]}>
+            {t("settings.syncRemoteRootDesc")}
+          </Text>
         </View>
 
         <View style={styles.autoSyncRow}>

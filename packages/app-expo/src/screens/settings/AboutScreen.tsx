@@ -174,7 +174,10 @@ const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     scroll: { flex: 1 },
-    scrollContent: { paddingBottom: 32 },
+    scrollContent: {
+      paddingTop: spacing.xl,
+      paddingBottom: 48,
+    },
     logoSection: {
       alignItems: "center",
       paddingTop: 40,
@@ -213,11 +216,9 @@ const makeStyles = (colors: ThemeColors) =>
       gap: 12,
     },
     sectionTitle: {
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.medium,
-      color: colors.mutedForeground,
-      textTransform: "uppercase",
-      letterSpacing: 1,
+      fontSize: fontSize.base,
+      fontWeight: fontWeight.semibold,
+      color: colors.foreground,
     },
     updateBtn: {
       flexDirection: "row",

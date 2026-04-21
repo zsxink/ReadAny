@@ -100,6 +100,18 @@ async function saveCoverToAppData(bookId: string, coverBlob: Blob): Promise<stri
   return relativePath;
 }
 
+function bytesToBase64(bytes: Uint8Array): string {
+  const chunkSize = 0x8000;
+  let binary = "";
+
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+
+  return btoa(binary);
+}
+
 /**
  * Ensure raw bytes are UTF-8 encoded. Hermes (React Native) only supports
  * UTF-8 in TextDecoder — GBK/GB18030/Shift-JIS etc. are NOT supported.
@@ -417,12 +429,20 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
               };
               await get().addBook(book);
               console.log(`[importBooks] TXT imported as EPUB: ${title}`);
-              
-              // Auto-vectorize if enabled
-              const vmState = useVectorModelStore.getState();
-              if (vmState.vectorModelEnabled && vmState.hasVectorCapability()) {
-                const base64 = btoa(String.fromCharCode(...result.epubBytes));
-                queueAutoVectorize(book, base64, "application/epub+zip");
+
+              // Auto-vectorize if enabled. Keep failures isolated so a
+              // successful import doesn't get reported as a failed import.
+              try {
+                const vmState = useVectorModelStore.getState();
+                if (vmState.vectorModelEnabled && vmState.hasVectorCapability()) {
+                  const base64 = bytesToBase64(result.epubBytes);
+                  queueAutoVectorize(book, base64, "application/epub+zip");
+                }
+              } catch (autoVectorizeErr) {
+                console.warn(
+                  `[importBooks] Auto-vectorize enqueue failed for ${fileName}:`,
+                  autoVectorizeErr,
+                );
               }
               continue;
             } catch (convErr) {
@@ -493,25 +513,33 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             lastOpenedAt: Date.now(),
           };
           await get().addBook(book);
-          
-          // Auto-vectorize if enabled
-          const vmState = useVectorModelStore.getState();
-          if (vmState.vectorModelEnabled && vmState.hasVectorCapability()) {
-            const base64 = btoa(String.fromCharCode(...fileBytes));
-            const mimeTypes: Record<string, string> = {
-              epub: "application/epub+zip",
-              pdf: "application/pdf",
-              mobi: "application/x-mobipocket-ebook",
-              azw: "application/vnd.amazon.ebook",
-              azw3: "application/vnd.amazon.ebook",
-              cbz: "application/vnd.comicbook+zip",
-              cbr: "application/vnd.comicbook+zip",
-              fb2: "application/x-fictionbook+xml",
-              fbz: "application/x-zip-compressed-fb2",
-              txt: "text/plain",
-            };
-            const mimeType = mimeTypes[format] || "application/epub+zip";
-            queueAutoVectorize(book, base64, mimeType);
+
+          // Auto-vectorize if enabled. Keep failures isolated so a
+          // successful import doesn't get reported as a failed import.
+          try {
+            const vmState = useVectorModelStore.getState();
+            if (vmState.vectorModelEnabled && vmState.hasVectorCapability()) {
+              const base64 = bytesToBase64(fileBytes);
+              const mimeTypes: Record<string, string> = {
+                epub: "application/epub+zip",
+                pdf: "application/pdf",
+                mobi: "application/x-mobipocket-ebook",
+                azw: "application/vnd.amazon.ebook",
+                azw3: "application/vnd.amazon.ebook",
+                cbz: "application/vnd.comicbook+zip",
+                cbr: "application/vnd.comicbook+zip",
+                fb2: "application/x-fictionbook+xml",
+                fbz: "application/x-zip-compressed-fb2",
+                txt: "text/plain",
+              };
+              const mimeType = mimeTypes[format] || "application/epub+zip";
+              queueAutoVectorize(book, base64, mimeType);
+            }
+          } catch (autoVectorizeErr) {
+            console.warn(
+              `[importBooks] Auto-vectorize enqueue failed for ${fileName}:`,
+              autoVectorizeErr,
+            );
           }
         } catch (err) {
           console.error(`Failed to import ${fileInfo.uri}:`, err);

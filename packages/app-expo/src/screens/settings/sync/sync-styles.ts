@@ -13,14 +13,22 @@ export const makeStyles = (colors: ThemeColors) =>
     container: { flex: 1, backgroundColor: colors.background },
     keyboardView: { flex: 1 },
     scroll: { flex: 1 },
-    scrollContent: { padding: spacing.lg, gap: 24 },
-    section: { gap: 12 },
+    scrollContent: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.xxl,
+      paddingBottom: 56,
+      gap: 24,
+    },
+    contentColumn: {},
+    section: {},
+    sectionSpaced: {
+      marginTop: spacing.xl,
+    },
     sectionTitle: {
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.medium,
-      color: colors.mutedForeground,
-      textTransform: "uppercase",
-      letterSpacing: 1,
+      fontSize: fontSize.base,
+      fontWeight: fontWeight.semibold,
+      color: colors.foreground,
+      marginBottom: 10,
     },
     card: {
       borderRadius: radius.xl,
@@ -44,8 +52,9 @@ export const makeStyles = (colors: ThemeColors) =>
       color: colors.foreground,
     },
     conflictDesc: {
-      fontSize: fontSize.xs,
+      fontSize: fontSize.sm,
       color: colors.mutedForeground,
+      lineHeight: 20,
     },
     uploadBtn: {
       flex: 1,
@@ -74,7 +83,11 @@ export const makeStyles = (colors: ThemeColors) =>
       color: colors.foreground,
     },
     fieldGroup: { gap: 6, marginBottom: 12 },
-    fieldLabel: { fontSize: fontSize.sm, color: colors.mutedForeground },
+    fieldLabel: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.foreground,
+    },
     input: {
       borderRadius: radius.lg,
       borderWidth: 1,
@@ -119,7 +132,11 @@ export const makeStyles = (colors: ThemeColors) =>
       alignItems: "center",
       justifyContent: "space-between",
     },
-    syncLabel: { fontSize: fontSize.sm, color: colors.mutedForeground },
+    syncLabel: {
+      fontSize: fontSize.sm,
+      color: colors.foreground,
+      fontWeight: fontWeight.medium,
+    },
     syncValue: {
       fontSize: fontSize.sm,
       fontWeight: fontWeight.medium,
@@ -127,7 +144,7 @@ export const makeStyles = (colors: ThemeColors) =>
       marginTop: 2,
     },
     statusText: {
-      fontSize: fontSize.xs,
+      fontSize: fontSize.sm,
       color: colors.primary,
       marginTop: 2,
     },
@@ -152,8 +169,9 @@ export const makeStyles = (colors: ThemeColors) =>
       gap: 2,
     },
     resultText: {
-      fontSize: fontSize.xs,
+      fontSize: fontSize.sm,
       color: colors.mutedForeground,
+      lineHeight: 20,
     },
     autoSyncRow: {
       flexDirection: "row",
@@ -179,9 +197,10 @@ export const makeStyles = (colors: ThemeColors) =>
       color: colors.foreground,
     },
     autoSyncDesc: {
-      fontSize: fontSize.xs,
+      fontSize: fontSize.sm,
       color: colors.mutedForeground,
       marginTop: 2,
+      lineHeight: 20,
     },
     toggle: {
       width: 44,
@@ -217,7 +236,7 @@ export const makeStyles = (colors: ThemeColors) =>
       fontSize: fontSize.sm,
     },
     intervalSuffix: {
-      fontSize: fontSize.xs,
+      fontSize: fontSize.sm,
       color: colors.mutedForeground,
     },
     advancedHeader: {
@@ -238,10 +257,11 @@ export const makeStyles = (colors: ThemeColors) =>
       color: colors.destructive,
     },
     resetDesc: {
-      fontSize: fontSize.xs,
+      fontSize: fontSize.sm,
       color: colors.mutedForeground,
       marginTop: 8,
       textAlign: "center",
+      lineHeight: 20,
     },
     progressContainer: {
       marginTop: 8,
@@ -258,9 +278,10 @@ export const makeStyles = (colors: ThemeColors) =>
       borderRadius: 2,
     },
     progressText: {
-      fontSize: fontSize.xs,
+      fontSize: fontSize.sm,
       color: colors.mutedForeground,
       marginTop: 4,
+      lineHeight: 20,
     },
     backendSelector: {
       flexDirection: "row",
@@ -286,9 +307,10 @@ export const makeStyles = (colors: ThemeColors) =>
       color: colors.primaryForeground,
     },
     lanDesc: {
-      fontSize: fontSize.xs,
+      fontSize: fontSize.sm,
       color: colors.mutedForeground,
       marginBottom: 12,
+      lineHeight: 20,
     },
     lanModeSelector: {
       flexDirection: "row",
@@ -329,7 +351,7 @@ export const makeStyles = (colors: ThemeColors) =>
       backgroundColor: colors.emerald,
     },
     lanStatusText: {
-      fontSize: fontSize.xs,
+      fontSize: fontSize.sm,
       color: colors.mutedForeground,
     },
     lanQrSection: {
@@ -346,8 +368,9 @@ export const makeStyles = (colors: ThemeColors) =>
       marginBottom: 12,
     },
     lanQrText: {
-      fontSize: fontSize.xs,
+      fontSize: fontSize.sm,
       color: colors.mutedForeground,
+      lineHeight: 20,
     },
     lanPairCodeLabel: {
       fontSize: fontSize.xs,
@@ -362,8 +385,9 @@ export const makeStyles = (colors: ThemeColors) =>
       marginVertical: 8,
     },
     lanAddress: {
-      fontSize: fontSize.xs,
+      fontSize: fontSize.sm,
       color: colors.mutedForeground,
+      lineHeight: 20,
     },
     lanBtn: {
       flex: 1,
@@ -382,9 +406,10 @@ export const makeStyles = (colors: ThemeColors) =>
       marginBottom: 12,
     },
     manualIPHint: {
-      fontSize: fontSize.xs,
+      fontSize: fontSize.sm,
       color: colors.mutedForeground,
       marginBottom: 8,
+      lineHeight: 20,
     },
     manualIPRow: {
       flexDirection: "row",
@@ -403,7 +428,7 @@ export const makeStyles = (colors: ThemeColors) =>
       backgroundColor: colors.border,
     },
     separatorText: {
-      fontSize: 12,
+      fontSize: fontSize.sm,
       color: colors.mutedForeground,
       fontWeight: "500",
     },

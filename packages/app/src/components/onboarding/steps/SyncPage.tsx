@@ -16,6 +16,7 @@ export function SyncPage({ onNext, onPrev, step, totalSteps }: any) {
   const [url, setUrl] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [remoteRoot, setRemoteRoot] = useState("readany");
   const [status, setStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [showPassword, setShowPassword] = useState(false);
   const [testError, setTestError] = useState("");
@@ -25,6 +26,7 @@ export function SyncPage({ onNext, onPrev, step, totalSteps }: any) {
       if (config?.type === "webdav") {
         if (config.url) setUrl(config.url);
         if (config.username) setUsername(config.username);
+        if (config.remoteRoot) setRemoteRoot(config.remoteRoot);
       }
 
       const platform = getPlatformService();
@@ -38,7 +40,7 @@ export function SyncPage({ onNext, onPrev, step, totalSteps }: any) {
     setStatus("testing");
     setTestError("");
     try {
-      const ok = await testWebDavConnection(url, username, password);
+      const ok = await testWebDavConnection(url, username, password, undefined, remoteRoot);
       setStatus(ok ? "success" : "error");
       if (!ok) setTestError(t("common.failed", "Failed"));
     } catch (error) {
@@ -49,7 +51,7 @@ export function SyncPage({ onNext, onPrev, step, totalSteps }: any) {
 
   const handleNext = async () => {
     if (url && username && password) {
-      await saveWebDavConfig(url, username, password);
+      await saveWebDavConfig(url, username, password, undefined, remoteRoot);
     }
     onNext();
   };
@@ -139,20 +141,35 @@ export function SyncPage({ onNext, onPrev, step, totalSteps }: any) {
           </div>
         </div>
 
-        <div className="mt-4 flex items-center gap-4">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleTest}
-            disabled={status === "testing" || !url || !username || !password}
-          >
-            {status === "testing" && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
-            {status === "success" && <CheckCircle2 className="mr-2 h-3.5 w-3.5 text-emerald-500" />}
-            {status === "error" && <AlertCircle className="mr-2 h-3.5 w-3.5 text-destructive" />}
-            {t("settings.testConnection", "Test Connection")}
-          </Button>
+        <div className="space-y-1.5 mt-4">
+          <label className="text-xs font-medium text-muted-foreground">
+            {t("settings.syncRemoteRoot")}
+          </label>
+          <Input
+            placeholder={t("settings.syncRemoteRootPlaceholder")}
+            value={remoteRoot}
+            onChange={(e) => setRemoteRoot(e.target.value)}
+            className="h-9 text-sm"
+          />
+          <p className="text-xs text-muted-foreground">{t("settings.syncRemoteRootDesc")}</p>
+        </div>
+
+        <div className="mt-4 space-y-2">
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleTest}
+              disabled={status === "testing" || !url || !username || !password}
+            >
+              {status === "testing" && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+              {status === "success" && <CheckCircle2 className="mr-2 h-3.5 w-3.5 text-emerald-500" />}
+              {status === "error" && <AlertCircle className="mr-2 h-3.5 w-3.5 text-destructive" />}
+              {t("settings.testConnection", "Test Connection")}
+            </Button>
+          </div>
           {status === "error" && (
-            <p className="text-xs text-destructive">
+            <p className="text-xs leading-5 break-words text-destructive">
               {t("settings.syncTestFailed", { error: testError || t("common.failed", "Failed") })}
             </p>
           )}
