@@ -116,6 +116,7 @@ export const makeStyles = (colors: ThemeColors, cardWidth: number) => {
     },
     infoWrap: { paddingTop: 6, paddingHorizontal: 1 },
     bookTitle: { fontSize: 13, fontWeight: fontWeight.semibold, color: colors.foreground, lineHeight: 14 },
+    bookAuthor: { fontSize: 10, color: colors.mutedForeground, lineHeight: 14, marginTop: 1 },
     tagsRow: { flexDirection: "row", flexWrap: "wrap", gap: 3, marginTop: 3 },
     tagBadge: { backgroundColor: `${colors.muted}`, borderRadius: radius.full, paddingHorizontal: 6, paddingVertical: 1 },
     tagText: { fontSize: 8, color: colors.mutedForeground },

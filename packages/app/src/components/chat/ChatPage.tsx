@@ -17,6 +17,7 @@ import {
 } from "@readany/core/utils";
 import {
   BookOpen,
+  Download,
   History,
   Library,
   Lightbulb,
@@ -278,6 +279,35 @@ export function ChatPage() {
         <div className="flex items-center gap-1">
           <ModelSelector />
           <ContextPopover />
+          {allMessages.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                const md = allMessages
+                  .map((m) => {
+                    const role = m.role === "user" ? "**You**" : "**AI**";
+                    const text = m.parts
+                      .filter((p) => p.type === "text" && (p as { text: string }).text.trim())
+                      .map((p) => (p as { text: string }).text)
+                      .join("\n\n");
+                    return `${role}\n\n${text}`;
+                  })
+                  .filter((s) => s.trim())
+                  .join("\n\n---\n\n");
+                const blob = new Blob([md], { type: "text/markdown" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `chat-${new Date().toISOString().slice(0, 10)}.md`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="rounded-full p-1.5 text-neutral-600 hover:bg-muted"
+              title={t("notes.export", "导出")}
+            >
+              <Download className="size-4" />
+            </button>
+          )}
           <button
             type="button"
             onClick={handleNewThread}

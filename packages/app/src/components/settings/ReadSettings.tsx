@@ -1,7 +1,6 @@
 /**
  * ReadSettings — reading view settings using shadcn components
  */
-import { useEffect } from "react";
 import {
   Select,
   SelectContent,
@@ -20,12 +19,6 @@ export function ReadSettingsPanel() {
   const customFonts = useFontStore((s) => s.fonts);
   const selectedFontId = useFontStore((s) => s.selectedFontId);
   const setSelectedFont = useFontStore((s) => s.setSelectedFont);
-
-  useEffect(() => {
-    if (readSettings.viewMode === "scroll") {
-      updateReadSettings({ viewMode: "paginated" });
-    }
-  }, [readSettings.viewMode, updateReadSettings]);
 
   const currentFontValue = selectedFontId ?? "system";
 
@@ -46,6 +39,25 @@ export function ReadSettingsPanel() {
 
         <div className="space-y-5">
           <div className="flex items-center justify-between">
+            <span className="text-sm text-foreground">{t("settings.viewMode")}</span>
+            <Select
+              value={readSettings.viewMode ?? "paginated"}
+              onValueChange={(v) =>
+                updateReadSettings({ viewMode: v as "paginated" | "scroll" })
+              }
+            >
+              <SelectTrigger className="w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="paginated">{t("settings.paginated")}</SelectItem>
+                <SelectItem value="scroll">{t("settings.scroll")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {readSettings.viewMode !== "scroll" && (
+          <div className="flex items-center justify-between">
             <span className="text-sm text-foreground">{t("settings.paginatedLayout")}</span>
             <Select
               value={readSettings.paginatedLayout ?? "double"}
@@ -62,6 +74,7 @@ export function ReadSettingsPanel() {
               </SelectContent>
             </Select>
           </div>
+          )}
 
           {/* Font */}
           <div className="flex items-center justify-between">

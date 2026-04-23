@@ -1,4 +1,4 @@
-import { ChevronDownIcon } from "@/components/ui/Icon";
+import { CheckIcon, ChevronDownIcon, CopyIcon } from "@/components/ui/Icon";
 import { fontSize as fs, radius, useColors, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
 import type { CitationPart, MessageV2, QuotePart, TextPart } from "@readany/core/types/message";
@@ -17,6 +17,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { PartRenderer } from "./PartRenderer";
 import { StreamingIndicator } from "./StreamingIndicator";
 
@@ -272,6 +273,14 @@ function MessageBubble({
   );
   if (!hasContent) return null;
 
+  const copyText = () => {
+    const text = message.parts
+      .filter((p) => p.type === "text" && (p as TextPart).text.trim())
+      .map((p) => (p as TextPart).text)
+      .join("\n\n");
+    if (text) Clipboard.setStringAsync(text);
+  };
+
   // Show gap indicator between parts when streaming
   const lastPart = message.parts[message.parts.length - 1];
   const isLastPartRunningText = lastPart?.type === "text" && lastPart.status === "running";
@@ -299,7 +308,39 @@ function MessageBubble({
         />
       ))}
       {showGapIndicator && <StreamingIndicator step="thinking" />}
+      {!isStreaming && (
+        <CopyButton onPress={copyText} colors={colors} />
+      )}
     </View>
+  );
+}
+
+function CopyButton({ onPress, colors }: { onPress: () => void; colors: ThemeColors }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <TouchableOpacity
+      activeOpacity={0.7}
+      onPress={() => {
+        onPress();
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        alignSelf: "flex-start",
+        paddingHorizontal: 6,
+        paddingVertical: 3,
+        borderRadius: 6,
+        backgroundColor: copied ? `${colors.primary}14` : "transparent",
+      }}
+    >
+      {copied ? (
+        <CheckIcon size={13} color={colors.primary} />
+      ) : (
+        <CopyIcon size={13} color={colors.mutedForeground} />
+      )}
+    </TouchableOpacity>
   );
 }
 

@@ -372,6 +372,11 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
         <h4 className="truncate text-xs font-semibold leading-tight text-foreground">
           {book.meta.title}
         </h4>
+        {book.meta.author && (
+          <p className="truncate text-[10px] leading-tight text-muted-foreground">
+            {book.meta.author}
+          </p>
+        )}
 
         {/* Tag badges */}
         {book.tags.length > 0 ? (

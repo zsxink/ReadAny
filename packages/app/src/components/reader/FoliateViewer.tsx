@@ -2149,6 +2149,11 @@ function applyReflowLayoutSettings(view: FoliateView, settings: ViewSettings) {
   } else {
     renderer.removeAttribute("flow");
   }
+
+  // Force re-render to ensure layout mode change takes effect immediately
+  if (typeof renderer.render === "function") {
+    renderer.render();
+  }
 }
 
 /** Generate CSS string for renderer styles */

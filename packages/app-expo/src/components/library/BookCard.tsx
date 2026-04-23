@@ -292,6 +292,11 @@ export const BookCard = memo(function BookCard({
           <Text style={s.bookTitle} numberOfLines={1}>
             {book.meta.title}
           </Text>
+          {book.meta.author ? (
+            <Text style={s.bookAuthor} numberOfLines={1}>
+              {book.meta.author}
+            </Text>
+          ) : null}
 
           {/* Tag badges */}
           {book.tags.length > 0 ? (
