@@ -24,6 +24,7 @@ export interface Book {
   addedAt: number;
   lastOpenedAt?: number;
   updatedAt: number;
+  deletedAt?: number;
   progress: number; // 0-1
   currentCfi?: string; // EPUB CFI position or PDF page marker (e.g. "page-5")
   isVectorized: boolean;

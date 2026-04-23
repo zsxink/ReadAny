@@ -343,6 +343,7 @@ export async function initDatabase(): Promise<void> {
       total_chapters INTEGER DEFAULT 0,
       added_at INTEGER NOT NULL,
       last_opened_at INTEGER,
+      deleted_at INTEGER,
       progress REAL DEFAULT 0,
       current_cfi TEXT,
       is_vectorized INTEGER DEFAULT 0,
@@ -506,6 +507,11 @@ export async function initDatabase(): Promise<void> {
         // Column already exists
       }
       try {
+        await database.execute("ALTER TABLE books ADD COLUMN deleted_at INTEGER");
+      } catch {
+        // Column already exists
+      }
+      try {
         await database.execute("ALTER TABLE books ADD COLUMN file_hash TEXT");
       } catch {
         // Column already exists
@@ -629,6 +635,11 @@ export async function initDatabase(): Promise<void> {
         );
       } catch {
         // Column already exists or table doesn't exist yet
+      }
+      try {
+        await database.execute("CREATE INDEX IF NOT EXISTS idx_books_deleted_at ON books(deleted_at)");
+      } catch {
+        // Older installs may fail to add the column on the first pass; don't block startup.
       }
 
       const platform = getPlatformService();

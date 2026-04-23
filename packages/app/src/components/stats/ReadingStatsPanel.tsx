@@ -592,8 +592,7 @@ export function ReadingStatsPanel() {
                       yearOrLifetimeReport.categoryDistribution) && (
                       <StatsCard>
                         <SectionHeader
-                          title={copy.rhythmProfile}
-                          description={copy.rhythmProfileDesc}
+                          title={undefined}
                         />
                         <RhythmProfileSection
                           timeOfDayChart={yearOrLifetimeReport.timeOfDayChart}

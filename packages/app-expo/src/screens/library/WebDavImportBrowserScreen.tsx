@@ -20,7 +20,11 @@ import {
   withOpacity,
 } from "@/styles/theme";
 import {
+  createImportDuplicateIndex,
+  findLikelyDuplicateBook,
+  normalizeImportIdentity,
   WebDavImportService,
+  type ImportBooksResult,
   type WebDavImportEntry,
   type WebDavImportSource,
   type WebDavImportSourceKind,
@@ -33,7 +37,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -43,7 +46,6 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type Props = NativeStackScreenProps<RootStackParamList, "WebDavImportBrowser">;
-
 type ImportState =
   | { phase: "idle" }
   | { phase: "loading" }
@@ -87,8 +89,19 @@ function createTempImportFile(bytes: Uint8Array, originalName: string): { uri: s
 
 function getSourceLabel(kind: WebDavImportSourceKind, t: ReturnType<typeof useTranslation>["t"]): string {
   return kind === "saved"
-    ? t("library.importSourceSavedWebDav", "我的 WebDAV 书库")
-    : t("library.importSourceTemporaryWebDav", "其他 WebDAV");
+    ? t("library.importSourceSavedWebDav", "我的 WebDAV")
+    : t("library.importSourceTemporaryWebDav", "连接其他 WebDAV");
+}
+
+function formatImportResultMessage(
+  t: ReturnType<typeof useTranslation>["t"],
+  result: ImportBooksResult,
+): string {
+  return t("library.importResultSummary", {
+    imported: result.imported.length,
+    skipped: result.skippedDuplicates.length,
+    failed: result.failures.length,
+  });
 }
 
 export function WebDavImportBrowserScreen({ navigation, route }: Props) {
@@ -98,7 +111,9 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
   const layout = useResponsiveLayout();
   const source = route.params.source as WebDavImportSource;
   const importBooks = useLibraryStore((state) => state.importBooks);
+  const books = useLibraryStore((state) => state.books);
   const service = useMemo(() => new WebDavImportService(source), [source]);
+  const duplicateIndex = useMemo(() => createImportDuplicateIndex(books), [books]);
 
   const [currentPath, setCurrentPath] = useState("/");
   const [entries, setEntries] = useState<WebDavImportEntry[]>([]);
@@ -260,6 +275,22 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
           lineHeight: 19,
           color: colors.mutedForeground,
         },
+        entryTitleRow: {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+        },
+        badge: {
+          paddingHorizontal: 8,
+          paddingVertical: 3,
+          borderRadius: radius.full,
+          backgroundColor: withOpacity("#d97706", 0.12),
+        },
+        badgeText: {
+          fontSize: fontSize.xs,
+          color: colors.foreground,
+          fontWeight: fontWeight.medium,
+        },
         checkCircle: {
           width: 22,
           height: 22,
@@ -414,13 +445,41 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
   }, [loadEntries]);
 
   const visibleEntries = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!query) return entries;
-    return entries.filter((entry) => entry.name.toLowerCase().includes(query));
-  }, [entries, search]);
+    const query = normalizeImportIdentity(search.trim());
+    const filteredBySearch = !query
+      ? entries
+      : entries.filter((entry) => normalizeImportIdentity(entry.name).includes(query));
+
+    const enriched = filteredBySearch.map((entry) => ({
+      entry,
+      likelyDuplicate:
+        !entry.isDirectory && !!findLikelyDuplicateBook(duplicateIndex, { name: entry.name }),
+    }));
+
+    return [...enriched].sort((left, right) => {
+      if (left.entry.isDirectory !== right.entry.isDirectory) {
+        return left.entry.isDirectory ? -1 : 1;
+      }
+
+      if (left.entry.importable !== right.entry.importable) {
+        return left.entry.importable ? -1 : 1;
+      }
+      if (left.likelyDuplicate !== right.likelyDuplicate) {
+        return left.likelyDuplicate ? 1 : -1;
+      }
+      return left.entry.name.localeCompare(right.entry.name, undefined, {
+        sensitivity: "base",
+        numeric: true,
+      });
+    });
+  }, [duplicateIndex, entries, search]);
 
   const importableVisibleEntries = useMemo(
-    () => visibleEntries.filter((entry) => entry.importable),
+    () => visibleEntries.filter(({ entry }) => entry.importable),
+    [visibleEntries],
+  );
+  const likelyDuplicateVisibleCount = useMemo(
+    () => visibleEntries.filter(({ likelyDuplicate }) => likelyDuplicate).length,
     [visibleEntries],
   );
 
@@ -456,7 +515,7 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
   };
 
   const runImport = useCallback(
-    async (targets: WebDavImportEntry[], mode: "selected" | "folder") => {
+    async (targets: WebDavImportEntry[]) => {
       if (targets.length === 0) return;
 
       const tempFiles: Array<{ uri: string; name?: string }> = [];
@@ -474,14 +533,12 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
         }
 
         setImportState({ phase: "importing", total: tempFiles.length });
-        await importBooks(tempFiles);
+        const result = await importBooks(tempFiles);
         setImportState({ phase: "idle" });
         setSelectedPaths([]);
         Alert.alert(
           t("common.success", "成功！"),
-          mode === "folder"
-            ? t("library.webdavImportFolderDone", "当前文件夹里的可导入书籍已经带进书库。")
-            : t("library.webdavImportSelectedDone", "选中的书已经导入到你的书库。"),
+          formatImportResultMessage(t, result),
           [
             {
               text: t("library.webdavImportContinue", "继续浏览"),
@@ -515,7 +572,7 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
 
   const handleImportSelected = () => {
     const targets = entries.filter((entry) => selectedPaths.includes(entry.relativePath));
-    void runImport(targets, "selected");
+    void runImport(targets);
   };
 
   const handleImportCurrentFolder = () => {
@@ -536,7 +593,7 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
           );
           return;
         }
-        await runImport(targets, "folder");
+        await runImport(targets);
       } catch (err) {
         setImportState({ phase: "idle" });
         Alert.alert(
@@ -554,10 +611,7 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={s.stateTitle}>{t("library.webdavImportLoading", "正在读取远端书库...")}</Text>
           <Text style={s.stateDesc}>
-            {t(
-              "library.webdavImportLoadingDesc",
-              "目录结构和可导入书籍会在这里展开，你可以随时搜索、筛选和多选导入。",
-            )}
+            {t("library.webdavImportBrowserSubtitle", "浏览远端目录，挑书导入当前书架。")}
           </Text>
         </View>
       );
@@ -603,46 +657,56 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
     return (
       <FlatList
         data={visibleEntries}
-        keyExtractor={(item) => item.relativePath}
+        keyExtractor={({ entry }) => entry.relativePath}
         contentContainerStyle={s.listContent}
         renderItem={({ item }) => {
-          const selected = selectedPaths.includes(item.relativePath);
+          const { entry, likelyDuplicate } = item;
+          const selected = selectedPaths.includes(entry.relativePath);
           return (
             <TouchableOpacity
               style={s.entryCard}
-              onPress={() => handleEntryPress(item)}
+              onPress={() => handleEntryPress(entry)}
               activeOpacity={0.85}
             >
               <View style={s.entryIconWrap}>
-                {item.isDirectory ? (
+                {entry.isDirectory ? (
                   <LibraryIcon size={18} color={colors.primary} />
                 ) : (
-                  <BookOpenIcon size={18} color={item.importable ? colors.primary : colors.mutedForeground} />
+                  <BookOpenIcon size={18} color={entry.importable ? colors.primary : colors.mutedForeground} />
                 )}
               </View>
               <View style={s.entryText}>
-                <Text style={s.entryTitle} numberOfLines={1}>
-                  {item.name}
-                </Text>
+                <View style={s.entryTitleRow}>
+                  <Text style={s.entryTitle} numberOfLines={1}>
+                    {entry.name}
+                  </Text>
+                  {!entry.isDirectory && likelyDuplicate ? (
+                    <View style={s.badge}>
+                      <Text style={s.badgeText}>
+                        {t("library.webdavImportLikelyDuplicate", "可能重复")}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
                 <Text style={s.entryMeta} numberOfLines={1}>
-                  {item.isDirectory
+                  {entry.isDirectory
                     ? t("library.webdavImportFolderMeta", {
-                        defaultValue: "文件夹 · {{date}}",
-                        date: item.lastModified ? formatDate(item.lastModified) : "—",
+                      defaultValue: "文件夹 · {{date}}",
+                        date: entry.lastModified ? formatDate(entry.lastModified) : "—",
                       })
                     : t("library.webdavImportFileMeta", {
                         defaultValue: "{{size}} · {{date}}",
-                        size: formatBytes(item.size),
-                        date: item.lastModified ? formatDate(item.lastModified) : "—",
+                        size: formatBytes(entry.size),
+                        date: entry.lastModified ? formatDate(entry.lastModified) : "—",
                       })}
                 </Text>
-                {!item.isDirectory && !item.importable ? (
+                {!entry.isDirectory && !entry.importable ? (
                   <Text style={s.disabledHint}>
                     {t("library.webdavImportUnsupported", "暂不支持这个文件格式")}
                   </Text>
                 ) : null}
               </View>
-              {item.isDirectory ? (
+              {entry.isDirectory ? (
                 <ChevronRightIcon size={16} color={colors.mutedForeground} />
               ) : (
                 <View style={[s.checkCircle, selected && s.checkCircleSelected]}>
@@ -681,8 +745,9 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
       : selectedCount > 0
         ? t("library.webdavImportSelectionHint", "可以继续多选，或直接导入所选")
         : t("library.webdavImportFolderHint", {
-            defaultValue: "当前目录可导入 {{count}} 本书",
+            defaultValue: "本层 {{count}} 本可导入，{{duplicates}} 本可能已在书库",
             count: importableVisibleEntries.length,
+            duplicates: likelyDuplicateVisibleCount,
           });
 
   const importBusy = importState.phase !== "idle";
@@ -709,7 +774,7 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
             <View style={s.breadcrumbChip}>
               <Text style={s.breadcrumbText} numberOfLines={1}>
                 {currentPath === "/"
-                  ? t("library.webdavImportRootLabel", "远端书库根目录")
+                  ? t("library.webdavImportRootLabel", "浏览起点")
                   : currentPath}
               </Text>
             </View>
@@ -733,9 +798,10 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
             <View style={s.summaryRow}>
               <Text style={s.summaryText}>
                 {t("library.webdavImportSummary", {
-                  defaultValue: "当前目录 {{count}} 项，其中 {{books}} 本可导入",
+                  defaultValue: "当前可见 {{count}} 项，其中 {{books}} 本可导入，{{duplicates}} 本可能重复",
                   count: visibleEntries.length,
                   books: importableVisibleEntries.length,
+                  duplicates: likelyDuplicateVisibleCount,
                 })}
               </Text>
               {importableVisibleEntries.length > 0 ? (
@@ -746,7 +812,7 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
                   disabled={importBusy}
                 >
                   <Text style={s.secondaryActionText}>
-                    {t("library.webdavImportImportFolder", "导入当前文件夹")}
+                    {t("library.webdavImportImportFolder", "导入本层书籍")}
                   </Text>
                 </TouchableOpacity>
               ) : null}
@@ -784,7 +850,11 @@ export function WebDavImportBrowserScreen({ navigation, route }: Props) {
               >
                 {importBusy ? <Loader2Icon size={14} color={colors.primaryForeground} /> : null}
                 <Text style={s.footerPrimaryText}>
-                  {t("library.webdavImportImportSelected", "导入所选")}
+                  {selectedCount > 0
+                    ? t("library.webdavImportImportSelectedCount", {
+                        count: selectedCount,
+                      })
+                    : t("library.webdavImportImportSelected", "导入所选")}
                 </Text>
               </TouchableOpacity>
             </View>

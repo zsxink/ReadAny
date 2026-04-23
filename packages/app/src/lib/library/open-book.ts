@@ -1,5 +1,6 @@
 import { useAppStore } from "@/stores/app-store";
 import { useLibraryStore } from "@/stores/library-store";
+import { getBook } from "@readany/core/db/database";
 import { getPlatformService } from "@readany/core/services";
 import { setBookSyncStatus } from "@readany/core/db/database";
 import { downloadBookFile } from "@readany/core/sync";
@@ -8,6 +9,7 @@ import { useSyncStore } from "@readany/core/stores/sync-store";
 import type { Book } from "@readany/core/types";
 import type { TFunction } from "i18next";
 import { toast } from "sonner";
+import { useMissingBookPromptStore } from "@/stores/missing-book-prompt-store";
 
 interface OpenDesktopBookOptions {
   book: Book;
@@ -16,6 +18,17 @@ interface OpenDesktopBookOptions {
 }
 
 const pendingDownloads = new Set<string>();
+const BOOK_IMPORT_FILTERS = [
+  {
+    name: "Books",
+    extensions: ["epub", "pdf", "mobi", "azw", "azw3", "cbz", "fb2", "fbz", "txt"],
+  },
+];
+
+function isLikelyRelativeDesktopPath(path: string): boolean {
+  if (!path) return false;
+  return !/^(\/|file:\/\/|asset:\/\/|https?:\/\/|[A-Za-z]:[\\/])/i.test(path);
+}
 
 function openReaderTab(book: Book, initialCfi?: string) {
   const { addTab, setActiveTab } = useAppStore.getState();
@@ -35,7 +48,7 @@ export async function openDesktopBook({
   t,
   initialCfi,
 }: OpenDesktopBookOptions): Promise<boolean> {
-  const { books, setBooks, loadBooks } = useLibraryStore.getState();
+  const { books, setBooks, loadBooks, importBooks } = useLibraryStore.getState();
 
   if (pendingDownloads.has(book.id) || book.syncStatus === "downloading") {
     return false;
@@ -80,6 +93,62 @@ export async function openDesktopBook({
       return false;
     } finally {
       pendingDownloads.delete(book.id);
+    }
+  }
+
+  if (book.filePath) {
+    const platform = getPlatformService();
+    const targetPath = isLikelyRelativeDesktopPath(book.filePath)
+      ? await platform.joinPath(await platform.getAppDataDir(), book.filePath)
+      : book.filePath;
+
+    const fileExists = await platform.exists(targetPath).catch(() => false);
+    if (!fileExists) {
+      const shouldReimport = await useMissingBookPromptStore.getState().showPrompt({
+        title: t("reader.reimportPromptTitle", "本地文件已移除"),
+        description: t(
+          "reader.reimportDialogDescriptionDesktop",
+          "重新选择这本书的文件后，就能继续阅读，并接回原来的笔记和阅读记录。",
+        ),
+        confirmLabel: t("reader.reimportSelectFile", "重新选择文件"),
+        cancelLabel: t("common.cancel", "取消"),
+      });
+      if (!shouldReimport) {
+        return false;
+      }
+
+      const picked = await platform.pickFile({
+        multiple: false,
+        filters: BOOK_IMPORT_FILTERS,
+      });
+      const selectedPath = Array.isArray(picked) ? picked[0] : picked;
+      if (!selectedPath) {
+        return false;
+      }
+
+      const summary = await importBooks([selectedPath]);
+      const restoredBook =
+        summary.imported.find((item) => item.id === book.id) ??
+        summary.skippedDuplicates.find((item) => item.existingBook.id === book.id)?.existingBook ??
+        null;
+
+      if (!restoredBook) {
+        toast.error(
+          t(
+            "reader.reimportDifferentBook",
+            "导入的不是同一本书，没法接上原来的笔记和统计。",
+          ),
+        );
+        return false;
+      }
+
+      const latestBook =
+        useLibraryStore.getState().books.find((item) => item.id === book.id) ??
+        (await getBook(book.id, { includeDeleted: true }).catch(() => null)) ??
+        restoredBook;
+
+      openReaderTab(latestBook, initialCfi);
+      return true;
     }
   }
 

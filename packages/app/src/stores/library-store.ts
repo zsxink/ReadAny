@@ -4,6 +4,12 @@ import {
   getDesktopLibraryRoot,
   resolveDesktopDataPath,
 } from "@/lib/storage/desktop-library-root";
+import {
+  createEmptyImportBooksResult,
+  createImportDuplicateIndex,
+  findDuplicateBookByHash,
+  type ImportBooksResult,
+} from "@readany/core";
 import { debouncedSave, loadFromFS } from "@readany/core/stores/persist";
 import { useVectorModelStore } from "@readany/core/stores/vector-model-store";
 import type { Book, LibraryFilter, SortField, SortOrder } from "@readany/core/types";
@@ -335,6 +341,9 @@ async function readTextFromMap(entries: Map<string, Blob>, path: string): Promis
 }
 
 export type LibraryViewMode = "grid" | "list";
+export interface RemoveBookOptions {
+  preserveData?: boolean;
+}
 
 export interface LibraryState {
   books: Book[];
@@ -351,13 +360,13 @@ export interface LibraryState {
   loadBooks: (deletedTags?: string[]) => Promise<void>;
   setBooks: (books: Book[]) => void;
   addBook: (book: Book) => void;
-  removeBook: (bookId: string) => void;
+  removeBook: (bookId: string, options?: RemoveBookOptions) => Promise<void>;
   updateBook: (bookId: string, updates: Partial<Book>) => void;
   setFilter: (filter: Partial<LibraryFilter>) => void;
   setViewMode: (mode: LibraryViewMode) => void;
   setSortField: (field: SortField) => void;
   setSortOrder: (order: SortOrder) => void;
-  importBooks: (filePaths: string[]) => Promise<void>;
+  importBooks: (filePaths: string[]) => Promise<ImportBooksResult>;
   // Tag management
   setActiveTag: (tag: string) => void;
   addTag: (tag: string) => void;
@@ -442,17 +451,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     debouncedSave("library-books", get().books);
   },
 
-  removeBook: async (bookId) => {
+  removeBook: async (bookId, options = {}) => {
+    const preserveData = options.preserveData ?? false;
     // Find the book before removing to get file paths
     const book = get().books.find((b) => b.id === bookId);
 
     set((state) => ({ books: state.books.filter((b) => b.id !== bookId) }));
-    db.deleteBook(bookId).catch((err) =>
+    db.deleteBook(bookId, { preserveData }).catch((err) =>
       console.error("Failed to delete book from database:", err),
-    );
-    // Delete associated chat threads
-    db.deleteThreadsByBookId(bookId).catch((err) =>
-      console.error("Failed to delete associated chat threads:", err),
     );
     // Update FS cache
     debouncedSave("library-books", get().books);
@@ -473,8 +479,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           }
         }
 
-        // Delete cover file if it's a relative path
-        if (book.meta.coverUrl && isRelativePath(book.meta.coverUrl)) {
+        if (!preserveData && book.meta.coverUrl && isRelativePath(book.meta.coverUrl)) {
           try {
             const coverAbsPath = await resolveAppPath(book.meta.coverUrl);
             await remove(coverAbsPath);
@@ -510,10 +515,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   importBooks: async (filePaths) => {
     set({ isImporting: true });
+    const result = createEmptyImportBooksResult();
+    const duplicateIndex = createImportDuplicateIndex(get().books);
     try {
+      await db.initDatabase();
       const { DocumentLoader } = await import("@/lib/reader/document-loader");
 
       for (const filePath of filePaths) {
+        const fileName = decodeURIComponent(filePath.split("/").pop() || "book");
         try {
           const ext = filePath.split(".").pop()?.toLowerCase() || "epub";
           const formatMap: Record<string, Book["format"]> = {
@@ -530,13 +539,31 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           };
           const format: Book["format"] = formatMap[ext] || "epub";
           let title =
-            filePath
-              .split("/")
-              .pop()
-              ?.replace(/\.\w+$/i, "") || "Untitled";
+            fileName.replace(/\.\w+$/i, "") || "Untitled";
           let author = "";
           let coverUrl: string | undefined;
-          const bookId = crypto.randomUUID();
+          let fileHash: string | undefined;
+
+          try {
+            const { invoke } = await import("@tauri-apps/api/core");
+            fileHash = await invoke<string>("sync_hash_file", { path: filePath });
+          } catch {
+            // Hash calculation is best effort.
+          }
+
+          const existingDuplicate = findDuplicateBookByHash(duplicateIndex, fileHash);
+          if (existingDuplicate) {
+            result.skippedDuplicates.push({
+              name: fileName,
+              existingBook: existingDuplicate,
+            });
+            continue;
+          }
+
+          const deletedMatch = fileHash
+            ? await db.getDeletedBookByFileHash(fileHash).catch(() => null)
+            : null;
+          const bookId = deletedMatch?.id ?? crypto.randomUUID();
 
           // For TXT files, convert to EPUB first before storing
           if (ext === "txt") {
@@ -568,18 +595,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
                 return { relativePath: relPath, fileBytes: bytes };
               })()
             : await copyBookToAppData(bookId, ext, filePath);
-
-          // Compute file hash for sync file matching
-          let fileHash: string | undefined;
-          try {
-            const { invoke } = await import("@tauri-apps/api/core");
-            const absPath = await resolveAppPath(relativePath);
-            fileHash = await invoke<string>("sync_hash_file", { path: absPath });
-          } catch {
-            // Hash calculation not critical — sync_hash_file command may not exist yet
-          }
-
-          const fileName = filePath.split("/").pop() || "book";
           const blob = new Blob([fileBytes]);
           const docFileName = ext === "txt" ? fileName.replace(/\.txt$/i, ".epub") : fileName;
           const file = new File([blob], docFileName, {
@@ -640,18 +655,50 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             id: bookId,
             filePath: relativePath,
             format,
-            meta: { title, author, coverUrl },
-            progress: 0,
+            meta: {
+              ...(deletedMatch?.meta ?? {}),
+              title,
+              author,
+              coverUrl: coverUrl || deletedMatch?.meta.coverUrl,
+            },
+            progress: deletedMatch?.progress ?? 0,
+            currentCfi: deletedMatch?.currentCfi,
             isVectorized: false,
             vectorizeProgress: 0,
-            tags: [],
+            tags: deletedMatch?.tags ?? [],
             fileHash,
             syncStatus: "local",
-            addedAt: Date.now(),
+            addedAt: deletedMatch?.addedAt ?? Date.now(),
             updatedAt: Date.now(),
-            lastOpenedAt: Date.now(),
+            lastOpenedAt: deletedMatch?.lastOpenedAt ?? Date.now(),
           };
-          get().addBook(book);
+
+          if (deletedMatch) {
+            set((state) => ({ books: [...state.books, book] }));
+            db.updateBook(book.id, {
+              filePath: book.filePath,
+              format: book.format,
+              meta: book.meta,
+              deletedAt: undefined,
+              progress: book.progress,
+              currentCfi: book.currentCfi,
+              isVectorized: false,
+              vectorizeProgress: 0,
+              tags: book.tags,
+              fileHash: book.fileHash,
+              syncStatus: "local",
+              lastOpenedAt: Date.now(),
+            }).catch((err) =>
+              console.error("Failed to restore deleted book from database:", err),
+            );
+            debouncedSave("library-books", get().books);
+          } else {
+            get().addBook(book);
+          }
+          result.imported.push(book);
+          if (fileHash) {
+            duplicateIndex.byHash.set(fileHash, book);
+          }
           
           // Auto-vectorize if enabled
           const vmState = useVectorModelStore.getState();
@@ -662,11 +709,16 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           }
         } catch (err) {
           console.error(`Failed to import ${filePath}:`, err);
+          result.failures.push({
+            name: fileName,
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
       }
     } finally {
       set({ isImporting: false });
     }
+    return result;
   },
 
   // ── Tag management ──

@@ -5,6 +5,7 @@ import { DesktopImportActions } from "@/components/home/DesktopImportActions";
 import { useLibraryStore } from "@/stores/library-store";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 
 export function ImportDropZone() {
   const { t } = useTranslation();
@@ -38,10 +39,17 @@ export function ImportDropZone() {
         }
       }
       if (paths.length > 0) {
-        await importBooks(paths);
+        const result = await importBooks(paths);
+        toast.success(
+          t("library.importResultSummary", {
+            imported: result.imported.length,
+            skipped: result.skippedDuplicates.length,
+            failed: result.failures.length,
+          }),
+        );
       }
     },
-    [importBooks],
+    [importBooks, t],
   );
 
   return (

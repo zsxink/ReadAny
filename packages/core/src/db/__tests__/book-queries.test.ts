@@ -20,11 +20,19 @@ const coreMocks = vi.hoisted(() => ({
   }),
 }));
 
+const dependencyMocks = vi.hoisted(() => ({
+  deleteThreadsByBookId: vi.fn(),
+  deleteChunks: vi.fn(),
+}));
+
 vi.mock("../db-core", () => coreMocks);
+vi.mock("../thread-queries", () => ({ deleteThreadsByBookId: dependencyMocks.deleteThreadsByBookId }));
+vi.mock("../chunk-queries", () => ({ deleteChunks: dependencyMocks.deleteChunks }));
 
 const {
   getBooks,
   getBook,
+  getDeletedBookByFileHash,
   insertBook,
   updateBook,
   deleteBook,
@@ -57,6 +65,8 @@ describe("book-queries", () => {
     coreMocks.nextSyncVersion.mockResolvedValue(1);
     coreMocks.nextUpdatedAt.mockResolvedValue(3000);
     coreMocks.insertTombstone.mockResolvedValue(undefined);
+    dependencyMocks.deleteThreadsByBookId.mockResolvedValue(undefined);
+    dependencyMocks.deleteChunks.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -84,6 +94,7 @@ describe("book-queries", () => {
           added_at: 1000,
           last_opened_at: 2000,
           updated_at: 2000,
+          deleted_at: null,
           progress: 0.5,
           current_cfi: "epubcfi(/6/2)",
           is_vectorized: 0,
@@ -101,7 +112,7 @@ describe("book-queries", () => {
       expect(books[0].progress).toBe(0.5);
       expect(books[0].isVectorized).toBe(false);
       expect(mockSelect).toHaveBeenCalledWith(
-        "SELECT * FROM books ORDER BY last_opened_at DESC, added_at DESC",
+        "SELECT * FROM books WHERE deleted_at IS NULL ORDER BY last_opened_at DESC, added_at DESC",
       );
     });
 
@@ -109,6 +120,14 @@ describe("book-queries", () => {
       mockSelect.mockResolvedValue([]);
       const books = await getBooks();
       expect(books).toEqual([]);
+    });
+
+    it("can include deleted books when explicitly requested", async () => {
+      mockSelect.mockResolvedValue([]);
+      await getBooks({ includeDeleted: true });
+      expect(mockSelect).toHaveBeenCalledWith(
+        "SELECT * FROM books ORDER BY last_opened_at DESC, added_at DESC",
+      );
     });
   });
 
@@ -133,6 +152,7 @@ describe("book-queries", () => {
           added_at: 1000,
           last_opened_at: null,
           updated_at: 1000,
+          deleted_at: null,
           progress: 0,
           current_cfi: null,
           is_vectorized: 0,
@@ -146,13 +166,55 @@ describe("book-queries", () => {
       const book = await getBook("book-1");
       expect(book).not.toBeNull();
       expect(book!.id).toBe("book-1");
-      expect(mockSelect).toHaveBeenCalledWith("SELECT * FROM books WHERE id = ?", ["book-1"]);
+      expect(mockSelect).toHaveBeenCalledWith(
+        "SELECT * FROM books WHERE id = ? AND deleted_at IS NULL",
+        ["book-1"],
+      );
     });
 
     it("returns null when book not found", async () => {
       mockSelect.mockResolvedValue([]);
       const book = await getBook("nonexistent");
       expect(book).toBeNull();
+    });
+
+    it("can look up a previously deleted book by file hash", async () => {
+      mockSelect.mockResolvedValue([
+        {
+          id: "book-1",
+          file_path: "/path/to/book.epub",
+          format: "epub",
+          title: "Deleted Book",
+          author: "Test Author",
+          publisher: null,
+          language: null,
+          isbn: null,
+          description: null,
+          cover_url: null,
+          publish_date: null,
+          subjects: null,
+          total_pages: 0,
+          total_chapters: 0,
+          added_at: 1000,
+          last_opened_at: null,
+          updated_at: 2000,
+          deleted_at: 2500,
+          progress: 0.3,
+          current_cfi: null,
+          is_vectorized: 0,
+          vectorize_progress: 0,
+          tags: "[]",
+          file_hash: "hash-1",
+          sync_status: "local",
+        },
+      ]);
+
+      const book = await getDeletedBookByFileHash("hash-1");
+      expect(book?.id).toBe("book-1");
+      expect(mockSelect).toHaveBeenCalledWith(
+        "SELECT * FROM books WHERE file_hash = ? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT 1",
+        ["hash-1"],
+      );
     });
   });
 
@@ -194,18 +256,42 @@ describe("book-queries", () => {
   });
 
   describe("deleteBook", () => {
-    it("deletes book and all related data", async () => {
+    it("soft-deletes book and preserves notes + reading stats when requested", async () => {
       mockExecute.mockResolvedValue(undefined);
+
+      await deleteBook("book-1", { preserveData: true });
+
+      expect(mockSelect).not.toHaveBeenCalledWith("SELECT id FROM highlights WHERE book_id = ?", ["book-1"]);
+      expect(mockExecute).not.toHaveBeenCalledWith("DELETE FROM highlights WHERE book_id = ?", ["book-1"]);
+      expect(mockExecute).not.toHaveBeenCalledWith("DELETE FROM notes WHERE book_id = ?", ["book-1"]);
+      expect(mockExecute).not.toHaveBeenCalledWith("DELETE FROM bookmarks WHERE book_id = ?", ["book-1"]);
+      expect(mockExecute).not.toHaveBeenCalledWith("DELETE FROM reading_sessions WHERE book_id = ?", ["book-1"]);
+      expect(mockExecute).not.toHaveBeenCalledWith("DELETE FROM books WHERE id = ?", ["book-1"]);
+      expect(dependencyMocks.deleteThreadsByBookId).toHaveBeenCalledWith("book-1");
+      expect(dependencyMocks.deleteChunks).toHaveBeenCalledWith("book-1");
+      expect(mockExecute).toHaveBeenCalledWith(
+        expect.stringContaining("UPDATE books"),
+        [expect.any(Number), 3000, 1, "device-1", "book-1"],
+      );
+    });
+
+    it("hard-deletes everything when preserveData is not requested", async () => {
+      mockExecute.mockResolvedValue(undefined);
+      mockSelect
+        .mockResolvedValueOnce([{ id: "hl-1" }])
+        .mockResolvedValueOnce([{ id: "note-1" }])
+        .mockResolvedValueOnce([{ id: "bm-1" }]);
 
       await deleteBook("book-1");
 
-      // Should delete highlights, bookmarks, reading_sessions, chunks, then the book
-      expect(mockExecute).toHaveBeenCalledTimes(5);
       expect(mockExecute).toHaveBeenCalledWith("DELETE FROM highlights WHERE book_id = ?", ["book-1"]);
+      expect(mockExecute).toHaveBeenCalledWith("DELETE FROM notes WHERE book_id = ?", ["book-1"]);
       expect(mockExecute).toHaveBeenCalledWith("DELETE FROM bookmarks WHERE book_id = ?", ["book-1"]);
       expect(mockExecute).toHaveBeenCalledWith("DELETE FROM reading_sessions WHERE book_id = ?", ["book-1"]);
-      expect(mockExecute).toHaveBeenCalledWith("DELETE FROM chunks WHERE book_id = ?", ["book-1"]);
       expect(mockExecute).toHaveBeenCalledWith("DELETE FROM books WHERE id = ?", ["book-1"]);
+      expect(coreMocks.insertTombstone).toHaveBeenCalledWith(mockDb, "hl-1", "highlights");
+      expect(coreMocks.insertTombstone).toHaveBeenCalledWith(mockDb, "note-1", "notes");
+      expect(coreMocks.insertTombstone).toHaveBeenCalledWith(mockDb, "bm-1", "bookmarks");
       expect(coreMocks.insertTombstone).toHaveBeenCalledWith(mockDb, "book-1", "books");
     });
   });

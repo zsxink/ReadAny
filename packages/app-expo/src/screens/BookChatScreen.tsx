@@ -6,6 +6,7 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { openMobileBook } from "@/lib/library/open-mobile-book";
 import {
   Alert,
   Animated,
@@ -267,16 +268,24 @@ export function BookChatScreen({ route, navigation }: Props) {
   const handleCitationClick = useCallback(
     (citation: CitationPart) => {
       if (citation.bookId === bookId && citation.cfi) {
-        navigation.navigate("Reader", { bookId, cfi: citation.cfi, highlight: true });
+        void openMobileBook({
+          bookId,
+          navigation,
+          t,
+          cfi: citation.cfi,
+          highlight: true,
+        });
       } else if (citation.bookId) {
-        navigation.navigate("Reader", {
+        void openMobileBook({
           bookId: citation.bookId,
+          navigation,
+          t,
           cfi: citation.cfi,
           highlight: true,
         });
       }
     },
-    [bookId, navigation],
+    [bookId, navigation, t],
   );
 
   const handleSelectThread = useCallback(

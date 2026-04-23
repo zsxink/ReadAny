@@ -20,6 +20,7 @@ import type { WebDavImportSource } from "@readany/core";
  */
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { useSettingsStore } from "@/stores";
+import { MissingBookPrompt } from "@/components/shared/MissingBookPrompt";
 import { TabNavigator } from "./TabNavigator";
 
 export type RootStackParamList = {
@@ -52,61 +53,64 @@ export function RootNavigator() {
   if (!_hasHydrated) return null;
 
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      {showOnboarding ? (
-        <Stack.Screen name="Onboarding" component={OnboardingNavigator} />
-      ) : (
-        <>
-          <Stack.Screen name="Tabs" component={TabNavigator} />
-          <Stack.Screen
-            name="Reader"
-            component={ReaderScreen}
-            options={{ animation: "slide_from_right" }}
-          />
-          <Stack.Screen
-            name="BookChat"
-            component={BookChatScreen}
-            options={{ animation: "slide_from_right" }}
-          />
-          <Stack.Screen
-            name="Stats"
-            component={StatsScreen}
-            options={{ animation: "slide_from_right" }}
-          />
-          <Stack.Screen
-            name="Badges"
-            component={BadgesScreen}
-            options={{ animation: "slide_from_right" }}
-          />
-          <Stack.Screen
-            name="Skills"
-            component={SkillsScreen}
-            options={{ animation: "slide_from_right" }}
-          />
-          <Stack.Screen
-            name="VectorModelSettings"
-            component={VectorModelSettingsScreen}
-            options={{ animation: "slide_from_right" }}
-          />
-          <Stack.Screen name="AppearanceSettings" component={AppearanceSettingsScreen} />
-          <Stack.Screen name="AISettings" component={AISettingsScreen} />
-          <Stack.Screen name="TTSSettings" component={TTSSettingsScreen} />
-          <Stack.Screen name="TranslationSettings" component={TranslationSettingsScreen} />
-          <Stack.Screen name="SyncSettings" component={SyncSettingsScreen} />
-          <Stack.Screen name="About" component={AboutScreen} />
-          <Stack.Screen name="FontSettings" component={FontSettingsScreen} options={{ animation: "slide_from_right" }} />
-          <Stack.Screen
-            name="WebDavImportBrowser"
-            component={WebDavImportBrowserScreen}
-            options={{ animation: "slide_from_right" }}
-          />
-          <Stack.Screen
-            name="FullScreenNotes"
-            component={FullScreenNotesScreen}
-            options={{ animation: "slide_from_right" }}
-          />
-        </>
-      )}
-    </Stack.Navigator>
+    <>
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        {showOnboarding ? (
+          <Stack.Screen name="Onboarding" component={OnboardingNavigator} />
+        ) : (
+          <>
+            <Stack.Screen name="Tabs" component={TabNavigator} />
+            <Stack.Screen
+              name="Reader"
+              component={ReaderScreen}
+              options={{ animation: "slide_from_right" }}
+            />
+            <Stack.Screen
+              name="BookChat"
+              component={BookChatScreen}
+              options={{ animation: "slide_from_right" }}
+            />
+            <Stack.Screen
+              name="Stats"
+              component={StatsScreen}
+              options={{ animation: "slide_from_right" }}
+            />
+            <Stack.Screen
+              name="Badges"
+              component={BadgesScreen}
+              options={{ animation: "slide_from_right" }}
+            />
+            <Stack.Screen
+              name="Skills"
+              component={SkillsScreen}
+              options={{ animation: "slide_from_right" }}
+            />
+            <Stack.Screen
+              name="VectorModelSettings"
+              component={VectorModelSettingsScreen}
+              options={{ animation: "slide_from_right" }}
+            />
+            <Stack.Screen name="AppearanceSettings" component={AppearanceSettingsScreen} />
+            <Stack.Screen name="AISettings" component={AISettingsScreen} />
+            <Stack.Screen name="TTSSettings" component={TTSSettingsScreen} />
+            <Stack.Screen name="TranslationSettings" component={TranslationSettingsScreen} />
+            <Stack.Screen name="SyncSettings" component={SyncSettingsScreen} />
+            <Stack.Screen name="About" component={AboutScreen} />
+            <Stack.Screen name="FontSettings" component={FontSettingsScreen} options={{ animation: "slide_from_right" }} />
+            <Stack.Screen
+              name="WebDavImportBrowser"
+              component={WebDavImportBrowserScreen}
+              options={{ animation: "slide_from_right" }}
+            />
+            <Stack.Screen
+              name="FullScreenNotes"
+              component={FullScreenNotesScreen}
+              options={{ animation: "slide_from_right" }}
+            />
+          </>
+        )}
+      </Stack.Navigator>
+      <MissingBookPrompt />
+    </>
   );
 }

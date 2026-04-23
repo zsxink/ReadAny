@@ -114,6 +114,14 @@ export const ChevronRightIcon = icon(() => <Path d="m9 18 6-6-6-6" />);
 
 export const ChevronLeftIcon = icon(() => <Path d="m15 18-6-6 6-6" />);
 
+export const MoreVerticalIcon = icon(() => (
+  <>
+    <Circle cx="12" cy="5" r="1.5" fill="currentColor" stroke="none" />
+    <Circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+    <Circle cx="12" cy="19" r="1.5" fill="currentColor" stroke="none" />
+  </>
+));
+
 export const BrainIcon = icon(() => (
   <>
     <Path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" />

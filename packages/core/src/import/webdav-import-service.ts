@@ -13,6 +13,14 @@ function splitPathSegments(path: string): string[] {
   return path.split("/").filter(Boolean);
 }
 
+function safeDecodeWebDavPath(path: string): string {
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
+}
+
 function endsWithSegments(pathSegments: string[], suffixSegments: string[]): boolean {
   if (suffixSegments.length === 0) return true;
   if (pathSegments.length < suffixSegments.length) return false;
@@ -64,6 +72,8 @@ export function toWebDavImportRelativePath(source: WebDavImportSource, href: str
   } catch {
     pathname = href;
   }
+
+  pathname = safeDecodeWebDavPath(pathname);
 
   const normalizedPathname = pathname.replace(/\/+$/, "") || "/";
   if (rootPrefix === "/") {

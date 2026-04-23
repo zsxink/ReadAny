@@ -225,7 +225,7 @@ export function WebDavConnectSheet({
         >
           <View style={s.handle} />
           <View>
-            <Text style={s.title}>{t("library.importSourceTemporaryWebDav", "其他 WebDAV")}</Text>
+            <Text style={s.title}>{t("library.importSourceTemporaryWebDav", "连接其他 WebDAV")}</Text>
             <Text style={s.subtitle}>
               {t(
                 "library.importSourceTemporaryWebDavDesc",

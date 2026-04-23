@@ -23,6 +23,7 @@ export {
   // Book queries
   getBooks,
   getBook,
+  getDeletedBookByFileHash,
   insertBook,
   updateBook,
   setBookSyncStatus,

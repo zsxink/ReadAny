@@ -1,4 +1,4 @@
-import { ClockIcon, DatabaseIcon, Loader2Icon } from "@/components/ui/Icon";
+import { ClockIcon, DatabaseIcon, Loader2Icon, MoreVerticalIcon } from "@/components/ui/Icon";
 import { useColors } from "@/styles/theme";
 import { getPlatformService } from "@readany/core/services";
 /**
@@ -6,12 +6,13 @@ import { getPlatformService } from "@readany/core/services";
  * Cover (28:41), progress bar, vectorization overlay, tag badges, long-press action sheet.
  */
 import type { Book } from "@readany/core/types";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Animated,
   Easing,
   Image,
+  type LayoutRectangle,
   Text,
   TouchableOpacity,
   View,
@@ -48,7 +49,7 @@ const AnimatedLoader = () => {
 interface BookCardProps {
   book: Book;
   onOpen: (book: Book) => void;
-  onDelete: (bookId: string) => void;
+  onDelete: (bookId: string, options?: { preserveData?: boolean }) => void;
   onManageTags?: (book: Book) => void;
   onVectorize?: (book: Book) => void;
   isVectorizing?: boolean;
@@ -73,7 +74,10 @@ export const BookCard = memo(function BookCard({
   const { t } = useTranslation();
   const [imageError, setImageError] = useState(false);
   const [showActions, setShowActions] = useState(false);
+  const [actionAnchor, setActionAnchor] = useState<LayoutRectangle | null>(null);
   const [resolvedCoverUrl, setResolvedCoverUrl] = useState<string | undefined>(undefined);
+  const coverRef = useRef<View>(null);
+  const menuTriggerRef = useRef<View>(null);
 
   // Resolve relative coverUrl to absolute path
   useEffect(() => {
@@ -107,17 +111,55 @@ export const BookCard = memo(function BookCard({
       : 0
     : 0;
 
+  const measureAnchor = useCallback(async () => {
+    const measureNode = (node: View | null, fallbackToBottomRight = false) =>
+      new Promise<LayoutRectangle | null>((resolve) => {
+        if (!node || typeof node.measureInWindow !== "function") {
+          resolve(null);
+          return;
+        }
+        requestAnimationFrame(() => {
+          node.measureInWindow((x, y, width, height) => {
+            if (!width && !height) {
+              resolve(null);
+              return;
+            }
+            resolve(
+              fallbackToBottomRight
+                ? {
+                    x: x + Math.max(0, width - 40),
+                    y: y + Math.max(0, height - 40),
+                    width: 40,
+                    height: 40,
+                  }
+                : { x, y, width, height },
+            );
+          });
+        });
+      });
+
+    return (await measureNode(menuTriggerRef.current)) ?? (await measureNode(coverRef.current, true));
+  }, []);
+
+  const openActions = useCallback(async () => {
+    const anchor = await measureAnchor();
+    setActionAnchor(anchor);
+    setShowActions(true);
+  }, [measureAnchor]);
+
   return (
     <>
       <TouchableOpacity
         style={s.container}
         onPress={() => onOpen(book)}
-        onLongPress={() => setShowActions(true)}
+        onLongPress={() => {
+          void openActions();
+        }}
         delayLongPress={500}
         activeOpacity={0.7}
       >
         {/* Cover — 28:41 aspect ratio */}
-        <View style={s.coverWrap}>
+        <View ref={coverRef} style={s.coverWrap}>
           {resolvedCoverUrl && !imageError ? (
             <>
               <Image
@@ -230,6 +272,19 @@ export const BookCard = memo(function BookCard({
               <Text style={s.vecBadgeText}>{t("home.vec_indexed", "已索引")}</Text>
             </View>
           )}
+
+          <View ref={menuTriggerRef} style={s.moreButtonWrap} pointerEvents="box-none">
+            <TouchableOpacity
+              style={s.moreButton}
+              activeOpacity={0.85}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              onPress={() => {
+                void openActions();
+              }}
+            >
+              <MoreVerticalIcon size={14} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Info below cover */}
@@ -274,8 +329,12 @@ export const BookCard = memo(function BookCard({
 
       <BookCardActionSheet
         visible={showActions}
+        anchor={actionAnchor}
         book={book}
-        onClose={() => setShowActions(false)}
+        onClose={() => {
+          setShowActions(false);
+          setActionAnchor(null);
+        }}
         onManageTags={onManageTags}
         onVectorize={onVectorize}
         onDelete={onDelete}

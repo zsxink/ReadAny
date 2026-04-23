@@ -27,6 +27,7 @@ import { eventBus } from "@readany/core/utils/event-bus";
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { openMobileBook } from "@/lib/library/open-mobile-book";
 import {
   Alert,
   FlatList,
@@ -210,9 +211,9 @@ export function NotesView({
 
   const handleOpenBook = useCallback(
     (bookId: string, cfi?: string) => {
-      nav.navigate("Reader", { bookId, cfi });
+      void openMobileBook({ bookId, navigation: nav, t, cfi });
     },
-    [nav],
+    [nav, t],
   );
 
   const handleDeleteNote = useCallback(

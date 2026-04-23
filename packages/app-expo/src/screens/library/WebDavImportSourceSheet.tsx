@@ -175,7 +175,7 @@ export function WebDavImportSourceSheet({
                 </View>
                 <View style={s.optionText}>
                   <Text style={s.optionTitle}>
-                    {t("library.importSourceSavedWebDav", "我的 WebDAV 书库")}
+                    {t("library.importSourceSavedWebDav", "我的 WebDAV")}
                   </Text>
                 </View>
                 <ChevronRightIcon size={16} color={colors.mutedForeground} />
@@ -192,7 +192,7 @@ export function WebDavImportSourceSheet({
                 </View>
                 <View style={s.optionText}>
                   <Text style={s.optionTitle}>
-                    {t("library.importSourceTemporaryWebDav", "其他 WebDAV")}
+                    {t("library.importSourceTemporaryWebDav", "连接其他 WebDAV")}
                   </Text>
                 </View>
                 <ChevronRightIcon size={16} color={colors.mutedForeground} />

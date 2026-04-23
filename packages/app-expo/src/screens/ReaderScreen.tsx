@@ -75,6 +75,12 @@ const MAX_TRACKED_PAGE_DELTA = 20;
 const MAX_TRACKED_FRACTION_DELTA = 0.08;
 const INITIAL_PROGRESS_RESTORE_GUARD_MS = 1800;
 const PROGRAMMATIC_NAV_GUARD_MS = 1200;
+const BOOK_IMPORT_FILTERS = [
+  {
+    name: "Books",
+    extensions: ["epub", "pdf", "mobi", "azw", "azw3", "cbz", "fb2", "fbz", "txt"],
+  },
+];
 const NOTE_TOOLTIP_WIDTH = 300;
 const NOTE_TOOLTIP_SIDE_PADDING = 12;
 const NOTE_TOOLTIP_ABOVE_OFFSET = 2;
@@ -155,6 +161,8 @@ export function ReaderScreen({ route, navigation }: Props) {
   const [translationText, setTranslationText] = useState("");
   const [showTTS, setShowTTS] = useState(false);
   const [showChapterTranslation, setShowChapterTranslation] = useState(false);
+  const [isReimporting, setIsReimporting] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [progress, setProgress] = useState(0);
   const [currentChapter, setCurrentChapter] = useState("");
   const [currentPage, setCurrentPage] = useState(0);
@@ -268,6 +276,7 @@ export function ReaderScreen({ route, navigation }: Props) {
   const incrementCharactersRead = useReadingSessionStore((s) => s.incrementCharactersRead);
   const { sendEvent } = useReadingSession(bookId); // Added useReadingSession hook
   const { books, updateBook } = useLibraryStore();
+  const importBooks = useLibraryStore((s) => s.importBooks);
   const setGoToCfiFn = useReaderStore((s) => s.setGoToCfiFn);
 
   // Throttled progress save (same as desktop - 5 seconds)
@@ -953,7 +962,45 @@ export function ReaderScreen({ route, navigation }: Props) {
     };
 
     loadBook();
-  }, [webViewReady, book?.filePath, bookId]);
+  }, [bookId, book?.filePath, loadAttempt, webViewReady]);
+
+  const handleReimportMissingBook = useCallback(async () => {
+    if (isReimporting) return;
+    setIsReimporting(true);
+
+    try {
+      const platform = getPlatformService();
+      const picked = await platform.pickFile({
+        multiple: false,
+        filters: BOOK_IMPORT_FILTERS,
+      });
+      const selectedUri = Array.isArray(picked) ? picked[0] : picked;
+      if (!selectedUri) return;
+
+      const summary = await importBooks([{ uri: selectedUri }]);
+      const restoredBook =
+        summary.imported.find((item) => item.id === bookId) ??
+        summary.skippedDuplicates.find((item) => item.existingBook.id === bookId)?.existingBook ??
+        null;
+
+      if (!restoredBook) {
+        setError(t("reader.reimportDifferentBook", "导入的不是同一本书，没法接上原来的笔记和统计。"));
+        return;
+      }
+
+      setError(null);
+      setLoading(true);
+    } catch (err) {
+      console.error("[ReaderScreen] Failed to re-import missing book:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : t("reader.reimportFailed", "重新导入失败，请稍后再试。"),
+      );
+    } finally {
+      setIsReimporting(false);
+    }
+  }, [bookId, importBooks, isReimporting, t]);
 
   // Apply theme colors when theme changes
   useEffect(() => {
@@ -1051,13 +1098,39 @@ export function ReaderScreen({ route, navigation }: Props) {
     return (
       <SafeAreaView style={[s.container, { backgroundColor: colors.background }]}>
         <View style={s.loadingWrap}>
-          <Text style={s.errorText}>{error}</Text>
-          <TouchableOpacity
-            style={s.backButton}
-            onPress={() => navigation.reset({ routes: [{ name: "Tabs" }] })}
-          >
-            <Text style={s.backButtonText}>{t("common.back", "返回")}</Text>
-          </TouchableOpacity>
+          <Text style={s.errorText}>{t("reader.loadFailed", "加载失败")}</Text>
+          <Text style={[s.loadingText, { textAlign: "center", maxWidth: 320 }]}>{error}</Text>
+          <View style={{ flexDirection: "row", gap: 12, marginTop: 8 }}>
+            <TouchableOpacity
+              style={s.backButton}
+              onPress={() => {
+                if (book?.filePath) {
+                  setLoading(true);
+                  setError(null);
+                  setLoadAttempt((value) => value + 1);
+                  return;
+                }
+                navigation.reset({ routes: [{ name: "Tabs" }] });
+              }}
+            >
+              <Text style={s.backButtonText}>
+                {book?.filePath
+                  ? t("common.retry", "重试")
+                  : t("common.back", "返回")}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.backButton, { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }]}
+              onPress={() => void handleReimportMissingBook()}
+              disabled={isReimporting}
+            >
+              <Text style={[s.backButtonText, { color: colors.foreground }]}>
+                {isReimporting
+                  ? t("reader.reimporting", "正在重新导入...")
+                  : t("reader.reimport", "重新导入")}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </SafeAreaView>
     );

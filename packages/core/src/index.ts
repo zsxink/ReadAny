@@ -33,6 +33,14 @@ export { default as i18n, initI18nLanguage, changeAndPersistLanguage } from "./i
 // Import services
 export { WebDavImportService } from "./import/webdav-import-service";
 export {
+  createEmptyImportBooksResult,
+  createImportDuplicateIndex,
+  findDuplicateBookByHash,
+  findLikelyDuplicateBook,
+  normalizeImportIdentity,
+  stripBookExtension,
+} from "./import/import-dedupe";
+export {
   DEFAULT_WEBDAV_IMPORT_REMOTE_ROOT,
   WEBDAV_IMPORT_SUPPORTED_EXTENSIONS,
   getWebDavImportExtension,
@@ -46,3 +54,4 @@ export type {
   WebDavImportSource,
   WebDavImportSourceKind,
 } from "./import/webdav-import-types";
+export type { ImportBooksResult, ImportDuplicateIndex } from "./import/import-dedupe";

@@ -41,6 +41,8 @@ export type StatsCopy = {
   noDataDesc: string;
   noDataTitle: string;
   chartPeakLabel: (label: string, value: string) => string;
+  singlePointLabel: string;
+  singlePointDesc: string;
   topBookLead: string;
   topBooksCollapse: string;
   topBooksExpandCount: (count: number) => string;
@@ -117,13 +119,13 @@ export function ChartSurface({
       );
     }
     return (
-      <View style={{ gap: 4 }}>
-        <Text style={{ fontSize: 32, fontWeight: "700", color: colors.foreground, letterSpacing: -1 }}>
+      <View style={s.singlePointCard}>
+        <Text style={s.singlePointEyebrow}>{copy.singlePointLabel}</Text>
+        <Text style={s.singlePointValue}>
           {formatTimeLocalized(point.value, isZh)}
         </Text>
-        <Text style={{ fontSize: 13, color: withOpacity(colors.mutedForeground, 0.5) }}>
-          {point.label}
-        </Text>
+        <Text style={s.singlePointLabel}>{point.label}</Text>
+        <Text style={s.singlePointDesc}>{copy.singlePointDesc}</Text>
       </View>
     );
   }
@@ -259,7 +261,7 @@ export function SectionCard({
   style,
   children,
 }: {
-  title: string;
+  title?: string;
   description?: string;
   featured?: boolean;
   action?: React.ReactNode;
@@ -271,12 +273,14 @@ export function SectionCard({
 
   return (
     <View style={[s.sectionCard, featured && s.sectionFeatured, style]}>
-      <View style={[s.sectionHeader, action ? { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" } : undefined]}>
-        <View style={{ flex: 1 }}>
-          <Text style={s.sectionTitle}>{title}</Text>
+      {(title || action) ? (
+        <View style={[s.sectionHeader, action ? { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" } : undefined]}>
+          <View style={{ flex: 1 }}>
+            {title ? <Text style={s.sectionTitle}>{title}</Text> : null}
+          </View>
+          {action}
         </View>
-        {action}
-      </View>
+      ) : null}
       {children}
     </View>
   );

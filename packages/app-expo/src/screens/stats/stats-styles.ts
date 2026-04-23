@@ -91,12 +91,23 @@ export const makeStyles = (colors: ThemeColors) =>
       justifyContent: "space-between",
       marginBottom: 20,
     },
+    heroLifetimeHeader: {
+      gap: 8,
+      marginBottom: 14,
+    },
     heroDimLabel: {
       fontSize: 10,
       fontWeight: fontWeight.semibold,
       color: withOpacity(colors.primary, 0.5),
       textTransform: "uppercase",
       letterSpacing: 1.5,
+    },
+    heroLifetimeTitle: {
+      fontSize: 24,
+      lineHeight: 32,
+      fontWeight: fontWeight.bold,
+      color: withOpacity(colors.foreground, 0.88),
+      letterSpacing: -0.8,
     },
     heroPeriodLabel: {
       fontSize: 15,
@@ -151,11 +162,13 @@ export const makeStyles = (colors: ThemeColors) =>
       marginTop: 20,
     },
     metricTile: {
-      width: "31%",
       backgroundColor: withOpacity(colors.muted, 0.12),
       borderRadius: radius.lg,
       paddingHorizontal: 10,
       paddingVertical: 10,
+    },
+    metricTileHalf: {
+      width: "48.8%",
     },
     metricLabel: {
       fontSize: 9,
@@ -295,6 +308,42 @@ export const makeStyles = (colors: ThemeColors) =>
     barLabel: { fontSize: 8, color: colors.mutedForeground, marginTop: 4 },
     barChartEmpty: { height: 120, alignItems: "center", justifyContent: "center" },
     barChartEmptyText: { fontSize: fontSize.xs, color: colors.mutedForeground },
+    singlePointCard: {
+      borderRadius: radius.xl,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: withOpacity(colors.border, 0.24),
+      backgroundColor: withOpacity(colors.muted, 0.08),
+      paddingHorizontal: 14,
+      paddingVertical: 14,
+      gap: 6,
+      minHeight: 142,
+      justifyContent: "center",
+    },
+    singlePointEyebrow: {
+      fontSize: 10,
+      fontWeight: fontWeight.semibold,
+      color: withOpacity(colors.primary, 0.52),
+      textTransform: "uppercase",
+      letterSpacing: 1.2,
+    },
+    singlePointValue: {
+      fontSize: 40,
+      lineHeight: 44,
+      fontWeight: fontWeight.bold,
+      color: withOpacity(colors.foreground, 0.92),
+      letterSpacing: -1.2,
+    },
+    singlePointLabel: {
+      fontSize: 13,
+      fontWeight: fontWeight.medium,
+      color: withOpacity(colors.foreground, 0.72),
+    },
+    singlePointDesc: {
+      fontSize: 12,
+      lineHeight: 18,
+      color: withOpacity(colors.mutedForeground, 0.58),
+      marginTop: 2,
+    },
     tooltip: {
       position: "absolute",
       backgroundColor: colors.card,

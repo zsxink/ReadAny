@@ -96,7 +96,7 @@ export class ReadingStatsService {
   /** Get stats for a specific book */
   async getBookStats(bookId: string): Promise<BookStats> {
     const sessions = await getReadingSessions(bookId);
-    const books = await getBooks();
+    const books = await getBooks({ includeDeleted: true });
     const book = books.find((b) => b.id === bookId);
 
     const totalTime = sessions.reduce((sum, s) => sum + s.totalActiveTime, 0);
@@ -114,7 +114,7 @@ export class ReadingStatsService {
 
   /** Get overall reading statistics */
   async getOverallStats(): Promise<OverallStats> {
-    const books = await getBooks();
+    const books = await getBooks({ includeDeleted: true });
 
     let totalTime = 0;
     let totalSessions = 0;
@@ -176,7 +176,7 @@ export class ReadingStatsService {
   /** Get per-book reading time for a date range */
   async getBookStatsForPeriod(start: Date, end: Date): Promise<PeriodBookStats[]> {
     const sessions = await getReadingSessionsByDateRange(start, end);
-    const books = await getBooks();
+    const books = await getBooks({ includeDeleted: true });
     const bookMap = new Map(books.map((b) => [b.id, b]));
 
     // Group reading time by book

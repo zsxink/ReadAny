@@ -19,7 +19,6 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   ClockIcon,
-  FlameIcon,
   SearchIcon,
 } from "@/components/ui/Icon";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
@@ -31,7 +30,6 @@ import {
   readingReportsService,
   evaluateBadges,
   buildStatsSummary,
-  evaluateStreakStatus,
   getAllGoalProgress,
   type StatsDimension,
   type StatsReport,
@@ -114,8 +112,11 @@ export default function StatsScreen() {
   const halfSectionWidth = Math.floor((statsContentWidth - sectionGap) / 2);
   const primarySectionWidth = Math.floor((statsContentWidth - sectionGap) * 0.58);
   const secondarySectionWidth = statsContentWidth - sectionGap - primarySectionWidth;
-  const metricColumns = layout.isTabletLandscape ? 5 : layout.isTablet ? 4 : 3;
-  const metricTileWidth = Math.floor((statsContentWidth - 8 * (metricColumns - 1)) / metricColumns);
+  const metricColumns = layout.isTabletLandscape ? 5 : layout.isTablet ? 4 : 2;
+  const heroMetricPadding = 20 * 2;
+  const metricTileWidth = Math.floor(
+    (statsContentWidth - heroMetricPadding - 8 * (metricColumns - 1)) / metricColumns,
+  );
   const s = makeStyles(colors);
   const saveCurrentSession = useReadingSessionStore((ss) => ss.saveCurrentSession);
   const currentSession = useReadingSessionStore((ss) => ss.currentSession);
@@ -289,12 +290,6 @@ export default function StatsScreen() {
     return evaluateBadges(allFacts, lifetimeSummary);
   }, [allFacts]);
 
-  /* ── Streak risk ── */
-  const streakStatus = useMemo(
-    () => (allFacts.length > 0 ? evaluateStreakStatus(allFacts) : null),
-    [allFacts],
-  );
-
   /* ── Goals ── */
   const goals = useGoalsStore((s) => s.goals);
   const addGoalAction = useGoalsStore((s) => s.addGoal);
@@ -363,6 +358,8 @@ export default function StatsScreen() {
     noDataDesc: t("stats.desktop.noDataDesc"),
     noDataTitle: t("stats.desktop.noDataTitle"),
     chartPeakLabel: (label: string, value: string) => t("stats.desktop.chartPeakLabel", { label, value }),
+    singlePointLabel: t("stats.desktop.singlePointLabel"),
+    singlePointDesc: t("stats.desktop.singlePointDesc"),
     topBookLead: t("stats.desktop.topBookLead"),
     topBooksCollapse: t("stats.desktop.topBooksCollapse"),
     topBooksExpandCount: (count: number) => t("stats.desktop.topBooksExpandCount", { count }),
@@ -495,50 +492,26 @@ export default function StatsScreen() {
           />
         ) : (
           <View style={{ width: "100%", maxWidth: statsContentWidth }}>
-            {/* ═══ Streak at risk banner ═══ */}
-            {streakStatus?.atRisk && streakStatus.streakCount > 0 && (
-              <View
-                style={{
-                  marginBottom: 16,
-                  padding: 14,
-                  borderRadius: 14,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 12,
-                  backgroundColor: "rgba(245,158,11,0.1)",
-                  borderWidth: StyleSheet.hairlineWidth,
-                  borderColor: "rgba(245,158,11,0.25)",
-                }}
-              >
-                <FlameIcon size={22} color="#d97706" />
-                <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                  <Text style={{ fontSize: 13, fontWeight: "700", color: "#d97706" }}>
-                    {t("stats.desktop.streakAtRiskTitle", { count: streakStatus.streakCount })}
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: 11,
-                      lineHeight: 16,
-                      color: withOpacity(colors.mutedForeground, 0.75),
-                    }}
-                  >
-                    {t("stats.desktop.streakAtRiskBody")}
-                  </Text>
-                </View>
-              </View>
-            )}
-
             {/* ═══ Hero Section ═══ */}
             <View style={s.heroCard}>
               {/* Period row + nav */}
-              <View style={s.heroPeriodRow}>
-                <View>
+              {dimension === "lifetime" ? (
+                <View style={s.heroLifetimeHeader}>
                   <Text style={s.heroDimLabel}>
                     {t(`stats.desktop.dimensionTitles.${dimension}`)}
                   </Text>
-                  <Text style={s.heroPeriodLabel}>{periodLabel}</Text>
+                  <Text style={s.heroLifetimeTitle}>
+                    {t("stats.desktop.companionMessage")} {headlineValue}
+                  </Text>
                 </View>
-                {dimension !== "lifetime" && (
+              ) : (
+                <View style={s.heroPeriodRow}>
+                  <View>
+                    <Text style={s.heroDimLabel}>
+                      {t(`stats.desktop.dimensionTitles.${dimension}`)}
+                    </Text>
+                    <Text style={s.heroPeriodLabel}>{periodLabel}</Text>
+                  </View>
                   <View style={s.heroNavRow}>
                     <TouchableOpacity
                       style={s.heroNavBtn}
@@ -555,8 +528,8 @@ export default function StatsScreen() {
                       <ChevronRightIcon size={16} color={report.navigation.canGoNext ? colors.foreground : withOpacity(colors.mutedForeground, 0.3)} />
                     </TouchableOpacity>
                   </View>
-                )}
-              </View>
+                </View>
+              )}
 
               {/* Headline metric */}
               <Text style={s.heroValue}>{headlineValue}</Text>
@@ -580,7 +553,7 @@ export default function StatsScreen() {
                     sublabel={m.sublabel}
                     delta={m.delta}
                     deltaLabel={m.deltaLabel}
-                    style={{ width: metricTileWidth }}
+                    style={layout.isTablet ? { width: metricTileWidth } : s.metricTileHalf}
                   />
                 ))}
               </View>
@@ -749,8 +722,7 @@ export default function StatsScreen() {
 
                 {hasRhythmProfile && (
                   <SectionCard
-                    title={t("stats.desktop.rhythmProfile")}
-                    description={t("stats.desktop.rhythmProfileDesc")}
+                    title={undefined}
                     style={{
                       width: primaryChart ? secondarySectionWidth : statsContentWidth,
                       marginBottom: 0,
@@ -790,8 +762,7 @@ export default function StatsScreen() {
                   (yearOrLifetimeReport.timeOfDayChart || yearOrLifetimeReport.categoryDistribution) &&
                   report.dimension === "lifetime" && (
                   <SectionCard
-                    title={t("stats.desktop.rhythmProfile")}
-                    description={t("stats.desktop.rhythmProfileDesc")}
+                    title={undefined}
                     style={useTabletSectionGrid ? { width: primarySectionWidth, marginBottom: 0 } : undefined}
                   >
                     <RhythmProfileSection

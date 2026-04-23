@@ -28,6 +28,7 @@ import { useNotebookStore } from "@/stores/notebook-store";
 import { useReaderStore } from "@/stores/reader-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useTTSStore } from "@/stores/tts-store";
+import { getPlatformService } from "@readany/core/services";
 import { useFontStore, getCSSFontFace, useReadingSessionStore } from "@readany/core/stores";
 import { useChapterTranslation } from "@readany/core/hooks";
 import { splitNarrationText } from "@readany/core/tts";
@@ -56,6 +57,12 @@ const MAX_TRACKED_PAGE_DELTA = 20;
 const MAX_TRACKED_FRACTION_DELTA = 0.08;
 const INITIAL_PROGRESS_RESTORE_GUARD_MS = 1800;
 const PROGRAMMATIC_NAV_GUARD_MS = 1200;
+const BOOK_IMPORT_FILTERS = [
+  {
+    name: "Books",
+    extensions: ["epub", "pdf", "mobi", "azw", "azw3", "cbz", "fb2", "fbz", "txt"],
+  },
+];
 
 function countReadableCharacters(doc: Document): number {
   const rawText = doc.body?.textContent ?? "";
@@ -314,7 +321,9 @@ type TTSSegment = {
 export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   const TOOLBAR_PIN_STORAGE_KEY = "readany-reader-toolbar-pinned";
   const readerTab = useReaderStore((s) => s.tabs[tabId]);
+  const removeReaderTab = useReaderStore((s) => s.removeTab);
   const appTab = useAppStore((s) => s.tabs.find((t) => t.id === tabId));
+  const closeAppTab = useAppStore((s) => s.removeTab);
   const viewSettings = useSettingsStore((s) => s.readSettings);
   const updateReadSettings = useSettingsStore((s) => s.updateReadSettings);
   const setProgress = useReaderStore((s) => s.setProgress);
@@ -435,6 +444,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
 
   const books = useLibraryStore((s) => s.books);
   const updateBook = useLibraryStore((s) => s.updateBook);
+  const importBooks = useLibraryStore((s) => s.importBooks);
   const book = books.find((b) => b.id === bookId);
 
   const highlights = useAnnotationStore((s) => s.highlights);
@@ -643,6 +653,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   const [showChat, setShowChat] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showTTS, setShowTTS] = useState(false);
+  const [isReimporting, setIsReimporting] = useState(false);
   const [ttsSourceKind, setTtsSourceKind] = useState<"page" | "selection">("page");
   const [ttsContinuousEnabled, setTtsContinuousEnabled] = useState(true);
   const [ttsLastText, setTtsLastText] = useState("");
@@ -927,6 +938,51 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       return () => clearTimeout(timer);
     }
   }, [book?.filePath, bookId, t]);
+
+  const handleReimportMissingBook = useCallback(async () => {
+    if (isReimporting) return;
+    setIsReimporting(true);
+
+    try {
+      const platform = getPlatformService();
+      const picked = await platform.pickFile({
+        multiple: false,
+        filters: BOOK_IMPORT_FILTERS,
+      });
+      const selectedPath = Array.isArray(picked) ? picked[0] : picked;
+      if (!selectedPath) return;
+
+      const result = await importBooks([selectedPath]);
+      const restoredBook =
+        result.imported.find((item) => item.id === bookId) ??
+        result.skippedDuplicates.find((item) => item.existingBook.id === bookId)?.existingBook ??
+        null;
+
+      if (!restoredBook) {
+        setError(t("reader.reimportDifferentBook", "导入的不是同一本书，没法接上原来的笔记和统计。"));
+        return;
+      }
+
+      isInitializedRef.current = false;
+      setBookDoc(null);
+      setError(null);
+      setIsLoading(true);
+    } catch (err) {
+      console.error("[ReaderView] Failed to re-import missing book:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : t("reader.reimportFailed", "重新导入失败，请稍后再试。"),
+      );
+    } finally {
+      setIsReimporting(false);
+    }
+  }, [bookId, importBooks, isReimporting, t]);
+
+  const handleCloseMissingBookTab = useCallback(() => {
+    closeAppTab(tabId);
+    removeReaderTab(tabId);
+  }, [closeAppTab, removeReaderTab, tabId]);
 
   // --- Event handlers from FoliateViewer ---
   const handleRelocate = useCallback(
@@ -2530,15 +2586,14 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
                   </div>
                   <p className="text-sm font-medium text-destructive">{t("reader.loadFailed")}</p>
                   <p className="text-xs text-muted-foreground">{error}</p>
-                  <button
-                    type="button"
-                    className="mt-2 rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90"
-                    onClick={() => {
-                      if (book?.filePath) {
+                  {book?.filePath ? (
+                    <button
+                      type="button"
+                      className="mt-2 rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90"
+                      onClick={() => {
                         isInitializedRef.current = false;
                         setError(null);
                         setBookDoc(null);
-                        // Trigger re-init
                         setIsLoading(true);
                         loadAndParseBook(book.filePath)
                           .then(({ bookDoc, format }) => {
@@ -2550,10 +2605,28 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
                             setError(err instanceof Error ? err.message : "Failed");
                             setIsLoading(false);
                           });
-                      }
-                    }}
+                      }}
+                    >
+                      {t("common.retry")}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="mt-2 rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90"
+                      onClick={handleCloseMissingBookTab}
+                    >
+                      {t("common.back", "返回")}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="rounded-lg border border-border bg-background px-4 py-2 text-sm text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={() => void handleReimportMissingBook()}
+                    disabled={isReimporting}
                   >
-                    {t("common.retry")}
+                    {isReimporting
+                      ? t("reader.reimporting", "正在重新导入...")
+                      : t("reader.reimport", "重新导入")}
                   </button>
                 </div>
               </div>

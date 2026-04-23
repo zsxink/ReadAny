@@ -22,6 +22,7 @@ import { NotesPage } from "@/components/notes/NotesPage";
 import { OnboardingModal } from "@/components/onboarding/OnboardingModal";
 import { ReaderView, evictBlobCache } from "@/components/reader/ReaderView";
 import { SettingsDialog } from "@/components/settings/SettingsDialog";
+import { MissingBookPromptDialog } from "@/components/shared/MissingBookPromptDialog";
 import { ReadingStatsPanel } from "@/components/stats/ReadingStatsPanel";
 import { FloatingTTSBubble } from "@/components/tts/FloatingTTSBubble";
 import SkillsPage from "@/pages/Skills";
@@ -369,6 +370,7 @@ export function AppLayout() {
           );
         })}
       </main>
+      <MissingBookPromptDialog />
       <SettingsDialog open={showSettings} onClose={() => setShowSettings(false)} />
       <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
       <FloatingTTSBubble />

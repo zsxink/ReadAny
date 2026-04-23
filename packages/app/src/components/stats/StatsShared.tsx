@@ -39,14 +39,20 @@ export function SectionHeader({
   title,
   action,
 }: {
-  title: string;
+  title?: string;
   description?: string;
   action?: ReactNode;
 }) {
+  if (!title && !action) {
+    return null;
+  }
+
   return (
     <div className="mb-5 flex items-start justify-between gap-4">
       <div>
-        <h2 className="text-[15px] font-semibold tracking-tight text-foreground/90">{title}</h2>
+        {title ? (
+          <h2 className="text-[15px] font-semibold tracking-tight text-foreground/90">{title}</h2>
+        ) : null}
       </div>
       {action}
     </div>

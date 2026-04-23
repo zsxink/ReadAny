@@ -20,7 +20,7 @@ import type {
 
 export class ReadingReportsService {
   async getAllDailyFacts(currentSession: ReadingSession | null = null): Promise<DailyReadingFact[]> {
-    const [books, sessions] = await Promise.all([getBooks(), getAllReadingSessions()]);
+    const [books, sessions] = await Promise.all([getBooks({ includeDeleted: true }), getAllReadingSessions()]);
     const facts = buildDailyReadingFacts(sessions, books);
     return mergeCurrentSessionIntoDailyFacts(facts, currentSession, books);
   }

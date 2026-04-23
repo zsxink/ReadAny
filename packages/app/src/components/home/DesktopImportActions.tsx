@@ -21,8 +21,12 @@ import { useLibraryStore } from "@/stores/library-store";
 import { useSyncStore } from "@/stores/sync-store";
 import { cn } from "@readany/core/utils";
 import {
+  createImportDuplicateIndex,
   DEFAULT_WEBDAV_IMPORT_REMOTE_ROOT,
+  findLikelyDuplicateBook,
   getPlatformService,
+  type ImportBooksResult,
+  normalizeImportIdentity,
   type WebDavImportEntry,
   WebDavImportService,
   type WebDavImportSource,
@@ -123,8 +127,19 @@ function sanitizeFilename(name: string): string {
 
 function getSourceLabel(kind: WebDavImportSourceKind, t: ReturnType<typeof useTranslation>["t"]): string {
   return kind === "saved"
-    ? t("library.importSourceSavedWebDav", "我的 WebDAV 书库")
-    : t("library.importSourceTemporaryWebDav", "其他 WebDAV");
+    ? t("library.importSourceSavedWebDav", "我的 WebDAV")
+    : t("library.importSourceTemporaryWebDav", "连接其他 WebDAV");
+}
+
+function formatImportResultMessage(
+  t: ReturnType<typeof useTranslation>["t"],
+  result: ImportBooksResult,
+): string {
+  return t("library.importResultSummary", {
+    imported: result.imported.length,
+    skipped: result.skippedDuplicates.length,
+    failed: result.failures.length,
+  });
 }
 
 function DesktopWebDavConnectDialog({
@@ -184,7 +199,7 @@ function DesktopWebDavConnectDialog({
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="max-w-[560px]">
         <DialogHeader>
-          <DialogTitle>{t("library.importSourceTemporaryWebDav", "其他 WebDAV")}</DialogTitle>
+          <DialogTitle>{t("library.importSourceTemporaryWebDav", "连接其他 WebDAV")}</DialogTitle>
           <DialogDescription>
             {t(
               "library.importSourceTemporaryWebDavDesc",
@@ -212,7 +227,7 @@ function DesktopWebDavConnectDialog({
 
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">
-              {t("library.importRootLabel", "远端书库根目录")}
+              {t("library.importRootLabel", "浏览起点")}
             </label>
             <Input
               value={remoteRoot}
@@ -283,7 +298,9 @@ function DesktopWebDavImportBrowserDialog({
 }) {
   const { t } = useTranslation();
   const importBooks = useLibraryStore((state) => state.importBooks);
+  const books = useLibraryStore((state) => state.books);
   const service = useMemo(() => (source ? new WebDavImportService(source) : null), [source]);
+  const duplicateIndex = useMemo(() => createImportDuplicateIndex(books), [books]);
 
   const [currentPath, setCurrentPath] = useState("/");
   const [entries, setEntries] = useState<WebDavImportEntry[]>([]);
@@ -324,14 +341,46 @@ function DesktopWebDavImportBrowserDialog({
   }, [loadListing, source]);
 
   const visibleEntries = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return entries;
-    return entries.filter((entry) => entry.name.toLowerCase().includes(q));
-  }, [entries, search]);
+    const query = normalizeImportIdentity(search.trim());
+    const filteredBySearch = !query
+      ? entries
+      : entries.filter((entry) => normalizeImportIdentity(entry.name).includes(query));
+
+    const enriched = filteredBySearch.map((entry) => ({
+      entry,
+      likelyDuplicate:
+        !entry.isDirectory && !!findLikelyDuplicateBook(duplicateIndex, { name: entry.name }),
+    }));
+
+    return [...enriched].sort((left, right) => {
+      if (left.entry.isDirectory !== right.entry.isDirectory) {
+        return left.entry.isDirectory ? -1 : 1;
+      }
+
+      if (left.entry.importable !== right.entry.importable) {
+        return left.entry.importable ? -1 : 1;
+      }
+      if (left.likelyDuplicate !== right.likelyDuplicate) {
+        return left.likelyDuplicate ? 1 : -1;
+      }
+      return left.entry.name.localeCompare(right.entry.name, undefined, {
+        sensitivity: "base",
+        numeric: true,
+      });
+    });
+  }, [duplicateIndex, entries, search]);
 
   const selectedEntries = useMemo(
     () => entries.filter((entry) => selectedPaths.includes(entry.relativePath)),
     [entries, selectedPaths],
+  );
+  const visibleImportableCount = useMemo(
+    () => visibleEntries.filter(({ entry }) => entry.importable).length,
+    [visibleEntries],
+  );
+  const visibleLikelyDuplicateCount = useMemo(
+    () => visibleEntries.filter(({ likelyDuplicate }) => likelyDuplicate).length,
+    [visibleEntries],
   );
 
   const downloadToTempFiles = useCallback(
@@ -384,14 +433,10 @@ function DesktopWebDavImportBrowserDialog({
       try {
         const tempPaths = await downloadToTempFiles(items);
         setImportState({ phase: "importing", total: tempPaths.length });
-        await importBooks(tempPaths);
+        const result = await importBooks(tempPaths);
         await cleanupTempFiles(tempPaths);
         setImportState({ phase: "idle" });
-        toast.success(
-          items.length === 1
-            ? t("library.importedCount", { count: 1 })
-            : t("library.importedCount", { count: items.length }),
-        );
+        toast.success(formatImportResultMessage(t, result));
       } catch (err) {
         setImportState({ phase: "idle" });
         toast.error(err instanceof Error ? err.message : String(err));
@@ -429,20 +474,22 @@ function DesktopWebDavImportBrowserDialog({
 
   return (
     <Dialog open={!!source} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="flex max-h-[86vh] max-w-[920px] flex-col gap-0 overflow-hidden p-0">
-        <DialogHeader className="border-b px-6 pt-6 pb-4">
-          <div className="flex items-start justify-between gap-4">
-            <div>
+      <DialogContent className="flex h-[82vh] max-h-[860px] w-[min(92vw,920px)] flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="border-b px-6 pt-6 pb-4 pr-16">
+          <div className="flex items-start justify-between gap-6">
+            <div className="min-w-0 flex-1 space-y-1">
               <DialogTitle>{getSourceLabel(source?.kind ?? "saved", t)}</DialogTitle>
-              <DialogDescription className="mt-1">
-                {t(
-                  "library.webdavImportLoadingDesc",
-                  "目录结构和可导入书籍会在这里展开，你可以随时搜索、筛选和多选导入。",
-                )}
+              <DialogDescription>
+                {t("library.webdavImportBrowserSubtitle", "浏览远端目录，挑书导入当前书架。")}
               </DialogDescription>
             </div>
-            <div className="rounded-full border bg-muted/40 px-3 py-1 text-xs text-muted-foreground">
-              {currentPath}
+
+            <div className="inline-flex max-w-[320px] shrink-0 items-center rounded-full border bg-muted/40 px-3 py-1 text-xs text-muted-foreground">
+              <span className="truncate">
+                {currentPath === "/"
+                  ? t("library.webdavImportRootLabel", "浏览起点")
+                  : currentPath}
+              </span>
             </div>
           </div>
 
@@ -473,15 +520,16 @@ function DesktopWebDavImportBrowserDialog({
               disabled={loading || importState.phase !== "idle"}
             >
               <FolderOpen className="size-4" />
-              {t("library.webdavImportImportFolder", "导入当前文件夹")}
+              {t("library.webdavImportImportFolder", "导入本层书籍")}
             </Button>
           </div>
 
           <div className="mt-3 flex items-center justify-between text-sm text-muted-foreground">
             <span>
               {t("library.webdavImportSummary", {
-                count: entries.length,
-                books: entries.filter((entry) => entry.importable).length,
+                count: visibleEntries.length,
+                books: visibleImportableCount,
+                duplicates: visibleLikelyDuplicateCount,
               })}
             </span>
             {selectedPaths.length > 0 && (
@@ -530,7 +578,7 @@ function DesktopWebDavImportBrowserDialog({
             </div>
           ) : (
             <div className="space-y-2">
-              {visibleEntries.map((entry) => {
+              {visibleEntries.map(({ entry, likelyDuplicate }) => {
                 const selected = selectedPaths.includes(entry.relativePath);
                 const meta = entry.isDirectory
                   ? t("library.webdavImportFolderMeta", {
@@ -567,7 +615,14 @@ function DesktopWebDavImportBrowserDialog({
                       {entry.isDirectory ? <FolderOpen className="size-4" /> : <BookOpen className="size-4" />}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium text-foreground">{entry.name}</div>
+                      <div className="flex items-center gap-2">
+                        <div className="truncate text-sm font-medium text-foreground">{entry.name}</div>
+                        {!entry.isDirectory && likelyDuplicate && (
+                          <span className="shrink-0 rounded-full bg-amber-500/12 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+                            {t("library.webdavImportLikelyDuplicate", "可能重复")}
+                          </span>
+                        )}
+                      </div>
                       <div className="mt-1 text-xs text-muted-foreground">
                         {meta}
                         {!entry.isDirectory && !entry.importable && (
@@ -619,10 +674,14 @@ function DesktopWebDavImportBrowserDialog({
                 onClick={() => void importEntries(selectedEntries)}
                 disabled={selectedEntries.length === 0 || importState.phase !== "idle"}
               >
-                {importState.phase === "idle" ? (
+              {importState.phase === "idle" ? (
                   <>
                     <Upload className="size-4" />
-                    {t("library.webdavImportImportSelected", "导入所选")}
+                    {selectedEntries.length > 0
+                      ? t("library.webdavImportImportSelectedCount", {
+                          count: selectedEntries.length,
+                        })
+                      : t("library.webdavImportImportSelected", "导入所选")}
                   </>
                 ) : (
                   <>
@@ -668,12 +727,13 @@ export function DesktopImportActions({ children, align = "end" }: DesktopImportA
       if (!selected) return;
       const paths = Array.isArray(selected) ? selected : [selected];
       if (paths.length > 0) {
-        await importBooks(paths);
+        const result = await importBooks(paths);
+        toast.success(formatImportResultMessage(t, result));
       }
     } catch {
       // user cancelled
     }
-  }, [importBooks]);
+  }, [importBooks, t]);
 
   const handleOpenSavedWebDav = useCallback(async () => {
     if (syncBackendType !== "webdav" || syncConfig?.type !== "webdav") {
@@ -733,7 +793,7 @@ export function DesktopImportActions({ children, align = "end" }: DesktopImportA
         <DropdownMenuContent
           align={align}
           sideOffset={8}
-          className="w-[284px] rounded-2xl border-border/80 p-1.5 shadow-xl"
+          className="w-[320px] rounded-2xl border-border/80 p-1.5 shadow-xl"
         >
           <DropdownMenuItem
             className="items-center gap-3 rounded-xl px-3 py-2.5"
@@ -763,7 +823,7 @@ export function DesktopImportActions({ children, align = "end" }: DesktopImportA
               <Cloud className="size-4.5" />
             </div>
             <div className="min-w-0 flex-1 whitespace-nowrap text-sm font-medium text-foreground">
-              {t("library.importSourceSavedWebDav", "我的 WebDAV 书库")}
+              {t("library.importSourceSavedWebDav", "我的 WebDAV")}
             </div>
             <ChevronRight className="size-4 text-muted-foreground" />
           </DropdownMenuItem>
@@ -780,7 +840,7 @@ export function DesktopImportActions({ children, align = "end" }: DesktopImportA
               <Globe className="size-4.5" />
             </div>
             <div className="min-w-0 flex-1 whitespace-nowrap text-sm font-medium text-foreground">
-              {t("library.importSourceTemporaryWebDav", "其他 WebDAV")}
+              {t("library.importSourceTemporaryWebDav", "连接其他 WebDAV")}
             </div>
             <ChevronRight className="size-4 text-muted-foreground" />
           </DropdownMenuItem>

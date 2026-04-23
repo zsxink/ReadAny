@@ -55,6 +55,12 @@ describe("webdav import path helpers", () => {
         "https://dav.example.com/library/readany/non-fiction/essay.pdf",
       ),
     ).toBe("/non-fiction/essay.pdf");
+    expect(
+      toWebDavImportRelativePath(
+        source,
+        "https://dav.example.com/library/readany/books/%E7%BE%8E%E5%9B%BD%E5%9B%9B%E7%99%BE%E5%B9%B4.epub",
+      ),
+    ).toBe("/books/美国四百年.epub");
   });
 
   it("uses the URL pathname as root when remote root is blank", () => {

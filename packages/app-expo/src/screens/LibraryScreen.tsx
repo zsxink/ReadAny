@@ -64,6 +64,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { TagManagementSheet } from "./library/TagManagementSheet";
 import { useBookDownload } from "./library/useBookDownload";
 import { useVectorizationQueue } from "./library/useVectorizationQueue";
+import { openMobileBook } from "@/lib/library/open-mobile-book";
 
 const BOOK_PNG = require("../../assets/book.png");
 const BOOK_DARK_PNG = require("../../assets/book-dark.png");
@@ -183,7 +184,9 @@ export function LibraryScreen() {
 
   const { downloadingBookId, downloadingBookTitle, downloadBook } = useBookDownload({
     loadBooks,
-    onSuccess: (bookId) => nav.navigate("Reader", { bookId }),
+    onSuccess: (bookId) => {
+      void openMobileBook({ bookId, navigation: nav, t });
+    },
   });
 
   const { vectorQueue, vectorizingBookId, vectorProgress, handleVectorize } =
@@ -276,7 +279,15 @@ export function LibraryScreen() {
       });
       if (result.canceled || !result.assets || result.assets.length === 0) return;
       const files = result.assets.map((a) => ({ uri: a.uri, name: a.name }));
-      await importBooks(files);
+      const summary = await importBooks(files);
+      Alert.alert(
+        t("common.success", "成功！"),
+        t("library.importResultSummary", {
+          imported: summary.imported.length,
+          skipped: summary.skippedDuplicates.length,
+          failed: summary.failures.length,
+        }),
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (!message.includes("Different document picking in progress")) {
@@ -404,9 +415,9 @@ export function LibraryScreen() {
         await downloadBook(book);
         return;
       }
-      nav.navigate("Reader", { bookId: book.id });
+      await openMobileBook({ bookId: book.id, navigation: nav, t });
     },
-    [nav, downloadBook],
+    [downloadBook, nav, t],
   );
 
   const handleManageTags = useCallback((book: Book) => {

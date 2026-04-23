@@ -7,6 +7,7 @@ export {
   initLocalDatabase,
   getBooks,
   getBook,
+  getDeletedBookByFileHash,
   insertBook,
   updateBook,
   deleteBook,

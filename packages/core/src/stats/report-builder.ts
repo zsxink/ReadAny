@@ -338,13 +338,15 @@ function buildNavigation(
     nextStart.setFullYear(nextStart.getFullYear() + 1);
   }
 
-  const canGoPrev = prevStart >= earliest;
+  const prevPeriod = buildPeriodRef(dimension, prevStart);
+  const prevEnd = fromLocalDateKey(prevPeriod.endDate);
+  const canGoPrev = prevEnd >= earliest;
   const canGoNext = nextStart <= today;
 
   return {
     canGoPrev,
     canGoNext,
-    prevKey: canGoPrev ? buildPeriodRef(dimension, prevStart).key : undefined,
+    prevKey: canGoPrev ? prevPeriod.key : undefined,
     nextKey: canGoNext ? buildPeriodRef(dimension, nextStart).key : undefined,
   };
 }

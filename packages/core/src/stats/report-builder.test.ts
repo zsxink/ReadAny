@@ -238,4 +238,28 @@ describe("report-builder", () => {
     });
     expect(lifetimeReport.yearlySnapshots[0]?.year).toBe("2026");
   });
+
+  it("allows navigating to a previous partial month when that month contains the earliest reading records", () => {
+    const partialFacts: DailyReadingFact[] = [
+      {
+        ...facts[0],
+        date: "2026-03-22",
+        weekKey: "2026-W12",
+        monthKey: "2026-03",
+      },
+      {
+        ...facts[1],
+        date: "2026-04-03",
+        weekKey: "2026-W14",
+        monthKey: "2026-04",
+      },
+    ];
+
+    const report = buildMonthReport(partialFacts, new Date(2026, 3, 15), {
+      now: new Date(2026, 3, 21),
+    });
+
+    expect(report.navigation.canGoPrev).toBe(true);
+    expect(report.navigation.prevKey).toBe("2026-03");
+  });
 });
