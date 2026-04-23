@@ -557,6 +557,7 @@
     "ai_testFailed": "Connection failed",
     "ai_requestUrlPreview": "Final Request URL",
     "ai_baseUrlHint": "OpenAI-compatible endpoints append /v1 by default. Enable exact request URL mode if you want to use the URL exactly as entered.",
+    "ai_ollamaCorsHint": "Can't connect to Ollama? Set the environment variable OLLAMA_ORIGINS=* and restart Ollama.",
     "ai_exactRequestUrl": "Use exact request URL",
     "ai_exactRequestUrlLabel": "Exact request URL",
     "ai_exactRequestUrlDesc": "Use the URL exactly as entered, without automatically appending /v1, /chat/completions, or /models.",

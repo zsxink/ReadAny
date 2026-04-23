@@ -791,7 +791,8 @@ export class TxtToEpubConverter {
   }
 
   private getBaseFilename(path: string): string {
-    const name = path.split("/").pop() || path;
+    const normalized = path.replace(/\\/g, "/");
+    const name = normalized.split("/").pop() || normalized;
     return name.replace(/\.\w+$/i, "");
   }
 

@@ -418,6 +418,20 @@ export async function testAIEndpoint(
     case "google":
       requestUrl = await testGoogle(endpoint, model);
       break;
+    case "ollama":
+      // Pre-check: verify the Ollama server is reachable before running the full test
+      try {
+        const tagsUrl = buildProviderModelsUrl("ollama", endpoint.baseUrl, endpoint.apiKey, endpoint.useExactRequestUrl);
+        await fetchJson(tagsUrl, undefined, { endpoint, action: "ollama-ping" });
+      } catch (pingErr) {
+        const msg = pingErr instanceof Error ? pingErr.message : String(pingErr);
+        throw new Error(
+          `Cannot reach Ollama at ${endpoint.baseUrl || "http://localhost:11434"}. ` +
+          `Make sure Ollama is running and set OLLAMA_ORIGINS=* if needed. (${msg})`,
+        );
+      }
+      requestUrl = await testOpenAICompatible(endpoint, model);
+      break;
     case "lmstudio":
       requestUrl = await testOpenAICompatible(endpoint, model);
       break;

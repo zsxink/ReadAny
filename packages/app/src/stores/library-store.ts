@@ -522,7 +522,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       const { DocumentLoader } = await import("@/lib/reader/document-loader");
 
       for (const filePath of filePaths) {
-        const fileName = decodeURIComponent(filePath.split("/").pop() || "book");
+        const fileName = decodeURIComponent(filePath.replace(/\\/g, "/").split("/").pop() || "book");
         try {
           const ext = filePath.split(".").pop()?.toLowerCase() || "epub";
           const formatMap: Record<string, Book["format"]> = {
@@ -574,7 +574,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             const { TxtToEpubConverter } = await import("@readany/core/utils/txt-to-epub");
             const { readFile } = await import("@tauri-apps/plugin-fs");
             const rawBytes = await readFile(filePath);
-            const txtFile = new File([rawBytes], filePath.split("/").pop() || "book.txt", {
+            const txtFile = new File([rawBytes], filePath.replace(/\\/g, "/").split("/").pop() || "book.txt", {
               type: "text/plain",
             });
             const converter = new TxtToEpubConverter();

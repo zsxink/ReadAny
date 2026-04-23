@@ -138,6 +138,13 @@ export function AppLayout() {
         e.stopPropagation();
         toggleCommandPalette();
       }
+      if (e.key === "F11") {
+        e.preventDefault();
+        import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
+          const win = getCurrentWindow();
+          win.isFullscreen().then((fs) => win.setFullscreen(!fs));
+        }).catch(() => {});
+      }
     };
     window.addEventListener("keydown", handleKeyDown, { capture: true });
     return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
