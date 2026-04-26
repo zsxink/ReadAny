@@ -28,7 +28,6 @@ import {
   useTTSStore,
 } from "@/stores";
 import { useMissingBookPromptStore } from "@/stores/missing-book-prompt-store";
-import { useFontStore, getCSSFontFace } from "@readany/core/stores";
 import { useTheme } from "@/styles/ThemeContext";
 import { useColors } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -38,12 +37,13 @@ import { useChapterTranslation } from "@readany/core/hooks";
 import { useReadingSession } from "@readany/core/hooks/use-reading-session";
 import { createSelectionNoteMutation } from "@readany/core/reader";
 import { getPlatformService } from "@readany/core/services";
+import { getCSSFontFace, useFontStore } from "@readany/core/stores";
 import type { ReadSettings, TOCItem } from "@readany/core/types";
-import { throttle } from "@readany/core/utils/throttle";
 import { eventBus } from "@readany/core/utils/event-bus";
+import { throttle } from "@readany/core/utils/throttle";
 import { Asset } from "expo-asset";
-import * as FileSystem from "expo-file-system/legacy";
 import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
 /**
  * ReaderScreen — WebView-based reader with foliate-js engine.
  */
@@ -108,11 +108,7 @@ function shouldConfirmReimportCandidate(
   originalBook: { meta: { title: string; author: string }; format: string; fileHash?: string },
   candidate: { title: string; author: string; format: string; fileHash?: string },
 ): boolean {
-  if (
-    candidate.fileHash &&
-    originalBook.fileHash &&
-    candidate.fileHash === originalBook.fileHash
-  ) {
+  if (candidate.fileHash && originalBook.fileHash && candidate.fileHash === originalBook.fileHash) {
     return false;
   }
   const originalTitle = normalizeBookIdentityText(originalBook.meta.title);
@@ -172,10 +168,13 @@ function buildCustomFontFaceCSS(
       if (!f.filePath) return "";
       const fileUrl = platform.convertFileSrc(f.filePath);
       const cssFormat =
-        f.format === "otf" ? "opentype"
-        : f.format === "woff" ? "woff"
-        : f.format === "woff2" ? "woff2"
-        : "truetype";
+        f.format === "otf"
+          ? "opentype"
+          : f.format === "woff"
+            ? "woff"
+            : f.format === "woff2"
+              ? "woff2"
+              : "truetype";
       return `@font-face {\n  font-family: '${f.fontFamily}';\n  src: url('${fileUrl}') format('${cssFormat}');\n  font-weight: normal;\n  font-style: normal;\n}`;
     })
     .filter(Boolean)
@@ -221,7 +220,11 @@ export function ReaderScreen({ route, navigation }: Props) {
   const [currentCfi, setCurrentCfi] = useState("");
   const [selection, setSelection] = useState<SelectionEvent | null>(null);
   const [noteViewHighlight, setNoteViewHighlight] = useState<{
-    id: string; text: string; note?: string; cfi: string; color: string;
+    id: string;
+    text: string;
+    note?: string;
+    cfi: string;
+    color: string;
   } | null>(null);
   const [noteViewEditing, setNoteViewEditing] = useState(false);
   const [noteViewContent, setNoteViewContent] = useState("");
@@ -254,6 +257,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       before?: number,
       after?: number,
     ) => Promise<{ before: TTSSegment[]; after: TTSSegment[] }>;
+    getHrefTTSSegments?: (href: string, count?: number) => Promise<TTSSegment[]>;
     goToFraction: (fraction: number) => void;
     goToCFI: (cfi: string) => void;
     goToHref: (href: string) => void;
@@ -591,12 +595,12 @@ export function ReaderScreen({ route, navigation }: Props) {
           const currentSection = detail.section?.current ?? 0;
           const currentRendererPage = detail.page?.current ?? null;
 
-          if (!trackingSuppressed && previous?.mode === "characters" && currentCharacters > previous.current) {
-            if (
-              currentRendererPage != null &&
-              previous.page != null &&
-              previous.section != null
-            ) {
+          if (
+            !trackingSuppressed &&
+            previous?.mode === "characters" &&
+            currentCharacters > previous.current
+          ) {
+            if (currentRendererPage != null && previous.page != null && previous.section != null) {
               const samePage =
                 previous.section === currentSection && previous.page === currentRendererPage;
               const movedForwardWithinSection =
@@ -609,7 +613,9 @@ export function ReaderScreen({ route, navigation }: Props) {
               if (!samePage && (movedForwardWithinSection || movedForwardAcrossSection)) {
                 incrementCharactersRead(currentCharacters - previous.current);
               }
-            } else if (Math.abs(fraction - (previous.fraction ?? 0)) <= MAX_TRACKED_FRACTION_DELTA) {
+            } else if (
+              Math.abs(fraction - (previous.fraction ?? 0)) <= MAX_TRACKED_FRACTION_DELTA
+            ) {
               incrementCharactersRead(currentCharacters - previous.current);
             }
           }
@@ -722,10 +728,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       readingContextService.clearSelection();
     },
     onTap: () => {
-      if (
-        noteTooltipVisibleRef.current ||
-        Date.now() < suppressReaderTapUntilRef.current
-      ) {
+      if (noteTooltipVisibleRef.current || Date.now() < suppressReaderTapUntilRef.current) {
         return;
       }
       sendEvent({ type: "activity" });
@@ -817,14 +820,20 @@ export function ReaderScreen({ route, navigation }: Props) {
     noteTooltipVisibleRef.current = !!noteTooltip;
   }, [noteTooltip]);
 
-
   // ── Volume button paging ─────────────────────────────────────────────────
   const volumeButtonPagingActive =
-    Platform.OS !== 'web' && Platform.OS !== 'windows' &&
-    !!NativeModules.VolumeManager && !!getVolumeManager() &&
-    volumeButtonsPageTurn && webViewReady &&
-    !showSearch && !showTOC && !showSettings && !showNotebook && !showTTS &&
-    ttsPlayState === 'stopped';
+    Platform.OS !== "web" &&
+    Platform.OS !== "windows" &&
+    !!NativeModules.VolumeManager &&
+    !!getVolumeManager() &&
+    volumeButtonsPageTurn &&
+    webViewReady &&
+    !showSearch &&
+    !showTOC &&
+    !showSettings &&
+    !showNotebook &&
+    !showTTS &&
+    ttsPlayState === "stopped";
 
   useVolumeButtonPaging({
     active: volumeButtonPagingActive,
@@ -832,7 +841,6 @@ export function ReaderScreen({ route, navigation }: Props) {
     onPrev: () => bridge.goPrev(),
     onNext: () => bridge.goNext(),
   });
-
 
   bridgeRef.current = bridge;
   chapterTranslationBridgeRef.current = bridge;
@@ -892,7 +900,12 @@ export function ReaderScreen({ route, navigation }: Props) {
       const { fonts, selectedFontId: selId } = useFontStore.getState();
       const fontCSS = buildCustomFontFaceCSS(fonts, selId);
       const fontFamily = selId ? fonts.find((f) => f.id === selId)?.fontFamily : undefined;
-      bridge.applySettings({ ...currentSettings, ...updates, customFontFaceCSS: fontCSS, customFontFamily: fontFamily });
+      bridge.applySettings({
+        ...currentSettings,
+        ...updates,
+        customFontFaceCSS: fontCSS,
+        customFontFamily: fontFamily,
+      });
     },
     [bridge, updateReadSettings],
   );
@@ -1138,7 +1151,9 @@ export function ReaderScreen({ route, navigation }: Props) {
     };
 
     void openLyricsPage();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [bookId, currentCfi, goToCFISafely, loading, navigation, openTTS, webViewReady]);
 
   // Lock navigation when selection is active
@@ -1146,7 +1161,6 @@ export function ReaderScreen({ route, navigation }: Props) {
     if (!webViewReady) return;
     bridge.setNavigationLocked(!!selection);
   }, [webViewReady, selection]);
-
 
   if (loading && !webViewReady && !readerHtmlUri) {
     return (
@@ -1179,13 +1193,14 @@ export function ReaderScreen({ route, navigation }: Props) {
               }}
             >
               <Text style={s.backButtonText}>
-                {book?.filePath
-                  ? t("common.retry", "重试")
-                  : t("common.back", "返回")}
+                {book?.filePath ? t("common.retry", "重试") : t("common.back", "返回")}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[s.backButton, { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }]}
+              style={[
+                s.backButton,
+                { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border },
+              ]}
               onPress={() => void handleReimportMissingBook()}
               disabled={isReimporting}
             >
@@ -1510,9 +1525,7 @@ export function ReaderScreen({ route, navigation }: Props) {
                         NOTE_TOOLTIP_ABOVE_OFFSET,
                     }
                   : {
-                      top:
-                        adjustedNoteTooltip.position.selectionBottom +
-                        NOTE_TOOLTIP_BELOW_OFFSET,
+                      top: adjustedNoteTooltip.position.selectionBottom + NOTE_TOOLTIP_BELOW_OFFSET,
                     }),
               },
             ]}
@@ -1743,13 +1756,20 @@ export function ReaderScreen({ route, navigation }: Props) {
                     t("reader.searchComplete", "搜索完成"),
                     t("reader.returnToOriginal", "是否返回搜索前的位置？"),
                     [
-                      { text: t("common.cancel", "取消"), style: "cancel",
-                        onPress: () => { search.setSearchStartCfi(null); } },
-                      { text: t("common.confirm", "确定"),
+                      {
+                        text: t("common.cancel", "取消"),
+                        style: "cancel",
+                        onPress: () => {
+                          search.setSearchStartCfi(null);
+                        },
+                      },
+                      {
+                        text: t("common.confirm", "确定"),
                         onPress: () => {
                           goToCFISafely(search.searchStartCfi!);
                           search.setSearchStartCfi(null);
-                        } },
+                        },
+                      },
                     ],
                   );
                 } else {
@@ -1782,7 +1802,10 @@ export function ReaderScreen({ route, navigation }: Props) {
         onClose={() => setShowTOC(false)}
         onTabChange={setTocActiveTab}
         onSelectTocItem={goToTocItem}
-        onGoToBookmark={(cfi) => { goToCFISafely(cfi); setShowTOC(false); }}
+        onGoToBookmark={(cfi) => {
+          goToCFISafely(cfi);
+          setShowTOC(false);
+        }}
         onDeleteBookmark={(id) => removeBookmark(id)}
       />
 
@@ -1863,13 +1886,27 @@ export function ReaderScreen({ route, navigation }: Props) {
         editing={noteViewEditing}
         editContent={noteViewContent}
         bookId={bookId}
-        onClose={() => { setNoteViewHighlight(null); setNoteViewEditing(false); }}
-        onStartEdit={() => { setNoteViewContent(noteViewHighlight?.note || ""); setNoteViewEditing(true); }}
-        onCancelEdit={() => { setNoteViewEditing(false); setNoteViewContent(noteViewHighlight?.note || ""); }}
+        onClose={() => {
+          setNoteViewHighlight(null);
+          setNoteViewEditing(false);
+        }}
+        onStartEdit={() => {
+          setNoteViewContent(noteViewHighlight?.note || "");
+          setNoteViewEditing(true);
+        }}
+        onCancelEdit={() => {
+          setNoteViewEditing(false);
+          setNoteViewContent(noteViewHighlight?.note || "");
+        }}
         onContentChange={setNoteViewContent}
         onSave={(highlight, newNote) => {
           bridge.removeAnnotation({ value: highlight.cfi });
-          bridge.addAnnotation({ value: highlight.cfi, type: "highlight", color: highlight.color, note: newNote });
+          bridge.addAnnotation({
+            value: highlight.cfi,
+            type: "highlight",
+            color: highlight.color,
+            note: newNote,
+          });
           setNoteViewHighlight({ ...highlight, note: newNote });
           setNoteViewEditing(false);
         }}

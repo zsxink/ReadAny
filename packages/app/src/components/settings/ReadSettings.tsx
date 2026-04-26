@@ -10,8 +10,8 @@ import {
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { useSettingsStore } from "@/stores/settings-store";
-import { useTranslation } from "react-i18next";
 import { useFontStore } from "@readany/core/stores";
+import { useTranslation } from "react-i18next";
 
 export function ReadSettingsPanel() {
   const { t } = useTranslation();
@@ -39,25 +39,6 @@ export function ReadSettingsPanel() {
 
         <div className="space-y-5">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-foreground">{t("settings.viewMode")}</span>
-            <Select
-              value={readSettings.viewMode ?? "paginated"}
-              onValueChange={(v) =>
-                updateReadSettings({ viewMode: v as "paginated" | "scroll" })
-              }
-            >
-              <SelectTrigger className="w-[140px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="paginated">{t("settings.paginated")}</SelectItem>
-                <SelectItem value="scroll">{t("settings.scroll")}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {readSettings.viewMode !== "scroll" && (
-          <div className="flex items-center justify-between">
             <span className="text-sm text-foreground">{t("settings.paginatedLayout")}</span>
             <Select
               value={readSettings.paginatedLayout ?? "double"}
@@ -74,7 +55,6 @@ export function ReadSettingsPanel() {
               </SelectContent>
             </Select>
           </div>
-          )}
 
           {/* Font */}
           <div className="flex items-center justify-between">

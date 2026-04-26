@@ -19,7 +19,7 @@ import { useResizablePanel } from "@/hooks/use-resizable-panel";
 import { useResolvedSrc } from "@/hooks/use-resolved-src";
 import { DocumentLoader } from "@/lib/reader/document-loader";
 import type { BookDoc, BookFormat } from "@/lib/reader/document-loader";
-import { isFixedLayoutFormat } from "@/lib/reader/document-loader";
+import { isFixedLayoutBook, isFixedLayoutFormat } from "@/lib/reader/document-loader";
 import { resolveDesktopDataPath } from "@/lib/storage/desktop-library-root";
 import { useAnnotationStore } from "@/stores/annotation-store";
 import { useAppStore } from "@/stores/app-store";
@@ -29,9 +29,9 @@ import { useNotebookStore } from "@/stores/notebook-store";
 import { useReaderStore } from "@/stores/reader-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useTTSStore } from "@/stores/tts-store";
-import { getPlatformService } from "@readany/core/services";
-import { useFontStore, getCSSFontFace, useReadingSessionStore } from "@readany/core/stores";
 import { useChapterTranslation } from "@readany/core/hooks";
+import { getPlatformService } from "@readany/core/services";
+import { getCSSFontFace, useFontStore, useReadingSessionStore } from "@readany/core/stores";
 import { splitNarrationText } from "@readany/core/tts";
 import type { CitationPart, HighlightColor } from "@readany/core/types";
 import { eventBus } from "@readany/core/utils/event-bus";
@@ -248,7 +248,7 @@ function useAutoHideControls(
 
         // Double-page: left 25% = prev, right 25% = next, middle 50% = toggle
         // Single-page: left/right 37.5% = nav, middle 25% = toggle
-        const leftNavEnd   = viewStartX + viewWidth * (isDoublePage ? 0.25 : 0.375);
+        const leftNavEnd = viewStartX + viewWidth * (isDoublePage ? 0.25 : 0.375);
         const rightNavStart = viewStartX + viewWidth * (isDoublePage ? 0.75 : 0.625);
 
         if (clickScreenX > leftNavEnd && clickScreenX < rightNavStart) {
@@ -349,10 +349,13 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
           const { readFile } = await import("@tauri-apps/plugin-fs");
           const data = await readFile(f.filePath);
           const mimeType =
-            f.format === "woff2" ? "font/woff2"
-            : f.format === "woff" ? "font/woff"
-            : f.format === "otf" ? "font/otf"
-            : "font/ttf";
+            f.format === "woff2"
+              ? "font/woff2"
+              : f.format === "woff"
+                ? "font/woff"
+                : f.format === "otf"
+                  ? "font/otf"
+                  : "font/ttf";
           const blob = new Blob([data], { type: mimeType });
           const url = URL.createObjectURL(blob);
           newBlobUrls.set(f.id, url);
@@ -371,7 +374,9 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       }
     });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [customFonts]);
 
   // Cleanup blob URLs on unmount
@@ -387,9 +392,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   const selectedFontId = useFontStore((s) => s.selectedFontId);
 
   const viewSettingsWithFonts = useMemo(() => {
-    const selectedFont = selectedFontId
-      ? customFonts.find((f) => f.id === selectedFontId)
-      : null;
+    const selectedFont = selectedFontId ? customFonts.find((f) => f.id === selectedFontId) : null;
     const customFontFamily = selectedFont?.fontFamily ?? null;
     const customFontCssUrls =
       selectedFont?.source === "remote" && selectedFont.remoteCssUrl
@@ -398,18 +401,22 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
 
     const fontCSS = selectedFont
       ? (() => {
-        if (selectedFont.source === "remote" && selectedFont.remoteCssUrl) {
-          return "";
-        }
-        if (selectedFont.source === "remote") return getCSSFontFace(selectedFont);
-        const blobUrl = fontBlobUrls.get(selectedFont.id);
-        if (!blobUrl) return "";
-        const cssFormat = selectedFont.format === "otf" ? "opentype"
-          : selectedFont.format === "woff" ? "woff"
-          : selectedFont.format === "woff2" ? "woff2"
-          : "truetype";
-        return `@font-face {\n  font-family: '${selectedFont.fontFamily}';\n  src: url('${blobUrl}') format('${cssFormat}');\n  font-weight: normal;\n  font-style: normal;\n}`;
-      })()
+          if (selectedFont.source === "remote" && selectedFont.remoteCssUrl) {
+            return "";
+          }
+          if (selectedFont.source === "remote") return getCSSFontFace(selectedFont);
+          const blobUrl = fontBlobUrls.get(selectedFont.id);
+          if (!blobUrl) return "";
+          const cssFormat =
+            selectedFont.format === "otf"
+              ? "opentype"
+              : selectedFont.format === "woff"
+                ? "woff"
+                : selectedFont.format === "woff2"
+                  ? "woff2"
+                  : "truetype";
+          return `@font-face {\n  font-family: '${selectedFont.fontFamily}';\n  src: url('${blobUrl}') format('${cssFormat}');\n  font-weight: normal;\n  font-style: normal;\n}`;
+        })()
       : "";
     return {
       ...viewSettings,
@@ -421,7 +428,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
 
   useEffect(() => {
     const selectedFont = selectedFontId
-      ? customFonts.find((font) => font.id === selectedFontId) ?? null
+      ? (customFonts.find((font) => font.id === selectedFontId) ?? null)
       : null;
     console.log("[ReaderView][Font] selection", {
       selectedFontId,
@@ -634,6 +641,8 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   // Book document state
   const [bookDoc, setBookDoc] = useState<BookDoc | null>(null);
   const [bookFormat, setBookFormat] = useState<BookFormat>("EPUB");
+  const isFixedLayout = isFixedLayoutBook(bookFormat, bookDoc);
+  const shouldDisableReadSettings = isFixedLayoutFormat(bookFormat);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -903,7 +912,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   useEffect(() => {
     let cancelled = false;
 
-    if (!bookDoc || isFixedLayoutFormat(bookFormat)) {
+    if (!bookDoc || isFixedLayout) {
       totalBookCharactersRef.current = null;
       return;
     }
@@ -919,7 +928,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [bookDoc, bookFormat]);
+  }, [bookDoc, isFixedLayout]);
 
   // Load annotations
   useEffect(() => {
@@ -1043,7 +1052,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       if (detail.page) {
         setTotalPages(detail.page.total);
         setCurrentPage(detail.page.current);
-      } else if (isFixedLayoutFormat(bookFormat) && detail.section) {
+      } else if (isFixedLayout && detail.section) {
         setTotalPages(detail.section.total);
         setCurrentPage(detail.section.current + 1);
       } else {
@@ -1057,14 +1066,10 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       // Track reading progress.
       // For fixed layout (PDF/CBZ): use section index (stable real pages)
       // For reflowable (EPUB/TXT): use logical locations for character accumulation
-      if (isFixedLayoutFormat(bookFormat) && detail.section) {
+      if (isFixedLayout && detail.section) {
         const previous = sessionProgressRef.current;
         const currentSection = detail.section.current;
-        if (
-          !trackingSuppressed &&
-          previous?.mode === "page" &&
-          currentSection > previous.current
-        ) {
+        if (!trackingSuppressed && previous?.mode === "page" && currentSection > previous.current) {
           const delta = currentSection - previous.current;
           if (delta <= MAX_TRACKED_PAGE_DELTA) {
             incrementPagesRead(delta);
@@ -1082,12 +1087,12 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
           const currentSection = detail.section?.current ?? 0;
           const currentRendererPage = detail.page?.current ?? null;
 
-          if (!trackingSuppressed && previous?.mode === "characters" && currentCharacters > previous.current) {
-            if (
-              currentRendererPage != null &&
-              previous.page != null &&
-              previous.section != null
-            ) {
+          if (
+            !trackingSuppressed &&
+            previous?.mode === "characters" &&
+            currentCharacters > previous.current
+          ) {
+            if (currentRendererPage != null && previous.page != null && previous.section != null) {
               const samePage =
                 previous.section === currentSection && previous.page === currentRendererPage;
               const movedForwardWithinSection =
@@ -1100,7 +1105,9 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
               if (!samePage && (movedForwardWithinSection || movedForwardAcrossSection)) {
                 incrementCharactersRead(currentCharacters - previous.current);
               }
-            } else if (Math.abs(fraction - (previous.fraction ?? 0)) <= MAX_TRACKED_FRACTION_DELTA) {
+            } else if (
+              Math.abs(fraction - (previous.fraction ?? 0)) <= MAX_TRACKED_FRACTION_DELTA
+            ) {
               incrementCharactersRead(currentCharacters - previous.current);
             }
           }
@@ -1113,11 +1120,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
           };
         } else {
           const previous = sessionProgressRef.current;
-          if (
-            !trackingSuppressed &&
-            previous?.mode === "location" &&
-            current > previous.current
-          ) {
+          if (!trackingSuppressed && previous?.mode === "location" && current > previous.current) {
             const delta = current - previous.current;
             if (delta <= MAX_TRACKED_LOCATION_DELTA) {
               incrementCharactersRead(delta * REFLOWABLE_CHARACTERS_PER_LOCATION);
@@ -1145,7 +1148,15 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
         void cb();
       }
     },
-    [tabId, bookId, bookFormat, setProgress, setChapter, throttledSaveProgress, translationReady],
+    [
+      tabId,
+      bookId,
+      isFixedLayout,
+      setProgress,
+      setChapter,
+      throttledSaveProgress,
+      translationReady,
+    ],
   );
 
   const handleTocReady = useCallback((toc: TOCItem[]) => {
@@ -1334,9 +1345,12 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     foliateRef.current?.goNext();
   }, []);
 
-  const handleGoToChapter = useCallback((href: string) => {
-    goToHrefSafely(href);
-  }, [goToHrefSafely]);
+  const handleGoToChapter = useCallback(
+    (href: string) => {
+      goToHrefSafely(href);
+    },
+    [goToHrefSafely],
+  );
 
   // --- Selection actions ---
   const handleHighlight = useCallback(
@@ -1679,7 +1693,10 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
             return;
           }
 
-          const nextText = normalizedSegments.map((segment) => segment.text).join(" ").trim();
+          const nextText = normalizedSegments
+            .map((segment) => segment.text)
+            .join(" ")
+            .trim();
           const firstVisibleCfi = normalizedSegments[0]?.cfi || "";
           const lastVisibleCfi =
             normalizedSegments[normalizedSegments.length - 1]?.cfi || firstVisibleCfi;
@@ -1777,10 +1794,14 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       }
 
       const nextChapterIndex =
-        (readerTab?.chapterIndex ?? -1) >= 0 && (readerTab?.chapterIndex ?? -1) < tocItems.length - 1
+        (readerTab?.chapterIndex ?? -1) >= 0 &&
+        (readerTab?.chapterIndex ?? -1) < tocItems.length - 1
           ? (readerTab?.chapterIndex ?? -1) + 1
           : -1;
-      if (nextChapterIndex >= 0 && queueDesktopTTSChapterTransition(nextChapterIndex, { autoResume: true })) {
+      if (
+        nextChapterIndex >= 0 &&
+        queueDesktopTTSChapterTransition(nextChapterIndex, { autoResume: true })
+      ) {
         return;
       }
 
@@ -2729,7 +2750,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
             onChapterTranslationReset={chapterTranslation.reset}
             isChatOpen={showChat}
             isTTSActive={showTTS || ttsPlayState !== "stopped"}
-            isFixedLayout={isFixedLayoutFormat(bookFormat)}
+            isFixedLayout={shouldDisableReadSettings}
             isPinned={isToolbarPinned}
             onTogglePinned={() => setIsToolbarPinned((prev) => !prev)}
             onMouseEnter={handleMouseEnter}

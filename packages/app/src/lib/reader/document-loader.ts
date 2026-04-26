@@ -161,6 +161,7 @@ export class DocumentLoader {
           const { EPUB } = await import("foliate-js/epub.js");
           book = await new EPUB(loader).init();
           format = "EPUB";
+          await markImageOnlyEpubAsFixedLayout(book);
         }
       } else if (await this.isPDF()) {
         const { makePDF } = await import("foliate-js/pdf.js");
@@ -213,3 +214,46 @@ export const getDirection = (doc: Document) => {
 /** Check if format is fixed layout (pre-paginated) */
 export const isFixedLayoutFormat = (format: BookFormat): boolean =>
   format === "PDF" || format === "CBZ";
+
+export const isFixedLayoutBook = (format: BookFormat, book?: BookDoc | null): boolean =>
+  isFixedLayoutFormat(format) || book?.rendition?.layout === "pre-paginated";
+
+async function markImageOnlyEpubAsFixedLayout(book: BookDoc): Promise<void> {
+  if (book.rendition?.layout) return;
+
+  const sections = (book.sections ?? []).filter((section) => section.linear !== "no");
+  if (sections.length < 4) return;
+
+  const samples = sections.slice(0, 10);
+  let inspected = 0;
+  let imageOnlyPages = 0;
+
+  for (const section of samples) {
+    try {
+      const doc = await section.createDocument();
+      inspected += 1;
+      if (isImageOnlyPageDocument(doc)) {
+        imageOnlyPages += 1;
+      }
+    } catch {
+      // A single broken page should not prevent normal EPUB loading.
+    }
+  }
+
+  if (inspected < 4 || imageOnlyPages / inspected < 0.75) return;
+
+  book.rendition ??= {};
+  book.rendition.layout = "pre-paginated";
+  book.rendition.spread ??= "auto";
+}
+
+function isImageOnlyPageDocument(doc: Document): boolean {
+  const body = doc.body;
+  if (!body) return false;
+
+  const images = body.querySelectorAll("img, svg");
+  if (images.length === 0) return false;
+
+  const text = (body.textContent || "").replace(/\s+/g, "").trim();
+  return text.length <= 32;
+}

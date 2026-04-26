@@ -30,6 +30,7 @@ let _factories: TTSPlayerFactories = defaultFactories;
 let _systemTTS: ITTSPlayer | null = null;
 let _edgeTTS: ITTSPlayer | null = null;
 let _dashscopeTTS: ITTSPlayer | null = null;
+let _activeTTS: ITTSPlayer | null = null;
 
 let _sessionSegments: string[] = [];
 let _sessionCurrentIndex = 0;
@@ -69,6 +70,7 @@ function detachAndStopPlayer(player: ITTSPlayer | null): void {
 }
 
 function detachAndStopAllPlayers(): void {
+  _activeTTS = null;
   detachAndStopPlayer(_systemTTS);
   detachAndStopPlayer(_edgeTTS);
   detachAndStopPlayer(_dashscopeTTS);
@@ -102,6 +104,7 @@ function startPlayback(
 ): void {
   const player = getPlayerForConfig(config);
   const gen = _sessionGeneration;
+  _activeTTS = player;
 
   // Set artwork getter for RNTP players
   if (
@@ -115,6 +118,9 @@ function startPlayback(
 
   player.onStateChange = (playState) => {
     if (gen !== _sessionGeneration) return;
+    if (playState === "stopped") {
+      _activeTTS = null;
+    }
     set({ playState });
   };
 
@@ -131,6 +137,7 @@ function startPlayback(
 
   player.onEnd = () => {
     if (gen !== _sessionGeneration) return;
+    _activeTTS = null;
     const lastIndex = Math.max(0, _sessionSegments.length - 1);
     _sessionCurrentIndex = lastIndex;
     set({
@@ -146,6 +153,7 @@ function startPlayback(
   void Promise.resolve(playback).catch((error) => {
     if (gen !== _sessionGeneration) return;
     console.error("[TTSStore] play failed:", error);
+    _activeTTS = null;
     set({ playState: "stopped" });
   });
 }
@@ -167,6 +175,7 @@ export interface TTSState {
   sleepTimerDurationMinutes: number | null;
 
   play: (text: string | string[]) => void;
+  append: (text: string | string[]) => boolean;
   pause: () => void;
   resume: () => void;
   stop: () => void;
@@ -233,17 +242,47 @@ export const useTTSStore = create<TTSState>()(
         startPlayback(segments, config, 0, set, get);
       },
 
+      append: (text: string | string[]) => {
+        const segments = normalizeSegments(text);
+        const joinedText = segments.join(" ").trim();
+        if (!joinedText || !_activeTTS || typeof _activeTTS.append !== "function") {
+          return false;
+        }
+
+        const previousSegments = _sessionSegments;
+        try {
+          _activeTTS.append(segments);
+          _sessionSegments = [..._sessionSegments, ...segments];
+          set((state) => ({
+            currentText: [state.currentText, joinedText].filter(Boolean).join(" ").trim(),
+            totalChunks: _sessionSegments.length,
+            currentSegmentText:
+              _sessionSegments[_sessionCurrentIndex] || state.currentSegmentText || "",
+          }));
+          return true;
+        } catch (error) {
+          _sessionSegments = previousSegments;
+          console.warn("[TTSStore] append failed:", error);
+          return false;
+        }
+      },
+
       pause: () => {
         console.log("[TTSStore] pause called");
         const { playState } = get();
         if (playState !== "playing" && playState !== "loading") return;
-        _sessionGeneration += 1;
-        detachAndStopAllPlayers();
+        _activeTTS?.pause();
         set({ playState: "paused" });
       },
 
       resume: () => {
         console.log("[TTSStore] resume called");
+        if (get().playState === "paused" && _activeTTS) {
+          _activeTTS.resume();
+          set({ playState: "playing" });
+          return;
+        }
+
         if (_sessionSegments.length === 0 || _sessionCurrentIndex >= _sessionSegments.length) {
           set({ playState: "stopped" });
           return;

@@ -84,6 +84,7 @@ export const DASHSCOPE_VOICES = [
  */
 export interface ITTSPlayer {
   speak(text: string | string[], config: TTSConfig): void | Promise<void>;
+  append?(text: string | string[]): void | Promise<void>;
   pause(): void;
   resume(): void;
   stop(): void;

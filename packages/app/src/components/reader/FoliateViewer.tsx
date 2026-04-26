@@ -5,7 +5,7 @@ import { wrappedFoliateView } from "@/hooks/reader/useFoliateView";
 import { usePagination } from "@/hooks/reader/usePagination";
 import { readingContextService } from "@/lib/ai/reading-context-service";
 import type { BookDoc, BookFormat } from "@/lib/reader/document-loader";
-import { getDirection, isFixedLayoutFormat } from "@/lib/reader/document-loader";
+import { getDirection, isFixedLayoutBook } from "@/lib/reader/document-loader";
 import { getFontTheme } from "@/lib/reader/font-themes";
 import { registerIframeEventHandlers } from "@/lib/reader/iframe-event-handlers";
 import type {
@@ -72,7 +72,9 @@ function getSelectionEndRect(range: Range | null): DOMRect | null {
     // Fall through to the last client rect.
   }
 
-  const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
+  const rects = Array.from(range.getClientRects()).filter(
+    (rect) => rect.width > 0 && rect.height > 0,
+  );
   return rects[rects.length - 1] || range.getBoundingClientRect();
 }
 
@@ -119,7 +121,7 @@ function getSelectionAdvanceIntent(
     if (!point) return null;
 
     const isRtl = !!(view.book && view.book.dir === "rtl");
-    const horizontalInset = Math.max(132, Math.min(420, viewportWidth * 0.30));
+    const horizontalInset = Math.max(132, Math.min(420, viewportWidth * 0.3));
     const verticalInset = Math.max(140, Math.min(360, viewportHeight * 0.28));
     const inBottomBand = point.y >= viewportHeight - verticalInset;
 
@@ -318,7 +320,7 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
     const isViewCreated = useRef(false);
     const [loading, setLoading] = useState(true);
 
-    const isFixedLayout = isFixedLayoutFormat(format);
+    const isFixedLayout = isFixedLayoutBook(format, bookDoc);
     // Track when view is ready so hooks/events re-bind
     const [viewReady, setViewReady] = useState(false);
 
@@ -1856,10 +1858,17 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
           if (isFixedLayout && bookDoc.rendition) {
             bookDoc.rendition.spread = "auto";
             // Set first section as cover page (single page, not part of spread)
-            const sections = bookDoc.sections as Array<{ pageSpread?: string }> | undefined;
+            const sections = bookDoc.sections as
+              | Array<{ id?: string; pageSpread?: string }>
+              | undefined;
             if (sections?.[0]) {
-              const coverSide = bookDoc.dir === "rtl" ? "right" : "left";
-              sections[0].pageSpread = coverSide;
+              const firstSectionId = String(sections[0].id || "");
+              if (/cover/i.test(firstSectionId)) {
+                sections[0].pageSpread = "center";
+              } else {
+                const coverSide = bookDoc.dir === "rtl" ? "right" : "left";
+                sections[0].pageSpread = coverSide;
+              }
             }
           }
 
@@ -2062,9 +2071,9 @@ function syncRemoteFontStylesInDocument(doc: Document, urls: string[] | undefine
   });
 
   for (const url of nextUrls) {
-    const existing = Array.from(
-      doc.querySelectorAll(`link[${REMOTE_FONT_LINK_ATTR}]`),
-    ).find((node) => (node as HTMLLinkElement).href.includes(url));
+    const existing = Array.from(doc.querySelectorAll(`link[${REMOTE_FONT_LINK_ATTR}]`)).find(
+      (node) => (node as HTMLLinkElement).href.includes(url),
+    );
     if (existing) continue;
     const link = doc.createElement("link");
     link.rel = "stylesheet";
