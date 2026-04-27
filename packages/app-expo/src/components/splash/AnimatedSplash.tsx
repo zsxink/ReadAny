@@ -46,13 +46,10 @@ export function AnimatedSplash({ onFinish }: Props) {
   }, [onFinish]);
 
   useEffect(() => {
-    // 1. Logo floats up and fades in (0-600ms)
-    ghostOpacity.value = withTiming(1, { duration: 600 });
-    ghostY.value = withSpring(0, { damping: 12, stiffness: 80 });
 
     // 2. Continuous gentle float (loop)
     ghostFloat.value = withDelay(
-      600,
+      360,
       withRepeat(
         withSequence(
           withTiming(-8, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
@@ -65,7 +62,7 @@ export function AnimatedSplash({ onFinish }: Props) {
 
     // 3. Book tilt (subtle page-turn)
     bookTilt.value = withDelay(
-      800,
+      520,
       withRepeat(
         withSequence(
           withTiming(-3, { duration: 2000, easing: Easing.inOut(Easing.ease) }),
@@ -77,14 +74,14 @@ export function AnimatedSplash({ onFinish }: Props) {
     );
 
     // 4. Title fades in
-    titleOpacity.value = withDelay(800, withTiming(1, { duration: 600 }));
+    titleOpacity.value = withDelay(420, withTiming(1, { duration: 320 }));
 
-    // 5. After 2s, fade everything out and finish
+    // 5. Fade out sooner so app content is ready without a long logo linger.
     const timer = setTimeout(() => {
-      containerOpacity.value = withTiming(0, { duration: 400 }, (finished) => {
+      containerOpacity.value = withTiming(0, { duration: 220 }, (finished) => {
         if (finished) runOnJS(handleFinish)();
       });
-    }, 2000);
+    }, 1050);
 
     return () => {
       clearTimeout(timer);

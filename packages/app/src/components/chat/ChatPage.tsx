@@ -6,10 +6,15 @@ import { useStreamingChat } from "@/hooks/use-streaming-chat";
 import { useChatReaderStore } from "@/stores/chat-reader-store";
 import { useChatStore } from "@/stores/chat-store";
 import { useSettingsStore } from "@/stores/settings-store";
+import { getPlatformService } from "@readany/core/services";
 import type { CitationPart } from "@readany/core/types";
 import {
   convertToMessageV2,
+  exportChatAsJSON,
+  exportChatAsMarkdown,
+  formatChatForClipboard,
   formatRelativeTimeShort,
+  getExportFilename,
   getMonthLabel,
   groupThreadsByTime,
   mergeMessagesWithStreaming,
@@ -17,6 +22,10 @@ import {
 } from "@readany/core/utils";
 import {
   BookOpen,
+  ClipboardCopy,
+  Download,
+  FileJson,
+  FileText,
   History,
   Library,
   Lightbulb,
@@ -25,8 +34,9 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { ChatInput } from "./ChatInput";
 import { ContextPopover } from "./ContextPopover";
 import { MessageList } from "./MessageList";
@@ -208,13 +218,27 @@ export function ChatPage() {
   const { isStreaming, currentMessage, currentStep, sendMessage, stopStream } = useStreamingChat();
 
   const [showThreads, setShowThreads] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
   const [configGuide, setConfigGuide] = useState<ConfigGuideType>(null);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!initialized) {
       loadAllThreads();
     }
   }, [initialized, loadAllThreads]);
+
+  // Close export menu on outside click
+  useEffect(() => {
+    if (!showExportMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showExportMenu]);
 
   const activeThreadId = getActiveThreadId();
   const activeThread = threads.find((t) => t.id === activeThreadId);
@@ -253,6 +277,43 @@ export function ChatPage() {
   const displayMessages = convertToMessageV2(activeThread?.messages || []);
   const allMessages = mergeMessagesWithStreaming(displayMessages, currentMessage, isStreaming);
 
+  const exportTitle = activeThread?.title || t("chat.aiAssistant");
+
+  const exportOpts = useMemo(
+    () => ({
+      title: exportTitle,
+      userLabel: t("chat.roleUser"),
+      aiLabel: t("chat.roleAI"),
+    }),
+    [exportTitle, t],
+  );
+
+  const handleExportMarkdown = useCallback(async () => {
+    setShowExportMenu(false);
+    const md = exportChatAsMarkdown(allMessages, exportOpts);
+    const filename = getExportFilename("md");
+    const platform = getPlatformService();
+    await platform.shareOrDownloadFile(md, filename, "text/markdown");
+    toast.success(t("chat.exportSuccess"));
+  }, [allMessages, exportOpts, t]);
+
+  const handleExportJSON = useCallback(async () => {
+    setShowExportMenu(false);
+    const json = exportChatAsJSON(allMessages, exportOpts);
+    const filename = getExportFilename("json");
+    const platform = getPlatformService();
+    await platform.shareOrDownloadFile(json, filename, "application/json");
+    toast.success(t("chat.exportSuccess"));
+  }, [allMessages, exportOpts, t]);
+
+  const handleCopyAll = useCallback(async () => {
+    setShowExportMenu(false);
+    const text = formatChatForClipboard(allMessages, exportOpts);
+    const platform = getPlatformService();
+    await platform.copyToClipboard(text);
+    toast.success(t("chat.copiedSuccess"));
+  }, [allMessages, exportOpts, t]);
+
   return (
     <div className="relative flex h-full flex-col">
       <ThreadsSidebar
@@ -260,12 +321,13 @@ export function ChatPage() {
         onClose={() => setShowThreads(false)}
         onSelect={(id) => setGeneralActiveThread(id)}
       />
-      <div className="relative flex h-10 shrink-0 items-center justify-between px-3">
+      <div className="relative flex h-11 shrink-0 items-center justify-between border-b px-4">
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => setShowThreads(true)}
-            className="rounded-full p-1.5 text-neutral-600 hover:bg-muted"
+            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            title={t("chat.history")}
           >
             <History className="size-4" />
           </button>
@@ -275,13 +337,60 @@ export function ChatPage() {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5">
           <ModelSelector />
           <ContextPopover />
+          <div className="mx-1 h-4 w-px bg-border" />
+          {allMessages.length > 0 && (
+            <div className="relative" ref={exportMenuRef}>
+              <button
+                type="button"
+                onClick={() => setShowExportMenu(!showExportMenu)}
+                className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                title={t("chat.export")}
+              >
+                <Download className="size-4" />
+              </button>
+              {showExportMenu && (
+                <div className="absolute right-0 top-full z-50 mt-1 min-w-48 animate-in fade-in slide-in-from-top-1 rounded-lg border bg-popover p-1.5 shadow-lg">
+                  <button
+                    type="button"
+                    onClick={handleExportMarkdown}
+                    className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
+                  >
+                    <FileText className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="flex-1 whitespace-nowrap text-left">
+                      {t("chat.exportMarkdown")}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportJSON}
+                    className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
+                  >
+                    <FileJson className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="flex-1 whitespace-nowrap text-left">
+                      {t("chat.exportJSON")}
+                    </span>
+                  </button>
+                  <div className="mx-2 my-1 border-t" />
+                  <button
+                    type="button"
+                    onClick={handleCopyAll}
+                    className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted"
+                  >
+                    <ClipboardCopy className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="flex-1 whitespace-nowrap text-left">{t("chat.copyAll")}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           <button
             type="button"
             onClick={handleNewThread}
-            className="rounded-full p-1.5 text-neutral-600 hover:bg-muted"
+            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            title={t("chat.newChat")}
           >
             <MessageCirclePlus className="size-4" />
           </button>

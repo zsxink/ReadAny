@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS reading_sessions (
   paused_at INTEGER,
   total_active_time INTEGER DEFAULT 0,
   pages_read INTEGER DEFAULT 0,
+  characters_read INTEGER DEFAULT 0,
   start_cfi TEXT,
   end_cfi TEXT
 );

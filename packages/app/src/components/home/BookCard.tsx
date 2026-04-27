@@ -1,11 +1,21 @@
 import { ConfigGuideDialog, type ConfigGuideType } from "@/components/shared/ConfigGuideDialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useResolvedSrc } from "@/hooks/use-resolved-src";
 import { openDesktopBook } from "@/lib/library/open-book";
 /**
  * BookCard — Readest-inspired book card with realistic cover rendering
  */
 import { triggerVectorizeBook } from "@/lib/rag/vectorize-trigger";
+import { useAppStore } from "@/stores/app-store";
 import { useLibraryStore } from "@/stores/library-store";
+import { useReaderStore } from "@/stores/reader-store";
 import { useVectorModelStore } from "@/stores/vector-model-store";
 import type { Book, VectorizeProgress } from "@readany/core/types";
 import {
@@ -28,6 +38,8 @@ interface BookCardProps {
 export const BookCard = memo(function BookCard({ book }: BookCardProps) {
   const { t } = useTranslation();
   const removeBook = useLibraryStore((s) => s.removeBook);
+  const closeAppTab = useAppStore((s) => s.removeTab);
+  const closeReaderTab = useReaderStore((s) => s.removeTab);
   const allTags = useLibraryStore((s) => s.allTags);
   const addTagToBook = useLibraryStore((s) => s.addTagToBook);
   const removeTagFromBook = useLibraryStore((s) => s.removeTagFromBook);
@@ -41,29 +53,42 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
   const [vectorizing, setVectorizing] = useState(false);
   const [vectorProgress, setVectorProgress] = useState<VectorizeProgress | null>(null);
   const [configGuide, setConfigGuide] = useState<ConfigGuideType>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [preserveDataOnDelete, setPreserveDataOnDelete] = useState(true);
   const coverRef = useRef<HTMLDivElement>(null);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const suppressOpenUntilRef = useRef(0);
   const progressPct = Math.round(book.progress * 100);
   const coverSrc = useResolvedSrc(book.meta.coverUrl);
 
   const handleOpen = async () => {
+    if (
+      showMenu ||
+      showDeleteDialog ||
+      Date.now() < suppressOpenUntilRef.current
+    ) {
+      return;
+    }
     await openDesktopBook({ book, t });
   };
 
   const handleDelete = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
+      suppressOpenUntilRef.current = Date.now() + 600;
       setShowMenu(false);
       setMenuPos(null);
-      removeBook(book.id);
+      setPreserveDataOnDelete(true);
+      setShowDeleteDialog(true);
     },
-    [book.id, removeBook],
+    [],
   );
 
   const handleVectorize = useCallback(
     async (e: React.MouseEvent) => {
       e.stopPropagation();
+      suppressOpenUntilRef.current = Date.now() + 400;
       setShowMenu(false);
       setMenuPos(null);
       if (vectorizing) return;
@@ -216,6 +241,7 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
           className="absolute right-1 bottom-1 z-20 rounded-md bg-black/30 p-0.5 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100"
           onClick={(e) => {
             e.stopPropagation();
+            suppressOpenUntilRef.current = Date.now() + 300;
             if (showMenu) {
               setShowMenu(false);
               setMenuPos(null);
@@ -280,6 +306,7 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
                 className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-foreground hover:bg-muted"
                 onClick={(e) => {
                   e.stopPropagation();
+                  suppressOpenUntilRef.current = Date.now() + 300;
                   setShowTagMenu(!showTagMenu);
                 }}
               >
@@ -301,6 +328,7 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
                         className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted"
                         onClick={(e) => {
                           e.stopPropagation();
+                          suppressOpenUntilRef.current = Date.now() + 300;
                           if (hasTag) removeTagFromBook(book.id, tag);
                           else addTagToBook(book.id, tag);
                         }}
@@ -327,6 +355,7 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
                         onKeyDown={(e) => {
                           e.stopPropagation();
                           if (e.key === "Enter" && newTagInput.trim()) {
+                            suppressOpenUntilRef.current = Date.now() + 300;
                             addTag(newTagInput.trim());
                             addTagToBook(book.id, newTagInput.trim());
                             setNewTagInput("");
@@ -357,6 +386,11 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
         <h4 className="truncate text-xs font-semibold leading-tight text-foreground">
           {book.meta.title}
         </h4>
+        {book.meta.author && (
+          <p className="truncate text-[10px] leading-tight text-muted-foreground">
+            {book.meta.author}
+          </p>
+        )}
 
         {/* Tag badges */}
         {book.tags.length > 0 ? (
@@ -401,6 +435,70 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
       </div>
 
       <ConfigGuideDialog type={configGuide} onClose={() => setConfigGuide(null)} />
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("library.deleteBookTitle", "删除这本书？")}</DialogTitle>
+            <DialogDescription>
+              {t(
+                "library.deleteBookDescription",
+                "你可以选择保留笔记和阅读统计，之后重新导入同一本书时会继续接上。",
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <label className="flex cursor-pointer items-start gap-3 px-1 py-1">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 rounded border-border"
+              checked={preserveDataOnDelete}
+              onChange={(e) => setPreserveDataOnDelete(e.target.checked)}
+            />
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-foreground">
+                {t("library.preserveDeleteDataLabel", "保留笔记和阅读统计")}
+              </div>
+              <div className="mt-1 text-xs leading-5 text-muted-foreground">
+                {t(
+                  "library.preserveDeleteDataHint",
+                  "勾选后会从书架移除书籍文件，但保留笔记、高亮和阅读历史，重新导入时可恢复。",
+                )}
+              </div>
+            </div>
+          </label>
+
+          <DialogFooter>
+            <button
+              type="button"
+              className="inline-flex h-9 items-center justify-center rounded-md border border-border bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+              onClick={() => setShowDeleteDialog(false)}
+            >
+              {t("common.cancel", "取消")}
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-9 items-center justify-center rounded-md bg-destructive px-4 text-sm font-medium text-destructive-foreground transition-colors hover:bg-destructive/90"
+              onClick={async () => {
+                suppressOpenUntilRef.current = Date.now() + 600;
+                setShowDeleteDialog(false);
+                // Close any open reader tabs BEFORE removing the book from store,
+                // otherwise ReaderView will briefly render an error page.
+                const matchingTabIds = useAppStore
+                  .getState()
+                  .tabs.filter((tab) => tab.bookId === book.id)
+                  .map((tab) => tab.id);
+                for (const tabId of matchingTabIds) {
+                  closeAppTab(tabId);
+                  closeReaderTab(tabId);
+                }
+                await removeBook(book.id, { preserveData: preserveDataOnDelete });
+              }}
+            >
+              {t("common.remove", "删除")}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 });

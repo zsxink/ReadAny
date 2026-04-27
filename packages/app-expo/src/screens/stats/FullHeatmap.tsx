@@ -69,10 +69,10 @@ export function FullHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
 
   const getColor = (minutes: number) => {
     if (minutes <= 0) return colors.muted;
-    if (minutes < 15) return withOpacity(colors.emerald, 0.3);
-    if (minutes < 30) return withOpacity(colors.emerald, 0.5);
-    if (minutes < 60) return withOpacity(colors.emerald, 0.7);
-    return withOpacity(colors.emerald, 0.9);
+    if (minutes < 15) return withOpacity(colors.primary, 0.3);
+    if (minutes < 30) return withOpacity(colors.primary, 0.5);
+    if (minutes < 60) return withOpacity(colors.primary, 0.7);
+    return withOpacity(colors.primary, 0.9);
   };
 
   const formatDisplayDate = (dateStr: string) => {
@@ -175,7 +175,7 @@ export function FullHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
         >
           <Text style={{ fontSize: 12, color: colors.cardForeground, fontWeight: "500", textAlign: "center" }}>
             {formatDisplayDate(selectedDay.date)}{" "}
-            {selectedDay.time > 0 ? formatTime(selectedDay.time) : t("stats.noReading", "无阅读")}
+            {selectedDay.time > 0 ? formatTime(selectedDay.time) : t("stats.noReading")}
           </Text>
         </View>
       )}

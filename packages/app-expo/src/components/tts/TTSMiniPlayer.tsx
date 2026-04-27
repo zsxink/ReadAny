@@ -1,5 +1,6 @@
 import {
   BookOpenIcon,
+  ClockIcon,
   HeadphonesIcon,
   PauseIcon,
   PlayIcon,
@@ -9,7 +10,7 @@ import {
 import { pushRoute } from "@/lib/navigationRef";
 import { useReaderStore } from "@/stores/reader-store";
 import { useTTSStore } from "@/stores";
-import { fontSize, radius, useColors } from "@/styles/theme";
+import { fontSize, radius, useColors, withOpacity } from "@/styles/theme";
 import { eventBus } from "@readany/core/utils/event-bus";
 import { useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
@@ -28,6 +29,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useState } from "react";
+import { TTSSleepTimerSheet } from "./TTSSleepTimerSheet";
 
 const BUBBLE_SIZE = 56;
 
@@ -59,6 +61,7 @@ export function TTSMiniPlayer({ visible, onClose, anchorLayout }: TTSMiniPlayerP
   const resume = useTTSStore((s) => s.resume);
   const stop = useTTSStore((s) => s.stop);
   const updateConfig = useTTSStore((s) => s.updateConfig);
+  const sleepTimerEndsAt = useTTSStore((s) => s.sleepTimerEndsAt);
 
   const handleStop = useCallback(() => {
     stop();
@@ -136,6 +139,7 @@ export function TTSMiniPlayer({ visible, onClose, anchorLayout }: TTSMiniPlayerP
   const panelWidth = Math.min(388, Math.max(320, (anchorLayout?.screenWidth || 360) - 16));
   const [panelHeight, setPanelHeight] = useState(152);
   const [panelMeasured, setPanelMeasured] = useState(false);
+  const [timerSheetVisible, setTimerSheetVisible] = useState(false);
   const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
   const anchor = anchorLayout ?? {
     left: 16, top: 120, size: BUBBLE_SIZE,
@@ -240,6 +244,18 @@ export function TTSMiniPlayer({ visible, onClose, anchorLayout }: TTSMiniPlayerP
             <SquareIcon size={16} color={colors.foreground} />
           </TouchableOpacity>
 
+          <TouchableOpacity
+            style={[
+              styles.iconBtn,
+              { backgroundColor: sleepTimerEndsAt ? withOpacity(colors.primary, 0.14) : colors.muted },
+            ]}
+            onPress={() => setTimerSheetVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel={t("tts.sleepTimer", "定时停止")}
+          >
+            <ClockIcon size={16} color={sleepTimerEndsAt ? colors.primary : colors.foreground} />
+          </TouchableOpacity>
+
           {!!currentBookId && <View style={[styles.dividerV, { backgroundColor: colors.border }]} />}
 
           {!!currentBookId && (
@@ -265,6 +281,7 @@ export function TTSMiniPlayer({ visible, onClose, anchorLayout }: TTSMiniPlayerP
           )}
         </View>
       </View>
+      <TTSSleepTimerSheet visible={timerSheetVisible} onClose={() => setTimerSheetVisible(false)} />
     </Modal>
   );
 }

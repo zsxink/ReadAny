@@ -20,7 +20,7 @@ export class ExpoSpeechTTSPlayer implements ITTSPlayer {
   private _appStateSubscription: NativeEventSubscription | null = null;
 
   private _handleAppStateChange = (nextAppState: AppStateStatus): void => {
-    if (nextAppState === "background" || nextAppState === "inactive") {
+    if (nextAppState === "background") {
       if (!this._stopped) {
         this.stop();
       }

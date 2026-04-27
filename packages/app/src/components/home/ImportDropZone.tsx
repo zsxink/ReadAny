@@ -1,34 +1,16 @@
 /**
  * ImportDropZone — empty state with import button and drag-drop
  */
+import { DesktopImportActions } from "@/components/home/DesktopImportActions";
 import { useLibraryStore } from "@/stores/library-store";
-import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 
 export function ImportDropZone() {
   const { t } = useTranslation();
   const [isDragging, setIsDragging] = useState(false);
   const importBooks = useLibraryStore((s) => s.importBooks);
-
-  const handleImportClick = useCallback(async () => {
-    try {
-      const selected = await open({
-        multiple: true,
-        filters: [
-          { name: "Books", extensions: ["epub", "pdf", "mobi", "azw", "azw3", "fb2", "fbz", "txt", "cbz"] },
-        ],
-      } as const);
-      if (selected) {
-        const paths = Array.isArray(selected) ? selected : [selected];
-        if (paths.length > 0) {
-          await importBooks(paths);
-        }
-      }
-    } catch {
-      // User cancelled
-    }
-  }, [importBooks]);
 
   const handleDrop = useCallback(
     async (e: React.DragEvent) => {
@@ -57,10 +39,17 @@ export function ImportDropZone() {
         }
       }
       if (paths.length > 0) {
-        await importBooks(paths);
+        const result = await importBooks(paths);
+        toast.success(
+          t("library.importResultSummary", {
+            imported: result.imported.length,
+            skipped: result.skippedDuplicates.length,
+            failed: result.failures.length,
+          }),
+        );
       }
     },
-    [importBooks],
+    [importBooks, t],
   );
 
   return (
@@ -83,13 +72,14 @@ export function ImportDropZone() {
           <p className="mb-1 text-base font-medium text-foreground">{t("home.emptyLibrary")}</p>
           <p className="mb-4 text-sm text-muted-foreground">{t("home.dropToUpload")}</p>
           <p className="mb-4 text-xs text-muted-foreground/70">{t("home.supportedFormat")}</p>
-          <button
-            type="button"
-            onClick={handleImportClick}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-          >
-            {t("home.importBooks")}
-          </button>
+          <DesktopImportActions align="center">
+            <button
+              type="button"
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              {t("home.importBooks")}
+            </button>
+          </DesktopImportActions>
         </div>
       </div>
     </div>

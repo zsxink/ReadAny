@@ -343,6 +343,7 @@ export async function initDatabase(): Promise<void> {
       total_chapters INTEGER DEFAULT 0,
       added_at INTEGER NOT NULL,
       last_opened_at INTEGER,
+      deleted_at INTEGER,
       progress REAL DEFAULT 0,
       current_cfi TEXT,
       is_vectorized INTEGER DEFAULT 0,
@@ -461,6 +462,7 @@ export async function initDatabase(): Promise<void> {
       ended_at INTEGER,
       total_active_time INTEGER DEFAULT 0,
       pages_read INTEGER DEFAULT 0,
+      characters_read INTEGER DEFAULT 0,
       state TEXT DEFAULT 'active',
       updated_at INTEGER NOT NULL DEFAULT 0,
       FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
@@ -501,6 +503,11 @@ export async function initDatabase(): Promise<void> {
       // Migration 4: Add updated_at and file_hash to books
       try {
         await database.execute("ALTER TABLE books ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0");
+      } catch {
+        // Column already exists
+      }
+      try {
+        await database.execute("ALTER TABLE books ADD COLUMN deleted_at INTEGER");
       } catch {
         // Column already exists
       }
@@ -621,6 +628,18 @@ export async function initDatabase(): Promise<void> {
         );
       } catch {
         // Column already exists or table doesn't exist yet
+      }
+      try {
+        await database.execute(
+          "ALTER TABLE reading_sessions ADD COLUMN characters_read INTEGER DEFAULT 0",
+        );
+      } catch {
+        // Column already exists or table doesn't exist yet
+      }
+      try {
+        await database.execute("CREATE INDEX IF NOT EXISTS idx_books_deleted_at ON books(deleted_at)");
+      } catch {
+        // Older installs may fail to add the column on the first pass; don't block startup.
       }
 
       const platform = getPlatformService();

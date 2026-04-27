@@ -1,7 +1,8 @@
-import { ChevronDownIcon, ChevronUpIcon } from "@/components/ui/Icon";
+import { ChevronDownIcon, ChevronUpIcon, ClockIcon } from "@/components/ui/Icon";
+import { TTSSleepTimerSheet } from "@/components/tts/TTSSleepTimerSheet";
 import { useTTSStore } from "@/stores";
-import { type ThemeColors, fontSize, radius, useColors } from "@/styles/theme";
-import { useCallback, useState } from "react";
+import { type ThemeColors, fontSize, radius, useColors, withOpacity } from "@/styles/theme";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -100,8 +101,33 @@ export function TTSControls({ onClose, onReplay }: TTSControlsProps) {
   const resume = useTTSStore((s) => s.resume);
   const stop = useTTSStore((s) => s.stop);
   const updateConfig = useTTSStore((s) => s.updateConfig);
+  const sleepTimerEndsAt = useTTSStore((s) => s.sleepTimerEndsAt);
 
   const [expanded, setExpanded] = useState(false);
+  const [timerSheetVisible, setTimerSheetVisible] = useState(false);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!sleepTimerEndsAt) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [sleepTimerEndsAt]);
+
+  const remainingLabel = useMemo(() => {
+    void now;
+    if (!sleepTimerEndsAt) return null;
+    const remainingMs = Math.max(0, sleepTimerEndsAt - Date.now());
+    if (remainingMs <= 0) return null;
+    const totalSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (hours > 0) {
+      return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    }
+    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }, [now, sleepTimerEndsAt]);
 
   const handleClose = useCallback(() => {
     console.log("[TTSControls] handleClose called");
@@ -218,6 +244,13 @@ export function TTSControls({ onClose, onReplay }: TTSControlsProps) {
           <TouchableOpacity style={s.stopBtn} onPress={handleClose}>
             <SquareIcon size={14} color={colors.foreground} />
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[s.timerBtn, remainingLabel ? s.timerBtnActive : null]}
+            onPress={() => setTimerSheetVisible(true)}
+          >
+            <ClockIcon size={14} color={remainingLabel ? colors.primary : colors.foreground} />
+          </TouchableOpacity>
         </View>
 
         <TouchableOpacity style={s.expandBtn} onPress={() => setExpanded(!expanded)}>
@@ -228,6 +261,23 @@ export function TTSControls({ onClose, onReplay }: TTSControlsProps) {
           )}
         </TouchableOpacity>
       </View>
+
+      {remainingLabel ? (
+        <TouchableOpacity style={s.timerCountdownRow} onPress={() => setTimerSheetVisible(true)} activeOpacity={0.8}>
+          <ClockIcon size={12} color={colors.primary} />
+          <Text style={s.timerCountdownText}>
+            {t("tts.sleepTimerRemaining", {
+              time: remainingLabel,
+              defaultValue: `Remaining ${remainingLabel}`,
+            })}
+          </Text>
+        </TouchableOpacity>
+      ) : null}
+
+      <TTSSleepTimerSheet
+        visible={timerSheetVisible}
+        onClose={() => setTimerSheetVisible(false)}
+      />
     </View>
   );
 }
@@ -272,8 +322,8 @@ const makeStyles = (colors: ThemeColors) =>
       textAlign: "center",
     },
     stepBtn: {
-      width: 32,
-      height: 32,
+      width: 28,
+      height: 28,
       borderRadius: radius.lg,
       backgroundColor: colors.muted,
       alignItems: "center",
@@ -284,7 +334,7 @@ const makeStyles = (colors: ThemeColors) =>
       alignItems: "center",
       justifyContent: "space-between",
       paddingHorizontal: 16,
-      height: 48,
+      height: 44,
     },
     leftSection: {
       flexDirection: "row",
@@ -304,30 +354,41 @@ const makeStyles = (colors: ThemeColors) =>
     rateLabel: {
       fontSize: fontSize.xs,
       color: colors.mutedForeground,
-      width: 36,
+      width: 32,
       textAlign: "center",
     },
     divider: {
       width: 1,
-      height: 16,
+      height: 14,
       backgroundColor: colors.border,
-      marginHorizontal: 4,
+      marginHorizontal: 3,
     },
     playBtn: {
-      width: 36,
-      height: 36,
+      width: 34,
+      height: 34,
       borderRadius: radius.full,
       backgroundColor: colors.primary,
       alignItems: "center",
       justifyContent: "center",
     },
     stopBtn: {
-      width: 32,
-      height: 32,
+      width: 28,
+      height: 28,
       borderRadius: radius.lg,
       backgroundColor: colors.muted,
       alignItems: "center",
       justifyContent: "center",
+    },
+    timerBtn: {
+      width: 28,
+      height: 28,
+      borderRadius: radius.lg,
+      backgroundColor: colors.muted,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    timerBtnActive: {
+      backgroundColor: withOpacity(colors.primary, 0.14),
     },
     expandBtn: {
       width: 32,
@@ -336,5 +397,19 @@ const makeStyles = (colors: ThemeColors) =>
       justifyContent: "center",
       flex: 1,
       alignItems: "flex-end",
+    },
+    timerCountdownRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      paddingHorizontal: 16,
+      paddingBottom: 10,
+      marginTop: -2,
+    },
+    timerCountdownText: {
+      fontSize: 11,
+      color: colors.primary,
+      fontWeight: "600",
     },
   });

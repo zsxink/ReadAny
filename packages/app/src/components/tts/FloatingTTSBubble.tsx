@@ -15,20 +15,23 @@ import { useTTSStore } from "@/stores/tts-store";
 import { useAppStore } from "@/stores/app-store";
 import { useLibraryStore } from "@/stores/library-store";
 import { useReaderStore } from "@/stores/reader-store";
+import { TTSSleepTimerControl } from "./TTSSleepTimerControl";
 import { eventBus } from "@readany/core/utils/event-bus";
-import { BookOpen, Headphones, Loader2, Pause, Play, ScrollText, Square } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { BookOpen, Headphones, Loader2, Minus, Pause, Play, Plus, ScrollText, Square } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 // ─── Main floating bubble ─────────────────────────────────────────────────────
 
 export function FloatingTTSBubble() {
+  const PLAYER_PANEL_WIDTH = 392;
   const { t } = useTranslation();
   const playState = useTTSStore((s) => s.playState);
   const currentBookTitle = useTTSStore((s) => s.currentBookTitle);
   const currentChapterTitle = useTTSStore((s) => s.currentChapterTitle);
   const currentBookId = useTTSStore((s) => s.currentBookId);
   const currentLocationCfi = useTTSStore((s) => s.currentLocationCfi);
+  const sleepTimerEndsAt = useTTSStore((s) => s.sleepTimerEndsAt);
   const config = useTTSStore((s) => s.config);
   const pause = useTTSStore((s) => s.pause);
   const resume = useTTSStore((s) => s.resume);
@@ -42,16 +45,25 @@ export function FloatingTTSBubble() {
 
   const isActive = playState === "playing" || playState === "paused" || playState === "loading";
   const [showPlayer, setShowPlayer] = useState(false);
+  const [now, setNow] = useState(Date.now());
 
   // Close mini player when TTS stops
   useEffect(() => {
     if (!isActive) setShowPlayer(false);
   }, [isActive]);
 
+  useEffect(() => {
+    if (!sleepTimerEndsAt) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [sleepTimerEndsAt]);
+
   // Draggable position
   const [pos, setPos] = useState({ x: 20, y: 120 }); // bottom-right origin
   const [playerPos, setPlayerPos] = useState({ left: 16, top: 16 });
   const bubbleRef = useRef<HTMLDivElement | null>(null);
+  const playerRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ dragging: boolean; startX: number; startY: number; initX: number; initY: number }>({
     dragging: false,
     startX: 0,
@@ -185,14 +197,29 @@ export function FloatingTTSBubble() {
         ? "播放中"
         : playState === "paused"
           ? "已暂停"
-          : "已停止";
+        : "已停止";
+
+  const sleepTimerLabel = useMemo(() => {
+    void now;
+    if (!sleepTimerEndsAt) return null;
+    const remainingMs = Math.max(0, sleepTimerEndsAt - Date.now());
+    if (remainingMs <= 0) return null;
+    const totalSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (hours > 0) {
+      return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    }
+    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }, [now, sleepTimerEndsAt]);
 
   const updatePlayerPosition = useCallback(() => {
     const bubbleEl = bubbleRef.current;
     if (!bubbleEl) return;
     const rect = bubbleEl.getBoundingClientRect();
-    const panelWidth = 288;
-    const panelHeight = 152;
+    const panelWidth = Math.min(PLAYER_PANEL_WIDTH, window.innerWidth - 32);
+    const panelHeight = playerRef.current?.offsetHeight ?? 176;
     const gap = 12;
     const viewportPadding = 16;
     const clamp = (value: number, min: number, max: number) =>
@@ -211,15 +238,18 @@ export function FloatingTTSBubble() {
     );
 
     setPlayerPos({ left, top });
-  }, []);
+  }, [PLAYER_PANEL_WIDTH]);
 
   useEffect(() => {
     if (!showPlayer) return;
-    updatePlayerPosition();
+    const frame = window.requestAnimationFrame(() => updatePlayerPosition());
     const handleResize = () => updatePlayerPosition();
     window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, [showPlayer, pos, updatePlayerPosition]);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [showPlayer, pos, sleepTimerLabel, currentBookTitle, currentChapterTitle, statusText, currentBookId, updatePlayerPosition]);
 
   if (!isActive) return null;
 
@@ -262,7 +292,8 @@ export function FloatingTTSBubble() {
       {/* ── Mini player popover ── */}
       {showPlayer && (
         <div
-          className="pointer-events-auto fixed z-[10000] w-72 overflow-hidden rounded-2xl border bg-card shadow-2xl"
+          ref={playerRef}
+          className="pointer-events-auto fixed z-[10000] inline-flex w-[24.5rem] max-w-[calc(100vw-1.5rem)] flex-col rounded-2xl border bg-card shadow-2xl"
           style={{ left: playerPos.left, top: playerPos.top }}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
@@ -282,32 +313,30 @@ export function FloatingTTSBubble() {
 
           <div className="mx-4 border-t" />
 
-          <div className="flex items-center gap-2 px-4 py-3">
+          <div className="flex items-center gap-3 px-4 py-3">
             <button
               type="button"
               onClick={(e) => adjustRate(e, -0.1)}
-              className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-foreground transition-colors hover:bg-muted/80 text-lg font-medium leading-none"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/80 text-foreground transition-colors hover:bg-muted"
             >
-              −
+              <Minus className="h-3.5 w-3.5" />
             </button>
-            <span className="w-9 text-center text-xs tabular-nums text-muted-foreground">
+            <span className="w-9 shrink-0 text-center text-xs tabular-nums text-muted-foreground">
               {config.rate.toFixed(1)}x
             </span>
             <button
               type="button"
               onClick={(e) => adjustRate(e, 0.1)}
-              className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-foreground transition-colors hover:bg-muted/80 text-lg font-medium leading-none"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/80 text-foreground transition-colors hover:bg-muted"
             >
-              +
+              <Plus className="h-3.5 w-3.5" />
             </button>
-
-            <div className="mx-1 h-6 w-px bg-border" />
 
             <button
               type="button"
               onClick={handlePlayPause}
               disabled={playState === "loading"}
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
             >
               {playState === "loading" ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
@@ -321,22 +350,20 @@ export function FloatingTTSBubble() {
             <button
               type="button"
               onClick={handleStop}
-              className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted text-foreground transition-colors hover:bg-muted/80"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/80 text-foreground transition-colors hover:bg-muted"
               title="停止"
             >
-              <Square className="h-4 w-4" />
+              <Square className="h-3.5 w-3.5" />
             </button>
-
-            {!!currentBookId && <div className="mx-1 h-6 w-px bg-border" />}
 
             {!!currentBookId && (
               <button
                 type="button"
                 onClick={handleJumpToCurrentLocation}
-                className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted text-foreground transition-colors hover:bg-muted/80"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/80 text-foreground transition-colors hover:bg-muted"
                 title={t("tts.jumpToCurrentLocation")}
               >
-                <BookOpen className="h-4 w-4" />
+                <BookOpen className="h-3.5 w-3.5" />
               </button>
             )}
 
@@ -344,12 +371,22 @@ export function FloatingTTSBubble() {
               <button
                 type="button"
                 onClick={handleOpenLyricsPage}
-                className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted text-foreground transition-colors hover:bg-muted/80"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/80 text-foreground transition-colors hover:bg-muted"
                 title={t("tts.openLyricsPage", "跳到歌词页")}
               >
-                <ScrollText className="h-4 w-4" />
+                <ScrollText className="h-3.5 w-3.5" />
               </button>
             )}
+
+            <TTSSleepTimerControl compact />
+
+            <div className="ml-auto mr-1 flex shrink-0 items-center gap-2">
+              {sleepTimerLabel ? (
+                <span className="min-w-[44px] text-right text-[11px] font-semibold tabular-nums text-primary">
+                  {sleepTimerLabel}
+                </span>
+              ) : null}
+            </div>
 
           </div>
         </div>

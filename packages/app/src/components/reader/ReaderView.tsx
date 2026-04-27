@@ -19,17 +19,19 @@ import { useResizablePanel } from "@/hooks/use-resizable-panel";
 import { useResolvedSrc } from "@/hooks/use-resolved-src";
 import { DocumentLoader } from "@/lib/reader/document-loader";
 import type { BookDoc, BookFormat } from "@/lib/reader/document-loader";
-import { isFixedLayoutFormat } from "@/lib/reader/document-loader";
+import { isFixedLayoutBook, isFixedLayoutFormat } from "@/lib/reader/document-loader";
 import { resolveDesktopDataPath } from "@/lib/storage/desktop-library-root";
 import { useAnnotationStore } from "@/stores/annotation-store";
 import { useAppStore } from "@/stores/app-store";
 import { useLibraryStore } from "@/stores/library-store";
+import { useMissingBookPromptStore } from "@/stores/missing-book-prompt-store";
 import { useNotebookStore } from "@/stores/notebook-store";
 import { useReaderStore } from "@/stores/reader-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useTTSStore } from "@/stores/tts-store";
-import { useFontStore, getCSSFontFace } from "@readany/core/stores";
 import { useChapterTranslation } from "@readany/core/hooks";
+import { getPlatformService } from "@readany/core/services";
+import { getCSSFontFace, useFontStore, useReadingSessionStore } from "@readany/core/stores";
 import { splitNarrationText } from "@readany/core/tts";
 import type { CitationPart, HighlightColor } from "@readany/core/types";
 import { eventBus } from "@readany/core/utils/event-bus";
@@ -49,6 +51,49 @@ import { SelectionPopover } from "./SelectionPopover";
 import { TOCPanel } from "./TOCPanel";
 import { TTSPage } from "./TTSPage";
 import { TranslationPopover } from "./TranslationPopover";
+
+const REFLOWABLE_CHARACTERS_PER_LOCATION = 1500;
+const MAX_TRACKED_LOCATION_DELTA = 20;
+const MAX_TRACKED_PAGE_DELTA = 20;
+const MAX_TRACKED_FRACTION_DELTA = 0.08;
+const INITIAL_PROGRESS_RESTORE_GUARD_MS = 1800;
+const PROGRAMMATIC_NAV_GUARD_MS = 1200;
+const BOOK_IMPORT_FILTERS = [
+  {
+    name: "Books",
+    extensions: ["epub", "pdf", "mobi", "azw", "azw3", "cbz", "fb2", "fbz", "txt"],
+  },
+];
+
+function countReadableCharacters(doc: Document): number {
+  const rawText = doc.body?.textContent ?? "";
+  const normalizedText = rawText.replace(/\s+/g, "");
+  return normalizedText.length;
+}
+
+async function measureReflowableBookCharacters(bookDoc: BookDoc): Promise<number | null> {
+  const sections = bookDoc.sections ?? [];
+  if (sections.length === 0) return null;
+
+  let totalCharacters = 0;
+
+  for (const section of sections) {
+    try {
+      const doc = await section.createDocument();
+      const sectionCharacters = countReadableCharacters(doc);
+      if (sectionCharacters > 0) {
+        totalCharacters += sectionCharacters;
+      }
+    } catch (error) {
+      console.warn("[ReaderView] Failed to measure section characters", {
+        href: section.href,
+        error,
+      });
+    }
+  }
+
+  return totalCharacters > 0 ? totalCharacters : null;
+}
 
 // --- Tauri file loading ---
 async function loadFileAsBlob(filePath: string): Promise<Blob> {
@@ -203,7 +248,7 @@ function useAutoHideControls(
 
         // Double-page: left 25% = prev, right 25% = next, middle 50% = toggle
         // Single-page: left/right 37.5% = nav, middle 25% = toggle
-        const leftNavEnd   = viewStartX + viewWidth * (isDoublePage ? 0.25 : 0.375);
+        const leftNavEnd = viewStartX + viewWidth * (isDoublePage ? 0.25 : 0.375);
         const rightNavStart = viewStartX + viewWidth * (isDoublePage ? 0.75 : 0.625);
 
         if (clickScreenX > leftNavEnd && clickScreenX < rightNavStart) {
@@ -277,7 +322,9 @@ type TTSSegment = {
 export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   const TOOLBAR_PIN_STORAGE_KEY = "readany-reader-toolbar-pinned";
   const readerTab = useReaderStore((s) => s.tabs[tabId]);
+  const removeReaderTab = useReaderStore((s) => s.removeTab);
   const appTab = useAppStore((s) => s.tabs.find((t) => t.id === tabId));
+  const closeAppTab = useAppStore((s) => s.removeTab);
   const viewSettings = useSettingsStore((s) => s.readSettings);
   const updateReadSettings = useSettingsStore((s) => s.updateReadSettings);
   const setProgress = useReaderStore((s) => s.setProgress);
@@ -302,10 +349,13 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
           const { readFile } = await import("@tauri-apps/plugin-fs");
           const data = await readFile(f.filePath);
           const mimeType =
-            f.format === "woff2" ? "font/woff2"
-            : f.format === "woff" ? "font/woff"
-            : f.format === "otf" ? "font/otf"
-            : "font/ttf";
+            f.format === "woff2"
+              ? "font/woff2"
+              : f.format === "woff"
+                ? "font/woff"
+                : f.format === "otf"
+                  ? "font/otf"
+                  : "font/ttf";
           const blob = new Blob([data], { type: mimeType });
           const url = URL.createObjectURL(blob);
           newBlobUrls.set(f.id, url);
@@ -324,7 +374,9 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       }
     });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [customFonts]);
 
   // Cleanup blob URLs on unmount
@@ -340,9 +392,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   const selectedFontId = useFontStore((s) => s.selectedFontId);
 
   const viewSettingsWithFonts = useMemo(() => {
-    const selectedFont = selectedFontId
-      ? customFonts.find((f) => f.id === selectedFontId)
-      : null;
+    const selectedFont = selectedFontId ? customFonts.find((f) => f.id === selectedFontId) : null;
     const customFontFamily = selectedFont?.fontFamily ?? null;
     const customFontCssUrls =
       selectedFont?.source === "remote" && selectedFont.remoteCssUrl
@@ -351,18 +401,22 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
 
     const fontCSS = selectedFont
       ? (() => {
-        if (selectedFont.source === "remote" && selectedFont.remoteCssUrl) {
-          return "";
-        }
-        if (selectedFont.source === "remote") return getCSSFontFace(selectedFont);
-        const blobUrl = fontBlobUrls.get(selectedFont.id);
-        if (!blobUrl) return "";
-        const cssFormat = selectedFont.format === "otf" ? "opentype"
-          : selectedFont.format === "woff" ? "woff"
-          : selectedFont.format === "woff2" ? "woff2"
-          : "truetype";
-        return `@font-face {\n  font-family: '${selectedFont.fontFamily}';\n  src: url('${blobUrl}') format('${cssFormat}');\n  font-weight: normal;\n  font-style: normal;\n}`;
-      })()
+          if (selectedFont.source === "remote" && selectedFont.remoteCssUrl) {
+            return "";
+          }
+          if (selectedFont.source === "remote") return getCSSFontFace(selectedFont);
+          const blobUrl = fontBlobUrls.get(selectedFont.id);
+          if (!blobUrl) return "";
+          const cssFormat =
+            selectedFont.format === "otf"
+              ? "opentype"
+              : selectedFont.format === "woff"
+                ? "woff"
+                : selectedFont.format === "woff2"
+                  ? "woff2"
+                  : "truetype";
+          return `@font-face {\n  font-family: '${selectedFont.fontFamily}';\n  src: url('${blobUrl}') format('${cssFormat}');\n  font-weight: normal;\n  font-style: normal;\n}`;
+        })()
       : "";
     return {
       ...viewSettings,
@@ -374,7 +428,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
 
   useEffect(() => {
     const selectedFont = selectedFontId
-      ? customFonts.find((font) => font.id === selectedFontId) ?? null
+      ? (customFonts.find((font) => font.id === selectedFontId) ?? null)
       : null;
     console.log("[ReaderView][Font] selection", {
       selectedFontId,
@@ -476,6 +530,10 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       }
 
       console.log("[ReaderView] Navigating to CFI:", cfi);
+      progressTrackingGuardUntilRef.current = Math.max(
+        progressTrackingGuardUntilRef.current,
+        Date.now() + PROGRAMMATIC_NAV_GUARD_MS,
+      );
       foliateRef.current.goToCFI(cfi);
     },
     [tabId, readerTab, pushHistory],
@@ -583,6 +641,8 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   // Book document state
   const [bookDoc, setBookDoc] = useState<BookDoc | null>(null);
   const [bookFormat, setBookFormat] = useState<BookFormat>("EPUB");
+  const isFixedLayout = isFixedLayoutBook(bookFormat, bookDoc);
+  const shouldDisableReadSettings = isFixedLayoutFormat(bookFormat);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -602,6 +662,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   const [showChat, setShowChat] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showTTS, setShowTTS] = useState(false);
+  const [isReimporting, setIsReimporting] = useState(false);
   const [ttsSourceKind, setTtsSourceKind] = useState<"page" | "selection">("page");
   const [ttsContinuousEnabled, setTtsContinuousEnabled] = useState(true);
   const [ttsLastText, setTtsLastText] = useState("");
@@ -753,6 +814,42 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   const toolbarVisible = controlsVisible || isToolbarPinned;
   const readingHeaderTitle = (readerTab?.chapterTitle || book?.meta.title || "").trim();
   const contentTopPadding = isToolbarPinned ? 78 : 56;
+  const incrementPagesRead = useReadingSessionStore((s) => s.incrementPagesRead);
+  const incrementCharactersRead = useReadingSessionStore((s) => s.incrementCharactersRead);
+  const sessionProgressRef = useRef<{
+    mode: "location" | "page" | "characters";
+    current: number;
+    fraction?: number;
+    section?: number;
+    page?: number;
+  } | null>(null);
+  const totalBookCharactersRef = useRef<number | null>(null);
+  const progressTrackingGuardUntilRef = useRef(0);
+
+  const suppressProgressTracking = useCallback((duration = PROGRAMMATIC_NAV_GUARD_MS) => {
+    progressTrackingGuardUntilRef.current = Math.max(
+      progressTrackingGuardUntilRef.current,
+      Date.now() + duration,
+    );
+  }, []);
+
+  const goToCFISafely = useCallback(
+    (targetCfi: string) => {
+      if (!targetCfi) return;
+      suppressProgressTracking();
+      foliateRef.current?.goToCFI(targetCfi);
+    },
+    [suppressProgressTracking],
+  );
+
+  const goToHrefSafely = useCallback(
+    (href: string) => {
+      if (!href) return;
+      suppressProgressTracking();
+      foliateRef.current?.goToHref(href);
+    },
+    [suppressProgressTracking],
+  );
 
   useEffect(() => {
     window.localStorage.setItem(TOOLBAR_PIN_STORAGE_KEY, String(isToolbarPinned));
@@ -807,6 +904,32 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     });
   }, [bookId, loadAnnotations]);
 
+  useEffect(() => {
+    sessionProgressRef.current = null;
+    suppressProgressTracking(INITIAL_PROGRESS_RESTORE_GUARD_MS);
+  }, [bookId, tabId, bookFormat, suppressProgressTracking]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!bookDoc || isFixedLayout) {
+      totalBookCharactersRef.current = null;
+      return;
+    }
+
+    totalBookCharactersRef.current = null;
+
+    void measureReflowableBookCharacters(bookDoc).then((totalCharacters) => {
+      if (!cancelled) {
+        totalBookCharactersRef.current = totalCharacters;
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bookDoc, isFixedLayout]);
+
   // Load annotations
   useEffect(() => {
     loadAnnotations(bookId);
@@ -825,6 +948,92 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     }
   }, [book?.filePath, bookId, t]);
 
+  const handleReimportMissingBook = useCallback(async () => {
+    if (isReimporting) return;
+    setIsReimporting(true);
+
+    try {
+      const platform = getPlatformService();
+      const { reimportDeletedBook, inspectDeletedBookCandidate } = useLibraryStore.getState();
+      const picked = await platform.pickFile({
+        multiple: false,
+        filters: BOOK_IMPORT_FILTERS,
+      });
+      const selectedPath = Array.isArray(picked) ? picked[0] : picked;
+      if (!selectedPath) return;
+
+      if (book) {
+        const candidate = await inspectDeletedBookCandidate(bookId, selectedPath);
+        if (candidate) {
+          const normalize = (value?: string) =>
+            (value || "").toLowerCase().replace(/[\s\p{P}\p{S}_-]+/gu, "");
+          const authorsMatch = (() => {
+            const left = normalize(book.meta.author);
+            const right = normalize(candidate.author);
+            if (!left || !right) return true;
+            return left === right || left.includes(right) || right.includes(left);
+          })();
+          const titleMismatch = (() => {
+            const originalTitle = normalize(book.meta.title);
+            const candidateTitle = normalize(candidate.title);
+            return (
+              !!originalTitle &&
+              !!candidateTitle &&
+              originalTitle !== candidateTitle &&
+              !originalTitle.includes(candidateTitle) &&
+              !candidateTitle.includes(originalTitle)
+            );
+          })();
+          const formatMismatch = book.format !== candidate.format;
+          if (
+            !(candidate.fileHash && book.fileHash && candidate.fileHash === book.fileHash) &&
+            (titleMismatch || (formatMismatch && !authorsMatch))
+          ) {
+            const shouldContinue = await useMissingBookPromptStore.getState().showPrompt({
+              title: t("reader.reimportMismatchTitle", "这份文件看起来和原书不太一致"),
+              description: t(
+                "reader.reimportMismatchDescription",
+                "原书《{{originalTitle}}》与当前文件《{{candidateTitle}}》信息差异较大。仍要把它接回原来的笔记和阅读统计吗？",
+                {
+                  originalTitle: book.meta.title,
+                  candidateTitle: candidate.title || t("reader.unknownBook", "未命名书籍"),
+                },
+              ),
+              confirmLabel: t("reader.reimportContinue", "继续接回"),
+              cancelLabel: t("reader.reimportPickAnotherFile", "重新选择"),
+            });
+            if (!shouldContinue) return;
+          }
+        }
+      }
+
+      const restoredBook = await reimportDeletedBook(bookId, selectedPath);
+      if (!restoredBook) {
+        setError(t("reader.reimportFailed", "重新导入失败，请稍后再试。"));
+        return;
+      }
+
+      isInitializedRef.current = false;
+      setBookDoc(null);
+      setError(null);
+      setIsLoading(true);
+    } catch (err) {
+      console.error("[ReaderView] Failed to re-import missing book:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : t("reader.reimportFailed", "重新导入失败，请稍后再试。"),
+      );
+    } finally {
+      setIsReimporting(false);
+    }
+  }, [bookId, isReimporting, t]);
+
+  const handleCloseMissingBookTab = useCallback(() => {
+    closeAppTab(tabId);
+    removeReaderTab(tabId);
+  }, [closeAppTab, removeReaderTab, tabId]);
+
   // --- Event handlers from FoliateViewer ---
   const handleRelocate = useCallback(
     (detail: RelocateDetail) => {
@@ -839,22 +1048,86 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
         setChapter(tabId, detail.section?.current ?? 0, detail.tocItem.label, detail.tocItem.href);
       }
 
-      // Track pages (reference: Readest progressRelocateHandler)
-      // For fixed layout (PDF/CBZ): use section index (real pages)
-      // For reflowable (EPUB): use location (virtual loc based on sizePerLoc=1500)
-      //   location.current is 0-based; display as current+1 / total
-      //   At end of book, clamp to total to prevent overflow
-      if (isFixedLayoutFormat(bookFormat) && detail.section) {
+      // Display true pages only when the renderer exposes them.
+      if (detail.page) {
+        setTotalPages(detail.page.total);
+        setCurrentPage(detail.page.current);
+      } else if (isFixedLayout && detail.section) {
         setTotalPages(detail.section.total);
         setCurrentPage(detail.section.current + 1);
+      } else {
+        // Reflowable documents without renderer-backed pagination should use percent instead.
+        setTotalPages(0);
+        setCurrentPage(0);
+      }
+
+      const trackingSuppressed = Date.now() < progressTrackingGuardUntilRef.current;
+
+      // Track reading progress.
+      // For fixed layout (PDF/CBZ): use section index (stable real pages)
+      // For reflowable (EPUB/TXT): use logical locations for character accumulation
+      if (isFixedLayout && detail.section) {
+        const previous = sessionProgressRef.current;
+        const currentSection = detail.section.current;
+        if (!trackingSuppressed && previous?.mode === "page" && currentSection > previous.current) {
+          const delta = currentSection - previous.current;
+          if (delta <= MAX_TRACKED_PAGE_DELTA) {
+            incrementPagesRead(delta);
+          }
+        }
+        sessionProgressRef.current = { mode: "page", current: currentSection };
       } else if (detail.location) {
-        const { current, total } = detail.location;
-        // Check if renderer is at the very end (same as Readest's atEnd check)
-        const view = foliateRef.current?.getView();
-        const atEnd = view?.renderer?.atEnd || false;
-        const currentLoc = atEnd && total > 0 ? total : current + 1;
-        setTotalPages(total);
-        setCurrentPage(currentLoc);
+        const { current } = detail.location;
+        const fraction = detail.fraction ?? 0;
+        const totalBookCharacters = totalBookCharactersRef.current;
+
+        if (totalBookCharacters && totalBookCharacters > 0) {
+          const currentCharacters = Math.round(totalBookCharacters * fraction);
+          const previous = sessionProgressRef.current;
+          const currentSection = detail.section?.current ?? 0;
+          const currentRendererPage = detail.page?.current ?? null;
+
+          if (
+            !trackingSuppressed &&
+            previous?.mode === "characters" &&
+            currentCharacters > previous.current
+          ) {
+            if (currentRendererPage != null && previous.page != null && previous.section != null) {
+              const samePage =
+                previous.section === currentSection && previous.page === currentRendererPage;
+              const movedForwardWithinSection =
+                previous.section === currentSection &&
+                currentRendererPage > previous.page &&
+                currentRendererPage - previous.page <= MAX_TRACKED_PAGE_DELTA;
+              const movedForwardAcrossSection =
+                currentSection > previous.section && currentSection - previous.section <= 1;
+
+              if (!samePage && (movedForwardWithinSection || movedForwardAcrossSection)) {
+                incrementCharactersRead(currentCharacters - previous.current);
+              }
+            } else if (
+              Math.abs(fraction - (previous.fraction ?? 0)) <= MAX_TRACKED_FRACTION_DELTA
+            ) {
+              incrementCharactersRead(currentCharacters - previous.current);
+            }
+          }
+          sessionProgressRef.current = {
+            mode: "characters",
+            current: currentCharacters,
+            fraction,
+            section: currentSection,
+            page: currentRendererPage ?? undefined,
+          };
+        } else {
+          const previous = sessionProgressRef.current;
+          if (!trackingSuppressed && previous?.mode === "location" && current > previous.current) {
+            const delta = current - previous.current;
+            if (delta <= MAX_TRACKED_LOCATION_DELTA) {
+              incrementCharactersRead(delta * REFLOWABLE_CHARACTERS_PER_LOCATION);
+            }
+          }
+          sessionProgressRef.current = { mode: "location", current, fraction };
+        }
       }
 
       // Throttled save to DB
@@ -867,10 +1140,23 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       // that the renderer has fully updated its position (renderer.start reflects new page).
       if (pendingTTSContinueCallbackRef.current) {
         const cb = pendingTTSContinueCallbackRef.current;
+        pendingTTSContinueCallbackRef.current = null;
+        if (pendingTTSContinueSafetyTimerRef.current) {
+          clearTimeout(pendingTTSContinueSafetyTimerRef.current);
+          pendingTTSContinueSafetyTimerRef.current = null;
+        }
         void cb();
       }
     },
-    [tabId, bookId, bookFormat, setProgress, setChapter, throttledSaveProgress, translationReady],
+    [
+      tabId,
+      bookId,
+      isFixedLayout,
+      setProgress,
+      setChapter,
+      throttledSaveProgress,
+      translationReady,
+    ],
   );
 
   const handleTocReady = useCallback((toc: TOCItem[]) => {
@@ -1059,9 +1345,12 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     foliateRef.current?.goNext();
   }, []);
 
-  const handleGoToChapter = useCallback((href: string) => {
-    foliateRef.current?.goToHref(href);
-  }, []);
+  const handleGoToChapter = useCallback(
+    (href: string) => {
+      goToHrefSafely(href);
+    },
+    [goToHrefSafely],
+  );
 
   // --- Selection actions ---
   const handleHighlight = useCallback(
@@ -1370,6 +1659,94 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     [filterDistinctTTSSegments],
   );
 
+  const queueDesktopTTSChapterTransition = useCallback(
+    (targetIndex: number, options?: { autoResume?: boolean }) => {
+      const target = tocItems[targetIndex];
+      if (!target?.href) return false;
+
+      const autoResume = options?.autoResume !== false;
+      const nextChapterTitle = target.title || readerTab?.chapterTitle || "";
+
+      if (pendingTTSContinueSafetyTimerRef.current) {
+        clearTimeout(pendingTTSContinueSafetyTimerRef.current);
+        pendingTTSContinueSafetyTimerRef.current = null;
+      }
+
+      pendingTTSContinueCallbackRef.current = () => {
+        pendingTTSContinueCallbackRef.current = null;
+        if (pendingTTSContinueSafetyTimerRef.current) {
+          clearTimeout(pendingTTSContinueSafetyTimerRef.current);
+          pendingTTSContinueSafetyTimerRef.current = null;
+        }
+
+        void (async () => {
+          const segments =
+            (await foliateRef.current?.getVisibleTTSSegments())?.map((segment) => ({
+              text: segment.text.trim(),
+              cfi: segment.cfi,
+            })) ?? [];
+          const normalizedSegments = segments.filter((segment) => segment.text.length > 0);
+          if (!normalizedSegments.length) {
+            ttsContinuousRef.current = false;
+            ttsSetOnEnd(null);
+            ttsStop();
+            return;
+          }
+
+          const nextText = normalizedSegments
+            .map((segment) => segment.text)
+            .join(" ")
+            .trim();
+          const firstVisibleCfi = normalizedSegments[0]?.cfi || "";
+          const lastVisibleCfi =
+            normalizedSegments[normalizedSegments.length - 1]?.cfi || firstVisibleCfi;
+
+          setTtsSourceKind("page");
+          setTtsContinuousEnabled(autoResume);
+          setTtsLastText(nextText);
+          setTtsSegments(normalizedSegments);
+          setTtsFutureSegments([]);
+          ttsLastTextRef.current = nextText;
+          ttsSegmentsRef.current = normalizedSegments;
+          ttsFutureSegmentsRef.current = [];
+          ttsStartChapterRef.current = nextChapterTitle;
+          ttsContinuousRef.current = autoResume;
+          ttsSetCurrentBook(book?.meta.title ?? "", nextChapterTitle, bookId);
+          ttsSetCurrentLocation(firstVisibleCfi);
+
+          void primeDesktopTTSLyricContext(lastVisibleCfi);
+
+          if (autoResume) {
+            ttsPlay(normalizedSegments.map((segment) => segment.text));
+          }
+        })();
+      };
+
+      pendingTTSContinueSafetyTimerRef.current = setTimeout(() => {
+        const cb = pendingTTSContinueCallbackRef.current;
+        pendingTTSContinueCallbackRef.current = null;
+        if (cb) void cb();
+      }, 1200);
+
+      void foliateRef.current?.setTTSHighlight(null);
+      handleGoToChapter(target.href);
+      return true;
+    },
+    [
+      book?.meta.title,
+      bookId,
+      handleGoToChapter,
+      primeDesktopTTSLyricContext,
+      readerTab?.chapterTitle,
+      tocItems,
+      ttsPlay,
+      ttsSetCurrentBook,
+      ttsSetCurrentLocation,
+      ttsSetOnEnd,
+      ttsStop,
+    ],
+  );
+
   const handleTTSPageEnd = useCallback(() => {
     if (!ttsContinuousRef.current) return;
     const previousSegments = ttsSegmentsRef.current;
@@ -1416,12 +1793,33 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
         return;
       }
 
+      const nextChapterIndex =
+        (readerTab?.chapterIndex ?? -1) >= 0 &&
+        (readerTab?.chapterIndex ?? -1) < tocItems.length - 1
+          ? (readerTab?.chapterIndex ?? -1) + 1
+          : -1;
+      if (
+        nextChapterIndex >= 0 &&
+        queueDesktopTTSChapterTransition(nextChapterIndex, { autoResume: true })
+      ) {
+        return;
+      }
+
       // No more text (end of book) — stop TTS
       ttsContinuousRef.current = false;
       ttsSetOnEnd(null);
       ttsStop();
     })();
-  }, [currentTTSSegment?.cfi, mergeUniqueTTSSegments, readerTab?.currentCfi, ttsSetOnEnd, ttsStop]);
+  }, [
+    currentTTSSegment?.cfi,
+    mergeUniqueTTSSegments,
+    queueDesktopTTSChapterTransition,
+    readerTab?.chapterIndex,
+    readerTab?.currentCfi,
+    tocItems.length,
+    ttsSetOnEnd,
+    ttsStop,
+  ]);
 
   useEffect(() => {
     const shouldContinue = ttsContinuousRef.current && ttsSourceKind === "page";
@@ -1431,21 +1829,43 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   const handleTTSPrevChapter = useCallback(() => {
     const currentIdx = readerTab?.chapterIndex ?? -1;
     const idx = currentIdx > 0 ? currentIdx - 1 : 0;
+    if (ttsSourceKind === "page" && ttsPlayState !== "stopped") {
+      queueDesktopTTSChapterTransition(idx, { autoResume: true });
+      return;
+    }
     const prevHref = tocItems[idx]?.href;
     if (prevHref) {
       handleGoToChapter(prevHref);
     }
-  }, [readerTab?.chapterIndex, tocItems, handleGoToChapter]);
+  }, [
+    handleGoToChapter,
+    queueDesktopTTSChapterTransition,
+    readerTab?.chapterIndex,
+    tocItems,
+    ttsPlayState,
+    ttsSourceKind,
+  ]);
 
   const handleTTSNextChapter = useCallback(() => {
     const currentIdx = readerTab?.chapterIndex ?? -1;
     const idx =
       currentIdx >= 0 && currentIdx < tocItems.length - 1 ? currentIdx + 1 : tocItems.length - 1;
+    if (ttsSourceKind === "page" && ttsPlayState !== "stopped") {
+      queueDesktopTTSChapterTransition(idx, { autoResume: true });
+      return;
+    }
     const nextHref = tocItems[idx]?.href;
     if (nextHref) {
       handleGoToChapter(nextHref);
     }
-  }, [readerTab?.chapterIndex, tocItems, handleGoToChapter]);
+  }, [
+    handleGoToChapter,
+    queueDesktopTTSChapterTransition,
+    readerTab?.chapterIndex,
+    tocItems,
+    ttsPlayState,
+    ttsSourceKind,
+  ]);
 
   const startSelectionTTS = useCallback(
     (text: string) => {
@@ -1546,7 +1966,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
         clearTimeout(pendingTTSContinueSafetyTimerRef.current);
         pendingTTSContinueSafetyTimerRef.current = null;
       }
-      foliateRef.current?.goToCFI(targetCfi);
+      goToCFISafely(targetCfi);
       await new Promise((resolve) => setTimeout(resolve, 280));
       const segments =
         (await foliateRef.current?.getVisibleTTSSegments(targetCfi))?.map((segment) => ({
@@ -1749,7 +2169,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
         ttsLastTextRef.current = nextText;
         if (nextCfi) {
           ttsSetCurrentLocation(nextCfi);
-          foliateRef.current?.goToCFI(nextCfi);
+          goToCFISafely(nextCfi);
           foliateRef.current?.highlightCFITemporarily(nextCfi, 1200);
         }
         setTimeout(() => ttsPlay(allSegments.map((segment) => segment.text)), 0);
@@ -1772,12 +2192,12 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       ttsLastTextRef.current = nextText;
       if (nextCfi) {
         ttsSetCurrentLocation(nextCfi);
-        foliateRef.current?.goToCFI(nextCfi);
+        goToCFISafely(nextCfi);
         foliateRef.current?.highlightCFITemporarily(nextCfi, 1200);
       }
       setTimeout(() => ttsPlay(sliced.map((segment) => segment.text)), 0);
     },
-    [ttsPrevPageSegments, ttsSegments, ttsSetCurrentLocation, ttsPlay],
+    [ttsPrevPageSegments, ttsSegments, ttsSetCurrentLocation, ttsPlay, goToCFISafely],
   );
 
   const handleJumpToTTSLyricSegment = useCallback(
@@ -1816,7 +2236,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
         ttsFutureSegmentsRef.current = [];
         if (nextCfi) {
           ttsSetCurrentLocation(nextCfi);
-          foliateRef.current?.goToCFI(nextCfi);
+          goToCFISafely(nextCfi);
         }
         ttsPlay(allSegments.map((s) => s.text));
         return;
@@ -1843,7 +2263,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
         ttsFutureSegmentsRef.current = [];
         if (nextCfi) {
           ttsSetCurrentLocation(nextCfi);
-          foliateRef.current?.goToCFI(nextCfi);
+          goToCFISafely(nextCfi);
         }
         ttsPlay(remainingFuture.map((s) => s.text));
         void primeDesktopTTSLyricContext(
@@ -1866,6 +2286,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       ttsSegments,
       ttsFutureSegments,
       ttsSetCurrentLocation,
+      goToCFISafely,
     ],
   );
 
@@ -2227,15 +2648,14 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
                   </div>
                   <p className="text-sm font-medium text-destructive">{t("reader.loadFailed")}</p>
                   <p className="text-xs text-muted-foreground">{error}</p>
-                  <button
-                    type="button"
-                    className="mt-2 rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90"
-                    onClick={() => {
-                      if (book?.filePath) {
+                  {book?.filePath ? (
+                    <button
+                      type="button"
+                      className="mt-2 rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90"
+                      onClick={() => {
                         isInitializedRef.current = false;
                         setError(null);
                         setBookDoc(null);
-                        // Trigger re-init
                         setIsLoading(true);
                         loadAndParseBook(book.filePath)
                           .then(({ bookDoc, format }) => {
@@ -2247,10 +2667,28 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
                             setError(err instanceof Error ? err.message : "Failed");
                             setIsLoading(false);
                           });
-                      }
-                    }}
+                      }}
+                    >
+                      {t("common.retry")}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="mt-2 rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90"
+                      onClick={handleCloseMissingBookTab}
+                    >
+                      {t("common.back", "返回")}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="rounded-lg border border-border bg-background px-4 py-2 text-sm text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={() => void handleReimportMissingBook()}
+                    disabled={isReimporting}
                   >
-                    {t("common.retry")}
+                    {isReimporting
+                      ? t("reader.reimporting", "正在重新导入...")
+                      : t("reader.reimport", "重新导入")}
                   </button>
                 </div>
               </div>
@@ -2312,7 +2750,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
             onChapterTranslationReset={chapterTranslation.reset}
             isChatOpen={showChat}
             isTTSActive={showTTS || ttsPlayState !== "stopped"}
-            isFixedLayout={isFixedLayoutFormat(bookFormat)}
+            isFixedLayout={shouldDisableReadSettings}
             isPinned={isToolbarPinned}
             onTogglePinned={() => setIsToolbarPinned((prev) => !prev)}
             onMouseEnter={handleMouseEnter}

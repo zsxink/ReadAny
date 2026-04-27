@@ -327,6 +327,14 @@ function EndpointCard({
                 )}
               </div>
             )}
+            {endpoint.provider === "ollama" && (
+              <div className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+                {t(
+                  "settings.ai_ollamaCorsHint",
+                  "Can't connect to Ollama? Set OLLAMA_ORIGINS=* and restart Ollama.",
+                )}
+              </div>
+            )}
             <div className="mt-2 space-y-2 rounded-md border border-border/60 bg-background/60 p-2">
               <div>
                 <div className="mb-1 flex items-center justify-between gap-2">

@@ -63,6 +63,7 @@ let _sessionSegments: string[] = [];
 let _sessionCurrentIndex = 0;
 /** Generation counter — incremented on every play/jumpToChunk to invalidate stale callbacks */
 let _sessionGeneration = 0;
+let _sleepTimerHandle: ReturnType<typeof setTimeout> | null = null;
 
 function getSystemTTS(): ITTSPlayer {
   if (!_systemTTS) _systemTTS = _factories.createSystemTTS();
@@ -77,6 +78,13 @@ function getEdgeTTS(): ITTSPlayer {
 function getDashScopeTTS(): ITTSPlayer {
   if (!_dashscopeTTS) _dashscopeTTS = _factories.createDashScopeTTS();
   return _dashscopeTTS;
+}
+
+function clearSleepTimerHandle(): void {
+  if (_sleepTimerHandle) {
+    clearTimeout(_sleepTimerHandle);
+    _sleepTimerHandle = null;
+  }
 }
 
 export interface TTSState {
@@ -100,6 +108,10 @@ export interface TTSState {
   currentBookId: string;
   /** Current reading CFI for jump-back from floating mini-player */
   currentLocationCfi: string;
+  /** Absolute timestamp when playback should stop automatically */
+  sleepTimerEndsAt: number | null;
+  /** Original timer length selected by the user, in minutes */
+  sleepTimerDurationMinutes: number | null;
 
   // Actions
   play: (text: string | string[]) => void;
@@ -115,6 +127,8 @@ export interface TTSState {
   setChunkProgress: (index: number, total: number) => void;
   /** Jump to a specific chunk index within the current session, restarting speech from that point */
   jumpToChunk: (index: number) => void;
+  setSleepTimer: (minutes: number) => void;
+  clearSleepTimer: () => void;
 }
 
 export const useTTSStore = create<TTSState>()(
@@ -129,6 +143,8 @@ export const useTTSStore = create<TTSState>()(
     currentChapterTitle: "",
     currentBookId: "",
     currentLocationCfi: "",
+    sleepTimerEndsAt: null,
+    sleepTimerDurationMinutes: null,
 
     play: (text: string | string[]) => {
       const config = normalizeTTSConfig(get().config);
@@ -254,6 +270,7 @@ export const useTTSStore = create<TTSState>()(
     },
 
     stop: () => {
+      clearSleepTimerHandle();
       const system = getSystemTTS();
       const edge = getEdgeTTS();
       const dashscope = getDashScopeTTS();
@@ -275,6 +292,8 @@ export const useTTSStore = create<TTSState>()(
         currentChapterTitle: "",
         currentBookId: "",
         currentLocationCfi: "",
+        sleepTimerEndsAt: null,
+        sleepTimerDurationMinutes: null,
       });
     },
 
@@ -360,12 +379,41 @@ export const useTTSStore = create<TTSState>()(
         player.speak(remainingSegments, config);
       }
     },
+
+    setSleepTimer: (minutes: number) => {
+      const durationMinutes = Math.max(1, Math.round(minutes));
+      const endsAt = Date.now() + durationMinutes * 60_000;
+      clearSleepTimerHandle();
+      _sleepTimerHandle = setTimeout(() => {
+        _sleepTimerHandle = null;
+        if (get().sleepTimerEndsAt !== endsAt) return;
+        set({
+          sleepTimerEndsAt: null,
+          sleepTimerDurationMinutes: null,
+        });
+        get().pause();
+      }, durationMinutes * 60_000);
+      set({
+        sleepTimerEndsAt: endsAt,
+        sleepTimerDurationMinutes: durationMinutes,
+      });
+    },
+
+    clearSleepTimer: () => {
+      clearSleepTimerHandle();
+      set({
+        sleepTimerEndsAt: null,
+        sleepTimerDurationMinutes: null,
+      });
+    },
   }), {
     playState: "stopped" as const,
     currentText: "",
     currentChunkIndex: 0,
     totalChunks: 0,
     currentLocationCfi: "",
+    sleepTimerEndsAt: null,
+    sleepTimerDurationMinutes: null,
   } as Partial<TTSState>, (persisted) => ({
     ...persisted,
     config: normalizeTTSConfig((persisted as TTSState).config),

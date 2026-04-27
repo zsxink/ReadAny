@@ -1,7 +1,6 @@
 /**
  * ReadSettings — reading view settings using shadcn components
  */
-import { useEffect } from "react";
 import {
   Select,
   SelectContent,
@@ -11,8 +10,8 @@ import {
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { useSettingsStore } from "@/stores/settings-store";
-import { useTranslation } from "react-i18next";
 import { useFontStore } from "@readany/core/stores";
+import { useTranslation } from "react-i18next";
 
 export function ReadSettingsPanel() {
   const { t } = useTranslation();
@@ -20,12 +19,6 @@ export function ReadSettingsPanel() {
   const customFonts = useFontStore((s) => s.fonts);
   const selectedFontId = useFontStore((s) => s.selectedFontId);
   const setSelectedFont = useFontStore((s) => s.setSelectedFont);
-
-  useEffect(() => {
-    if (readSettings.viewMode === "scroll") {
-      updateReadSettings({ viewMode: "paginated" });
-    }
-  }, [readSettings.viewMode, updateReadSettings]);
 
   const currentFontValue = selectedFontId ?? "system";
 

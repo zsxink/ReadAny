@@ -114,6 +114,14 @@ export const ChevronRightIcon = icon(() => <Path d="m9 18 6-6-6-6" />);
 
 export const ChevronLeftIcon = icon(() => <Path d="m15 18-6-6 6-6" />);
 
+export const MoreVerticalIcon = icon(() => (
+  <>
+    <Circle cx="12" cy="5" r="1.5" fill="currentColor" stroke="none" />
+    <Circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+    <Circle cx="12" cy="19" r="1.5" fill="currentColor" stroke="none" />
+  </>
+));
+
 export const BrainIcon = icon(() => (
   <>
     <Path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" />
@@ -308,6 +316,28 @@ export const TrendingUpIcon = icon(() => (
   <>
     <Polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
     <Polyline points="16 7 22 7 22 13" />
+  </>
+));
+
+export const TrophyIcon = icon(() => (
+  <>
+    <Path d="M8 21h8" />
+    <Path d="M12 17v4" />
+    <Path d="M7 4h10v5a5 5 0 0 1-10 0V4Z" />
+    <Path d="M5 6H4a2 2 0 0 0 0 4h1" />
+    <Path d="M19 6h1a2 2 0 0 1 0 4h-1" />
+  </>
+));
+
+export const SwordsIcon = icon(() => (
+  <>
+    <Path d="m14.5 5.5 4 4" />
+    <Path d="m5.5 14.5 4 4" />
+    <Path d="m4 20 6.5-6.5" />
+    <Path d="m13.5 10.5 6.5-6.5" />
+    <Path d="m8 4 12 12" />
+    <Path d="m15.5 18.5 2.5 2.5" />
+    <Path d="m3.5 6.5 2.5 2.5" />
   </>
 ));
 

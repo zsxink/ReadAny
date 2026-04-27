@@ -17,19 +17,15 @@
       "bundleIdentifier": "com.readany.app",
       "buildNumber": "2",
       "infoPlist": {
-        "UIBackgroundModes": [
-          "audio",
-          "audio"
-        ],
+        "UIBackgroundModes": ["audio"],
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#05042B"
       },
-      "usesCleartextTraffic": true,
       "package": "com.readany.app",
       "permissions": [
         "android.permission.CAMERA",
@@ -51,7 +47,8 @@
           "android": {
             "enableProguardInReleaseBuilds": true,
             "enableShrinkResourcesInReleaseBuilds": true,
-            "enableMinifyInReleaseBuilds": true
+            "enableMinifyInReleaseBuilds": true,
+            "usesCleartextTraffic": true
           }
         }
       ],

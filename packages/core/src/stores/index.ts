@@ -45,3 +45,7 @@ export type { ReadingSessionState } from "./reading-session-store";
 // Sync store
 export { useSyncStore } from "./sync-store";
 export type { SyncState } from "./sync-store";
+
+// Goals store
+export { useGoalsStore } from "./goals-store";
+export type { GoalsState } from "./goals-store";

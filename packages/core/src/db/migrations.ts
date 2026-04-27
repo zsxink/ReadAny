@@ -55,6 +55,19 @@ const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_reading_sessions_book ON reading_sessions(book_id);
     `,
   },
+  {
+    version: 7,
+    description: "Add characters_read column to reading_sessions",
+    up: "ALTER TABLE reading_sessions ADD COLUMN characters_read INTEGER DEFAULT 0",
+  },
+  {
+    version: 8,
+    description: "Add deleted_at column to books for soft-delete history retention",
+    up: `
+      ALTER TABLE books ADD COLUMN deleted_at INTEGER;
+      CREATE INDEX IF NOT EXISTS idx_books_deleted_at ON books(deleted_at);
+    `,
+  },
 ];
 
 /** Run pending migrations */

@@ -18,6 +18,7 @@ import {
 } from "@/lib/tts/system-voices";
 import type { TTSEngine } from "@/lib/tts/tts-service";
 import { useTTSStore } from "@/stores/tts-store";
+import { TTSSleepTimerPanel } from "@/components/tts/TTSSleepTimerPanel";
 import { getLocaleDisplayLabel } from "@readany/core/tts";
 import { cn } from "@readany/core/utils";
 import { ChevronDown, ChevronUp, Headphones, Minus, Pause, Play, Plus, Square } from "lucide-react";
@@ -178,6 +179,8 @@ export function TTSControls({ onClose, className }: TTSControlsProps) {
                 </div>
               </>
             )}
+
+            <TTSSleepTimerPanel />
           </div>
         )}
 

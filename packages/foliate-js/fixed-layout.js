@@ -29,7 +29,7 @@ const getViewport = (doc, viewport) => {
 };
 
 export class FixedLayout extends HTMLElement {
-  static observedAttributes = ["zoom"];
+  static observedAttributes = ["zoom", "spread"];
   #root = this.attachShadow({ mode: "closed" });
   #observer = new ResizeObserver(() => this.#render());
   #spreads;
@@ -65,7 +65,63 @@ export class FixedLayout extends HTMLElement {
           value !== "fit-width" && value !== "fit-page" ? Number.parseFloat(value) : value;
         this.#render();
         break;
+      case "spread":
+        this.spread = value;
+        void this.#applySpreadChange(value);
+        break;
     }
+  }
+  #buildSpreads(book) {
+    const { rendition } = book;
+    const rtl = book.dir === "rtl";
+    const ltr = !rtl;
+    if (rendition?.spread === "none") return book.sections.map((section) => ({ center: section }));
+
+    return book.sections.reduce(
+      (arr, section, i) => {
+        const last = arr[arr.length - 1];
+        const { pageSpread } = section;
+        const newSpread = () => {
+          const spread = {};
+          arr.push(spread);
+          return spread;
+        };
+        if (pageSpread === "center") {
+          const spread = last.left || last.right ? newSpread() : last;
+          spread.center = section;
+        } else if (pageSpread === "left") {
+          const spread = last.center || last.left || (ltr && i) ? newSpread() : last;
+          spread.left = section;
+        } else if (pageSpread === "right") {
+          const spread = last.center || last.right || (rtl && i) ? newSpread() : last;
+          spread.right = section;
+        } else if (ltr) {
+          if (last.center || last.right) newSpread().left = section;
+          else if (last.left || !i) last.right = section;
+          else last.left = section;
+        } else {
+          if (last.center || last.left) newSpread().right = section;
+          else if (last.right || !i) last.left = section;
+          else last.right = section;
+        }
+        return arr;
+      },
+      [{}],
+    );
+  }
+  async #applySpreadChange(value) {
+    if (!this.book?.sections?.length) return;
+    if (this.book.rendition) this.book.rendition.spread = value;
+
+    const currentSection = this.book.sections[this.index] ?? this.book.sections[0];
+    this.#spreads = this.#buildSpreads(this.book);
+    const target = currentSection ? this.getSpreadOf(currentSection) : null;
+    this.#index = -1;
+    await this.goToSpread(
+      target?.index ?? 0,
+      target?.side ?? (this.rtl ? "right" : "left"),
+      "layout",
+    );
   }
   async #createFrame({ index, src: srcOption }) {
     const srcOptionIsString = typeof srcOption === "string";
@@ -210,40 +266,7 @@ export class FixedLayout extends HTMLElement {
     const ltr = !rtl;
     this.rtl = rtl;
 
-    if (rendition?.spread === "none")
-      this.#spreads = book.sections.map((section) => ({ center: section }));
-    else
-      this.#spreads = book.sections.reduce(
-        (arr, section, i) => {
-          const last = arr[arr.length - 1];
-          const { pageSpread } = section;
-          const newSpread = () => {
-            const spread = {};
-            arr.push(spread);
-            return spread;
-          };
-          if (pageSpread === "center") {
-            const spread = last.left || last.right ? newSpread() : last;
-            spread.center = section;
-          } else if (pageSpread === "left") {
-            const spread = last.center || last.left || (ltr && i) ? newSpread() : last;
-            spread.left = section;
-          } else if (pageSpread === "right") {
-            const spread = last.center || last.right || (rtl && i) ? newSpread() : last;
-            spread.right = section;
-          } else if (ltr) {
-            if (last.center || last.right) newSpread().left = section;
-            else if (last.left || !i) last.right = section;
-            else last.left = section;
-          } else {
-            if (last.center || last.left) newSpread().right = section;
-            else if (last.right || !i) last.left = section;
-            else last.right = section;
-          }
-          return arr;
-        },
-        [{}],
-      );
+    this.#spreads = this.#buildSpreads(book);
   }
   get index() {
     const spread = this.#spreads[this.#index];

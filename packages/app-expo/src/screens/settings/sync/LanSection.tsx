@@ -234,7 +234,7 @@ export function LanSection({
 
   return (
     <>
-      <View style={styles.section}>
+      <View style={[styles.section, styles.sectionSpaced]}>
         <Text style={styles.sectionTitle}>{t("settings.syncConnection")}</Text>
         <View style={styles.card}>
           <Text style={styles.lanDesc}>{t("settings.syncLANDescFull")}</Text>

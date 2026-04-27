@@ -92,6 +92,7 @@ pub fn initialize(db_path: &Path) -> Result<()> {
             ended_at INTEGER,
             total_active_time INTEGER DEFAULT 0,
             pages_read INTEGER DEFAULT 0,
+            characters_read INTEGER DEFAULT 0,
             state TEXT DEFAULT 'active',
             FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
         );

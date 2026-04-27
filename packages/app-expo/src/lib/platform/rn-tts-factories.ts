@@ -1,17 +1,17 @@
 /**
  * React Native TTS player factories.
  *
- * - BrowserTTS → expo-speech (native OS TTS, background NOT guaranteed)
- * - EdgeTTS    → expo-av + Edge TTS WebSocket API (background audio supported)
- * - DashScope  → expo-speech fallback (PCM streaming on RN pending expo-av integration)
+ * - SystemTTS  → expo-speech (native OS TTS, background NOT supported)
+ * - EdgeTTS    → react-native-track-player + Edge TTS WebSocket API (background + notification controls)
+ * - DashScope  → react-native-track-player + DashScope MP3 API (background + notification controls)
  */
 import type { TTSPlayerFactories } from "@readany/core/stores";
-import { ExpoAVEdgeTTSPlayer } from "./expo-av-edge-player";
 import { ExpoSpeechTTSPlayer } from "./expo-speech-player";
+import { TrackPlayerDashScopeTTSPlayer } from "./track-player-dashscope-player";
+import { TrackPlayerEdgeTTSPlayer } from "./track-player-edge-player";
 
 export const rnTTSPlayerFactories: TTSPlayerFactories = {
   createSystemTTS: () => new ExpoSpeechTTSPlayer(),
-  createEdgeTTS: () => new ExpoAVEdgeTTSPlayer(),
-  // DashScope TTS needs PCM streaming via expo-av — falls back to expo-speech for now.
-  createDashScopeTTS: () => new ExpoSpeechTTSPlayer(),
+  createEdgeTTS: () => new TrackPlayerEdgeTTSPlayer(),
+  createDashScopeTTS: () => new TrackPlayerDashScopeTTSPlayer(),
 };

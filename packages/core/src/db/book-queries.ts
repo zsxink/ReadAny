@@ -1,5 +1,7 @@
 import type { Book } from "../types";
-import { getDB, getLocalDB, getDeviceId, nextSyncVersion, nextUpdatedAt, insertTombstone, parseJSON } from "./db-core";
+import { getDB, getDeviceId, nextSyncVersion, nextUpdatedAt, insertTombstone, parseJSON } from "./db-core";
+import { deleteThreadsByBookId } from "./thread-queries";
+import { deleteChunks } from "./chunk-queries";
 
 interface BookRow {
   id: string;
@@ -19,6 +21,7 @@ interface BookRow {
   added_at: number;
   last_opened_at: number | null;
   updated_at: number;
+  deleted_at: number | null;
   progress: number;
   current_cfi: string | null;
   is_vectorized: number;
@@ -49,6 +52,7 @@ function rowToBook(row: BookRow): Book {
     addedAt: row.added_at,
     lastOpenedAt: row.last_opened_at || undefined,
     updatedAt: row.updated_at || row.added_at,
+    deletedAt: row.deleted_at || undefined,
     progress: row.progress,
     currentCfi: row.current_cfi || undefined,
     isVectorized: row.is_vectorized === 1,
@@ -59,17 +63,90 @@ function rowToBook(row: BookRow): Book {
   };
 }
 
-export async function getBooks(): Promise<Book[]> {
+export interface GetBooksOptions {
+  includeDeleted?: boolean;
+}
+
+export interface DeleteBookOptions {
+  preserveData?: boolean;
+}
+
+function isMissingDeletedAtColumnError(error: unknown): boolean {
+  const message =
+    error instanceof Error ? error.message : typeof error === "string" ? error : String(error);
+  return /no such column:\s*deleted_at/i.test(message);
+}
+
+export async function getDeletedBookByFileHash(fileHash: string): Promise<Book | null> {
   const database = await getDB();
-  const rows = await database.select<BookRow>(
-    "SELECT * FROM books ORDER BY last_opened_at DESC, added_at DESC",
-  );
+  try {
+    const rows = await database.select<BookRow>(
+      "SELECT * FROM books WHERE file_hash = ? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT 1",
+      [fileHash],
+    );
+    return rows.length > 0 ? rowToBook(rows[0]) : null;
+  } catch (error) {
+    if (isMissingDeletedAtColumnError(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function getDeletedBookByTitle(title: string): Promise<Book | null> {
+  const database = await getDB();
+  try {
+    // Try exact match first, then LIKE match for slight differences
+    let rows = await database.select<BookRow>(
+      "SELECT * FROM books WHERE title = ? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT 1",
+      [title],
+    );
+    if (rows.length === 0) {
+      // Fuzzy: strip non-alphanum and search with LIKE
+      const simplified = title.replace(/[^\p{L}\p{N}]+/gu, "%");
+      rows = await database.select<BookRow>(
+        "SELECT * FROM books WHERE title LIKE ? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT 1",
+        [`%${simplified}%`],
+      );
+    }
+    return rows.length > 0 ? rowToBook(rows[0]) : null;
+  } catch (error) {
+    if (isMissingDeletedAtColumnError(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function getBooks(options: GetBooksOptions = {}): Promise<Book[]> {
+  const database = await getDB();
+  const sql = options.includeDeleted
+    ? "SELECT * FROM books ORDER BY last_opened_at DESC, added_at DESC"
+    : "SELECT * FROM books WHERE deleted_at IS NULL ORDER BY last_opened_at DESC, added_at DESC";
+  let rows: BookRow[];
+  try {
+    rows = await database.select<BookRow>(sql);
+  } catch (error) {
+    if (!isMissingDeletedAtColumnError(error)) throw error;
+    rows = await database.select<BookRow>(
+      "SELECT * FROM books ORDER BY last_opened_at DESC, added_at DESC",
+    );
+  }
   return rows.map(rowToBook);
 }
 
-export async function getBook(id: string): Promise<Book | null> {
+export async function getBook(id: string, options: GetBooksOptions = {}): Promise<Book | null> {
   const database = await getDB();
-  const rows = await database.select<BookRow>("SELECT * FROM books WHERE id = ?", [id]);
+  const sql = options.includeDeleted
+    ? "SELECT * FROM books WHERE id = ?"
+    : "SELECT * FROM books WHERE id = ? AND deleted_at IS NULL";
+  let rows: BookRow[];
+  try {
+    rows = await database.select<BookRow>(sql, [id]);
+  } catch (error) {
+    if (!isMissingDeletedAtColumnError(error)) throw error;
+    rows = await database.select<BookRow>("SELECT * FROM books WHERE id = ?", [id]);
+  }
   return rows.length > 0 ? rowToBook(rows[0]) : null;
 }
 
@@ -79,8 +156,8 @@ export async function insertBook(book: Book): Promise<void> {
   const syncVersion = await nextSyncVersion(database, "books");
   const now = Date.now();
   await database.execute(
-    `INSERT INTO books (id, file_path, format, title, author, publisher, language, isbn, description, cover_url, publish_date, subjects, total_pages, total_chapters, added_at, last_opened_at, updated_at, progress, current_cfi, is_vectorized, vectorize_progress, tags, file_hash, sync_status, sync_version, last_modified_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO books (id, file_path, format, title, author, publisher, language, isbn, description, cover_url, publish_date, subjects, total_pages, total_chapters, added_at, last_opened_at, updated_at, deleted_at, progress, current_cfi, is_vectorized, vectorize_progress, tags, file_hash, sync_status, sync_version, last_modified_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       book.id,
       book.filePath,
@@ -99,6 +176,7 @@ export async function insertBook(book: Book): Promise<void> {
       book.addedAt,
       book.lastOpenedAt || null,
       now,
+      book.deletedAt || null,
       book.progress,
       book.currentCfi || null,
       book.isVectorized ? 1 : 0,
@@ -165,6 +243,10 @@ export async function updateBook(id: string, updates: Partial<Book>): Promise<vo
     sets.push("last_opened_at = ?");
     values.push(updates.lastOpenedAt);
   }
+  if (Object.prototype.hasOwnProperty.call(updates, "deletedAt")) {
+    sets.push("deleted_at = ?");
+    values.push(updates.deletedAt ?? null);
+  }
   if (updates.isVectorized !== undefined) {
     sets.push("is_vectorized = ?");
     values.push(updates.isVectorized ? 1 : 0);
@@ -208,24 +290,53 @@ export async function setBookSyncStatus(id: string, syncStatus: Book["syncStatus
   await database.execute("UPDATE books SET sync_status = ? WHERE id = ?", [syncStatus, id]);
 }
 
-export async function deleteBook(id: string): Promise<void> {
+export async function deleteBook(id: string, options: DeleteBookOptions = {}): Promise<void> {
   const database = await getDB();
+  const preserveData = options.preserveData ?? false;
 
-  // Delete all related data first to maintain referential integrity
-  // Delete highlights
+  if (preserveData) {
+    const deletedAt = Date.now();
+
+    // Keep notes/highlights/bookmarks and reading sessions, but remove chat
+    // threads and vector chunks tied to the deleted book payload.
+    await deleteThreadsByBookId(id);
+    await deleteChunks(id);
+
+    const deviceId = await getDeviceId();
+    const syncVersion = await nextSyncVersion(database, "books");
+    const updatedAt = await nextUpdatedAt(database, "books", id);
+    await database.execute(
+      `UPDATE books
+       SET deleted_at = ?, is_vectorized = 0, vectorize_progress = 0,
+           updated_at = ?, sync_version = ?, last_modified_by = ?
+       WHERE id = ?`,
+      [deletedAt, updatedAt, syncVersion, deviceId, id],
+    );
+    return;
+  }
+
+  const [highlightRows, noteRows, bookmarkRows] = await Promise.all([
+    database.select<{ id: string }>("SELECT id FROM highlights WHERE book_id = ?", [id]),
+    database.select<{ id: string }>("SELECT id FROM notes WHERE book_id = ?", [id]),
+    database.select<{ id: string }>("SELECT id FROM bookmarks WHERE book_id = ?", [id]),
+  ]);
+
+  for (const row of highlightRows) {
+    await insertTombstone(database, row.id, "highlights");
+  }
+  for (const row of noteRows) {
+    await insertTombstone(database, row.id, "notes");
+  }
+  for (const row of bookmarkRows) {
+    await insertTombstone(database, row.id, "bookmarks");
+  }
+
   await database.execute("DELETE FROM highlights WHERE book_id = ?", [id]);
-
-  // Delete bookmarks
+  await database.execute("DELETE FROM notes WHERE book_id = ?", [id]);
   await database.execute("DELETE FROM bookmarks WHERE book_id = ?", [id]);
-
-  // Delete reading sessions
   await database.execute("DELETE FROM reading_sessions WHERE book_id = ?", [id]);
-
-  // Delete chunks from local DB
-  const localDatabase = await getLocalDB();
-  await localDatabase.execute("DELETE FROM chunks WHERE book_id = ?", [id]);
-
-  // Finally, delete the book itself
+  await deleteThreadsByBookId(id);
+  await deleteChunks(id);
   await insertTombstone(database, id, "books");
   await database.execute("DELETE FROM books WHERE id = ?", [id]);
 }

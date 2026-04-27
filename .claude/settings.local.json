@@ -44,7 +44,8 @@
       "WebFetch(domain:vlcn.io)",
       "WebFetch(domain:docs.expo.dev)",
       "WebFetch(domain:crates.io)",
-      "WebFetch(domain:expo.dev)"
+      "WebFetch(domain:expo.dev)",
+      "WebFetch(domain:codepen.io)"
     ]
   }
 }

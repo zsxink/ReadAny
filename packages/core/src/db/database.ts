@@ -36,6 +36,8 @@ export {
 export {
   getBooks,
   getBook,
+  getDeletedBookByFileHash,
+  getDeletedBookByTitle,
   insertBook,
   updateBook,
   setBookSyncStatus,
@@ -82,6 +84,7 @@ export {
 } from "./message-queries";
 
 export {
+  getAllReadingSessions,
   getReadingSessions,
   getReadingSessionsByDateRange,
   insertReadingSession,

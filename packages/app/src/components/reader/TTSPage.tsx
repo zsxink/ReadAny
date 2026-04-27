@@ -9,6 +9,7 @@ import {
   type TTSPlayState,
 } from "@readany/core/tts";
 import { getSystemVoices } from "@/lib/tts/tts-service";
+import { TTSSleepTimerControl } from "@/components/tts/TTSSleepTimerControl";
 import {
   DEFAULT_SYSTEM_VOICE_VALUE,
   findSystemVoiceLabel,
@@ -29,6 +30,7 @@ import {
   SkipForward,
   Square,
 } from "lucide-react";
+import { useTTSStore } from "@/stores/tts-store";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -114,6 +116,8 @@ export function TTSPage({
   const { t, i18n } = useTranslation();
   const [voicePickerOpen, setVoicePickerOpen] = useState(false);
   const [systemVoices, setSystemVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const sleepTimerEndsAt = useTTSStore((s) => s.sleepTimerEndsAt);
+  const [now, setNow] = useState(Date.now());
   const voiceAnchorRef = useRef<HTMLButtonElement>(null);
   const activeLyricRef = useRef<HTMLButtonElement | null>(null);
   const pendingScrollRef = useRef(false);
@@ -255,6 +259,28 @@ export function TTSPage({
 
   const isPlaying = playState === "playing";
   const isLoading = playState === "loading";
+
+  useEffect(() => {
+    if (!sleepTimerEndsAt) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [sleepTimerEndsAt]);
+
+  const sleepTimerLabel = useMemo(() => {
+    void now;
+    if (!sleepTimerEndsAt) return null;
+    const remainingMs = Math.max(0, sleepTimerEndsAt - Date.now());
+    if (remainingMs <= 0) return null;
+    const totalSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (hours > 0) {
+      return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    }
+    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }, [now, sleepTimerEndsAt]);
 
   if (!visible) return null;
 
@@ -755,6 +781,20 @@ export function TTSPage({
           >
             {continuousEnabled ? t("tts.autoContinuePage") : t("tts.keepPageAligned")}
           </button>
+
+          <div className="mx-4 h-4 w-px bg-border/50" />
+
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-medium text-muted-foreground">
+              {t("tts.sleepTimer", "定时停止")}
+            </span>
+            <TTSSleepTimerControl compact />
+            {sleepTimerLabel ? (
+              <span className="min-w-[44px] text-right text-[11px] font-semibold tabular-nums text-primary">
+                {sleepTimerLabel}
+              </span>
+            ) : null}
+          </div>
         </div>
 
       </div>

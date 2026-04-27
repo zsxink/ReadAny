@@ -3,7 +3,7 @@
  * Uses Part-based rendering for real-time updates
  */
 import type { CitationPart, MessageV2, QuotePart } from "@readany/core/types/message";
-import { ArrowDown, Quote } from "lucide-react";
+import { ArrowDown, Check, Copy, Quote } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PartRenderer } from "./PartRenderer";
@@ -156,6 +156,36 @@ function UserQuoteBlock({ part }: { part: QuotePart }) {
   );
 }
 
+/** Extract plain text from a message's parts for clipboard copy */
+function extractMessageText(message: MessageV2): string {
+  return message.parts
+    .filter((p) => p.type === "text" && p.text.trim())
+    .map((p) => (p as { text: string }).text)
+    .join("\n\n");
+}
+
+function CopyMessageButton({ message }: { message: MessageV2 }) {
+  const [copied, setCopied] = useState(false);
+  const { t } = useTranslation();
+  return (
+    <button
+      type="button"
+      className="inline-flex w-fit items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+      onClick={() => {
+        const text = extractMessageText(message);
+        if (text) {
+          navigator.clipboard.writeText(text);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        }
+      }}
+      title={t("common.copy", "复制")}
+    >
+      {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+    </button>
+  );
+}
+
 function MessageBubble({ message, onCitationClick, isStreaming, currentStep }: MessageBubbleProps) {
   if (message.role === "user") {
     const quoteParts = message.parts.filter((p) => p.type === "quote") as QuotePart[];
@@ -222,6 +252,7 @@ function MessageBubble({ message, onCitationClick, isStreaming, currentStep }: M
         />
       ))}
       {showGapIndicator && <StreamingIndicator step="thinking" />}
+      {!isStreaming && <CopyMessageButton message={message} />}
     </div>
   );
 }

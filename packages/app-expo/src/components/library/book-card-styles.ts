@@ -1,15 +1,16 @@
 import { type ThemeColors, fontSize, fontWeight, radius } from "@/styles/theme";
-import { Dimensions, StyleSheet } from "react-native";
+import { StyleSheet } from "react-native";
 
-const SCREEN_PADDING = 16;
-const NUM_COLUMNS = 3;
-const GRID_GAP = 12;
-const screenWidth = Dimensions.get("window").width;
-export const coverWidth = (screenWidth - SCREEN_PADDING * 2 - GRID_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
-export const coverHeight = coverWidth * (41 / 28);
+export function getBookCardMetrics(cardWidth: number) {
+  const coverWidth = cardWidth;
+  const coverHeight = coverWidth * (41 / 28);
+  return { coverWidth, coverHeight };
+}
 
-export const makeStyles = (colors: ThemeColors) =>
-  StyleSheet.create({
+export const makeStyles = (colors: ThemeColors, cardWidth: number) => {
+  const { coverWidth, coverHeight } = getBookCardMetrics(cardWidth);
+
+  return StyleSheet.create({
     container: { width: coverWidth },
     coverWrap: {
       width: coverWidth,
@@ -97,8 +98,25 @@ export const makeStyles = (colors: ThemeColors) =>
       borderRadius: radius.sm, paddingHorizontal: 4, paddingVertical: 2,
     },
     vecBadgeText: { fontSize: 7, fontWeight: fontWeight.medium, color: "#fff" },
+    moreButtonWrap: {
+      position: "absolute",
+      right: 6,
+      bottom: 6,
+      zIndex: 22,
+    },
+    moreButton: {
+      width: 28,
+      height: 28,
+      borderRadius: radius.md,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "rgba(0,0,0,0.36)",
+      borderWidth: 1,
+      borderColor: "rgba(255,255,255,0.16)",
+    },
     infoWrap: { paddingTop: 6, paddingHorizontal: 1 },
     bookTitle: { fontSize: 13, fontWeight: fontWeight.semibold, color: colors.foreground, lineHeight: 14 },
+    bookAuthor: { fontSize: 10, color: colors.mutedForeground, lineHeight: 14, marginTop: 1 },
     tagsRow: { flexDirection: "row", flexWrap: "wrap", gap: 3, marginTop: 3 },
     tagBadge: { backgroundColor: `${colors.muted}`, borderRadius: radius.full, paddingHorizontal: 6, paddingVertical: 1 },
     tagText: { fontSize: 8, color: colors.mutedForeground },
@@ -115,3 +133,4 @@ export const makeStyles = (colors: ThemeColors) =>
     newText: { fontSize: 8, fontWeight: fontWeight.medium, color: colors.primary },
     formatText: { fontSize: 8, color: `${colors.mutedForeground}99`, textTransform: "uppercase", letterSpacing: 0.5 },
   });
+};

@@ -5,6 +5,7 @@ import {
   Trash2Icon,
   XIcon,
 } from "@/components/ui/Icon";
+import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { useColors, fontSize, fontWeight, radius, withOpacity } from "@/styles/theme";
 import { useTranslation } from "react-i18next";
 import {
@@ -47,6 +48,7 @@ export function TagManagementSheet({
   const colors = useColors();
   const { t } = useTranslation();
   const s = makeStyles(colors);
+  const layout = useResponsiveLayout();
 
   const [newTagInput, setNewTagInput] = useState("");
   const [editingTag, setEditingTag] = useState<string | null>(null);
@@ -68,7 +70,16 @@ export function TagManagementSheet({
       onRequestClose={onClose}
     >
       <Pressable style={s.overlay} onPress={onClose} />
-      <View style={s.sheet}>
+      <View
+        style={[
+          s.sheet,
+          layout.isTablet && {
+            width: "100%",
+            maxWidth: Math.min(layout.centeredContentWidth, 720),
+            alignSelf: "center",
+          },
+        ]}
+      >
         <View style={s.handle} />
         <Text style={s.title}>{t("home.manageTags", "管理标签")}</Text>
 

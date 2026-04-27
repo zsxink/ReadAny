@@ -1,3 +1,4 @@
+import i18n from "@readany/core/i18n";
 /**
  * ExpoPlatformService — IPlatformService implementation for Expo / React Native.
  *
@@ -21,10 +22,10 @@ import * as Clipboard from "expo-clipboard";
 import Constants from "expo-constants";
 import * as DocumentPicker from "expo-document-picker";
 import { Directory, File, Paths } from "expo-file-system";
+import * as LegacyFS from "expo-file-system/legacy";
 import * as Network from "expo-network";
 import * as SecureStore from "expo-secure-store";
 import * as Sharing from "expo-sharing";
-import i18n from "@readany/core/i18n";
 
 /** Simple KV storage keys tracking (SecureStore doesn't have getAllKeys) */
 const KV_KEYS_INDEX = "__readany_kv_keys__";
@@ -156,10 +157,7 @@ export class ExpoPlatformService implements IPlatformService {
       const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
       const isRetryableSqliteError = (error: unknown): boolean => {
         const message = error instanceof Error ? error.message : String(error);
-        return (
-          message.includes("database is locked") ||
-          message.includes("another row available")
-        );
+        return message.includes("database is locked") || message.includes("another row available");
       };
       const withSqliteRetry = async <T>(operation: () => Promise<T>): Promise<T> => {
         const maxAttempts = 4;
@@ -257,19 +255,19 @@ export class ExpoPlatformService implements IPlatformService {
     }
 
     return createQueuedAdapter(queueKey, db, async () => {
-        try {
-          await db.closeAsync();
-        } finally {
-          const destinationFile = new File(path);
-          if (destinationFile.exists) {
-            destinationFile.delete();
-          }
-          tempFile.copy(destinationFile);
-          if (tempFile.exists) {
-            tempFile.delete();
-          }
+      try {
+        await db.closeAsync();
+      } finally {
+        const destinationFile = new File(path);
+        if (destinationFile.exists) {
+          destinationFile.delete();
         }
-      });
+        tempFile.copy(destinationFile);
+        if (tempFile.exists) {
+          tempFile.delete();
+        }
+      }
+    });
   }
 
   // ---- Network ----
@@ -283,12 +281,7 @@ export class ExpoPlatformService implements IPlatformService {
     // React Native's fetch has issues with large arrayBuffer responses
     const resolvedResponseType = responseType ?? (method === "GET" ? "arraybuffer" : "text");
     const effectiveTimeoutMs = timeoutMs ?? (method === "GET" ? 120000 : 15000);
-    return this._fetchWithXHR(
-      effectiveUrl,
-      fetchOptions,
-      resolvedResponseType,
-      effectiveTimeoutMs,
-    );
+    return this._fetchWithXHR(effectiveUrl, fetchOptions, resolvedResponseType, effectiveTimeoutMs);
   }
 
   private _fetchWithXHR(
@@ -301,6 +294,8 @@ export class ExpoPlatformService implements IPlatformService {
       const xhr = new XMLHttpRequest();
       const method = options?.method || "GET";
       let settled = false;
+      let didTimeout = false;
+      let didNetworkError = false;
 
       xhr.open(method, url, true);
       xhr.responseType = responseType;
@@ -316,6 +311,18 @@ export class ExpoPlatformService implements IPlatformService {
 
       const finalizeResponse = () => {
         if (settled || xhr.readyState !== XMLHttpRequest.DONE) return;
+
+        if (xhr.status === 0) {
+          settled = true;
+          if (didTimeout) {
+            reject(new Error(`XHR request timeout (${timeoutMs}ms): ${method} ${url}`));
+            return;
+          }
+          const suffix = didNetworkError ? " (network error)" : "";
+          reject(new Error(`XHR request failed with status 0: ${method} ${url}${suffix}`));
+          return;
+        }
+
         settled = true;
         try {
           let textResponse = "";
@@ -377,12 +384,14 @@ export class ExpoPlatformService implements IPlatformService {
 
       xhr.onerror = () => {
         if (settled) return;
+        didNetworkError = true;
         settled = true;
         reject(new Error(`XHR request failed: ${method} ${url}`));
       };
 
       xhr.ontimeout = () => {
         if (settled) return;
+        didTimeout = true;
         settled = true;
         reject(new Error(`XHR request timeout (${timeoutMs}ms): ${method} ${url}`));
       };
@@ -470,11 +479,7 @@ export class ExpoPlatformService implements IPlatformService {
             ? String((event as { reason?: unknown }).reason || "")
             : "";
         const detail = closeReason || pendingErrorMessage || formatWebSocketError(event);
-        reject(
-          new Error(
-            `WebSocket closed before open: ${url} (${detail})`,
-          ),
-        );
+        reject(new Error(`WebSocket closed before open: ${url} (${detail})`));
       };
     });
 
@@ -511,7 +516,7 @@ export class ExpoPlatformService implements IPlatformService {
   async checkUpdate() {
     try {
       const response = await fetch(
-        "https://api.github.com/repos/codedogQBY/ReadAny/releases/latest"
+        "https://api.github.com/repos/codedogQBY/ReadAny/releases/latest",
       );
       if (!response.ok) return null;
 
@@ -520,9 +525,7 @@ export class ExpoPlatformService implements IPlatformService {
       const currentVersion = await this.getAppVersion();
 
       if (this._compareVersions(latestVersion, currentVersion) > 0) {
-        const apkAsset = release.assets.find(
-          (a: { name: string }) => a.name === "ReadAny.apk"
-        );
+        const apkAsset = release.assets.find((a: { name: string }) => a.name === "ReadAny.apk");
         if (apkAsset) {
           return {
             version: latestVersion,
@@ -626,17 +629,21 @@ export class ExpoPlatformService implements IPlatformService {
 
   // ---- File sharing / download ----
 
-  async shareOrDownloadFile(content: string, filename: string, mimeType: string): Promise<void> {
-    const cacheDir = Paths.cache;
-    const file = new File(cacheDir, filename);
-    file.write(content);
+  async shareOrDownloadFile(
+    content: string,
+    filename: string,
+    mimeType: string,
+  ): Promise<string | null> {
+    const filepath = `${LegacyFS.documentDirectory}${filename}`;
+    await LegacyFS.writeAsStringAsync(filepath, content);
 
     const available = await Sharing.isAvailableAsync();
     if (available) {
-      await Sharing.shareAsync(file.uri, { mimeType });
-    } else {
-      console.warn("Sharing not available on this device");
+      await Sharing.shareAsync(filepath, { mimeType });
+      return filepath;
     }
+    console.warn("Sharing not available on this device");
+    return null;
   }
 
   // ---- LAN Sync ----
@@ -670,9 +677,7 @@ export class ExpoPlatformService implements IPlatformService {
     const isExpoGo =
       Constants.executionEnvironment === "storeClient" || Constants.appOwnership === "expo";
     if (isExpoGo) {
-      throw new Error(
-        i18n.t("settings.syncLANExpoGoUnsupported"),
-      );
+      throw new Error(i18n.t("settings.syncLANExpoGoUnsupported"));
     }
 
     let TcpSocket: any;

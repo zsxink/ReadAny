@@ -40,8 +40,10 @@ export function SyncPage() {
   const [url, setUrl] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [remoteRoot, setRemoteRoot] = useState("readany");
   const [status, setStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [showPassword, setShowPassword] = useState(false);
+  const [testError, setTestError] = useState("");
 
   useEffect(() => {
     loadConfig();
@@ -51,6 +53,7 @@ export function SyncPage() {
     if (isWebDavConfig(config)) {
       if (config.url) setUrl(config.url);
       if (config.username) setUsername(config.username);
+      if (config.remoteRoot) setRemoteRoot(config.remoteRoot);
     }
 
     const loadPassword = async () => {
@@ -63,17 +66,20 @@ export function SyncPage() {
 
   const handleTest = async () => {
     setStatus("testing");
+    setTestError("");
     try {
-      const ok = await testWebDavConnection(url, username, password);
+      const ok = await testWebDavConnection(url, username, password, undefined, remoteRoot);
       setStatus(ok ? "success" : "error");
-    } catch {
+      if (!ok) setTestError(t("common.failed", "Failed"));
+    } catch (error) {
       setStatus("error");
+      setTestError(error instanceof Error ? error.message : String(error));
     }
   };
 
   const handleNext = async () => {
     if (url && username && password) {
-      await saveWebDavConfig(url, username, password);
+      await saveWebDavConfig(url, username, password, undefined, remoteRoot);
     }
     navigation.navigate("Complete");
   };
@@ -172,6 +178,36 @@ export function SyncPage() {
             </View>
           </View>
 
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{t("settings.syncRemoteRoot")}</Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                  color: colors.foreground,
+                },
+              ]}
+              value={remoteRoot}
+              onChangeText={setRemoteRoot}
+              placeholder={t("settings.syncRemoteRootPlaceholder")}
+              placeholderTextColor={colors.mutedForeground}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <Text
+              style={{
+                fontSize: 12,
+                lineHeight: 18,
+                color: colors.mutedForeground,
+                marginTop: 8,
+              }}
+            >
+              {t("settings.syncRemoteRootDesc")}
+            </Text>
+          </View>
+
           {status !== "idle" && (
             <View style={styles.statusRow}>
               {status === "testing" && <ActivityIndicator size="small" color={colors.primary} />}
@@ -194,7 +230,9 @@ export function SyncPage() {
                   ? t("common.testing", "Testing...")
                   : status === "success"
                     ? t("common.success", "Success!")
-                    : t("common.failed", "Failed")}
+                    : t("settings.syncTestFailed", {
+                        error: testError || t("common.failed", "Failed"),
+                      })}
               </Text>
             </View>
           )}

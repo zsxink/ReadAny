@@ -5,15 +5,17 @@
 import { getPlatformService } from "@readany/core/services";
 import { useEffect, useState } from "react";
 
+const EMPTY_ITEMS: readonly [] = [];
+
 export function useResolvedCovers<T extends { bookId?: string; id?: string; coverUrl?: string | null }>(
   items?: T[],
 ): Map<string, string> {
   const [resolvedCovers, setResolvedCovers] = useState<Map<string, string>>(new Map());
-  const safeItems = items ?? [];
+  const safeItems = items ?? EMPTY_ITEMS;
 
   useEffect(() => {
     if (safeItems.length === 0) {
-      setResolvedCovers(new Map());
+      setResolvedCovers((prev) => (prev.size === 0 ? prev : new Map()));
       return;
     }
     const resolve = async () => {
@@ -37,7 +39,13 @@ export function useResolvedCovers<T extends { bookId?: string; id?: string; cove
             newMap.set(key, absPath);
           } catch {}
         }
-        setResolvedCovers(newMap);
+        setResolvedCovers((prev) => {
+          if (prev.size !== newMap.size) return newMap;
+          for (const [key, value] of newMap) {
+            if (prev.get(key) !== value) return newMap;
+          }
+          return prev;
+        });
       } catch (err) {
         console.error("Failed to resolve cover URLs:", err);
       }

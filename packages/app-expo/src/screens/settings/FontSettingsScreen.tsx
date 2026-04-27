@@ -6,6 +6,7 @@ import {
   generateFontId,
   saveFontFile,
 } from "@readany/core/stores";
+import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import type { CustomFont } from "@readany/core/types/font";
 import { PRESET_FONTS } from "@readany/core/types/font";
 import { getPlatformService } from "@readany/core/services";
@@ -35,6 +36,7 @@ const FONT_SIZE_LIMIT = 10 * 1024 * 1024;
 export default function FontSettingsScreen() {
   const { t, i18n } = useTranslation();
   const colors = useColors();
+  const layout = useResponsiveLayout();
 
   const fonts = useFontStore((s) => s.fonts);
   const fontsHydrated = useFontStore((s) => s._hasHydrated);
@@ -234,58 +236,62 @@ export default function FontSettingsScreen() {
     <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={["top"]}>
       <SettingsHeader title={t("fonts.title", "字体")} />
 
-      <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent}>
-        <View style={s.section}>
-          <Text style={[s.hint, { color: colors.mutedForeground }]}>
-            {t("fonts.desc", "导入自定义字体，在阅读器中使用。支持 TTF、OTF、WOFF、WOFF2 格式。")}
-          </Text>
-        </View>
-
-        {!fontsHydrated ? (
-          <View style={s.loadingState}>
-            <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={[s.loadingText, { color: colors.mutedForeground }]}>
-              {t("common.loading", "加载中...")}
+      <ScrollView
+        style={s.scroll}
+        contentContainerStyle={[s.scrollContent, { alignItems: "center" }]}
+      >
+        <View style={{ width: "100%", maxWidth: layout.centeredContentWidth }}>
+          <View style={s.section}>
+            <Text style={[s.hint, { color: colors.mutedForeground }]}>
+              {t("fonts.desc", "导入自定义字体，在阅读器中使用。支持 TTF、OTF、WOFF、WOFF2 格式。")}
             </Text>
           </View>
-        ) : (
-          <>
 
-            <View style={s.buttonRow}>
-              <TouchableOpacity
-                style={[s.importBtn, { backgroundColor: colors.primary }, s.importBtnHalf]}
-                onPress={handleImport}
-                disabled={importing}
-                activeOpacity={0.8}
-              >
-                {importing ? (
-                  <ActivityIndicator size="small" color={colors.primaryForeground} />
-                ) : (
-                  <>
-                    <PlusIcon size={18} color={colors.primaryForeground} />
-                    <Text style={[s.importBtnText, { color: colors.primaryForeground }]}>
-                      {t("fonts.fromFile", "本地文件")}
-                    </Text>
-                  </>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[s.importBtn, { backgroundColor: colors.primary }, s.importBtnHalf]}
-                onPress={() => setUrlModalVisible(true)}
-                disabled={importing}
-                activeOpacity={0.8}
-              >
-                <LinkIcon size={18} color={colors.primaryForeground} />
-                <Text style={[s.importBtnText, { color: colors.primaryForeground }]}>
-                  {t("fonts.fromUrl", "在线链接")}
-                </Text>
-              </TouchableOpacity>
+          {!fontsHydrated ? (
+            <View style={s.loadingState}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={[s.loadingText, { color: colors.mutedForeground }]}>
+                {t("common.loading", "加载中...")}
+              </Text>
             </View>
+          ) : (
+            <>
+
+              <View style={s.buttonRow}>
+                <TouchableOpacity
+                  style={[s.importBtn, { backgroundColor: colors.primary }, s.importBtnHalf]}
+                  onPress={handleImport}
+                  disabled={importing}
+                  activeOpacity={0.8}
+                >
+                  {importing ? (
+                    <ActivityIndicator size="small" color={colors.primaryForeground} />
+                  ) : (
+                    <>
+                      <PlusIcon size={18} color={colors.primaryForeground} />
+                      <Text style={[s.importBtnText, { color: colors.primaryForeground }]}>
+                        {t("fonts.fromFile", "本地文件")}
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[s.importBtn, { backgroundColor: colors.primary }, s.importBtnHalf]}
+                  onPress={() => setUrlModalVisible(true)}
+                  disabled={importing}
+                  activeOpacity={0.8}
+                >
+                  <LinkIcon size={18} color={colors.primaryForeground} />
+                  <Text style={[s.importBtnText, { color: colors.primaryForeground }]}>
+                    {t("fonts.fromUrl", "在线链接")}
+                  </Text>
+                </TouchableOpacity>
+              </View>
 
             {/* Preset fonts */}
             {availablePresetFonts.length > 0 && (
-              <View style={{ gap: 8 }}>
+              <View style={s.presetSection}>
                 <Text style={[s.hint, { color: colors.mutedForeground, fontWeight: fontWeight.medium }]}>
                   {t("fonts.presets", "推荐字体（在线，点击即可添加）")}
                 </Text>
@@ -385,8 +391,9 @@ export default function FontSettingsScreen() {
                 ))}
               </View>
             )}
-          </>
-        )}
+            </>
+          )}
+        </View>
       </ScrollView>
 
       {/* 命名 Modal（本地文件导入） */}
@@ -510,9 +517,17 @@ function makeStyles(colors: ReturnType<typeof useColors>) {
   return StyleSheet.create({
     container: { flex: 1 },
     scroll: { flex: 1 },
-    scrollContent: { padding: spacing.lg, gap: 16, paddingBottom: 48 },
-    section: { gap: 8 },
-    hint: { fontSize: fontSize.sm, lineHeight: 20 },
+    scrollContent: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.xxl,
+      paddingBottom: 56,
+      gap: 20,
+    },
+    section: { gap: 10 },
+    hint: {
+      fontSize: fontSize.sm,
+      lineHeight: 22,
+    },
     loadingState: {
       flexDirection: "row",
       alignItems: "center",
@@ -521,7 +536,8 @@ function makeStyles(colors: ReturnType<typeof useColors>) {
       paddingVertical: 20,
     },
     loadingText: { fontSize: fontSize.sm },
-    buttonRow: { flexDirection: "row", gap: 12 },
+    buttonRow: { flexDirection: "row", gap: 12, marginBottom: 16 },
+    presetSection: { gap: 8 },
     importBtn: {
       flexDirection: "row", alignItems: "center", justifyContent: "center",
       gap: 8, borderRadius: radius.lg, paddingVertical: 14,

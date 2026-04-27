@@ -187,7 +187,12 @@ export class TauriPlatformService implements IPlatformService {
 
   async fetch(url: string, options?: FetchOptions): Promise<Response> {
     const { fetch: tauriFetch } = await import("@tauri-apps/plugin-http");
-    const { allowInsecure, timeoutMs: _timeoutMs, responseType: _responseType, ...fetchOptions } = options ?? {};
+    const {
+      allowInsecure,
+      timeoutMs: _timeoutMs,
+      responseType: _responseType,
+      ...fetchOptions
+    } = options ?? {};
     if (allowInsecure) {
       return tauriFetch(url, {
         ...fetchOptions,
@@ -300,19 +305,22 @@ export class TauriPlatformService implements IPlatformService {
 
   // ---- File sharing / download ----
 
-  async shareOrDownloadFile(content: string, filename: string, mimeType: string): Promise<void> {
-    const blob = new Blob([content], { type: `${mimeType};charset=utf-8` });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.style.display = "none";
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => {
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }, 100);
+  async shareOrDownloadFile(
+    content: string,
+    filename: string,
+    _mimeType: string,
+  ): Promise<string | null> {
+    const { save } = await import("@tauri-apps/plugin-dialog");
+    const ext = filename.split(".").pop() || "";
+    const filePath = await save({
+      defaultPath: filename,
+      filters: ext ? [{ name: ext.toUpperCase(), extensions: [ext] }] : undefined,
+    });
+    if (!filePath) return null;
+
+    const { writeTextFile } = await import("@tauri-apps/plugin-fs");
+    await writeTextFile(filePath, content);
+    return filePath;
   }
 
   // ---- LAN Sync ----
@@ -427,32 +435,32 @@ export class TauriPlatformService implements IPlatformService {
     const { listen } = await import("@tauri-apps/api/event");
 
     const boundPort = await invoke<number>("start_lan_server", { port });
-    
+
     // Listen for HTTP requests coming from the Rust Axum server
     const unlisten = await listen<any>("lan-request", async (event) => {
       const { req_id, method, path, headers } = event.payload;
       try {
         const response = await handler(method, path, headers);
-        
+
         // encode body to base64
         let resBodyBase64: string | null = null;
         if (response.body) {
-           resBodyBase64 = this.arrayBufferToBase64(response.body);
+          resBodyBase64 = this.arrayBufferToBase64(response.body);
         }
 
-        await invoke("lan_server_respond", { 
-           reqId: req_id, 
-           payload: { 
-             status: response.status, 
-             headers: response.headers || {}, 
-             body_base64: resBodyBase64 
-           } 
+        await invoke("lan_server_respond", {
+          reqId: req_id,
+          payload: {
+            status: response.status,
+            headers: response.headers || {},
+            body_base64: resBodyBase64,
+          },
         });
       } catch (e) {
         console.error("LAN Sync Handler Error:", e);
-        await invoke("lan_server_respond", { 
-          reqId: req_id, 
-          payload: { status: 500, headers: {}, body_base64: null } 
+        await invoke("lan_server_respond", {
+          reqId: req_id,
+          payload: { status: 500, headers: {}, body_base64: null },
         });
       }
     });
@@ -475,7 +483,7 @@ export class TauriPlatformService implements IPlatformService {
     const bytes = new Uint8Array(buffer);
     const len = bytes.byteLength;
     for (let i = 0; i < len; i++) {
-        binary += String.fromCharCode(bytes[i]);
+      binary += String.fromCharCode(bytes[i]);
     }
     return btoa(binary);
   }

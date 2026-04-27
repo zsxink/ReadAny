@@ -11,6 +11,7 @@ import {
   Bookmark,
   Headphones,
   List,
+  Maximize,
   MessageSquare,
   NotebookPen,
   Pin,
@@ -71,7 +72,7 @@ export function ReaderToolbar({
   onChapterTranslationReset,
   isChatOpen,
   isTTSActive,
-  isFixedLayout = false,
+  isFixedLayout: _isFixedLayout = false,
   isPinned = false,
   onTogglePinned,
   onMouseEnter,
@@ -244,28 +245,24 @@ export function ReaderToolbar({
         >
           <MessageSquare className="h-3.5 w-3.5" />
         </Button>
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={isFixedLayout ? undefined : onToggleSettings}
-                  disabled={isFixedLayout}
-                >
-                  <Settings className="h-3.5 w-3.5" />
-                </Button>
-              </span>
-            </TooltipTrigger>
-            {isFixedLayout && (
-              <TooltipContent>
-                <p className="text-xs">{t("settings.notAvailableForPdf")}</p>
-              </TooltipContent>
-            )}
-          </Tooltip>
-        </TooltipProvider>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={async () => {
+            try {
+              const { getCurrentWindow } = await import("@tauri-apps/api/window");
+              const win = getCurrentWindow();
+              const fs = await win.isFullscreen();
+              await win.setFullscreen(!fs);
+            } catch {}
+          }}
+        >
+          <Maximize className="h-3.5 w-3.5" />
+        </Button>
+        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onToggleSettings}>
+          <Settings className="h-3.5 w-3.5" />
+        </Button>
       </div>
     </div>
   );

@@ -22,6 +22,7 @@ import { NotesPage } from "@/components/notes/NotesPage";
 import { OnboardingModal } from "@/components/onboarding/OnboardingModal";
 import { ReaderView, evictBlobCache } from "@/components/reader/ReaderView";
 import { SettingsDialog } from "@/components/settings/SettingsDialog";
+import { MissingBookPromptDialog } from "@/components/shared/MissingBookPromptDialog";
 import { ReadingStatsPanel } from "@/components/stats/ReadingStatsPanel";
 import { FloatingTTSBubble } from "@/components/tts/FloatingTTSBubble";
 import SkillsPage from "@/pages/Skills";
@@ -136,6 +137,13 @@ export function AppLayout() {
         e.preventDefault();
         e.stopPropagation();
         toggleCommandPalette();
+      }
+      if (e.key === "F11") {
+        e.preventDefault();
+        import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
+          const win = getCurrentWindow();
+          win.isFullscreen().then((fs) => win.setFullscreen(!fs));
+        }).catch(() => {});
       }
     };
     window.addEventListener("keydown", handleKeyDown, { capture: true });
@@ -369,6 +377,7 @@ export function AppLayout() {
           );
         })}
       </main>
+      <MissingBookPromptDialog />
       <SettingsDialog open={showSettings} onClose={() => setShowSettings(false)} />
       <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
       <FloatingTTSBubble />

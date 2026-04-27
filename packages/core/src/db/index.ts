@@ -23,6 +23,7 @@ export {
   // Book queries
   getBooks,
   getBook,
+  getDeletedBookByFileHash,
   insertBook,
   updateBook,
   setBookSyncStatus,
@@ -56,6 +57,7 @@ export {
   getMessages,
   insertMessage,
   // Reading session queries
+  getAllReadingSessions,
   getReadingSessions,
   getReadingSessionsByDateRange,
   insertReadingSession,

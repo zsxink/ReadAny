@@ -27,7 +27,7 @@ import {
   useSettingsStore,
   useTTSStore,
 } from "@/stores";
-import { useFontStore, getCSSFontFace } from "@readany/core/stores";
+import { useMissingBookPromptStore } from "@/stores/missing-book-prompt-store";
 import { useTheme } from "@/styles/ThemeContext";
 import { useColors } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -37,10 +37,12 @@ import { useChapterTranslation } from "@readany/core/hooks";
 import { useReadingSession } from "@readany/core/hooks/use-reading-session";
 import { createSelectionNoteMutation } from "@readany/core/reader";
 import { getPlatformService } from "@readany/core/services";
+import { getCSSFontFace, useFontStore } from "@readany/core/stores";
 import type { ReadSettings, TOCItem } from "@readany/core/types";
-import { throttle } from "@readany/core/utils/throttle";
 import { eventBus } from "@readany/core/utils/event-bus";
+import { throttle } from "@readany/core/utils/throttle";
 import { Asset } from "expo-asset";
+import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 /**
  * ReaderScreen — WebView-based reader with foliate-js engine.
@@ -68,6 +70,64 @@ import { WebView } from "react-native-webview";
 
 // ── Extracted modules ──
 import { ReaderNoteViewModal } from "./reader/ReaderNoteViewModal";
+
+const REFLOWABLE_CHARACTERS_PER_LOCATION = 1500;
+const MAX_TRACKED_LOCATION_DELTA = 20;
+const MAX_TRACKED_PAGE_DELTA = 20;
+const MAX_TRACKED_FRACTION_DELTA = 0.08;
+const INITIAL_PROGRESS_RESTORE_GUARD_MS = 1800;
+const PROGRAMMATIC_NAV_GUARD_MS = 1200;
+const BOOK_MIME_TYPES = [
+  "application/epub+zip",
+  "application/pdf",
+  "application/x-mobipocket-ebook",
+  "application/vnd.amazon.ebook",
+  "application/vnd.comicbook+zip",
+  "application/x-fictionbook+xml",
+  "text/plain",
+  "application/octet-stream",
+];
+
+function normalizeBookIdentityText(value?: string): string {
+  return (value || "").toLowerCase().replace(/[\s\p{P}\p{S}_-]+/gu, "");
+}
+
+function authorsLikelyMatch(a?: string, b?: string): boolean {
+  const left = normalizeBookIdentityText(a);
+  const right = normalizeBookIdentityText(b);
+  if (!left || !right) return true;
+  if (left === right || left.includes(right) || right.includes(left)) return true;
+  const leftParts = left.split(/[,，、/&]+/).filter((part) => part.length > 1);
+  const rightParts = right.split(/[,，、/&]+/).filter((part) => part.length > 1);
+  return leftParts.some((part) =>
+    rightParts.some((candidate) => part.includes(candidate) || candidate.includes(part)),
+  );
+}
+
+function shouldConfirmReimportCandidate(
+  originalBook: { meta: { title: string; author: string }; format: string; fileHash?: string },
+  candidate: { title: string; author: string; format: string; fileHash?: string },
+): boolean {
+  if (candidate.fileHash && originalBook.fileHash && candidate.fileHash === originalBook.fileHash) {
+    return false;
+  }
+  const originalTitle = normalizeBookIdentityText(originalBook.meta.title);
+  const candidateTitle = normalizeBookIdentityText(candidate.title);
+  const titleMismatch =
+    !!originalTitle &&
+    !!candidateTitle &&
+    originalTitle !== candidateTitle &&
+    !originalTitle.includes(candidateTitle) &&
+    !candidateTitle.includes(originalTitle);
+  const authorMismatch = !authorsLikelyMatch(originalBook.meta.author, candidate.author);
+  const formatMismatch = originalBook.format !== candidate.format;
+  return titleMismatch || (formatMismatch && authorMismatch);
+}
+const NOTE_TOOLTIP_WIDTH = 300;
+const NOTE_TOOLTIP_SIDE_PADDING = 12;
+const NOTE_TOOLTIP_ABOVE_OFFSET = 2;
+const NOTE_TOOLTIP_BELOW_OFFSET = 8;
+const NOTE_TOOLTIP_TOP_THRESHOLD = 180;
 import { ReaderSettingsPanel } from "./reader/ReaderSettingsPanel";
 import { ReaderTOCPanel } from "./reader/ReaderTOCPanel";
 import {
@@ -108,10 +168,13 @@ function buildCustomFontFaceCSS(
       if (!f.filePath) return "";
       const fileUrl = platform.convertFileSrc(f.filePath);
       const cssFormat =
-        f.format === "otf" ? "opentype"
-        : f.format === "woff" ? "woff"
-        : f.format === "woff2" ? "woff2"
-        : "truetype";
+        f.format === "otf"
+          ? "opentype"
+          : f.format === "woff"
+            ? "woff"
+            : f.format === "woff2"
+              ? "woff2"
+              : "truetype";
       return `@font-face {\n  font-family: '${f.fontFamily}';\n  src: url('${fileUrl}') format('${cssFormat}');\n  font-weight: normal;\n  font-style: normal;\n}`;
     })
     .filter(Boolean)
@@ -143,10 +206,12 @@ export function ReaderScreen({ route, navigation }: Props) {
   const [translationText, setTranslationText] = useState("");
   const [showTTS, setShowTTS] = useState(false);
   const [showChapterTranslation, setShowChapterTranslation] = useState(false);
+  const [isReimporting, setIsReimporting] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [progress, setProgress] = useState(0);
   const [currentChapter, setCurrentChapter] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
   const [toc, setToc] = useState<TOCItem[]>([]);
   const [bookTitle, setBookTitle] = useState("");
   const [webViewReady, setWebViewReady] = useState(false);
@@ -155,7 +220,11 @@ export function ReaderScreen({ route, navigation }: Props) {
   const [currentCfi, setCurrentCfi] = useState("");
   const [selection, setSelection] = useState<SelectionEvent | null>(null);
   const [noteViewHighlight, setNoteViewHighlight] = useState<{
-    id: string; text: string; note?: string; cfi: string; color: string;
+    id: string;
+    text: string;
+    note?: string;
+    cfi: string;
+    color: string;
   } | null>(null);
   const [noteViewEditing, setNoteViewEditing] = useState(false);
   const [noteViewContent, setNoteViewContent] = useState("");
@@ -165,6 +234,8 @@ export function ReaderScreen({ route, navigation }: Props) {
     position: { x: number; y: number; selectionTop: number; selectionBottom: number };
   } | null>(null);
   const noteTooltipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const noteTooltipVisibleRef = useRef(false);
+  const suppressReaderTapUntilRef = useRef(0);
   const assetLoadedRef = useRef(false);
   // Mediator ref so onRelocate can fire TTS continuation without direct hook dependency
   const ttsPendingContinueRef = useRef<{
@@ -186,7 +257,10 @@ export function ReaderScreen({ route, navigation }: Props) {
       before?: number,
       after?: number,
     ) => Promise<{ before: TTSSegment[]; after: TTSSegment[] }>;
+    getHrefTTSSegments?: (href: string, count?: number) => Promise<TTSSegment[]>;
+    goToFraction: (fraction: number) => void;
     goToCFI: (cfi: string) => void;
+    goToHref: (href: string) => void;
     flashHighlight: (cfi: string, color?: string, duration?: number) => void;
     addAnnotation: (annotation: {
       value: string;
@@ -238,8 +312,18 @@ export function ReaderScreen({ route, navigation }: Props) {
   const progressRef = useRef(0);
   const locationHistoryRef = useRef<string[]>([]);
   const lastNavigatedCfiRef = useRef<string | undefined>(undefined);
+  const sessionProgressRef = useRef<{
+    mode: "location" | "page" | "characters";
+    current: number;
+    fraction?: number;
+    section?: number;
+    page?: number;
+  } | null>(null);
+  const totalBookCharactersRef = useRef<number | null>(null);
+  const progressTrackingGuardUntilRef = useRef(0);
 
-  const {} = useReadingSessionStore(); // Removed startSession and stopSession
+  const incrementPagesRead = useReadingSessionStore((s) => s.incrementPagesRead);
+  const incrementCharactersRead = useReadingSessionStore((s) => s.incrementCharactersRead);
   const { sendEvent } = useReadingSession(bookId); // Added useReadingSession hook
   const { books, updateBook } = useLibraryStore();
   const setGoToCfiFn = useReaderStore((s) => s.setGoToCfiFn);
@@ -276,6 +360,31 @@ export function ReaderScreen({ route, navigation }: Props) {
   });
   const { isBookmarked, bookBookmarks, handleToggleBookmark } = bookmark;
 
+  const suppressProgressTracking = useCallback((duration = PROGRAMMATIC_NAV_GUARD_MS) => {
+    progressTrackingGuardUntilRef.current = Math.max(
+      progressTrackingGuardUntilRef.current,
+      Date.now() + duration,
+    );
+  }, []);
+
+  const goToCFISafely = useCallback(
+    (targetCfi: string) => {
+      if (!targetCfi) return;
+      suppressProgressTracking();
+      bridgeRef.current?.goToCFI(targetCfi);
+    },
+    [suppressProgressTracking],
+  );
+
+  const goToHrefSafely = useCallback(
+    (href: string) => {
+      if (!href) return;
+      suppressProgressTracking();
+      bridgeRef.current?.goToHref(href);
+    },
+    [suppressProgressTracking],
+  );
+
   // ── Search ─────────────────────────────────────────────────────────────────
   // Use bridgeRef for lazy access (bridge is initialized later)
   const search = useReaderSearch({
@@ -284,13 +393,19 @@ export function ReaderScreen({ route, navigation }: Props) {
       search: (q) => bridgeRef.current?.search?.(q),
       clearSearch: () => bridgeRef.current?.clearSearch?.(),
       navigateSearch: (idx) => bridgeRef.current?.navigateSearch?.(idx),
-      goToCFI: (cfi) => bridgeRef.current?.goToCFI(cfi),
+      goToCFI: (cfi) => goToCFISafely(cfi),
     },
   });
 
   useEffect(() => {
     progressRef.current = progress;
   }, [progress]);
+
+  useEffect(() => {
+    sessionProgressRef.current = null;
+    totalBookCharactersRef.current = null;
+    suppressProgressTracking(INITIAL_PROGRESS_RESTORE_GUARD_MS);
+  }, [bookId]);
   const chapterTranslation = useChapterTranslation({
     bookId,
     sectionIndex: currentSectionIndex,
@@ -432,6 +547,9 @@ export function ReaderScreen({ route, navigation }: Props) {
         customFontFamily: fontFamily,
       });
     },
+    onBookTextMetrics: ({ totalCharacters }) => {
+      totalBookCharactersRef.current = totalCharacters > 0 ? totalCharacters : null;
+    },
     onRelocate: (detail: RelocateEvent) => {
       console.log("[ReaderScreen] onRelocate", {
         section: detail.section,
@@ -440,6 +558,9 @@ export function ReaderScreen({ route, navigation }: Props) {
         routeCfi: cfi,
         lastNavigated: lastNavigatedCfiRef.current,
       });
+      if (loading) {
+        setLoading(false);
+      }
       // Track section changes for chapter translation reset
       const newSection = detail.section?.current ?? 0;
       if (newSection !== currentSectionIndex) {
@@ -449,12 +570,93 @@ export function ReaderScreen({ route, navigation }: Props) {
       }
 
       if (detail.fraction != null) setProgress(detail.fraction);
-      if (detail.location?.total) {
-        setCurrentPage(Math.max(1, detail.location.current));
-        setTotalPages(Math.max(1, detail.location.total));
-      } else if (detail.page) {
+
+      if (detail.page) {
         setCurrentPage(Math.max(1, detail.page.current));
         setTotalPages(Math.max(1, detail.page.total));
+      } else if (detail.section?.total && !detail.location?.total) {
+        // Fixed-layout documents can still expose stable section pages.
+        setCurrentPage(Math.max(1, detail.section.current + 1));
+        setTotalPages(Math.max(1, detail.section.total));
+      } else {
+        // Reflowable books without renderer-backed pagination should fall back to percent.
+        setCurrentPage(0);
+        setTotalPages(0);
+      }
+
+      const trackingSuppressed = Date.now() < progressTrackingGuardUntilRef.current;
+
+      if (detail.location?.total) {
+        const totalBookCharacters = totalBookCharactersRef.current;
+        const fraction = detail.fraction ?? 0;
+        if (totalBookCharacters && totalBookCharacters > 0) {
+          const currentCharacters = Math.round(totalBookCharacters * fraction);
+          const previous = sessionProgressRef.current;
+          const currentSection = detail.section?.current ?? 0;
+          const currentRendererPage = detail.page?.current ?? null;
+
+          if (
+            !trackingSuppressed &&
+            previous?.mode === "characters" &&
+            currentCharacters > previous.current
+          ) {
+            if (currentRendererPage != null && previous.page != null && previous.section != null) {
+              const samePage =
+                previous.section === currentSection && previous.page === currentRendererPage;
+              const movedForwardWithinSection =
+                previous.section === currentSection &&
+                currentRendererPage > previous.page &&
+                currentRendererPage - previous.page <= MAX_TRACKED_PAGE_DELTA;
+              const movedForwardAcrossSection =
+                currentSection > previous.section && currentSection - previous.section <= 1;
+
+              if (!samePage && (movedForwardWithinSection || movedForwardAcrossSection)) {
+                incrementCharactersRead(currentCharacters - previous.current);
+              }
+            } else if (
+              Math.abs(fraction - (previous.fraction ?? 0)) <= MAX_TRACKED_FRACTION_DELTA
+            ) {
+              incrementCharactersRead(currentCharacters - previous.current);
+            }
+          }
+          sessionProgressRef.current = {
+            mode: "characters",
+            current: currentCharacters,
+            fraction,
+            section: currentSection,
+            page: currentRendererPage ?? undefined,
+          };
+        } else {
+          const previous = sessionProgressRef.current;
+          if (
+            !trackingSuppressed &&
+            previous?.mode === "location" &&
+            detail.location.current > previous.current
+          ) {
+            const delta = detail.location.current - previous.current;
+            if (delta <= MAX_TRACKED_LOCATION_DELTA) {
+              incrementCharactersRead(delta * REFLOWABLE_CHARACTERS_PER_LOCATION);
+            }
+          }
+          sessionProgressRef.current = {
+            mode: "location",
+            current: detail.location.current,
+            fraction,
+          };
+        }
+      } else if (detail.section?.total) {
+        const previous = sessionProgressRef.current;
+        if (
+          !trackingSuppressed &&
+          previous?.mode === "page" &&
+          detail.section.current > previous.current
+        ) {
+          const delta = detail.section.current - previous.current;
+          if (delta <= MAX_TRACKED_PAGE_DELTA) {
+            incrementPagesRead(delta);
+          }
+        }
+        sessionProgressRef.current = { mode: "page", current: detail.section.current };
       }
       if (detail.tocItem?.label) setCurrentChapter(detail.tocItem.label);
       if (detail.cfi) {
@@ -526,6 +728,9 @@ export function ReaderScreen({ route, navigation }: Props) {
       readingContextService.clearSelection();
     },
     onTap: () => {
+      if (noteTooltipVisibleRef.current || Date.now() < suppressReaderTapUntilRef.current) {
+        return;
+      }
       sendEvent({ type: "activity" });
       if (selection) {
         setSelection(null);
@@ -565,6 +770,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       value: string;
       position: { x: number; y: number; selectionTop: number; selectionBottom: number };
     }) => {
+      suppressReaderTapUntilRef.current = Date.now() + 650;
       const highlight = highlights.find((h) => h.cfi === detail.value);
       if (!highlight) return;
       if (highlight.note) {
@@ -586,6 +792,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       }
     },
     onNoteTooltip: (detail) => {
+      suppressReaderTapUntilRef.current = Date.now() + 900;
       // Dismiss any existing tooltip
       if (noteTooltipTimer.current) {
         clearTimeout(noteTooltipTimer.current);
@@ -609,14 +816,24 @@ export function ReaderScreen({ route, navigation }: Props) {
     },
   });
 
+  useEffect(() => {
+    noteTooltipVisibleRef.current = !!noteTooltip;
+  }, [noteTooltip]);
 
   // ── Volume button paging ─────────────────────────────────────────────────
   const volumeButtonPagingActive =
-    Platform.OS !== 'web' && Platform.OS !== 'windows' &&
-    !!NativeModules.VolumeManager && !!getVolumeManager() &&
-    volumeButtonsPageTurn && webViewReady &&
-    !showSearch && !showTOC && !showSettings && !showNotebook && !showTTS &&
-    ttsPlayState === 'stopped';
+    Platform.OS !== "web" &&
+    Platform.OS !== "windows" &&
+    !!NativeModules.VolumeManager &&
+    !!getVolumeManager() &&
+    volumeButtonsPageTurn &&
+    webViewReady &&
+    !showSearch &&
+    !showTOC &&
+    !showSettings &&
+    !showNotebook &&
+    !showTTS &&
+    ttsPlayState === "stopped";
 
   useVolumeButtonPaging({
     active: volumeButtonPagingActive,
@@ -624,7 +841,6 @@ export function ReaderScreen({ route, navigation }: Props) {
     onPrev: () => bridge.goPrev(),
     onNext: () => bridge.goNext(),
   });
-
 
   bridgeRef.current = bridge;
   chapterTranslationBridgeRef.current = bridge;
@@ -634,6 +850,7 @@ export function ReaderScreen({ route, navigation }: Props) {
     bookId,
     bookTitle: bookTitle || book?.meta.title || "",
     currentChapter,
+    currentSectionIndex,
     currentCfi,
     webViewReady,
     showTTS,
@@ -659,19 +876,19 @@ export function ReaderScreen({ route, navigation }: Props) {
       if (lastCfiRef.current) {
         locationHistoryRef.current.push(lastCfiRef.current);
       }
-      bridge.goToHref(href);
+      goToHrefSafely(href);
       setShowTOC(false);
     },
-    [bridge],
+    [goToHrefSafely],
   );
 
   const goBackToPreviousLocation = useCallback(() => {
     if (locationHistoryRef.current.length === 0) return;
     const previousCfi = locationHistoryRef.current.pop();
     if (previousCfi) {
-      bridge.goToCFI(previousCfi);
+      goToCFISafely(previousCfi);
     }
-  }, [bridge]);
+  }, [goToCFISafely]);
 
   const canGoBack = locationHistoryRef.current.length > 0;
 
@@ -683,7 +900,12 @@ export function ReaderScreen({ route, navigation }: Props) {
       const { fonts, selectedFontId: selId } = useFontStore.getState();
       const fontCSS = buildCustomFontFaceCSS(fonts, selId);
       const fontFamily = selId ? fonts.find((f) => f.id === selId)?.fontFamily : undefined;
-      bridge.applySettings({ ...currentSettings, ...updates, customFontFaceCSS: fontCSS, customFontFamily: fontFamily });
+      bridge.applySettings({
+        ...currentSettings,
+        ...updates,
+        customFontFaceCSS: fontCSS,
+        customFontFamily: fontFamily,
+      });
     },
     [bridge, updateReadSettings],
   );
@@ -767,6 +989,8 @@ export function ReaderScreen({ route, navigation }: Props) {
 
     const loadBook = async () => {
       try {
+        setLoading(true);
+        setError(null);
         const platform = getPlatformService();
         const appData = await platform.getAppDataDir();
         const absPath = await platform.joinPath(appData, book.filePath);
@@ -796,7 +1020,65 @@ export function ReaderScreen({ route, navigation }: Props) {
     };
 
     loadBook();
-  }, [webViewReady, book?.filePath, bookId]);
+  }, [bookId, book?.filePath, loadAttempt, webViewReady]);
+
+  const handleReimportMissingBook = useCallback(async () => {
+    if (isReimporting) return;
+    setIsReimporting(true);
+
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: BOOK_MIME_TYPES,
+        multiple: false,
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
+      const selectedUri = result.assets[0].uri;
+      if (book) {
+        const candidate = await useLibraryStore.getState().inspectDeletedBookCandidate(bookId, {
+          uri: selectedUri,
+          name: result.assets[0].name,
+        });
+        if (candidate && shouldConfirmReimportCandidate(book, candidate)) {
+          const shouldContinue = await useMissingBookPromptStore.getState().showPrompt({
+            title: t("reader.reimportMismatchTitle", "这份文件看起来和原书不太一致"),
+            description: t(
+              "reader.reimportMismatchDescription",
+              "原书《{{originalTitle}}》与当前文件《{{candidateTitle}}》信息差异较大。仍要把它接回原来的笔记和阅读统计吗？",
+              {
+                originalTitle: book.meta.title,
+                candidateTitle: candidate.title || t("reader.unknownBook", "未命名书籍"),
+              },
+            ),
+            confirmLabel: t("reader.reimportContinue", "继续接回"),
+            cancelLabel: t("reader.reimportPickAnotherFile", "重新选择"),
+          });
+          if (!shouldContinue) return;
+        }
+      }
+
+      const restoredBook = await useLibraryStore
+        .getState()
+        .reimportDeletedBook(bookId, { uri: selectedUri, name: result.assets[0].name });
+
+      if (!restoredBook) {
+        setError(t("reader.reimportFailed", "重新导入失败，请稍后再试。"));
+        return;
+      }
+
+      setError(null);
+      setLoading(true);
+    } catch (err) {
+      console.error("[ReaderScreen] Failed to re-import missing book:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : t("reader.reimportFailed", "重新导入失败，请稍后再试。"),
+      );
+    } finally {
+      setIsReimporting(false);
+    }
+  }, [bookId, isReimporting, t]);
 
   // Apply theme colors when theme changes
   useEffect(() => {
@@ -834,7 +1116,7 @@ export function ReaderScreen({ route, navigation }: Props) {
   // Navigate to CFI when book is loaded (from NotesPage or AI citation navigation)
   useEffect(() => {
     if (!webViewReady || loading || !cfi || cfi === lastNavigatedCfiRef.current) return;
-    bridge.goToCFI(cfi);
+    goToCFISafely(cfi);
     lastNavigatedCfiRef.current = cfi;
     navigation.setParams({ bookId, cfi: undefined, highlight: undefined });
 
@@ -848,7 +1130,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       };
       setTimeout(doFlash, 100);
     }
-  }, [webViewReady, loading, cfi, shouldHighlight, bridge, navigation, bookId]);
+  }, [webViewReady, loading, cfi, shouldHighlight, goToCFISafely, navigation, bookId]);
 
   // Open TTS lyrics page when navigating from notification
   useEffect(() => {
@@ -859,7 +1141,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       const targetCfi =
         tts.resolvedTTSSegmentCfi || tts.ttsDisplaySegments[0]?.cfi || currentCfi || null;
       if (targetCfi && targetCfi !== currentCfi) {
-        bridge.goToCFI(targetCfi);
+        goToCFISafely(targetCfi);
         await new Promise((resolve) => setTimeout(resolve, 320));
       }
       if (cancelled) return;
@@ -869,15 +1151,16 @@ export function ReaderScreen({ route, navigation }: Props) {
     };
 
     void openLyricsPage();
-    return () => { cancelled = true; };
-  }, [bookId, bridge, currentCfi, loading, navigation, openTTS, webViewReady]);
+    return () => {
+      cancelled = true;
+    };
+  }, [bookId, currentCfi, goToCFISafely, loading, navigation, openTTS, webViewReady]);
 
   // Lock navigation when selection is active
   useEffect(() => {
     if (!webViewReady) return;
     bridge.setNavigationLocked(!!selection);
   }, [webViewReady, selection]);
-
 
   if (loading && !webViewReady && !readerHtmlUri) {
     return (
@@ -894,13 +1177,40 @@ export function ReaderScreen({ route, navigation }: Props) {
     return (
       <SafeAreaView style={[s.container, { backgroundColor: colors.background }]}>
         <View style={s.loadingWrap}>
-          <Text style={s.errorText}>{error}</Text>
-          <TouchableOpacity
-            style={s.backButton}
-            onPress={() => navigation.reset({ routes: [{ name: "Tabs" }] })}
-          >
-            <Text style={s.backButtonText}>{t("common.back", "返回")}</Text>
-          </TouchableOpacity>
+          <Text style={s.errorText}>{t("reader.loadFailed", "加载失败")}</Text>
+          <Text style={[s.loadingText, { textAlign: "center", maxWidth: 320 }]}>{error}</Text>
+          <View style={{ flexDirection: "row", gap: 12, marginTop: 8 }}>
+            <TouchableOpacity
+              style={s.backButton}
+              onPress={() => {
+                if (book?.filePath) {
+                  setLoading(true);
+                  setError(null);
+                  setLoadAttempt((value) => value + 1);
+                  return;
+                }
+                navigation.reset({ routes: [{ name: "Tabs" }] });
+              }}
+            >
+              <Text style={s.backButtonText}>
+                {book?.filePath ? t("common.retry", "重试") : t("common.back", "返回")}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                s.backButton,
+                { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border },
+              ]}
+              onPress={() => void handleReimportMissingBook()}
+              disabled={isReimporting}
+            >
+              <Text style={[s.backButtonText, { color: colors.foreground }]}>
+                {isReimporting
+                  ? t("reader.reimporting", "正在重新导入...")
+                  : t("reader.reimport", "重新导入")}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </SafeAreaView>
     );
@@ -959,6 +1269,28 @@ export function ReaderScreen({ route, navigation }: Props) {
   const readerBottomInset =
     !showSearch && showBottomTimeBattery ? Math.max(insets.bottom, 8) + 14 : 0;
   const batteryLabel = batteryLevel == null ? "--%" : `${Math.round(batteryLevel * 100)}%`;
+  const selectionPopoverSelection = selection
+    ? {
+        ...selection,
+        position: {
+          ...selection.position,
+          y: selection.position.y + readerTopMargin,
+          selectionTop: selection.position.selectionTop + readerTopMargin,
+          selectionBottom: selection.position.selectionBottom + readerTopMargin,
+        },
+      }
+    : null;
+  const adjustedNoteTooltip = noteTooltip
+    ? {
+        ...noteTooltip,
+        position: {
+          ...noteTooltip.position,
+          y: noteTooltip.position.y + readerTopMargin,
+          selectionTop: noteTooltip.position.selectionTop + readerTopMargin,
+          selectionBottom: noteTooltip.position.selectionBottom + readerTopMargin,
+        },
+      }
+    : null;
 
   return (
     <View style={[s.container, { paddingBottom: insets.bottom }]}>
@@ -1089,16 +1421,16 @@ export function ReaderScreen({ route, navigation }: Props) {
       )}
 
       {/* Selection Popover */}
-      {selection && (
+      {selectionPopoverSelection && (
         <SelectionPopover
-          selection={selection}
+          selection={selectionPopoverSelection}
           onHighlight={handleHighlight}
           onDismiss={handleDismissSelection}
           onCopy={() => {
             setSelection(null);
           }}
           onAIChat={() => {
-            const selectedText = selection.text;
+            const selectedText = selectionPopoverSelection.text;
             const chapter = currentChapter;
             setSelection(null);
             navigation.navigate("BookChat", {
@@ -1111,7 +1443,7 @@ export function ReaderScreen({ route, navigation }: Props) {
             const mutation = createSelectionNoteMutation({
               bookId,
               cfi,
-              text: selection.text,
+              text: selectionPopoverSelection.text,
               note: text,
               chapterTitle: currentChapter,
               existingHighlight: existingSelectionHighlight,
@@ -1151,7 +1483,7 @@ export function ReaderScreen({ route, navigation }: Props) {
               : null
           }
           onRemoveHighlight={() => {
-            const existing = highlights.find((h) => h.cfi === selection.cfi);
+            const existing = highlights.find((h) => h.cfi === selectionPopoverSelection.cfi);
             if (existing) {
               removeHighlight(existing.id);
               bridge.removeAnnotation({ value: existing.cfi });
@@ -1161,38 +1493,62 @@ export function ReaderScreen({ route, navigation }: Props) {
       )}
 
       {/* Note Tooltip (long-press on wavy underline) */}
-      {noteTooltip && (
-        <TouchableOpacity
-          style={StyleSheet.absoluteFill}
-          activeOpacity={1}
-          onPress={() => {
-            if (noteTooltipTimer.current) {
-              clearTimeout(noteTooltipTimer.current);
-              noteTooltipTimer.current = null;
-            }
-            setNoteTooltip(null);
-          }}
-        >
-          <View
+      {adjustedNoteTooltip && (
+        <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => {
+              suppressReaderTapUntilRef.current = Date.now() + 350;
+              if (noteTooltipTimer.current) {
+                clearTimeout(noteTooltipTimer.current);
+                noteTooltipTimer.current = null;
+              }
+              setNoteTooltip(null);
+            }}
+          />
+          <Pressable
             style={[
               s.noteTooltip,
               {
-                left: Math.max(12, Math.min(noteTooltip.position.x - 150, SCREEN_WIDTH - 312)),
-                ...(noteTooltip.position.selectionTop > 220
-                  ? { bottom: SCREEN_HEIGHT - noteTooltip.position.selectionTop + 8 }
-                  : { top: noteTooltip.position.selectionBottom + 12 }),
+                left: Math.max(
+                  NOTE_TOOLTIP_SIDE_PADDING,
+                  Math.min(
+                    adjustedNoteTooltip.position.x - NOTE_TOOLTIP_WIDTH / 2,
+                    SCREEN_WIDTH - NOTE_TOOLTIP_WIDTH - NOTE_TOOLTIP_SIDE_PADDING,
+                  ),
+                ),
+                ...(adjustedNoteTooltip.position.selectionTop > NOTE_TOOLTIP_TOP_THRESHOLD
+                  ? {
+                      bottom:
+                        SCREEN_HEIGHT -
+                        adjustedNoteTooltip.position.selectionTop +
+                        NOTE_TOOLTIP_ABOVE_OFFSET,
+                    }
+                  : {
+                      top: adjustedNoteTooltip.position.selectionBottom + NOTE_TOOLTIP_BELOW_OFFSET,
+                    }),
               },
             ]}
+            onPress={(event) => {
+              event.stopPropagation();
+              suppressReaderTapUntilRef.current = Date.now() + 550;
+            }}
+            onPressIn={(event) => {
+              event.stopPropagation();
+              suppressReaderTapUntilRef.current = Date.now() + 550;
+            }}
             onStartShouldSetResponder={() => true}
+            onMoveShouldSetResponder={() => true}
+            onResponderTerminationRequest={() => false}
           >
             <View style={s.noteTooltipContent}>
               <MarkdownRenderer
-                content={noteTooltip.note || ""}
+                content={adjustedNoteTooltip.note || ""}
                 styleOverrides={noteTooltipMdStyles}
               />
             </View>
-          </View>
-        </TouchableOpacity>
+          </Pressable>
+        </View>
       )}
 
       {!showSearch && (
@@ -1400,13 +1756,20 @@ export function ReaderScreen({ route, navigation }: Props) {
                     t("reader.searchComplete", "搜索完成"),
                     t("reader.returnToOriginal", "是否返回搜索前的位置？"),
                     [
-                      { text: t("common.cancel", "取消"), style: "cancel",
-                        onPress: () => { search.setSearchStartCfi(null); } },
-                      { text: t("common.confirm", "确定"),
+                      {
+                        text: t("common.cancel", "取消"),
+                        style: "cancel",
                         onPress: () => {
-                          bridge.goToCFI(search.searchStartCfi!);
                           search.setSearchStartCfi(null);
-                        } },
+                        },
+                      },
+                      {
+                        text: t("common.confirm", "确定"),
+                        onPress: () => {
+                          goToCFISafely(search.searchStartCfi!);
+                          search.setSearchStartCfi(null);
+                        },
+                      },
                     ],
                   );
                 } else {
@@ -1439,7 +1802,10 @@ export function ReaderScreen({ route, navigation }: Props) {
         onClose={() => setShowTOC(false)}
         onTabChange={setTocActiveTab}
         onSelectTocItem={goToTocItem}
-        onGoToBookmark={(cfi) => { bridge.goToCFI(cfi); setShowTOC(false); }}
+        onGoToBookmark={(cfi) => {
+          goToCFISafely(cfi);
+          setShowTOC(false);
+        }}
         onDeleteBookmark={(id) => removeBookmark(id)}
       />
 
@@ -1520,13 +1886,27 @@ export function ReaderScreen({ route, navigation }: Props) {
         editing={noteViewEditing}
         editContent={noteViewContent}
         bookId={bookId}
-        onClose={() => { setNoteViewHighlight(null); setNoteViewEditing(false); }}
-        onStartEdit={() => { setNoteViewContent(noteViewHighlight?.note || ""); setNoteViewEditing(true); }}
-        onCancelEdit={() => { setNoteViewEditing(false); setNoteViewContent(noteViewHighlight?.note || ""); }}
+        onClose={() => {
+          setNoteViewHighlight(null);
+          setNoteViewEditing(false);
+        }}
+        onStartEdit={() => {
+          setNoteViewContent(noteViewHighlight?.note || "");
+          setNoteViewEditing(true);
+        }}
+        onCancelEdit={() => {
+          setNoteViewEditing(false);
+          setNoteViewContent(noteViewHighlight?.note || "");
+        }}
         onContentChange={setNoteViewContent}
         onSave={(highlight, newNote) => {
           bridge.removeAnnotation({ value: highlight.cfi });
-          bridge.addAnnotation({ value: highlight.cfi, type: "highlight", color: highlight.color, note: newNote });
+          bridge.addAnnotation({
+            value: highlight.cfi,
+            type: "highlight",
+            color: highlight.color,
+            note: newNote,
+          });
           setNoteViewHighlight({ ...highlight, note: newNote });
           setNoteViewEditing(false);
         }}

@@ -1,17 +1,16 @@
 /**
  * HomePage — library page
  */
+import { DesktopImportActions } from "@/components/home/DesktopImportActions";
 import { useLibraryStore } from "@/stores/library-store";
-import { open } from "@tauri-apps/plugin-dialog";
 import { Plus } from "lucide-react";
-import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { BookGrid } from "./BookGrid";
 import { ImportDropZone } from "./ImportDropZone";
 
 export function HomePage() {
   const { t } = useTranslation();
-  const { books, filter, importBooks, activeTag } = useLibraryStore();
+  const { books, filter, activeTag } = useLibraryStore();
 
   const filtered = books.filter((b) => {
     // Tag filter
@@ -28,25 +27,6 @@ export function HomePage() {
     return true;
   });
 
-  const handleImportClick = useCallback(async () => {
-    try {
-      const selected = await open({
-        multiple: true,
-        filters: [
-          { name: "Books", extensions: ["epub", "EPUB", "pdf", "PDF", "mobi", "MOBI", "azw", "AZW", "azw3", "AZW3", "fb2", "FB2", "fbz", "FBZ", "txt", "TXT", "cbz", "CBZ"] },
-        ],
-      } as const);
-      if (selected) {
-        const paths = Array.isArray(selected) ? selected : [selected];
-        if (paths.length > 0) {
-          await importBooks(paths);
-        }
-      }
-    } catch {
-      // User cancelled
-    }
-  }, [importBooks]);
-
   if (books.length === 0) {
     return <ImportDropZone />;
   }
@@ -60,15 +40,16 @@ export function HomePage() {
             ? t("sidebar.uncategorized")
             : activeTag || t("home.library")}
         </h1>
-        <button
-          id="tour-add-book"
-          type="button"
-          onClick={handleImportClick}
-          className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-        >
-          <Plus className="size-4" />
-          {t("home.addBook")}
-        </button>
+        <DesktopImportActions align="end">
+          <button
+            id="tour-add-book"
+            type="button"
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            <Plus className="size-4" />
+            {t("home.addBook")}
+          </button>
+        </DesktopImportActions>
       </div>
 
       {/* Search result hint */}

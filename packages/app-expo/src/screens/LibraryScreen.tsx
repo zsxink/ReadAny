@@ -11,7 +11,10 @@ import {
 } from "@/components/ui/Icon";
 import { setCallback, setExtractorRef } from "@/lib/rag/auto-vectorize-service";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
+import { WebDavConnectSheet } from "@/screens/library/WebDavConnectSheet";
+import { WebDavImportSourceSheet } from "@/screens/library/WebDavImportSourceSheet";
 import { useLibraryStore } from "@/stores/library-store";
+import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import {
   type ThemeColors,
   fontSize,
@@ -24,6 +27,13 @@ import {
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { onLibraryChanged } from "@readany/core/events/library-events";
+import {
+  DEFAULT_WEBDAV_IMPORT_REMOTE_ROOT,
+  getPlatformService,
+  type WebDavImportSource,
+} from "@readany/core";
+import { useSyncStore } from "@readany/core/stores";
+import { SYNC_SECRET_KEYS } from "@readany/core/sync/sync-backend";
 import type { Book, SortField } from "@readany/core/types";
 import * as DocumentPicker from "expo-document-picker";
 /**
@@ -31,16 +41,17 @@ import * as DocumentPicker from "expo-document-picker";
  * Features: header search/sort/import, tag filter, vectorization progress banner,
  * tag management sheet, book grid (3 cols), empty/loading states.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
-  Dimensions,
   FlatList,
   Image,
   Keyboard,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -53,6 +64,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { TagManagementSheet } from "./library/TagManagementSheet";
 import { useBookDownload } from "./library/useBookDownload";
 import { useVectorizationQueue } from "./library/useVectorizationQueue";
+import { openMobileBook } from "@/lib/library/open-mobile-book";
 
 const BOOK_PNG = require("../../assets/book.png");
 const BOOK_DARK_PNG = require("../../assets/book-dark.png");
@@ -61,8 +73,37 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const NUM_COLUMNS = 3;
 const GRID_GAP = 12;
-const SCREEN_PADDING = 16;
-const screenWidth = Dimensions.get("window").width;
+
+function splitUrlPathSegments(pathname: string): string[] {
+  return pathname.split("/").filter(Boolean);
+}
+
+function deriveImportBaseUrl(url: string, remoteRoot?: string): string {
+  if (!remoteRoot?.trim()) return url;
+
+  try {
+    const parsed = new URL(url);
+    const baseSegments = splitUrlPathSegments(parsed.pathname.replace(/\/+$/, ""));
+    const rootSegments = splitUrlPathSegments(remoteRoot.trim());
+
+    if (
+      rootSegments.length > 0 &&
+      baseSegments.length >= rootSegments.length &&
+      rootSegments.every(
+        (segment, index) =>
+          baseSegments[baseSegments.length - rootSegments.length + index] === segment,
+      )
+    ) {
+      const nextSegments = baseSegments.slice(0, baseSegments.length - rootSegments.length);
+      parsed.pathname = nextSegments.length > 0 ? `/${nextSegments.join("/")}` : "/";
+      return parsed.toString().replace(/\/$/, parsed.pathname === "/" ? "/" : "");
+    }
+  } catch {
+    return url;
+  }
+
+  return url;
+}
 
 const SORT_OPTIONS: { field: SortField; labelKey: string }[] = [
   { field: "lastOpenedAt", labelKey: "library.sortRecent" },
@@ -75,9 +116,27 @@ const SORT_OPTIONS: { field: SortField; labelKey: string }[] = [
 export function LibraryScreen() {
   const colors = useColors();
   const { isDark } = useTheme();
-  const s = makeStyles(colors);
   const { t } = useTranslation();
   const nav = useNavigation<Nav>();
+  const layout = useResponsiveLayout();
+  const gridGap = layout.isTablet ? 16 : GRID_GAP;
+  const columnCount = layout.isTabletLandscape ? 5 : layout.isTablet ? 4 : NUM_COLUMNS;
+  const contentWidth = layout.centeredContentWidth;
+  const gridItemWidth = Math.floor((contentWidth - gridGap * (columnCount - 1)) / columnCount);
+  const searchExpandedWidth = Math.min(
+    layout.isTabletLandscape ? 420 : layout.isTablet ? 360 : layout.width - 210,
+    Math.max(180, contentWidth - 220),
+  );
+  const s = useMemo(
+    () =>
+      makeStyles(colors, {
+        horizontalPadding: layout.horizontalPadding,
+        contentWidth,
+        gridGap,
+        gridItemWidth,
+      }),
+    [colors, contentWidth, gridGap, gridItemWidth, layout.horizontalPadding],
+  );
   const [showSearch, setShowSearch] = useState(false);
   const [showSort, setShowSort] = useState(false);
   const searchAnim = useRef(new Animated.Value(0)).current;
@@ -85,8 +144,24 @@ export function LibraryScreen() {
 
   const [tagSheetOpen, setTagSheetOpen] = useState(false);
   const [tagSheetBook, setTagSheetBook] = useState<Book | null>(null);
+  const [sourceSheetOpen, setSourceSheetOpen] = useState(false);
+  const [sourceSheetAnchor, setSourceSheetAnchor] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const [temporaryWebDavOpen, setTemporaryWebDavOpen] = useState(false);
+  const [isPickingImport, setIsPickingImport] = useState(false);
+  const [pendingLocalImport, setPendingLocalImport] = useState(false);
+  const importButtonAnchorRef = useRef<View>(null);
+  const emptyImportAnchorRef = useRef<View>(null);
+  const localImportInFlightRef = useRef(false);
 
   const extractorRef = useRef<ExtractorRef>(null);
+  const loadSyncConfig = useSyncStore((state) => state.loadConfig);
+  const syncConfig = useSyncStore((state) => state.config);
+  const syncBackendType = useSyncStore((state) => state.backendType);
 
   const {
     books,
@@ -109,7 +184,9 @@ export function LibraryScreen() {
 
   const { downloadingBookId, downloadingBookTitle, downloadBook } = useBookDownload({
     loadBooks,
-    onSuccess: (bookId) => nav.navigate("Reader", { bookId }),
+    onSuccess: (bookId) => {
+      void openMobileBook({ bookId, navigation: nav, t });
+    },
   });
 
   const { vectorQueue, vectorizingBookId, vectorProgress, handleVectorize } =
@@ -130,6 +207,9 @@ export function LibraryScreen() {
   }, [searchAnim, setFilter]);
 
   useEffect(() => { loadBooks(); }, [loadBooks]);
+  useEffect(() => {
+    void loadSyncConfig();
+  }, [loadSyncConfig]);
 
   useEffect(() => {
     setExtractorRef(extractorRef.current);
@@ -177,7 +257,11 @@ export function LibraryScreen() {
     return result;
   }, [books, filter, activeTag]);
 
-  const handleImport = useCallback(async () => {
+  const handleLocalImport = useCallback(async () => {
+    if (localImportInFlightRef.current) return;
+    localImportInFlightRef.current = true;
+    setIsPickingImport(true);
+
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: [
@@ -195,11 +279,135 @@ export function LibraryScreen() {
       });
       if (result.canceled || !result.assets || result.assets.length === 0) return;
       const files = result.assets.map((a) => ({ uri: a.uri, name: a.name }));
-      await importBooks(files);
+      const summary = await importBooks(files);
+      Alert.alert(
+        t("common.success", "成功！"),
+        t("library.importResultSummary", {
+          imported: summary.imported.length,
+          skipped: summary.skippedDuplicates.length,
+          failed: summary.failures.length,
+        }),
+      );
     } catch (err) {
-      console.error("Import failed:", err);
+      const message = err instanceof Error ? err.message : String(err);
+      if (!message.includes("Different document picking in progress")) {
+        console.error("Import failed:", err);
+      }
+    } finally {
+      localImportInFlightRef.current = false;
+      setIsPickingImport(false);
     }
   }, [importBooks]);
+
+  const handlePickLocalFromSourceMenu = useCallback(() => {
+    if (localImportInFlightRef.current || pendingLocalImport) return;
+    setPendingLocalImport(true);
+    setSourceSheetOpen(false);
+  }, [pendingLocalImport]);
+
+  useEffect(() => {
+    if (Platform.OS === "ios" || !pendingLocalImport || sourceSheetOpen) return;
+
+    const timer = setTimeout(() => {
+      setPendingLocalImport(false);
+      void handleLocalImport();
+    }, 180);
+
+    return () => clearTimeout(timer);
+  }, [handleLocalImport, pendingLocalImport, sourceSheetOpen]);
+
+  const handleSourceSheetDismiss = useCallback(() => {
+    if (!pendingLocalImport || Platform.OS !== "ios") return;
+
+    requestAnimationFrame(() => {
+      setPendingLocalImport(false);
+      void handleLocalImport();
+    });
+  }, [handleLocalImport, pendingLocalImport]);
+
+  const handleOpenImportSources = useCallback((anchorRef?: RefObject<View | null>) => {
+    const openWithFallback = () => {
+      setSourceSheetAnchor(null);
+      setSourceSheetOpen(true);
+    };
+
+    if (!anchorRef?.current || typeof anchorRef.current.measureInWindow !== "function") {
+      openWithFallback();
+      return;
+    }
+
+    anchorRef.current.measureInWindow((x, y, width, height) => {
+      if ([x, y, width, height].some((value) => Number.isNaN(value) || value <= 0)) {
+        openWithFallback();
+        return;
+      }
+
+      setSourceSheetAnchor({ x, y, width, height });
+      setSourceSheetOpen(true);
+    });
+  }, []);
+
+  const handleOpenSavedWebDav = useCallback(async () => {
+    setSourceSheetOpen(false);
+
+    if (syncBackendType !== "webdav" || syncConfig?.type !== "webdav") {
+      Alert.alert(
+        t("library.importSourceSavedWebDavMissingTitle", "还没有可用的 WebDAV 书库"),
+        t(
+          "library.importSourceSavedWebDavMissing",
+          "还没有可用的 WebDAV 配置，先去同步设置里连上你的书库。",
+        ),
+        [
+          { text: t("common.cancel", "取消"), style: "cancel" },
+          { text: t("settings.syncTitle", "WebDAV 同步"), onPress: () => nav.navigate("SyncSettings") },
+        ],
+      );
+      return;
+    }
+
+    const platform = getPlatformService();
+    const password = await platform.kvGetItem(SYNC_SECRET_KEYS.webdav);
+    if (!password) {
+      Alert.alert(
+        t("library.importSourceSavedWebDavMissingTitle", "还没有可用的 WebDAV 书库"),
+        t(
+          "library.importSourceSavedWebDavMissingSecret",
+          "已经找到 WebDAV 地址，但缺少密码。去同步设置里重新保存一次就能继续。",
+        ),
+        [
+          { text: t("common.cancel", "取消"), style: "cancel" },
+          { text: t("settings.syncTitle", "WebDAV 同步"), onPress: () => nav.navigate("SyncSettings") },
+        ],
+      );
+      return;
+    }
+
+    const source: WebDavImportSource = {
+      kind: "saved",
+      url: deriveImportBaseUrl(syncConfig.url, syncConfig.remoteRoot),
+      username: syncConfig.username,
+      password,
+      remoteRoot: DEFAULT_WEBDAV_IMPORT_REMOTE_ROOT,
+      allowInsecure: syncConfig.allowInsecure ?? false,
+    };
+    nav.navigate("WebDavImportBrowser", { source });
+  }, [nav, syncBackendType, syncConfig, t]);
+
+  const handleOpenTemporaryWebDav = useCallback(() => {
+    setSourceSheetOpen(false);
+    setTemporaryWebDavOpen(true);
+  }, []);
+
+  const handleConnectTemporaryWebDav = useCallback(
+    async (source: WebDavImportSource) => {
+      const { WebDavImportService } = await import("@readany/core");
+      const service = new WebDavImportService(source);
+      await service.testConnection();
+      setTemporaryWebDavOpen(false);
+      nav.navigate("WebDavImportBrowser", { source });
+    },
+    [nav],
+  );
 
   const handleOpen = useCallback(
     async (book: Book) => {
@@ -207,9 +415,9 @@ export function LibraryScreen() {
         await downloadBook(book);
         return;
       }
-      nav.navigate("Reader", { bookId: book.id });
+      await openMobileBook({ bookId: book.id, navigation: nav, t });
     },
-    [nav, downloadBook],
+    [downloadBook, nav, t],
   );
 
   const handleManageTags = useCallback((book: Book) => {
@@ -237,6 +445,7 @@ export function LibraryScreen() {
       <View style={s.gridItem}>
         <BookCard
           book={item}
+          cardWidth={gridItemWidth}
           onOpen={handleOpen}
           onDelete={removeBook}
           onManageTags={handleManageTags}
@@ -247,7 +456,7 @@ export function LibraryScreen() {
         />
       </View>
     ),
-    [handleOpen, removeBook, handleManageTags, handleVectorize, vectorizingBookId, vectorQueue, vectorProgress],
+    [gridItemWidth, handleOpen, removeBook, handleManageTags, handleVectorize, vectorizingBookId, vectorQueue, vectorProgress],
   );
 
   return (
@@ -266,85 +475,94 @@ export function LibraryScreen() {
 
       {/* Header */}
       <View style={[s.header, { zIndex: 20 }]}>
-        <View style={s.headerRow}>
-          <Text style={s.headerTitle}>{t("sidebar.library", "书库")}</Text>
-          <View style={s.headerActions}>
-            {hasBooks && (
-              <Animated.View
-                style={[
-                  s.animatedSearchWrap,
-                  {
-                    width: searchAnim.interpolate({ inputRange: [0, 1], outputRange: [36, screenWidth - 210] }),
-                    borderBottomColor: searchAnim.interpolate({ inputRange: [0, 1], outputRange: ["transparent", colors.primary] }),
-                    borderBottomWidth: searchAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 1] }),
-                  },
-                ]}
-              >
-                <TouchableOpacity
-                  style={s.headerBtn}
-                  onPress={() => {
-                    if (showSearch) {
-                      if (!filter.search.trim()) { closeSearch(); Keyboard.dismiss(); }
-                    } else {
-                      openSearch();
-                    }
-                  }}
-                  activeOpacity={0.7}
+        <View style={s.headerInner}>
+          <View style={s.headerRow}>
+            <Text style={s.headerTitle}>{t("sidebar.library", "书库")}</Text>
+            <View style={s.headerActions}>
+              {hasBooks && (
+                <Animated.View
+                  style={[
+                    s.animatedSearchWrap,
+                    {
+                      width: searchAnim.interpolate({ inputRange: [0, 1], outputRange: [36, searchExpandedWidth] }),
+                      borderBottomColor: searchAnim.interpolate({ inputRange: [0, 1], outputRange: ["transparent", colors.primary] }),
+                      borderBottomWidth: searchAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 1] }),
+                    },
+                  ]}
                 >
-                  <SearchIcon size={18} color={showSearch ? colors.primary : colors.mutedForeground} />
-                </TouchableOpacity>
-                <Animated.View style={{ flex: 1, opacity: searchAnim, flexDirection: "row", alignItems: "center" }}>
-                  <TextInput
-                    ref={searchInputRef}
-                    style={s.searchInputInline}
-                    placeholder={t("library.searchPlaceholder", "搜索...")}
-                    placeholderTextColor={colors.mutedForeground}
-                    value={filter.search}
-                    onChangeText={(text) => setFilter({ search: text })}
-                    onBlur={() => { if (!filter.search.trim()) closeSearch(); }}
-                    returnKeyType="search"
-                  />
-                  {filter.search.length > 0 && showSearch && (
-                    <TouchableOpacity style={s.clearSearchBtn} onPress={() => { setFilter({ search: "" }); searchInputRef.current?.focus(); }}>
-                      <XIcon size={14} color={colors.mutedForeground} />
-                    </TouchableOpacity>
-                  )}
+                  <TouchableOpacity
+                    style={s.headerBtn}
+                    onPress={() => {
+                      if (showSearch) {
+                        if (!filter.search.trim()) { closeSearch(); Keyboard.dismiss(); }
+                      } else {
+                        openSearch();
+                      }
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <SearchIcon size={18} color={showSearch ? colors.primary : colors.mutedForeground} />
+                  </TouchableOpacity>
+                  <Animated.View style={{ flex: 1, opacity: searchAnim, flexDirection: "row", alignItems: "center" }}>
+                    <TextInput
+                      ref={searchInputRef}
+                      style={s.searchInputInline}
+                      placeholder={t("library.searchPlaceholder", "搜索...")}
+                      placeholderTextColor={colors.mutedForeground}
+                      value={filter.search}
+                      onChangeText={(text) => setFilter({ search: text })}
+                      onBlur={() => { if (!filter.search.trim()) closeSearch(); }}
+                      returnKeyType="search"
+                    />
+                    {filter.search.length > 0 && showSearch && (
+                      <TouchableOpacity style={s.clearSearchBtn} onPress={() => { setFilter({ search: "" }); searchInputRef.current?.focus(); }}>
+                        <XIcon size={14} color={colors.mutedForeground} />
+                      </TouchableOpacity>
+                    )}
+                  </Animated.View>
                 </Animated.View>
-              </Animated.View>
-            )}
-            {hasBooks && (
-              <TouchableOpacity style={s.headerBtn} onPress={() => setShowSort(!showSort)}>
-                <SortAscIcon size={18} color={colors.mutedForeground} />
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity style={s.importBtn} onPress={handleImport} disabled={isImporting} activeOpacity={0.8}>
-              {isImporting
-                ? <ActivityIndicator size="small" color={colors.primaryForeground} />
-                : <PlusIcon size={18} color={colors.primaryForeground} />}
-            </TouchableOpacity>
+              )}
+              {hasBooks && (
+                <TouchableOpacity style={s.headerBtn} onPress={() => setShowSort(!showSort)}>
+                  <SortAscIcon size={18} color={colors.mutedForeground} />
+                </TouchableOpacity>
+              )}
+              <View ref={importButtonAnchorRef} collapsable={false}>
+                <TouchableOpacity
+                  style={s.importBtn}
+                  onPress={() => handleOpenImportSources(importButtonAnchorRef)}
+                  disabled={isImporting || isPickingImport}
+                  activeOpacity={0.8}
+                >
+                  {isImporting || isPickingImport
+                    ? <ActivityIndicator size="small" color={colors.primaryForeground} />
+                    : <PlusIcon size={18} color={colors.primaryForeground} />}
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
-        </View>
 
-        {hasBooks && allTags.length > 0 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.tagScroll} contentContainerStyle={s.tagScrollContent}>
-            <TouchableOpacity style={[s.tagChip, !activeTag && s.tagChipActive]} onPress={() => setActiveTag("")}>
-              <Text style={[s.tagChipText, !activeTag && s.tagChipTextActive]}>{t("library.all", "全部")}</Text>
-            </TouchableOpacity>
-            {allTags.map((tag) => (
-              <TouchableOpacity key={tag} style={[s.tagChip, activeTag === tag && s.tagChipActive]} onPress={() => setActiveTag(activeTag === tag ? "" : tag)}>
-                <Text style={[s.tagChipText, activeTag === tag && s.tagChipTextActive]}>{tag}</Text>
+          {hasBooks && allTags.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.tagScroll} contentContainerStyle={s.tagScrollContent}>
+              <TouchableOpacity style={[s.tagChip, !activeTag && s.tagChipActive]} onPress={() => setActiveTag("")}>
+                <Text style={[s.tagChipText, !activeTag && s.tagChipTextActive]}>{t("library.all", "全部")}</Text>
               </TouchableOpacity>
-            ))}
-            <TouchableOpacity
-              style={[s.tagChip, activeTag === "__uncategorized__" && s.tagChipActive]}
-              onPress={() => setActiveTag(activeTag === "__uncategorized__" ? "" : "__uncategorized__")}
-            >
-              <Text style={[s.tagChipText, activeTag === "__uncategorized__" && s.tagChipTextActive]}>
-                {t("sidebar.uncategorized", "未分类")}
-              </Text>
-            </TouchableOpacity>
-          </ScrollView>
-        )}
+              {allTags.map((tag) => (
+                <TouchableOpacity key={tag} style={[s.tagChip, activeTag === tag && s.tagChipActive]} onPress={() => setActiveTag(activeTag === tag ? "" : tag)}>
+                  <Text style={[s.tagChipText, activeTag === tag && s.tagChipTextActive]}>{tag}</Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity
+                style={[s.tagChip, activeTag === "__uncategorized__" && s.tagChipActive]}
+                onPress={() => setActiveTag(activeTag === "__uncategorized__" ? "" : "__uncategorized__")}
+              >
+                <Text style={[s.tagChipText, activeTag === "__uncategorized__" && s.tagChipTextActive]}>
+                  {t("sidebar.uncategorized", "未分类")}
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          )}
+        </View>
       </View>
 
       {/* Sort dropdown */}
@@ -372,6 +590,7 @@ export function LibraryScreen() {
 
       {/* Content */}
       <View style={s.content}>
+        <View style={s.contentInner}>
         {!isLoaded && (
           <View style={s.loadingWrap}>
             <ActivityIndicator size="large" color={colors.mutedForeground} />
@@ -397,9 +616,16 @@ export function LibraryScreen() {
             <Image source={isDark ? BOOK_DARK_PNG : BOOK_PNG} style={{ width: 160, height: 160 }} />
             <Text style={s.emptyTitle}>{t("library.empty", "暂无书籍")}</Text>
             <Text style={s.emptyHint}>{t("library.emptyHint", "导入电子书开始阅读之旅")}</Text>
-            <TouchableOpacity style={s.emptyImportBtn} onPress={handleImport} activeOpacity={0.8}>
-              <Text style={s.emptyImportText}>{t("library.importFirst", "导入书籍")}</Text>
-            </TouchableOpacity>
+            <View ref={emptyImportAnchorRef} collapsable={false}>
+              <TouchableOpacity
+                style={s.emptyImportBtn}
+                onPress={() => handleOpenImportSources(emptyImportAnchorRef)}
+                disabled={isPickingImport}
+                activeOpacity={0.8}
+              >
+                <Text style={s.emptyImportText}>{t("library.importFirst", "导入书籍")}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
         {isLoaded && hasBooks && isEmpty && (
@@ -418,12 +644,14 @@ export function LibraryScreen() {
             data={filteredBooks}
             renderItem={renderBookCard}
             keyExtractor={(item) => item.id}
-            numColumns={NUM_COLUMNS}
+            key={`library-grid-${columnCount}`}
+            numColumns={columnCount}
             columnWrapperStyle={s.gridRow}
             contentContainerStyle={s.gridContent}
             showsVerticalScrollIndicator={false}
           />
         )}
+        </View>
       </View>
 
       <TagManagementSheet
@@ -437,14 +665,34 @@ export function LibraryScreen() {
         onRemoveTag={removeTag}
         onRenameTag={renameTag}
       />
+      <WebDavImportSourceSheet
+        visible={sourceSheetOpen}
+        hasSavedWebDav={syncBackendType === "webdav" && syncConfig?.type === "webdav"}
+        anchor={sourceSheetAnchor}
+        localImportBusy={isPickingImport}
+        onClose={() => setSourceSheetOpen(false)}
+        onDismiss={handleSourceSheetDismiss}
+        onPickLocal={handlePickLocalFromSourceMenu}
+        onPickSavedWebDav={() => void handleOpenSavedWebDav()}
+        onPickTemporaryWebDav={handleOpenTemporaryWebDav}
+      />
+      <WebDavConnectSheet
+        visible={temporaryWebDavOpen}
+        onClose={() => setTemporaryWebDavOpen(false)}
+        onSubmit={handleConnectTemporaryWebDav}
+      />
     </SafeAreaView>
   );
 }
 
-const makeStyles = (colors: ThemeColors) =>
+const makeStyles = (
+  colors: ThemeColors,
+  layout: { horizontalPadding: number; contentWidth: number; gridGap: number; gridItemWidth: number },
+) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    header: { paddingHorizontal: SCREEN_PADDING, paddingTop: 12, paddingBottom: 8 },
+    header: { paddingHorizontal: layout.horizontalPadding, paddingTop: 12, paddingBottom: 8, alignItems: "center" },
+    headerInner: { width: "100%", maxWidth: layout.contentWidth },
     headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
     headerTitle: { fontSize: fontSize["2xl"], fontWeight: fontWeight.bold, color: colors.foreground },
     headerActions: { flexDirection: "row", alignItems: "center", gap: 4 },
@@ -461,7 +709,7 @@ const makeStyles = (colors: ThemeColors) =>
     tagChipTextActive: { color: colors.primaryForeground },
     sortOverlay: { flex: 1 },
     sortDropdown: {
-      position: "absolute", top: 110, right: 16, minWidth: 160,
+      position: "absolute", top: 110, right: layout.horizontalPadding, minWidth: 180,
       backgroundColor: colors.card, borderRadius: radius.xl, borderWidth: 0.5, borderColor: colors.border,
       padding: 4, elevation: 5, shadowColor: "#000", shadowOffset: { width: 0, height: 4 },
       shadowOpacity: 0.3, shadowRadius: 8,
@@ -470,7 +718,8 @@ const makeStyles = (colors: ThemeColors) =>
     sortItemActive: { backgroundColor: colors.muted },
     sortText: { fontSize: fontSize.xs, color: colors.foreground },
     sortTextActive: { fontWeight: fontWeight.medium },
-    content: { flex: 1, paddingHorizontal: SCREEN_PADDING },
+    content: { flex: 1, paddingHorizontal: layout.horizontalPadding, alignItems: "center" },
+    contentInner: { flex: 1, width: "100%", maxWidth: layout.contentWidth },
     loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
     importBanner: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.muted + "0D", borderRadius: radius.lg, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 12 },
     importBannerText: { fontSize: fontSize.xs, color: colors.primary },
@@ -495,7 +744,7 @@ const makeStyles = (colors: ThemeColors) =>
     noResultsWrap: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 80 },
     noResultsText: { fontSize: fontSize.sm, color: colors.mutedForeground, marginTop: 12 },
     resultsCount: { fontSize: fontSize.xs, color: colors.mutedForeground, marginBottom: 8 },
-    gridRow: { gap: GRID_GAP },
-    gridContent: { paddingBottom: 16, paddingTop: 4 },
-    gridItem: { width: (screenWidth - SCREEN_PADDING * 2 - GRID_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS, marginBottom: 4 },
+    gridRow: { gap: layout.gridGap, justifyContent: "flex-start" },
+    gridContent: { paddingBottom: 24, paddingTop: 4, width: "100%" },
+    gridItem: { width: layout.gridItemWidth, marginBottom: layout.gridGap },
   });

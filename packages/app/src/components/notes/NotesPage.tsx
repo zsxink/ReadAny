@@ -4,6 +4,7 @@ import { MarkdownEditor } from "@/components/ui/markdown-editor";
 import { useResolvedSrc } from "@/hooks/use-resolved-src";
 import type { HighlightWithBook } from "@/lib/db/database";
 import { openDesktopBook } from "@/lib/library/open-book";
+import { getBook as getBookRecord } from "@/lib/db/database";
 import { useAnnotationStore } from "@/stores/annotation-store";
 import { useAppStore } from "@/stores/app-store";
 import { useLibraryStore } from "@/stores/library-store";
@@ -63,7 +64,7 @@ export function NotesPage() {
     stats,
     loadStats,
   } = useAnnotationStore();
-  const { addTab, setActiveTab, activeTabId } = useAppStore();
+  const { activeTabId } = useAppStore();
   const books = useLibraryStore((s) => s.books);
 
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
@@ -170,14 +171,11 @@ export function NotesPage() {
     return chapters;
   }, [currentList, t]);
 
-  const handleOpenBook = async (bookId: string, title: string, cfi?: string) => {
-    const book = books.find((item) => item.id === bookId);
-    if (!book) {
-      const tabId = `reader-${bookId}`;
-      addTab({ id: tabId, type: "reader", title, bookId, initialCfi: cfi });
-      setActiveTab(tabId);
-      return;
-    }
+  const handleOpenBook = async (bookId: string, _title: string, cfi?: string) => {
+    const book =
+      books.find((item) => item.id === bookId) ??
+      (await getBookRecord(bookId, { includeDeleted: true }).catch(() => null));
+    if (!book) return;
 
     await openDesktopBook({
       book,

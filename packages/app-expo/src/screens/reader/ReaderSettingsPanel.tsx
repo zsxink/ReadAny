@@ -2,6 +2,7 @@
  * ReaderSettingsPanel — bottom-sheet modal for reading display settings.
  */
 import { XIcon } from "@/components/ui/Icon";
+import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { useColors } from "@/styles/theme";
 import type { ReadSettings } from "@readany/core/types";
 import { Modal, Pressable, ScrollView, Text, TouchableOpacity, View } from "react-native";
@@ -21,6 +22,7 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
   const colors = useColors();
   const s = makeStyles(colors);
   const insets = useSafeAreaInsets();
+  const layout = useResponsiveLayout();
   const { t } = useTranslation();
 
   const customFonts = useFontStore((s) => s.fonts);
@@ -45,7 +47,17 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
       onRequestClose={onClose}
     >
       <Pressable style={s.modalBackdrop} onPress={onClose} />
-      <View style={[s.bottomSheet, { paddingBottom: insets.bottom || 16 }]}>
+      <View
+        style={[
+          s.bottomSheet,
+          { paddingBottom: insets.bottom || 16 },
+          layout.isTablet && {
+            width: "100%",
+            maxWidth: Math.min(layout.centeredContentWidth, 720),
+            alignSelf: "center",
+          },
+        ]}
+      >
         <View style={s.sheetHeader}>
           <Text style={s.sheetTitle}>{t("reader.settings", "阅读设置")}</Text>
           <TouchableOpacity onPress={onClose}>

@@ -1,4 +1,5 @@
 import { useColors, radius } from "@/styles/theme";
+import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import {
   DEFAULT_SYSTEM_VOICE_VALUE,
   findSystemVoiceLabel,
@@ -42,6 +43,7 @@ export function VoicePickerModal({
 }: VoicePickerModalProps) {
   const colors = useColors();
   const s = makeStyles(colors);
+  const layout = useResponsiveLayout();
   const { t, i18n } = useTranslation();
   const [systemVoices, setSystemVoices] = useState<NativeSystemVoiceOption[]>([]);
   const displayLocale = i18n.resolvedLanguage || i18n.language;
@@ -70,7 +72,16 @@ export function VoicePickerModal({
     >
       <View style={s.voicePickerContainer}>
         <Pressable style={StyleSheet.absoluteFillObject} onPress={onClose} />
-        <View style={s.voicePickerSheet}>
+        <View
+          style={[
+            s.voicePickerSheet,
+            layout.isTablet && {
+              width: "100%",
+              maxWidth: Math.min(layout.centeredContentWidth, 760),
+              alignSelf: "center",
+            },
+          ]}
+        >
           {/* Handle bar */}
           <View style={s.voicePickerHandle} />
 

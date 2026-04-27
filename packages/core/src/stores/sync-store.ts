@@ -8,11 +8,16 @@ import { create } from "zustand";
 import { emitLibraryChanged } from "../events/library-events";
 import { getPlatformService } from "../services/platform";
 import type { S3Config, SyncConfig, WebDavConfig } from "../sync/sync-backend";
-import { DEFAULT_SYNC_CONFIG, SYNC_CONFIG_KEY, SYNC_SECRET_KEYS } from "../sync/sync-backend";
+import {
+  DEFAULT_SYNC_CONFIG,
+  DEFAULT_WEBDAV_REMOTE_ROOT,
+  SYNC_CONFIG_KEY,
+  SYNC_SECRET_KEYS,
+} from "../sync/sync-backend";
 import type { ISyncBackend } from "../sync/sync-backend";
 import { createSyncBackend, getSecretKeyForBackend } from "../sync/sync-backend-factory";
 import { REMOTE_MANIFEST } from "../sync/sync-types";
-import { sanitizeWebDavUrl } from "../sync/webdav-client";
+import { sanitizeWebDavRemoteRoot, sanitizeWebDavUrl } from "../sync/webdav-client";
 import type {
   RemoteSyncManifest,
   SyncDirection,
@@ -20,7 +25,6 @@ import type {
   SyncResult,
   SyncStatusType,
 } from "../sync/sync-types";
-import { WebDavClient } from "../sync/webdav-client";
 import { eventBus } from "../utils/event-bus";
 
 let activeSyncPromise: Promise<SyncResult | null> | null = null;
@@ -125,12 +129,14 @@ export interface SyncState {
     username: string,
     password: string,
     allowInsecure?: boolean,
+    remoteRoot?: string,
   ) => Promise<void>;
   testWebDavConnection: (
     url: string,
     username: string,
     password: string,
     allowInsecure?: boolean,
+    remoteRoot?: string,
   ) => Promise<boolean>;
 
   // S3 actions
@@ -176,6 +182,9 @@ function normalizeSyncConfig(config: SyncConfig): SyncConfig {
       ...config,
       url: sanitizeWebDavUrl(config.url),
       username: config.username.trim(),
+      remoteRoot:
+        sanitizeWebDavRemoteRoot(config.remoteRoot ?? DEFAULT_WEBDAV_REMOTE_ROOT)
+        || DEFAULT_WEBDAV_REMOTE_ROOT,
     };
   }
   return config;
@@ -245,13 +254,17 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     }
   },
 
-  saveWebDavConfig: async (url, username, password, allowInsecure) => {
+  saveWebDavConfig: async (url, username, password, allowInsecure, remoteRoot) => {
     const platform = getPlatformService();
     const existing = get().config;
     const config: WebDavConfig = {
       type: "webdav",
       url: sanitizeWebDavUrl(url),
       username: username.trim(),
+      remoteRoot:
+        sanitizeWebDavRemoteRoot(
+          remoteRoot ?? (existing as WebDavConfig)?.remoteRoot ?? DEFAULT_WEBDAV_REMOTE_ROOT,
+        ) || DEFAULT_WEBDAV_REMOTE_ROOT,
       allowInsecure: allowInsecure ?? (existing as WebDavConfig)?.allowInsecure ?? false,
       autoSync: (existing as WebDavConfig)?.autoSync ?? DEFAULT_SYNC_CONFIG.autoSync,
       syncIntervalMins:
@@ -276,9 +289,24 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     set({ config, isConfigured: true, backendType: "webdav" });
   },
 
-  testWebDavConnection: async (url, username, password, allowInsecure) => {
-    const client = new WebDavClient(sanitizeWebDavUrl(url), username.trim(), password, allowInsecure);
-    return client.testConnection();
+  testWebDavConnection: async (url, username, password, allowInsecure, remoteRoot) => {
+    const backend = createSyncBackend(
+      {
+        type: "webdav",
+        url: sanitizeWebDavUrl(url),
+        username: username.trim(),
+        remoteRoot:
+          sanitizeWebDavRemoteRoot(remoteRoot ?? DEFAULT_WEBDAV_REMOTE_ROOT)
+          || DEFAULT_WEBDAV_REMOTE_ROOT,
+        allowInsecure: allowInsecure ?? false,
+        autoSync: false,
+        syncIntervalMins: DEFAULT_SYNC_CONFIG.syncIntervalMins,
+        wifiOnly: DEFAULT_SYNC_CONFIG.wifiOnly,
+        notifyOnComplete: DEFAULT_SYNC_CONFIG.notifyOnComplete,
+      },
+      password,
+    );
+    return backend.testConnection();
   },
 
   saveS3Config: async (s3Config, secretAccessKey) => {

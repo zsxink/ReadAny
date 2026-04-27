@@ -186,13 +186,7 @@ function escapeXml(text: string): string {
 function genSSML(lang: string, text: string, voice: string, rate: number, pitch: number): string {
   const rateStr = `${rate >= 1 ? "+" : ""}${Math.round((rate - 1) * 100)}%`;
   const pitchStr = `${pitch >= 1 ? "+" : ""}${Math.round((pitch - 1) * 50)}Hz`;
-  return (
-    `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="${lang}">` +
-    `<voice name="${voice}">` +
-    `<prosody rate="${rateStr}" pitch="${pitchStr}">` +
-    escapeXml(text) +
-    `</prosody></voice></speak>`
-  );
+  return `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="${lang}"><voice name="${voice}"><prosody rate="${rateStr}" pitch="${pitchStr}">${escapeXml(text)}</prosody></voice></speak>`;
 }
 
 // ── Message formatter ──
@@ -237,13 +231,7 @@ const edgeTtsAudioCache = new Map<string, ArrayBuffer>();
 const edgeTtsInflightCache = new Map<string, Promise<ArrayBuffer>>();
 
 function getEdgeTTSPayloadKey(payload: EdgeTTSPayload): string {
-  return JSON.stringify([
-    payload.voice,
-    payload.lang,
-    payload.rate,
-    payload.pitch,
-    payload.text,
-  ]);
+  return JSON.stringify([payload.voice, payload.lang, payload.rate, payload.pitch, payload.text]);
 }
 
 function cloneAudioBuffer(audioData: ArrayBuffer): ArrayBuffer {
@@ -284,10 +272,7 @@ async function fetchEdgeTTSAudioUncached(payload: EdgeTTSPayload): Promise<Array
   const url = `${EDGE_SPEECH_URL}?${params.toString()}`;
 
   const headers: Record<string, string> = {
-    "User-Agent":
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" +
-      ` (KHTML, like Gecko) Chrome/${CHROMIUM_MAJOR_VERSION}.0.0.0 Safari/537.36` +
-      ` Edg/${CHROMIUM_MAJOR_VERSION}.0.0.0`,
+    "User-Agent": `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROMIUM_MAJOR_VERSION}.0.0.0 Safari/537.36 Edg/${CHROMIUM_MAJOR_VERSION}.0.0.0`,
     "Accept-Encoding": "gzip, deflate, br, zstd",
     "Accept-Language": "en-US,en;q=0.9",
     Pragma: "no-cache",
@@ -327,47 +312,73 @@ async function fetchEdgeTTSAudioUncached(payload: EdgeTTSPayload): Promise<Array
     ssml,
   );
 
-  return new Promise(async (resolve, reject) => {
-    try {
-      const ws = await platform.createWebSocket(url, { headers });
-      let audioData = new ArrayBuffer(0);
+  return new Promise((resolve, reject) => {
+    platform
+      .createWebSocket(url, { headers })
+      .then((ws) => {
+        let audioData = new ArrayBuffer(0);
+        let settled = false;
 
-      ws.onMessage((data) => {
-        try {
-          if (typeof data === "string") {
-            if (data.includes("Path:turn.end") || data.includes("Path: turn.end")) {
-              ws.close();
-              if (!audioData.byteLength) {
-                return reject(new Error("No audio data received from Edge TTS."));
-              }
-              return resolve(audioData);
-            }
-          } else {
-            const bytes = new Uint8Array(data);
-            if (bytes.length < 2) return;
-            const headerLength = (bytes[0] << 8) | bytes[1];
-            if (bytes.length > headerLength + 2) {
-              const newBody = bytes.slice(2 + headerLength);
-              const merged = new Uint8Array(audioData.byteLength + newBody.byteLength);
-              merged.set(new Uint8Array(audioData), 0);
-              merged.set(newBody, audioData.byteLength);
-              audioData = merged.buffer;
-            }
+        const timeout = setTimeout(() => {
+          if (!settled) {
+            settled = true;
+            ws.close();
+            reject(new Error("Edge TTS WebSocket timeout (30s)"));
           }
-        } catch (err) {
-          console.error("[Edge TTS] message handling error:", err);
-        }
-      });
+        }, 30_000);
 
-      ws.onError((error) => {
+        const settle = (fn: () => void) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          fn();
+        };
+
+        ws.onMessage((data) => {
+          try {
+            if (typeof data === "string") {
+              if (data.includes("Path:turn.end") || data.includes("Path: turn.end")) {
+                ws.close();
+                if (!audioData.byteLength) {
+                  return settle(() => reject(new Error("No audio data received from Edge TTS.")));
+                }
+                return settle(() => resolve(audioData));
+              }
+            } else {
+              const bytes = new Uint8Array(data);
+              if (bytes.length < 2) return;
+              const headerLength = (bytes[0] << 8) | bytes[1];
+              if (bytes.length > headerLength + 2) {
+                const newBody = bytes.slice(2 + headerLength);
+                const merged = new Uint8Array(audioData.byteLength + newBody.byteLength);
+                merged.set(new Uint8Array(audioData), 0);
+                merged.set(newBody, audioData.byteLength);
+                audioData = merged.buffer;
+              }
+            }
+          } catch (err) {
+            console.error("[Edge TTS] message handling error:", err);
+          }
+        });
+
+        ws.onError((error) => {
+          settle(() => reject(new Error(`Edge TTS WebSocket error: ${formatEdgeTTSError(error)}`)));
+        });
+
+        ws.onClose(() => {
+          if (!audioData.byteLength) {
+            settle(() => reject(new Error("Edge TTS WebSocket closed without audio data")));
+          } else {
+            settle(() => resolve(audioData));
+          }
+        });
+
+        ws.send(configMsg);
+        ws.send(ssmlMsg);
+      })
+      .catch((error) => {
         reject(new Error(`Edge TTS WebSocket error: ${formatEdgeTTSError(error)}`));
       });
-
-      ws.send(configMsg);
-      ws.send(ssmlMsg);
-    } catch (error) {
-      reject(new Error(`Edge TTS WebSocket error: ${formatEdgeTTSError(error)}`));
-    }
   });
 }
 

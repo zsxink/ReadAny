@@ -13,16 +13,22 @@ interface BarChartProps {
   data: BarData[];
   height?: number;
   emptyMessage?: string;
+  formatValue?: (value: number) => string;
 }
 
-const formatTime = (minutes: number): string => {
+const defaultFormatTime = (minutes: number): string => {
   if (minutes < 60) return `${Math.round(minutes)}m`;
   const h = Math.floor(minutes / 60);
   const m = Math.round(minutes % 60);
   return m > 0 ? `${h}h${m}m` : `${h}h`;
 };
 
-export function BarChart({ data, height = 200, emptyMessage }: BarChartProps) {
+export function BarChart({
+  data,
+  height = 200,
+  emptyMessage,
+  formatValue = defaultFormatTime,
+}: BarChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(400);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -40,7 +46,7 @@ export function BarChart({ data, height = 200, emptyMessage }: BarChartProps) {
     return () => observer.disconnect();
   }, [updateWidth]);
 
-  const margin = { top: 12, right: 12, bottom: 28, left: 48 };
+  const margin = { top: 10, right: 10, bottom: 28, left: 42 };
   const innerWidth = width - margin.left - margin.right;
   const innerHeight = height - margin.top - margin.bottom;
 
@@ -62,7 +68,7 @@ export function BarChart({ data, height = 200, emptyMessage }: BarChartProps) {
   );
 
   // Y axis ticks
-  const yTicks = useMemo(() => yScale.ticks(4), [yScale]);
+  const yTicks = useMemo(() => yScale.ticks(3), [yScale]);
 
   if (!hasData && emptyMessage) {
     return (
@@ -91,8 +97,8 @@ export function BarChart({ data, height = 200, emptyMessage }: BarChartProps) {
       <svg width={width} height={height}>
         <defs>
           <linearGradient id="barGradient" x1="0" y1="1" x2="0" y2="0">
-            <stop offset="0%" stopColor="rgb(16, 185, 129)" stopOpacity={0.3} />
-            <stop offset="100%" stopColor="rgb(16, 185, 129)" stopOpacity={0.9} />
+            <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.18} />
+            <stop offset="100%" stopColor="var(--primary)" stopOpacity={0.72} />
           </linearGradient>
         </defs>
         <g transform={`translate(${margin.left},${margin.top})`}>
@@ -106,6 +112,7 @@ export function BarChart({ data, height = 200, emptyMessage }: BarChartProps) {
                 y2={yScale(tick)}
                 stroke="var(--border)"
                 strokeWidth={1}
+                opacity={0.55}
               />
               <text
                 x={-8}
@@ -115,7 +122,7 @@ export function BarChart({ data, height = 200, emptyMessage }: BarChartProps) {
                 fontSize={10}
                 fill="var(--muted-foreground)"
               >
-                {formatTime(tick)}
+                {formatValue(tick)}
               </text>
             </g>
           ))}
@@ -123,8 +130,9 @@ export function BarChart({ data, height = 200, emptyMessage }: BarChartProps) {
           {/* Bars */}
           {data.map((d, i) => {
             const barHeight = innerHeight - yScale(d.value);
-            const x = xScale(d.label) || 0;
-            const barWidth = xScale.bandwidth();
+            const bandWidth = xScale.bandwidth();
+            const barWidth = Math.min(bandWidth, 24);
+            const x = (xScale(d.label) || 0) + (bandWidth - barWidth) / 2;
             const isHovered = hoveredIndex === i;
             return (
               <g
@@ -134,9 +142,9 @@ export function BarChart({ data, height = 200, emptyMessage }: BarChartProps) {
               >
                 {/* Invisible wider hit area */}
                 <rect
-                  x={x - 2}
+                  x={x - Math.max((bandWidth - barWidth) / 2, 2)}
                   y={0}
-                  width={barWidth + 4}
+                  width={Math.max(barWidth + 4, bandWidth)}
                   height={innerHeight}
                   fill="transparent"
                 />
@@ -146,7 +154,7 @@ export function BarChart({ data, height = 200, emptyMessage }: BarChartProps) {
                   width={barWidth}
                   height={Math.max(barHeight, 0)}
                   fill="url(#barGradient)"
-                  rx={3}
+                  rx={5}
                   opacity={isHovered ? 1 : 0.85}
                   className="transition-opacity"
                 />
@@ -171,7 +179,7 @@ export function BarChart({ data, height = 200, emptyMessage }: BarChartProps) {
                       fontSize={11}
                       fontWeight={500}
                     >
-                      {formatTime(d.value)}
+                      {formatValue(d.value)}
                     </text>
                   </g>
                 )}
@@ -201,6 +209,7 @@ export function BarChart({ data, height = 200, emptyMessage }: BarChartProps) {
             y2={innerHeight}
             stroke="var(--border)"
             strokeWidth={1}
+            opacity={0.45}
           />
         </g>
       </svg>

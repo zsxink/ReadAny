@@ -6,8 +6,9 @@ const monorepoRoot = path.resolve(projectRoot, "../..");
 
 const config = getDefaultConfig(projectRoot);
 
-// 1. Watch the monorepo root so Metro can resolve workspace packages
-config.watchFolders = [monorepoRoot];
+// 1. Watch the monorepo root so Metro can resolve workspace packages,
+// while preserving Expo's defaults for doctor/build compatibility.
+config.watchFolders = Array.from(new Set([...(config.watchFolders ?? []), monorepoRoot]));
 
 // 2. Tell Metro where to find node_modules in a pnpm monorepo
 config.resolver.nodeModulesPaths = [
@@ -36,7 +37,6 @@ config.resolver.sourceExts = [...config.resolver.sourceExts, "ts", "tsx"];
 config.resolver.assetExts = [...config.resolver.assetExts, "html", "bin", "ort", "wasm"];
 
 // 6. Configure SVG transformer
-const { transformerPath } = config.transformer;
 config.transformer = {
   ...config.transformer,
   babelTransformerPath: require.resolve("react-native-svg-transformer"),

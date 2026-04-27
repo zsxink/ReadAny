@@ -104,8 +104,9 @@ export interface IPlatformService {
   copyToClipboard(content: string): Promise<void>;
 
   // ---- File sharing / download ----
-  // Web: Blob + <a> download, RN: expo-file-system + expo-sharing
-  shareOrDownloadFile(content: string, filename: string, mimeType: string): Promise<void>;
+  // Desktop: system save dialog, RN: expo-file-system + expo-sharing
+  // Returns saved path if successful, null if cancelled.
+  shareOrDownloadFile(content: string, filename: string, mimeType: string): Promise<string | null>;
 
   // ---- LAN Sync ----
   // Check if device is on WiFi (returns true on desktop)

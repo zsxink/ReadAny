@@ -1,7 +1,7 @@
 import { useColors } from "@/styles/theme";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { LayoutChangeEvent, Text, TouchableOpacity, View } from "react-native";
 import { makeStyles } from "./stats-styles";
 import { formatTime } from "./stats-utils";
 
@@ -14,19 +14,27 @@ export function BarChart({
   const s = makeStyles(colors);
   const { t } = useTranslation();
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  const [plotWidth, setPlotWidth] = useState(0);
   const maxVal = Math.max(1, ...data.map((d) => d.value));
   const BAR_HEIGHT = 140;
-  const Y_AXIS_WIDTH = 32;
+  const Y_AXIS_WIDTH = 34;
 
-  const yTicks = [0, maxVal * 0.5, maxVal].map((v) => ({
+  const yTicks = [maxVal, maxVal * 0.5, 0].map((v) => ({
     value: v,
     label: v < 60 ? `${Math.round(v)}m` : `${(v / 60).toFixed(1)}h`,
   }));
 
+  const handlePlotLayout = (event: LayoutChangeEvent) => {
+    setPlotWidth(event.nativeEvent.layout.width);
+  };
+
+  const columnWidth = data.length > 0 && plotWidth > 0 ? plotWidth / data.length : 28;
+  const barWidth = Math.max(14, Math.min(24, columnWidth * 0.42));
+
   if (data.length === 0) {
     return (
       <View style={s.barChartEmpty}>
-        <Text style={s.barChartEmptyText}>{t("stats.noData", "暂无数据")}</Text>
+        <Text style={s.barChartEmptyText}>{t("stats.noData")}</Text>
       </View>
     );
   }
@@ -45,11 +53,11 @@ export function BarChart({
         ))}
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.barChartContent}>
+      <View style={[s.barChartContent, { flex: 1 }]} onLayout={handlePlotLayout}>
         {data.map((item, idx) => (
           <TouchableOpacity
             key={`${item.label}-${idx}`}
-            style={s.barCol}
+            style={[s.barCol, { flex: 1, width: undefined }]}
             onPress={() => setSelectedIdx(selectedIdx === idx ? null : idx)}
             activeOpacity={0.7}
           >
@@ -59,7 +67,9 @@ export function BarChart({
                   s.barFill,
                   {
                     height: Math.max(2, (item.value / maxVal) * BAR_HEIGHT),
-                    backgroundColor: item.value > 0 ? colors.emerald : colors.muted,
+                    width: barWidth,
+                    backgroundColor: item.value > 0 ? colors.primary : colors.muted,
+                    opacity: item.value > 0 ? 0.72 : 0.45,
                   },
                 ]}
               />
@@ -67,14 +77,14 @@ export function BarChart({
             <Text style={s.barLabel}>{item.label}</Text>
           </TouchableOpacity>
         ))}
-      </ScrollView>
+      </View>
 
       {selectedIdx !== null && data[selectedIdx] && data[selectedIdx].value > 0 && (
         <View
           pointerEvents="none"
           style={{
             position: "absolute",
-            left: Y_AXIS_WIDTH + 8 + selectedIdx * 28 + 14,
+            left: Y_AXIS_WIDTH + selectedIdx * columnWidth + columnWidth / 2 - 28,
             top: BAR_HEIGHT - (data[selectedIdx].value / maxVal) * BAR_HEIGHT - 24,
             backgroundColor: colors.card,
             paddingHorizontal: 8,

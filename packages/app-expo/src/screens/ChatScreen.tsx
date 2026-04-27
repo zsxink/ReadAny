@@ -9,10 +9,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Animated,
-  Dimensions,
   Image,
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -23,18 +23,25 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useStreamingChat } from "@/hooks";
+import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
+import { resolveActiveAIConfig } from "@/lib/ai/resolve-active-ai-config";
 import { useChatStore } from "@/stores/chat-store";
 import { useSettingsStore } from "@/stores/settings-store";
-import { resolveActiveAIConfig } from "@/lib/ai/resolve-active-ai-config";
-import { useStreamingChat } from "@/hooks";
+import { getPlatformService } from "@readany/core/services";
 import type { AttachedQuote } from "@readany/core/types";
 import {
   convertToMessageV2,
+  exportChatAsJSON,
+  exportChatAsMarkdown,
+  formatChatForClipboard,
   formatRelativeTimeShort,
+  getExportFilename,
   getMonthLabel,
   groupThreadsByTime,
   mergeMessagesWithStreaming,
 } from "@readany/core/utils";
+import * as Clipboard from "expo-clipboard";
 import { Alert } from "react-native";
 
 import { ChatInput } from "@/components/chat/ChatInput";
@@ -43,11 +50,14 @@ import { MessageList } from "@/components/chat/MessageList";
 import { ModelSelector } from "@/components/chat/ModelSelector";
 import {
   BookOpenIcon,
+  CopyIcon,
+  Download,
   HistoryIcon,
   LibraryIcon,
   LightbulbIcon,
   MessageCirclePlusIcon,
   ScrollTextIcon,
+  ShareIcon,
   Trash2Icon,
   XIcon,
 } from "@/components/ui/Icon";
@@ -64,22 +74,44 @@ import type { ThemeColors } from "@/styles/theme";
 const THINK_PNG = require("../../assets/think.png");
 const THINK_DARK_PNG = require("../../assets/think-dark.png");
 
-const SCREEN_WIDTH = Dimensions.get("window").width;
-const SIDEBAR_WIDTH = Math.min(SCREEN_WIDTH * 0.75, 300);
-
 export function ChatScreen() {
   const { t } = useTranslation();
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const s = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const layout = useResponsiveLayout();
+  const isTabletLandscape = layout.isTabletLandscape;
+  const sidebarWidth = isTabletLandscape
+    ? Math.min(360, layout.width * 0.28)
+    : Math.min(layout.width * 0.75, 300);
+  const s = useMemo(
+    () =>
+      makeStyles(colors, {
+        isTabletLandscape,
+        sidebarWidth,
+        horizontalPadding: layout.horizontalPadding,
+      }),
+    [colors, isTabletLandscape, layout.horizontalPadding, sidebarWidth],
+  );
 
   // Thread sidebar
   const [showSidebar, setShowSidebar] = useState(false);
-  const sidebarAnim = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
+  const sidebarAnim = useRef(new Animated.Value(-sidebarWidth)).current;
   const backdropAnim = useRef(new Animated.Value(0)).current;
 
+  useEffect(() => {
+    if (isTabletLandscape) {
+      setShowSidebar(false);
+      sidebarAnim.setValue(0);
+      backdropAnim.setValue(0);
+      return;
+    }
+
+    sidebarAnim.setValue(showSidebar ? 0 : -sidebarWidth);
+  }, [backdropAnim, isTabletLandscape, showSidebar, sidebarAnim, sidebarWidth]);
+
   const openSidebar = useCallback(() => {
+    if (isTabletLandscape) return;
     setShowSidebar(true);
     Animated.parallel([
       Animated.spring(sidebarAnim, {
@@ -94,12 +126,13 @@ export function ChatScreen() {
         useNativeDriver: true,
       }),
     ]).start();
-  }, [sidebarAnim, backdropAnim]);
+  }, [backdropAnim, isTabletLandscape, sidebarAnim]);
 
   const closeSidebar = useCallback(() => {
+    if (isTabletLandscape) return;
     Animated.parallel([
       Animated.spring(sidebarAnim, {
-        toValue: -SIDEBAR_WIDTH,
+        toValue: -sidebarWidth,
         useNativeDriver: true,
         tension: 65,
         friction: 11,
@@ -110,7 +143,7 @@ export function ChatScreen() {
         useNativeDriver: true,
       }),
     ]).start(() => setShowSidebar(false));
-  }, [sidebarAnim, backdropAnim]);
+  }, [backdropAnim, isTabletLandscape, sidebarAnim, sidebarWidth]);
 
   // Chat store
   const {
@@ -190,14 +223,7 @@ export function ChatScreen() {
         return;
       }
 
-      await sendMessage(
-        text,
-        undefined,
-        deepThinking,
-        spoilerFree,
-        quotes,
-        resolvedAIConfig,
-      );
+      await sendMessage(text, undefined, deepThinking, spoilerFree, quotes, resolvedAIConfig);
     },
     [sendMessage, navigation, t],
   );
@@ -216,6 +242,42 @@ export function ChatScreen() {
   );
 
   const formatTime = useCallback((ts: number) => formatRelativeTimeShort(ts, t), [t]);
+
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const exportTitle = activeThread?.title || t("chat.aiAssistant");
+  const exportOpts = useMemo(
+    () => ({
+      title: exportTitle,
+      userLabel: t("chat.roleUser"),
+      aiLabel: t("chat.roleAI"),
+    }),
+    [exportTitle, t],
+  );
+
+  const handleExportMarkdown = useCallback(async () => {
+    setShowExportMenu(false);
+    const md = exportChatAsMarkdown(allMessages, exportOpts);
+    const filename = getExportFilename("md");
+    const platform = getPlatformService();
+    const saved = await platform.shareOrDownloadFile(md, filename, "text/markdown");
+    if (saved) Alert.alert(t("chat.exportSuccess", "导出成功"));
+  }, [allMessages, exportOpts, t]);
+
+  const handleExportJSON = useCallback(async () => {
+    setShowExportMenu(false);
+    const json = exportChatAsJSON(allMessages, exportOpts);
+    const filename = getExportFilename("json");
+    const platform = getPlatformService();
+    const saved = await platform.shareOrDownloadFile(json, filename, "application/json");
+    if (saved) Alert.alert(t("chat.exportSuccess", "导出成功"));
+  }, [allMessages, exportOpts, t]);
+
+  const handleCopyAll = useCallback(async () => {
+    setShowExportMenu(false);
+    const text = formatChatForClipboard(allMessages, exportOpts);
+    await Clipboard.setStringAsync(text);
+    Alert.alert(t("chat.copiedSuccess", "已复制到剪贴板"));
+  }, [allMessages, exportOpts, t]);
 
   const groupedThreads = useMemo(() => {
     const grouped = groupThreadsByTime(generalThreads);
@@ -242,43 +304,200 @@ export function ChatScreen() {
     return sections;
   }, [generalThreads, t]);
 
-  return (
-    <SafeAreaView style={s.container} edges={["top"]}>
-      {/* Header — compact, matching mobile */}
-      <View style={s.header}>
-        <View style={s.headerLeft}>
-          <TouchableOpacity style={s.iconBtn} onPress={openSidebar} activeOpacity={0.7}>
-            <HistoryIcon size={16} color={colors.foreground} />
-          </TouchableOpacity>
-        </View>
-        <View style={s.headerRight}>
-          <ModelSelector onNavigateToSettings={() => navigation.navigate("AISettings")} />
-          <ContextPopover />
-          <TouchableOpacity style={s.iconBtn} onPress={handleNewThread} activeOpacity={0.7}>
-            <MessageCirclePlusIcon size={16} color={colors.foreground} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Content */}
-      <KeyboardAvoidingView
-        style={s.content}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={0}
-      >
-        <View style={s.content}>
-          {allMessages.length > 0 ? (
-            <MessageList
-              messages={allMessages}
-              isStreaming={isStreaming}
-              currentStep={currentStep}
-            />
+  const renderSidebarContent = useCallback(
+    (closable: boolean) => (
+      <>
+        <View style={s.sidebarHeader}>
+          <Text style={s.sidebarTitle}>{t("chat.history", "历史记录")}</Text>
+          {closable ? (
+            <TouchableOpacity style={s.iconBtn} onPress={closeSidebar}>
+              <XIcon size={16} color={colors.foreground} />
+            </TouchableOpacity>
           ) : (
-            <EmptyState colors={colors} onSuggestionPress={handleSend} />
+            <TouchableOpacity style={s.newChatBtn} onPress={handleNewThread} activeOpacity={0.75}>
+              <MessageCirclePlusIcon size={15} color={colors.foreground} />
+            </TouchableOpacity>
           )}
         </View>
-        <ChatInput onSend={handleSend} onStop={stopStream} isStreaming={isStreaming} />
-      </KeyboardAvoidingView>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingBottom: 20 }}
+          showsVerticalScrollIndicator={false}
+        >
+          {generalThreads.length === 0 ? (
+            <View style={s.sidebarEmpty}>
+              <Text style={s.sidebarEmptyText}>{t("chat.noConversations", "暂无对话")}</Text>
+            </View>
+          ) : (
+            groupedThreads.map(({ key, label, threads }) => {
+              if (threads.length === 0) return null;
+              return (
+                <View key={key}>
+                  <Text style={s.sectionLabel}>{label}</Text>
+                  {threads.map((thread) => {
+                    const isActive = thread.id === generalActiveThreadId;
+                    const lastMsg =
+                      thread.messages.length > 0
+                        ? thread.messages[thread.messages.length - 1]
+                        : null;
+                    const preview = lastMsg?.content?.slice(0, 60) || "";
+                    return (
+                      <TouchableOpacity
+                        key={thread.id}
+                        style={[s.threadItem, isActive && s.threadItemActive]}
+                        onPress={() => handleSelectThread(thread.id)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={s.threadContent}>
+                          <View style={s.threadTitleRow}>
+                            <Text
+                              style={[s.threadTitle, isActive && s.threadTitleActive]}
+                              numberOfLines={1}
+                            >
+                              {thread.title || t("chat.newChat", "新对话")}
+                            </Text>
+                            <Text style={s.threadTime}>{formatTime(thread.updatedAt)}</Text>
+                          </View>
+                          {preview ? (
+                            <Text style={s.threadPreview} numberOfLines={1}>
+                              {preview}
+                            </Text>
+                          ) : null}
+                        </View>
+                        <TouchableOpacity
+                          style={s.threadDeleteBtn}
+                          onPress={() => removeThread(thread.id)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Trash2Icon size={12} color={colors.mutedForeground} />
+                        </TouchableOpacity>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              );
+            })
+          )}
+        </ScrollView>
+      </>
+    ),
+    [
+      closeSidebar,
+      colors.foreground,
+      colors.mutedForeground,
+      formatTime,
+      generalActiveThreadId,
+      generalThreads.length,
+      groupedThreads,
+      handleNewThread,
+      handleSelectThread,
+      removeThread,
+      s,
+      t,
+    ],
+  );
+
+  return (
+    <SafeAreaView style={s.container} edges={["top"]}>
+      <View style={s.shell}>
+        {isTabletLandscape && (
+          <View style={[s.sidebarDocked, { paddingTop: insets.top }]}>
+            {renderSidebarContent(false)}
+          </View>
+        )}
+
+        <View style={s.mainColumn}>
+          {/* Header — compact, matching mobile */}
+          <View style={s.header}>
+            <View style={s.headerLeft}>
+              {!isTabletLandscape && (
+                <TouchableOpacity style={s.iconBtn} onPress={openSidebar} activeOpacity={0.7}>
+                  <HistoryIcon size={16} color={colors.foreground} />
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={s.headerRight}>
+              <ModelSelector onNavigateToSettings={() => navigation.navigate("AISettings")} />
+              <ContextPopover />
+              {allMessages.length > 0 && (
+                <>
+                  <TouchableOpacity
+                    style={s.iconBtn}
+                    onPress={() => setShowExportMenu(true)}
+                    activeOpacity={0.7}
+                  >
+                    <ShareIcon size={16} color={colors.foreground} />
+                  </TouchableOpacity>
+                  <Modal
+                    visible={showExportMenu}
+                    transparent
+                    animationType="fade"
+                    onRequestClose={() => setShowExportMenu(false)}
+                  >
+                    <Pressable style={s.exportOverlay} onPress={() => setShowExportMenu(false)}>
+                      <View style={s.exportMenu}>
+                        <TouchableOpacity
+                          style={s.exportMenuItem}
+                          activeOpacity={0.85}
+                          onPress={handleExportMarkdown}
+                        >
+                          <ScrollTextIcon size={18} color={colors.foreground} />
+                          <Text style={s.exportMenuText}>
+                            {t("chat.exportMarkdown", "导出 Markdown")}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[s.exportMenuItem, s.exportMenuItemDivider]}
+                          activeOpacity={0.85}
+                          onPress={handleExportJSON}
+                        >
+                          <Download size={18} color={colors.foreground} />
+                          <Text style={s.exportMenuText}>{t("chat.exportJSON", "导出 JSON")}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={s.exportMenuItem}
+                          activeOpacity={0.85}
+                          onPress={handleCopyAll}
+                        >
+                          <CopyIcon size={18} color={colors.foreground} />
+                          <Text style={s.exportMenuText}>{t("chat.copyAll", "复制全部")}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </Pressable>
+                  </Modal>
+                </>
+              )}
+              <TouchableOpacity style={s.iconBtn} onPress={handleNewThread} activeOpacity={0.7}>
+                <MessageCirclePlusIcon size={16} color={colors.foreground} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Content */}
+          <KeyboardAvoidingView
+            style={s.content}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            keyboardVerticalOffset={0}
+          >
+            <View style={s.content}>
+              {allMessages.length > 0 ? (
+                <MessageList
+                  messages={allMessages}
+                  isStreaming={isStreaming}
+                  currentStep={currentStep}
+                />
+              ) : (
+                <EmptyState
+                  colors={colors}
+                  onSuggestionPress={handleSend}
+                  compact={isTabletLandscape}
+                />
+              )}
+            </View>
+            <ChatInput onSend={handleSend} onStop={stopStream} isStreaming={isStreaming} />
+          </KeyboardAvoidingView>
+        </View>
+      </View>
 
       {/* Error */}
       {error && (
@@ -290,7 +509,7 @@ export function ChatScreen() {
       )}
 
       {/* Thread sidebar overlay */}
-      {showSidebar && (
+      {showSidebar && !isTabletLandscape && (
         <View style={[StyleSheet.absoluteFill, { zIndex: 20 }]} pointerEvents="box-none">
           <Animated.View style={[s.sidebarBackdrop, { opacity: backdropAnim }]}>
             <Pressable style={StyleSheet.absoluteFill} onPress={closeSidebar} />
@@ -301,72 +520,7 @@ export function ChatScreen() {
               { paddingTop: insets.top, transform: [{ translateX: sidebarAnim }] },
             ]}
           >
-            <View style={s.sidebarHeader}>
-              <Text style={s.sidebarTitle}>{t("chat.history", "历史记录")}</Text>
-              <TouchableOpacity style={s.iconBtn} onPress={closeSidebar}>
-                <XIcon size={16} color={colors.foreground} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView
-              style={{ flex: 1 }}
-              contentContainerStyle={{ paddingBottom: 20 }}
-              showsVerticalScrollIndicator={false}
-            >
-              {generalThreads.length === 0 ? (
-                <View style={s.sidebarEmpty}>
-                  <Text style={s.sidebarEmptyText}>{t("chat.noConversations", "暂无对话")}</Text>
-                </View>
-              ) : (
-                groupedThreads.map(({ key, label, threads }) => {
-                  if (threads.length === 0) return null;
-                  return (
-                    <View key={key}>
-                      <Text style={s.sectionLabel}>{label}</Text>
-                      {threads.map((thread) => {
-                        const isActive = thread.id === generalActiveThreadId;
-                        const lastMsg =
-                          thread.messages.length > 0
-                            ? thread.messages[thread.messages.length - 1]
-                            : null;
-                        const preview = lastMsg?.content?.slice(0, 60) || "";
-                        return (
-                          <TouchableOpacity
-                            key={thread.id}
-                            style={[s.threadItem, isActive && s.threadItemActive]}
-                            onPress={() => handleSelectThread(thread.id)}
-                            activeOpacity={0.7}
-                          >
-                            <View style={s.threadContent}>
-                              <View style={s.threadTitleRow}>
-                                <Text
-                                  style={[s.threadTitle, isActive && s.threadTitleActive]}
-                                  numberOfLines={1}
-                                >
-                                  {thread.title || t("chat.newChat", "新对话")}
-                                </Text>
-                                <Text style={s.threadTime}>{formatTime(thread.updatedAt)}</Text>
-                              </View>
-                              {preview ? (
-                                <Text style={s.threadPreview} numberOfLines={1}>
-                                  {preview}
-                                </Text>
-                              ) : null}
-                            </View>
-                            <TouchableOpacity
-                              style={s.threadDeleteBtn}
-                              onPress={() => removeThread(thread.id)}
-                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            >
-                              <Trash2Icon size={12} color={colors.mutedForeground} />
-                            </TouchableOpacity>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  );
-                })
-              )}
-            </ScrollView>
+            {renderSidebarContent(true)}
           </Animated.View>
         </View>
       )}
@@ -377,13 +531,18 @@ export function ChatScreen() {
 function EmptyState({
   colors,
   onSuggestionPress,
+  compact = false,
 }: {
   colors: ThemeColors;
   onSuggestionPress: (text: string, deepThinking: boolean, spoilerFree: boolean) => void;
+  compact?: boolean;
 }) {
   const { t } = useTranslation();
   const { isDark } = useTheme();
-  const s = useMemo(() => makeStyles(colors), [colors]);
+  const s = useMemo(
+    () => makeStyles(colors, { isTabletLandscape: false, sidebarWidth: 0, horizontalPadding: 16 }),
+    [colors],
+  );
 
   const suggestions = useMemo(
     () => [
@@ -408,7 +567,7 @@ function EmptyState({
   );
 
   return (
-    <View style={s.emptyContainer}>
+    <View style={[s.emptyContainer, compact && s.emptyContainerCompact]}>
       <View style={s.emptyInner}>
         <Image source={isDark ? THINK_DARK_PNG : THINK_PNG} style={{ width: 140, height: 140 }} />
         <Text style={s.emptyTitle}>{t("chat.howCanIHelp", "有什么我可以帮你的？")}</Text>
@@ -433,15 +592,28 @@ function EmptyState({
   );
 }
 
-const makeStyles = (colors: ThemeColors) =>
+const makeStyles = (
+  colors: ThemeColors,
+  layout: { isTabletLandscape: boolean; sidebarWidth: number; horizontalPadding: number },
+) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
+    shell: { flex: 1, flexDirection: layout.isTabletLandscape ? "row" : "column" },
+    sidebarDocked: {
+      width: layout.sidebarWidth,
+      backgroundColor: colors.background,
+      borderRightWidth: StyleSheet.hairlineWidth,
+      borderRightColor: colors.border,
+      paddingHorizontal: 12,
+      paddingBottom: 12,
+    },
+    mainColumn: { flex: 1 },
     header: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
       height: 44,
-      paddingHorizontal: 12,
+      paddingHorizontal: layout.isTabletLandscape ? 20 : 12,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.border,
       backgroundColor: colors.background,
@@ -472,6 +644,10 @@ const makeStyles = (colors: ThemeColors) =>
       justifyContent: "center",
       paddingHorizontal: 24,
       gap: 32,
+    },
+    emptyContainerCompact: {
+      paddingHorizontal: 52,
+      gap: 24,
     },
     emptyInner: {
       alignItems: "center",
@@ -531,7 +707,7 @@ const makeStyles = (colors: ThemeColors) =>
       left: 0,
       top: 0,
       bottom: 0,
-      width: SIDEBAR_WIDTH,
+      width: layout.sidebarWidth,
       backgroundColor: colors.background,
       borderRightWidth: StyleSheet.hairlineWidth,
       borderRightColor: colors.border,
@@ -542,6 +718,14 @@ const makeStyles = (colors: ThemeColors) =>
       shadowOpacity: 0.1,
       shadowRadius: 8,
       elevation: 8,
+    },
+    newChatBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: radius.full,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: withOpacity(colors.muted, 0.72),
     },
     sidebarHeader: {
       flexDirection: "row",
@@ -610,5 +794,44 @@ const makeStyles = (colors: ThemeColors) =>
     threadDeleteBtn: {
       marginTop: 2,
       padding: 4,
+    },
+    exportOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.12)",
+      justifyContent: "flex-start",
+      alignItems: "stretch",
+      paddingTop: 52,
+      paddingHorizontal: 12,
+    },
+    exportMenu: {
+      alignSelf: "flex-end",
+      minWidth: 200,
+      borderRadius: radius.xl,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.18,
+      shadowRadius: 18,
+      elevation: 14,
+      overflow: "hidden",
+      paddingVertical: 6,
+    },
+    exportMenuItem: {
+      minHeight: 44,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingHorizontal: 14,
+    },
+    exportMenuItemDivider: {
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    exportMenuText: {
+      fontSize: fs.sm,
+      fontWeight: fw.medium,
+      color: colors.foreground,
     },
   });

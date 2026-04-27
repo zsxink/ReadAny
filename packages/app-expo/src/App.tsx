@@ -23,16 +23,15 @@ if (typeof navigator !== "undefined" && !navigator.userAgent) {
 }
 
 import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native";
-import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
+import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { AnimatedSplash } from "@/components/splash/AnimatedSplash";
 import { rnSessionEventSource } from "@/hooks";
-import { Audio } from "expo-av";
 import { setStreamingFetch } from "@readany/core/ai/llm-provider";
 import { initDatabase } from "@readany/core/db/database";
 import { setSessionEventSource } from "@readany/core/hooks/use-reading-session";
@@ -41,11 +40,12 @@ import i18n from "@readany/core/i18n";
 import { setPlatformService } from "@readany/core/services";
 import { setSyncAdapter } from "@readany/core/sync";
 import { I18nextProvider } from "react-i18next";
+import TrackPlayer, { Event as TrackEvent, Capability } from "react-native-track-player";
 
-import { UpdateDialog } from "@/components/update/UpdateDialog";
 import { FloatingTTSBubble } from "@/components/tts/FloatingTTSBubble";
-import { navigationRef } from "@/lib/navigationRef";
+import { UpdateDialog } from "@/components/update/UpdateDialog";
 import { useUpdateChecker } from "@/hooks/use-update-checker";
+import { navigationRef } from "@/lib/navigationRef";
 import { ExpoPlatformService } from "@/lib/platform/expo-platform-service";
 import { MobileSyncAdapter } from "@/lib/sync/sync-adapter-mobile";
 import { RootNavigator } from "@/navigation/RootNavigator";
@@ -88,11 +88,50 @@ export default function App() {
         const { fetch: expoFetch } = await import("expo/fetch");
         setStreamingFetch(expoFetch as typeof globalThis.fetch);
 
-        console.log("[App] bootstrap: configure audio session for background playback");
-        await Audio.setAudioModeAsync({
-          staysActiveInBackground: true,
-          playsInSilentModeIOS: true,
-          allowsRecordingIOS: false,
+        console.log("[App] bootstrap: init react-native-track-player");
+        await TrackPlayer.setupPlayer();
+        await TrackPlayer.updateOptions({
+          capabilities: [
+            Capability.Play,
+            Capability.Pause,
+            Capability.Stop,
+            Capability.SkipToNext,
+            Capability.SkipToPrevious,
+          ],
+          compactCapabilities: [Capability.Play, Capability.Pause],
+          notificationCapabilities: [
+            Capability.Play,
+            Capability.Pause,
+            Capability.Stop,
+            Capability.SkipToNext,
+            Capability.SkipToPrevious,
+          ],
+        });
+
+        // Remote event → TTS store bridge
+        const { useTTSStore: ttsStore } = await import("@/stores/tts-store");
+        TrackPlayer.addEventListener(TrackEvent.RemotePlay, () => {
+          ttsStore.getState().resume();
+        });
+        TrackPlayer.addEventListener(TrackEvent.RemotePause, () => {
+          ttsStore.getState().pause();
+        });
+        TrackPlayer.addEventListener(TrackEvent.RemoteStop, () => {
+          ttsStore.getState().stop();
+        });
+        TrackPlayer.addEventListener(TrackEvent.RemoteNext, () => {
+          const { jumpToChunk, currentChunkIndex, totalChunks } = ttsStore.getState();
+          const nextIndex = currentChunkIndex + 1;
+          if (nextIndex < totalChunks) {
+            jumpToChunk(nextIndex);
+          }
+        });
+        TrackPlayer.addEventListener(TrackEvent.RemotePrevious, () => {
+          const { jumpToChunk, currentChunkIndex } = ttsStore.getState();
+          const prevIndex = currentChunkIndex - 1;
+          if (prevIndex >= 0) {
+            jumpToChunk(prevIndex);
+          }
         });
 
         console.log("[App] bootstrap: done");
@@ -106,6 +145,10 @@ export default function App() {
       }
     }
     bootstrap();
+  }, []);
+
+  const handleSplashFinish = useCallback(() => {
+    setSplashDone(true);
   }, []);
 
   const handleSplashFinish = useCallback(() => {

@@ -1,3 +1,4 @@
+import { getPlatformService } from "@readany/core/services";
 import { Download, Maximize2, Minimize2, RotateCcw } from "lucide-react";
 import { Transformer } from "markmap-lib";
 import { Markmap } from "markmap-view";
@@ -150,7 +151,7 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
     }
   }, [expanded]);
 
-  const handleDownload = useCallback(() => {
+  const handleDownload = useCallback(async () => {
     const svgElement = expanded ? fullscreenSvgRef.current : svgRef.current;
     if (!svgElement) return;
 
@@ -215,17 +216,10 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
     svgData = svgData.replace(/var\(--foreground\)/g, "#333");
     svgData = svgData.replace(/var\(--background\)/g, "#fff");
     svgData = svgData.replace(/var\(--muted\)/g, "#f5f5f5");
-    const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
-    const svgUrl = URL.createObjectURL(svgBlob);
 
-    const downloadLink = document.createElement("a");
-    downloadLink.href = svgUrl;
-    downloadLink.download = `${title || t("mindmap.title")}.svg`;
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    document.body.removeChild(downloadLink);
-    URL.revokeObjectURL(svgUrl);
-
+    const filename = `${title || t("mindmap.title")}.svg`;
+    const platform = getPlatformService();
+    await platform.shareOrDownloadFile(svgData, filename, "image/svg+xml");
     toast.success(t("common.downloadSuccess", "图表已下载"));
   }, [expanded, title, t]);
 

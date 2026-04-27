@@ -77,6 +77,7 @@ export function mergeCurrentSessionIntoDailyStats(
             ...day,
             totalTime: day.totalTime + sessionMinutes,
             pagesRead: day.pagesRead + currentSession.pagesRead,
+            charactersRead: (day.charactersRead ?? 0) + (currentSession.charactersRead ?? 0),
             sessionsCount: day.sessionsCount + 1,
           }
         : day,
@@ -89,6 +90,7 @@ export function mergeCurrentSessionIntoDailyStats(
       date: sessionDate,
       totalTime: sessionMinutes,
       pagesRead: currentSession.pagesRead,
+      charactersRead: currentSession.charactersRead ?? 0,
       sessionsCount: 1,
     },
   ].sort((a, b) => a.date.localeCompare(b.date));
@@ -106,11 +108,15 @@ export function mergeCurrentSessionIntoOverallStats(
   const mergedDaily = mergeCurrentSessionIntoDailyStats(dailyStats, currentSession);
   const totalReadingDays = mergedDaily.filter((day) => day.totalTime > 0).length;
   const totalReadingTime = overallStats.totalReadingTime + currentSession.totalActiveTime / 60000;
+  const totalCharactersRead =
+    (overallStats.totalCharactersRead ?? 0) + (currentSession.charactersRead ?? 0);
   const { longestStreak, currentStreak } = calculateStreaks(mergedDaily);
 
   return {
     ...overallStats,
     totalReadingTime,
+    totalCharactersRead,
+    avgCharactersPerMinute: totalReadingTime > 0 ? totalCharactersRead / totalReadingTime : 0,
     totalSessions: overallStats.totalSessions + 1,
     totalReadingDays,
     avgDailyTime: totalReadingTime / Math.max(1, totalReadingDays),

@@ -15,6 +15,7 @@ const coreMocks = vi.hoisted(() => ({
 vi.mock("../db-core", () => coreMocks);
 
 const {
+  getAllReadingSessions,
   getReadingSessions,
   getReadingSessionsByDateRange,
   insertReadingSession,
@@ -28,7 +29,8 @@ const sampleSession: ReadingSession = {
   endedAt: 2000,
   totalActiveTime: 900,
   pagesRead: 10,
-  state: "completed",
+  charactersRead: 15000,
+  state: "STOPPED",
 };
 
 describe("session-queries", () => {
@@ -54,7 +56,8 @@ describe("session-queries", () => {
           ended_at: 2000,
           total_active_time: 900,
           pages_read: 10,
-          state: "completed",
+          characters_read: 15000,
+          state: "STOPPED",
         },
       ]);
 
@@ -66,7 +69,8 @@ describe("session-queries", () => {
       expect(sessions[0].endedAt).toBe(2000);
       expect(sessions[0].totalActiveTime).toBe(900);
       expect(sessions[0].pagesRead).toBe(10);
-      expect(sessions[0].state).toBe("completed");
+      expect(sessions[0].charactersRead).toBe(15000);
+      expect(sessions[0].state).toBe("STOPPED");
       expect(mockSelect).toHaveBeenCalledWith(
         "SELECT * FROM reading_sessions WHERE book_id = ? ORDER BY started_at DESC",
         ["book-1"],
@@ -82,13 +86,49 @@ describe("session-queries", () => {
           ended_at: null,
           total_active_time: 120,
           pages_read: 2,
-          state: "active",
+          characters_read: 3000,
+          state: "ACTIVE",
         },
       ]);
 
       const sessions = await getReadingSessions("book-1");
       expect(sessions[0].endedAt).toBeUndefined();
-      expect(sessions[0].state).toBe("active");
+      expect(sessions[0].charactersRead).toBe(3000);
+      expect(sessions[0].state).toBe("ACTIVE");
+    });
+  });
+
+  describe("getAllReadingSessions", () => {
+    it("returns mapped sessions ordered by started_at desc", async () => {
+      mockSelect.mockResolvedValue([
+        {
+          id: "session-2",
+          book_id: "book-2",
+          started_at: 2000,
+          ended_at: 2600,
+          total_active_time: 600,
+          pages_read: 6,
+          characters_read: 9000,
+          state: "STOPPED",
+        },
+      ]);
+
+      const sessions = await getAllReadingSessions();
+      expect(sessions).toEqual([
+        expect.objectContaining({
+          id: "session-2",
+          bookId: "book-2",
+          startedAt: 2000,
+          endedAt: 2600,
+          totalActiveTime: 600,
+          pagesRead: 6,
+          charactersRead: 9000,
+          state: "STOPPED",
+        }),
+      ]);
+      expect(mockSelect).toHaveBeenCalledWith(
+        "SELECT * FROM reading_sessions ORDER BY started_at DESC",
+      );
     });
   });
 
@@ -124,7 +164,8 @@ describe("session-queries", () => {
       expect(params[3]).toBe(2000); // endedAt
       expect(params[4]).toBe(900);  // totalActiveTime
       expect(params[5]).toBe(10);   // pagesRead
-      expect(params[6]).toBe("completed"); // state
+      expect(params[6]).toBe(15000); // charactersRead
+      expect(params[7]).toBe("STOPPED"); // state
     });
   });
 
@@ -132,24 +173,30 @@ describe("session-queries", () => {
     it("updates endedAt and state", async () => {
       mockExecute.mockResolvedValue(undefined);
 
-      await updateReadingSession("session-1", { endedAt: 5000, state: "completed" });
+      await updateReadingSession("session-1", { endedAt: 5000, state: "STOPPED" });
       const [sql, params] = mockExecute.mock.calls[0];
       expect(sql).toContain("UPDATE reading_sessions SET");
       expect(sql).toContain("ended_at = ?");
       expect(sql).toContain("state = ?");
       expect(params).toContain(5000);
-      expect(params).toContain("completed");
+      expect(params).toContain("STOPPED");
     });
 
-    it("updates totalActiveTime and pagesRead", async () => {
+    it("updates totalActiveTime, pagesRead, and charactersRead", async () => {
       mockExecute.mockResolvedValue(undefined);
 
-      await updateReadingSession("session-1", { totalActiveTime: 1800, pagesRead: 25 });
+      await updateReadingSession("session-1", {
+        totalActiveTime: 1800,
+        pagesRead: 25,
+        charactersRead: 37500,
+      });
       const [sql, params] = mockExecute.mock.calls[0];
       expect(sql).toContain("total_active_time = ?");
       expect(sql).toContain("pages_read = ?");
+      expect(sql).toContain("characters_read = ?");
       expect(params).toContain(1800);
       expect(params).toContain(25);
+      expect(params).toContain(37500);
     });
 
     it("does nothing when no updates provided", async () => {

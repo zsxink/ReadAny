@@ -18,7 +18,7 @@ export function PeriodBookList({
 
   if (books.length === 0) {
     return (
-      <Text style={s.periodBooksEmpty}>{t("stats.noBooksInPeriod", "本期间暂无阅读书籍")}</Text>
+      <Text style={s.periodBooksEmpty}>{t("stats.noBooksInPeriod")}</Text>
     );
   }
 

@@ -46,7 +46,7 @@ export function S3Form({
   const { t } = useTranslation();
 
   return (
-    <View style={styles.section}>
+    <View style={[styles.section, styles.sectionSpaced]}>
       <Text style={styles.sectionTitle}>{t("settings.syncConnection")}</Text>
       <View style={styles.card}>
         <View style={styles.fieldGroup}>

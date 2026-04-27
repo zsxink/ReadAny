@@ -5,7 +5,7 @@ import { wrappedFoliateView } from "@/hooks/reader/useFoliateView";
 import { usePagination } from "@/hooks/reader/usePagination";
 import { readingContextService } from "@/lib/ai/reading-context-service";
 import type { BookDoc, BookFormat } from "@/lib/reader/document-loader";
-import { getDirection, isFixedLayoutFormat } from "@/lib/reader/document-loader";
+import { getDirection, isFixedLayoutBook } from "@/lib/reader/document-loader";
 import { getFontTheme } from "@/lib/reader/font-themes";
 import { registerIframeEventHandlers } from "@/lib/reader/iframe-event-handlers";
 import type {
@@ -48,6 +48,99 @@ function getAppTheme(): AppTheme {
 
 function getThemeColors(theme: AppTheme) {
   return THEME_COLORS[theme];
+}
+
+function getSelectionRange(selection?: Selection | null): Range | null {
+  if (!selection?.rangeCount) return null;
+  const range = selection.getRangeAt(0);
+  return range.collapsed ? null : range;
+}
+
+function getSelectionEndRect(range: Range | null): DOMRect | null {
+  if (!range) return null;
+
+  try {
+    const caretRange = range.cloneRange();
+    caretRange.collapse(false);
+    const caretRects = Array.from(caretRange.getClientRects()).filter(
+      (rect) => rect.width >= 0 && rect.height > 0,
+    );
+    if (caretRects.length) {
+      return caretRects[caretRects.length - 1];
+    }
+  } catch {
+    // Fall through to the last client rect.
+  }
+
+  const rects = Array.from(range.getClientRects()).filter(
+    (rect) => rect.width > 0 && rect.height > 0,
+  );
+  return rects[rects.length - 1] || range.getBoundingClientRect();
+}
+
+type SelectionDragPoint = {
+  x: number;
+  y: number;
+  updatedAt: number;
+};
+
+function getSelectionAdvanceIntent(
+  view: FoliateView | null,
+  selectionRange: Range | null,
+  lastLocationRange?: Range,
+  dragPoint?: SelectionDragPoint | null,
+) {
+  if (!view || !selectionRange || !lastLocationRange) return null;
+
+  try {
+    if (selectionRange.compareBoundaryPoints(Range.END_TO_END, lastLocationRange) >= 0) {
+      return "next";
+    }
+    if (selectionRange.compareBoundaryPoints(Range.START_TO_START, lastLocationRange) <= 0) {
+      return "prev";
+    }
+  } catch {
+    // Fall through to edge-proximity heuristics.
+  }
+
+  try {
+    const edgeRect = getSelectionEndRect(selectionRange);
+    const doc = selectionRange.endContainer.ownerDocument;
+    if (!doc) return null;
+    const win = doc.defaultView;
+    const viewportWidth = Math.max(win?.innerWidth || 0, doc.documentElement?.clientWidth || 0);
+    const viewportHeight = Math.max(win?.innerHeight || 0, doc.documentElement?.clientHeight || 0);
+    if (viewportWidth <= 0 || viewportHeight <= 0) return null;
+
+    const point =
+      dragPoint && Date.now() - dragPoint.updatedAt < 1000
+        ? dragPoint
+        : edgeRect
+          ? { x: edgeRect.right, y: edgeRect.bottom, updatedAt: Date.now() }
+          : null;
+    if (!point) return null;
+
+    const isRtl = !!(view.book && view.book.dir === "rtl");
+    const horizontalInset = Math.max(132, Math.min(420, viewportWidth * 0.3));
+    const verticalInset = Math.max(140, Math.min(360, viewportHeight * 0.28));
+    const inBottomBand = point.y >= viewportHeight - verticalInset;
+
+    if (isRtl) {
+      if (point.x <= horizontalInset) return "next";
+      if (dragPoint && point.x >= viewportWidth - horizontalInset) return "prev";
+      if (inBottomBand && point.x <= viewportWidth * 0.74) return "next";
+      if (dragPoint && inBottomBand && point.x >= viewportWidth * 0.88) return "prev";
+    } else {
+      if (point.x >= viewportWidth - horizontalInset) return "next";
+      if (dragPoint && point.x <= horizontalInset) return "prev";
+      if (inBottomBand && point.x >= viewportWidth * 0.26) return "next";
+      if (dragPoint && inBottomBand && point.x <= viewportWidth * 0.12) return "prev";
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 const REMOTE_FONT_LINK_ATTR = "data-readany-remote-font-link";
@@ -99,6 +192,7 @@ export interface RelocateDetail {
   fraction?: number;
   section?: { current: number; total: number };
   location?: { current: number; next: number; total: number };
+  page?: { current: number; total: number };
   tocItem?: { label?: string; href?: string; id?: number };
   cfi?: string;
   time?: { section: number; total: number };
@@ -226,7 +320,7 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
     const isViewCreated = useRef(false);
     const [loading, setLoading] = useState(true);
 
-    const isFixedLayout = isFixedLayoutFormat(format);
+    const isFixedLayout = isFixedLayoutBook(format, bookDoc);
     // Track when view is ready so hooks/events re-bind
     const [viewReady, setViewReady] = useState(false);
 
@@ -1145,7 +1239,25 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
     // --- Relocate handler ---
     const relocateHandlerImpl = useCallback(
       (event: Event) => {
-        const detail = (event as CustomEvent).detail as RelocateDetail;
+        const rawDetail = (event as CustomEvent).detail as RelocateDetail;
+        const rendererPage =
+          viewRef.current?.renderer && typeof viewRef.current.renderer.page === "number"
+            ? viewRef.current.renderer.page
+            : null;
+        const rendererPages =
+          viewRef.current?.renderer && typeof viewRef.current.renderer.pages === "number"
+            ? viewRef.current.renderer.pages
+            : null;
+        const detail: RelocateDetail =
+          rendererPage != null && rendererPages != null && rendererPages > 2
+            ? {
+                ...rawDetail,
+                page: {
+                  current: Math.max(1, Math.min(rendererPage, rendererPages - 2)),
+                  total: Math.max(1, rendererPages - 2),
+                },
+              }
+            : rawDetail;
         onRelocate?.(detail);
 
         // Update reading context service
@@ -1326,6 +1438,137 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
         // biome-ignore lint: runtime flag on Document
         (doc as any).__readany_selection_registered = true;
 
+        let originalScrollLeft = 0;
+        let pageDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+        let pendingAdvanceDirection: "next" | "prev" | null = null;
+        let selectionMonitorTimer: ReturnType<typeof setInterval> | null = null;
+        let preventScroll: (() => void) | null = null;
+        let pointerUpCleanup: (() => void) | null = null;
+        let selectionDragPoint: SelectionDragPoint | null = null;
+        let pageAdvanceLockUntil = 0;
+        let lockedContainer: HTMLElement | null = null;
+        let lockedContainerStyles: {
+          scrollSnapType: string;
+          scrollBehavior: string;
+          overscrollBehaviorX: string;
+          overflowX: string;
+        } | null = null;
+
+        const getPaginatedContainer = () => {
+          try {
+            const view = viewRef.current;
+            if (!view?.shadowRoot) return null;
+            const paginator = view.shadowRoot.querySelector("foliate-paginator");
+            if (!(paginator instanceof HTMLElement) || !paginator.shadowRoot) return null;
+            const container = paginator.shadowRoot.querySelector("#container");
+            return container instanceof HTMLElement ? container : null;
+          } catch {
+            return null;
+          }
+        };
+
+        const setSelectionDragPoint = (x: number, y: number) => {
+          selectionDragPoint = {
+            x,
+            y,
+            updatedAt: Date.now(),
+          };
+        };
+
+        const clearSelectionDragPoint = () => {
+          selectionDragPoint = null;
+        };
+
+        const cancelPendingPageAdvance = () => {
+          if (pageDebounceTimer) {
+            clearTimeout(pageDebounceTimer);
+            pageDebounceTimer = null;
+          }
+          pendingAdvanceDirection = null;
+        };
+
+        const startSelectionMonitor = () => {
+          if (selectionMonitorTimer || !supportsCrossPageSelection()) return;
+          selectionMonitorTimer = setInterval(() => {
+            try {
+              handleSelectionChange();
+            } catch {
+              // Ignore monitor errors during cross-page selection.
+            }
+          }, 120);
+        };
+
+        const stopSelectionMonitor = () => {
+          if (!selectionMonitorTimer) return;
+          clearInterval(selectionMonitorTimer);
+          selectionMonitorTimer = null;
+        };
+
+        const releasePreventScroll = () => {
+          const container = getPaginatedContainer();
+          if (container && preventScroll) {
+            container.removeEventListener("scroll", preventScroll);
+          }
+          preventScroll = null;
+
+          if (pointerUpCleanup) {
+            doc.removeEventListener("pointerup", pointerUpCleanup);
+          }
+          pointerUpCleanup = null;
+        };
+
+        const applySelectionContainerLock = (container: HTMLElement | null) => {
+          if (!container || lockedContainer === container) return;
+
+          if (lockedContainer && lockedContainerStyles) {
+            lockedContainer.style.scrollSnapType = lockedContainerStyles.scrollSnapType;
+            lockedContainer.style.scrollBehavior = lockedContainerStyles.scrollBehavior;
+            lockedContainer.style.overscrollBehaviorX = lockedContainerStyles.overscrollBehaviorX;
+          }
+
+          lockedContainer = container;
+          lockedContainerStyles = {
+            scrollSnapType: container.style.scrollSnapType,
+            scrollBehavior: container.style.scrollBehavior,
+            overscrollBehaviorX: container.style.overscrollBehaviorX,
+            overflowX: container.style.overflowX,
+          };
+
+          container.style.scrollSnapType = "none";
+          container.style.scrollBehavior = "auto";
+          container.style.overscrollBehaviorX = "contain";
+          container.style.overflowX = "hidden";
+        };
+
+        const releaseSelectionContainerLock = () => {
+          if (!lockedContainer || !lockedContainerStyles) return;
+          lockedContainer.style.scrollSnapType = lockedContainerStyles.scrollSnapType;
+          lockedContainer.style.scrollBehavior = lockedContainerStyles.scrollBehavior;
+          lockedContainer.style.overscrollBehaviorX = lockedContainerStyles.overscrollBehaviorX;
+          lockedContainer.style.overflowX = lockedContainerStyles.overflowX;
+          lockedContainer = null;
+          lockedContainerStyles = null;
+        };
+
+        const clearCrossPageSelectionState = () => {
+          cancelPendingPageAdvance();
+          stopSelectionMonitor();
+          releasePreventScroll();
+          releaseSelectionContainerLock();
+          clearSelectionDragPoint();
+        };
+
+        const supportsCrossPageSelection = () => {
+          const view = viewRef.current;
+          return !!(
+            view &&
+            !isFixedLayout &&
+            view.renderer &&
+            view.renderer.getAttribute &&
+            view.renderer.getAttribute("flow") === "paginated"
+          );
+        };
+
         const handlePointerDown = () => {
           // Reset annotation click flag
           annotationClickedRef.current = false;
@@ -1401,8 +1644,113 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
           }, 10);
         };
 
+        const handleSelectStart = () => {
+          if (!supportsCrossPageSelection()) return;
+          const container = getPaginatedContainer();
+          if (!container) return;
+          originalScrollLeft = container.scrollLeft;
+          clearCrossPageSelectionState();
+          applySelectionContainerLock(container);
+          startSelectionMonitor();
+        };
+
+        const scheduleSelectionPageAdvance = (direction: "next" | "prev") => {
+          const view = viewRef.current;
+          if (!view || !supportsCrossPageSelection()) return;
+          if (Date.now() < pageAdvanceLockUntil) return;
+          if (pendingAdvanceDirection === direction && pageDebounceTimer) return;
+
+          cancelPendingPageAdvance();
+          pendingAdvanceDirection = direction;
+          pageDebounceTimer = setTimeout(async () => {
+            const advanceDirection = pendingAdvanceDirection;
+            cancelPendingPageAdvance();
+            pageAdvanceLockUntil = Date.now() + 420;
+            releasePreventScroll();
+            try {
+              if (advanceDirection === "prev") await view.prev();
+              else await view.next();
+              await new Promise((resolve) => setTimeout(resolve, 180));
+              const nextContainer = getPaginatedContainer();
+              if (nextContainer) {
+                originalScrollLeft = nextContainer.scrollLeft;
+              }
+            } catch {
+              // Ignore selection paging failures and keep the current selection intact.
+            } finally {
+              const activeSelectionRange = getSelectionRange(doc.getSelection());
+              if (!activeSelectionRange) {
+                clearCrossPageSelectionState();
+              } else {
+                clearSelectionDragPoint();
+                releaseSelectionContainerLock();
+              }
+            }
+          }, 260);
+        };
+
+        const handleSelectionChange = () => {
+          if (!supportsCrossPageSelection()) return;
+
+          const view = viewRef.current;
+          const container = getPaginatedContainer();
+          const selectionRange = getSelectionRange(doc.getSelection());
+          const lastLocationRange = view?.lastLocation?.range as Range | undefined;
+          if (!container) {
+            clearCrossPageSelectionState();
+            return;
+          }
+          if (!view || !lastLocationRange) return;
+          if (!selectionRange) {
+            if (!pendingAdvanceDirection && Date.now() >= pageAdvanceLockUntil) {
+              clearCrossPageSelectionState();
+            }
+            return;
+          }
+
+          applySelectionContainerLock(container);
+
+          if (Date.now() < pageAdvanceLockUntil) return;
+
+          const advanceDirection = getSelectionAdvanceIntent(
+            view,
+            selectionRange,
+            lastLocationRange,
+            selectionDragPoint,
+          );
+
+          if (advanceDirection) {
+            scheduleSelectionPageAdvance(advanceDirection);
+            return;
+          }
+
+          cancelPendingPageAdvance();
+          releasePreventScroll();
+          preventScroll = () => {
+            const activeSelectionRange = getSelectionRange(doc.getSelection());
+            if (!activeSelectionRange) return;
+            container.scrollLeft = originalScrollLeft;
+          };
+
+          container.addEventListener("scroll", preventScroll);
+          pointerUpCleanup = () => {
+            clearCrossPageSelectionState();
+          };
+          doc.addEventListener("pointerup", pointerUpCleanup);
+        };
+
+        const handlePointerMove = (ev: PointerEvent) => {
+          if (!supportsCrossPageSelection()) return;
+          if (!getSelectionRange(doc.getSelection())) return;
+          setSelectionDragPoint(ev.clientX, ev.clientY);
+          handleSelectionChange();
+        };
+
         doc.addEventListener("pointerdown", handlePointerDown);
         doc.addEventListener("pointerup", handlePointerUp);
+        doc.addEventListener("pointermove", handlePointerMove, { passive: true });
+        doc.addEventListener("selectstart", handleSelectStart);
+        doc.addEventListener("selectionchange", handleSelectionChange);
       },
       [bookKey],
     );
@@ -1416,10 +1764,9 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
 
       const doc = contents[0].doc as Document;
       const sel = doc.getSelection();
-      if (!sel || sel.isCollapsed) return null;
-
-      const range = sel.getRangeAt(0);
-      const text = sel.toString().trim();
+      const range = getSelectionRange(sel);
+      if (!range) return null;
+      const text = (sel?.toString() || "").trim();
       if (!text) return null;
 
       // Get CFI for the selection
@@ -1509,12 +1856,21 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
           // This is critical: foliate-js FixedLayout.#spread() reads rendition.spread
           // during open(), so it must be set before view.open()
           if (isFixedLayout && bookDoc.rendition) {
-            bookDoc.rendition.spread = "auto";
+            const fixedLayoutSpread =
+              (viewSettings.paginatedLayout ?? "double") === "single" ? "none" : "auto";
+            bookDoc.rendition.spread = fixedLayoutSpread;
             // Set first section as cover page (single page, not part of spread)
-            const sections = bookDoc.sections as Array<{ pageSpread?: string }> | undefined;
+            const sections = bookDoc.sections as
+              | Array<{ id?: string; pageSpread?: string }>
+              | undefined;
             if (sections?.[0]) {
-              const coverSide = bookDoc.dir === "rtl" ? "right" : "left";
-              sections[0].pageSpread = coverSide;
+              const firstSectionId = String(sections[0].id || "");
+              if (/cover/i.test(firstSectionId)) {
+                sections[0].pageSpread = "center";
+              } else {
+                const coverSide = bookDoc.dir === "rtl" ? "right" : "left";
+                sections[0].pageSpread = coverSide;
+              }
             }
           }
 
@@ -1622,11 +1978,13 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
     useEffect(() => {
       const view = viewRef.current;
       if (!view?.renderer) return;
-      // Fixed layout doesn't support scroll mode
-      if (isFixedLayout) return;
+      if (isFixedLayout) {
+        applyRendererSettings(view, viewSettings, true, appTheme);
+        return;
+      }
 
       applyReflowLayoutSettings(view, viewSettings);
-    }, [viewSettings.viewMode, viewSettings.paginatedLayout, isFixedLayout]);
+    }, [viewSettings.viewMode, viewSettings.paginatedLayout, isFixedLayout, appTheme]);
 
     useEffect(() => {
       const handleMessage = (event: MessageEvent) => {
@@ -1717,9 +2075,9 @@ function syncRemoteFontStylesInDocument(doc: Document, urls: string[] | undefine
   });
 
   for (const url of nextUrls) {
-    const existing = Array.from(
-      doc.querySelectorAll(`link[${REMOTE_FONT_LINK_ATTR}]`),
-    ).find((node) => (node as HTMLLinkElement).href.includes(url));
+    const existing = Array.from(doc.querySelectorAll(`link[${REMOTE_FONT_LINK_ATTR}]`)).find(
+      (node) => (node as HTMLLinkElement).href.includes(url),
+    );
     if (existing) continue;
     const link = doc.createElement("link");
     link.rel = "stylesheet";
@@ -1768,9 +2126,16 @@ function applyRendererSettings(
   if (!renderer) return;
 
   if (isFixedLayout) {
-    // Fixed layout: zoom, spread
+    const isSinglePage = (settings.paginatedLayout ?? "double") === "single";
+    const spreadMode = isSinglePage ? "none" : "auto";
+    // Fixed layout: respect single/double spread while keeping page-fit zoom.
+    // Image-heavy EPUBs still need fit-page here, otherwise single-page mode can
+    // stretch the canvas to full width and break viewport self-adaptation.
     renderer.setAttribute("zoom", "fit-page");
-    renderer.setAttribute("spread", "auto");
+    if (view.book?.rendition) {
+      view.book.rendition.spread = spreadMode;
+    }
+    renderer.setAttribute("spread", spreadMode);
   } else {
     // Reflowable: columns, sizes, margins
     const isSinglePage = (settings.paginatedLayout ?? "double") === "single";
@@ -1803,6 +2168,11 @@ function applyReflowLayoutSettings(view: FoliateView, settings: ViewSettings) {
     renderer.setAttribute("flow", "scrolled");
   } else {
     renderer.removeAttribute("flow");
+  }
+
+  // Force re-render to ensure layout mode change takes effect immediately
+  if (typeof renderer.render === "function") {
+    renderer.render();
   }
 }
 

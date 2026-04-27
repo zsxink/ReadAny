@@ -1,3 +1,4 @@
+import { getPlatformService } from "@readany/core/services";
 import type { CitationPart } from "@readany/core/types/message";
 /**
  * MarkdownRenderer — renders AI markdown responses with:
@@ -169,7 +170,7 @@ const MermaidBlock = memo(function MermaidBlock({ code }: { code: string }) {
     }
   }, [expanded]);
 
-  const handleDownload = useCallback(() => {
+  const handleDownload = useCallback(async () => {
     const svgElement = (expanded ? fullscreenSvgRef.current : svgRef.current)?.querySelector("svg");
     if (!svgElement) return;
 
@@ -240,17 +241,9 @@ const MermaidBlock = memo(function MermaidBlock({ code }: { code: string }) {
     svgData = svgData.replace(/var\(--foreground\)/g, fgColor.trim() || "#333");
     svgData = svgData.replace(/var\(--muted\)/g, "#888");
 
-    const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
-    const svgUrl = URL.createObjectURL(svgBlob);
-
-    const downloadLink = document.createElement("a");
-    downloadLink.href = svgUrl;
-    downloadLink.download = `diagram-${Date.now()}.svg`;
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    document.body.removeChild(downloadLink);
-    URL.revokeObjectURL(svgUrl);
-
+    const filename = `diagram-${Date.now()}.svg`;
+    const platform = getPlatformService();
+    await platform.shareOrDownloadFile(svgData, filename, "image/svg+xml");
     toast.success(t("common.downloadSuccess", "图表已下载"));
   }, [expanded, t]);
 

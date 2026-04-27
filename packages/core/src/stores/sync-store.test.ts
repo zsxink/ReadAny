@@ -66,6 +66,7 @@ const baseConfig: SyncConfig = {
   type: "webdav",
   url: "http://example.com",
   username: "alice",
+  remoteRoot: "readany",
   autoSync: false,
   syncIntervalMins: 30,
   wifiOnly: false,
@@ -212,6 +213,32 @@ describe("useSyncStore", () => {
       type: "webdav",
       url: "https://dav.example.com/root",
       username: "alice",
+      remoteRoot: "readany",
+    });
+  });
+
+  it("saves custom WebDAV remote root and trims nested path", async () => {
+    mockPlatformService.kvGetItem.mockResolvedValue("saved-secret");
+
+    await useSyncStore
+      .getState()
+      .saveWebDavConfig(
+        "https://dav.example.com/root/",
+        "alice",
+        "password",
+        false,
+        " /apps//readany-sync/ ",
+      );
+
+    const savedConfigCall = mockPlatformService.kvSetItem.mock.calls.find(
+      ([key]) => key === "sync_config",
+    );
+    expect(savedConfigCall).toBeTruthy();
+    expect(JSON.parse(savedConfigCall![1] as string)).toMatchObject({
+      type: "webdav",
+      url: "https://dav.example.com/root",
+      username: "alice",
+      remoteRoot: "apps/readany-sync",
     });
   });
 
@@ -339,6 +366,35 @@ describe("useSyncStore", () => {
     });
     expect(useSyncStore.getState().status).toBe("error");
     expect(useSyncStore.getState().error).toBe("无法连接到同步服务器，请检查网络和凭据");
+  });
+
+  it("syncNow preserves backend connection failure details", async () => {
+    useSyncStore.setState({
+      config: baseConfig,
+      isConfigured: true,
+      backendType: "webdav",
+    });
+    mockPlatformService.kvGetItem.mockImplementation(async (key: string) =>
+      key === "sync_webdav_password" ? "secret" : null,
+    );
+    mockBackend.testConnection.mockRejectedValue(
+      new Error("WebDAV 认证失败，请检查用户名和应用密码是否正确。"),
+    );
+
+    const result = await useSyncStore.getState().syncNow();
+
+    expect(result).toEqual({
+      success: false,
+      direction: "none",
+      filesUploaded: 0,
+      filesDownloaded: 0,
+      durationMs: 0,
+      error: "WebDAV 认证失败，请检查用户名和应用密码是否正确。",
+    });
+    expect(useSyncStore.getState().status).toBe("error");
+    expect(useSyncStore.getState().error).toBe(
+      "WebDAV 认证失败，请检查用户名和应用密码是否正确。",
+    );
   });
 
   it("returns the same promise when sync is already in progress", async () => {

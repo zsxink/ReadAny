@@ -1,5 +1,6 @@
 import {
   ChevronDownIcon,
+  ClockIcon,
   HeadphonesIcon,
   MinusIcon,
   PauseIcon,
@@ -33,6 +34,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BookCoverImage } from "./tts/BookCoverImage";
 import { makeStyles, SH } from "./tts/tts-page-styles";
 import { VoicePickerModal } from "./tts/VoicePickerModal";
+import { TTSSleepTimerSheet } from "@/components/tts/TTSSleepTimerSheet";
+import { useTTSStore } from "@/stores";
 
 // ── Local constants ───────────────────────────────────────────────────────────
 const THUMB_W = 48;
@@ -129,6 +132,9 @@ export function TTSPage({
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
   const [voicePickerVisible, setVoicePickerVisible] = useState(false);
+  const [timerSheetVisible, setTimerSheetVisible] = useState(false);
+  const sleepTimerEndsAt = useTTSStore((s) => s.sleepTimerEndsAt);
+  const [now, setNow] = useState(Date.now());
   const lyricScrollRef = useRef<ScrollView>(null);
   const lyricLayoutRef = useRef(new Map<string, { y: number; height: number }>());
   const lastCenteredSignatureRef = useRef<string | null>(null);
@@ -324,6 +330,28 @@ export function TTSPage({
       : config.engine === "dashscope"
         ? "DashScope"
         : t("tts.system");
+
+  useEffect(() => {
+    if (!sleepTimerEndsAt) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [sleepTimerEndsAt]);
+
+  const sleepTimerLabel = useMemo(() => {
+    void now;
+    if (!sleepTimerEndsAt) return null;
+    const remainingMs = Math.max(0, sleepTimerEndsAt - Date.now());
+    if (remainingMs <= 0) return null;
+    const totalSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (hours > 0) {
+      return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    }
+    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }, [now, sleepTimerEndsAt]);
 
   const pendingCenterRef = useRef<number | null>(null);
 
@@ -587,7 +615,8 @@ export function TTSPage({
   );
 
   const settingsJSX = (
-    <View style={s.settings}>
+    <>
+      <View style={s.settings}>
       {/* Rate stepper */}
       <View style={s.settingGroup}>
         <Text style={s.settingLbl}>{t("tts.rate")}</Text>
@@ -617,7 +646,21 @@ export function TTSPage({
           </Pressable>
         </View>
       </View>
-    </View>
+
+      <View style={s.settingDiv} />
+
+      <TouchableOpacity
+        style={[s.timerQuickCluster, sleepTimerLabel ? s.timerQuickClusterActive : null]}
+        onPress={() => setTimerSheetVisible(true)}
+        activeOpacity={0.8}
+      >
+        <View style={[s.timerQuickBtn, sleepTimerLabel ? s.timerQuickBtnActive : null]}>
+          <ClockIcon size={14} color={sleepTimerLabel ? colors.primary : colors.foreground} />
+        </View>
+        {sleepTimerLabel ? <Text style={s.timerCountdownInline}>{sleepTimerLabel}</Text> : null}
+      </TouchableOpacity>
+      </View>
+    </>
   );
 
   const chipsJSX = (
@@ -701,7 +744,9 @@ export function TTSPage({
         <HeadphonesIcon size={10} color={colors.primary} />
         <Text style={s.statusTxt}>{stateLabel}</Text>
       </View>
-      <View style={s.iconBtn} />
+      <TouchableOpacity style={s.iconBtn} onPress={() => setTimerSheetVisible(true)} activeOpacity={0.7}>
+        <ClockIcon size={20} color={sleepTimerEndsAt ? colors.primary : colors.mutedForeground} />
+      </TouchableOpacity>
     </View>
   );
 
@@ -878,6 +923,7 @@ export function TTSPage({
           onUpdateConfig={onUpdateConfig}
         />
       )}
+      <TTSSleepTimerSheet visible={timerSheetVisible} onClose={() => setTimerSheetVisible(false)} />
     </Modal>
   );
 }

@@ -1,621 +1,696 @@
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { readingStatsService } from "@/lib/stats/reading-stats";
-import {
-  mergeCurrentSessionIntoDailyStats,
-  mergeCurrentSessionIntoOverallStats,
-} from "@readany/core/stats";
-import type {
-  DailyStats,
-  OverallStats,
-  PeriodBookStats,
-  TrendPoint,
-} from "@/lib/stats/reading-stats";
+/**
+ * ReadingStatsPanel.tsx — Main orchestrator for the Statistics page.
+ *
+ * Responsibilities:
+ *   1. State management (dimension, anchor date, report loading)
+ *   2. Layout composition — delegates every visual block to sub-components
+ *   3. Period navigation controls
+ *
+ * All formatters → stats-utils.ts
+ * All i18n copy  → stats-copy.ts
+ * All UI atoms   → StatsShared.tsx
+ * All sections   → StatsSections.tsx
+ */
+import { Button } from "@/components/ui/button";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAppStore } from "@/stores/app-store";
 import { useReadingSessionStore } from "@/stores/reading-session-store";
+import {
+  getWeekStartDate,
+  readingReportsService,
+  getAllGoalProgress,
+  evaluateBadges,
+  evaluateStreakStatus,
+  ALL_BADGE_DEFINITIONS,
+  buildStatsSummary,
+  type GoalType,
+  type StatsDimension,
+  type StatsReport,
+} from "@readany/core/stats";
+import { cn } from "@readany/core/utils";
 import { eventBus } from "@readany/core/utils/event-bus";
-import { BookOpen, ChevronLeft, ChevronRight, Clock, Flame, TrendingUp } from "lucide-react";
-/**
- * ReadingStatsPanel — displays reading statistics with charts, heatmap and book list
- */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useGoalsStore } from "@readany/core/stores";
+import {
+  BookOpenText,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  Flame,
+  Layers3,
+  LibraryBig,
+  ScanSearch,
+  TrendingUp,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { BarChart } from "./BarChart";
-import { PeriodBookList } from "./PeriodBookList";
-import { TrendChart } from "./TrendChart";
+import { getStatsCopy } from "./stats-copy";
+import {
+  buildHeroNarrative,
+  DIMENSIONS,
+  formatCharacterCount,
+  formatCharactersPerMinute,
+  formatMinutes,
+  formatPeriodLabel,
+  localizeInsight,
+  shiftAnchorDate,
+  toDateInputValue,
+  toMonthInputValue,
+  type MetricTileData,
+} from "./stats-utils";
+import { EmptyState, MetricTile, SectionHeader, StatsCard } from "./StatsShared";
+import {
+  ChartSurface,
+  DaySummaryPanel,
+  GoalsSection,
+  InsightsSection,
+  JourneySummaryPanel,
+  MonthCalendarSection,
+  RhythmProfileSection,
+  TopBooksSection,
+} from "./StatsSections";
+import { BadgesPreview } from "./BadgesPreview";
+import { BadgesDialog } from "./BadgesDialog";
+import { formatDateLabel } from "./stats-utils";
 
-type ChartMode = "week" | "month";
-type ChartView = "heatmap" | "bar";
+/* ─── Hero metric builder (kept here because it uses lucide icons) ─── */
 
-/** Get the Monday of the week containing `date` */
-function getWeekStart(date: Date): Date {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day; // Monday = 1
-  d.setDate(d.getDate() + diff);
-  d.setHours(0, 0, 0, 0);
-  return d;
+function buildHeroMetrics(
+  report: StatsReport,
+  copy: ReturnType<typeof getStatsCopy>,
+  isZh: boolean,
+): MetricTileData[] {
+  const readingVolumeValue = formatCharacterCount(report.summary.totalCharactersRead ?? 0, isZh);
+  const readingSpeedValue =
+    (report.summary.avgCharactersPerMinute ?? 0) > 0
+      ? formatCharactersPerMinute(report.summary.avgCharactersPerMinute ?? 0, isZh)
+      : null;
+  const metrics: MetricTileData[] = [];
+
+  // Build comparison lookup from previousPeriodComparison
+  const compMap = new Map<string, { delta?: number; deltaLabel?: string }>();
+  for (const c of report.previousPeriodComparison ?? []) {
+    compMap.set(c.label, { delta: c.delta, deltaLabel: c.deltaLabel });
+  }
+
+  if (report.dimension === "lifetime") {
+    metrics.push({
+      id: "days-together",
+      label: copy.daysTogether,
+      value: `${report.context.daysSinceJoined.toLocaleString()} ${copy.daysSuffix}`,
+      sublabel: `${copy.startedOn} ${formatDateLabel(report.context.joinedSince, isZh)}`,
+      icon: <CalendarDays className="h-4 w-4" />,
+    });
+  } else {
+    const rtComp = compMap.get("readingTime");
+    metrics.push({
+      id: "reading-time",
+      label: copy.readingTime,
+      value: formatMinutes(report.summary.totalReadingTime, isZh),
+      sublabel: copy.dimensionTitles[report.dimension],
+      icon: <Clock3 className="h-4 w-4" />,
+      delta: rtComp?.delta,
+      deltaLabel: rtComp?.deltaLabel,
+    });
+  }
+
+  const adComp = compMap.get("activeDays");
+  const ssComp = compMap.get("sessions");
+  const bkComp = compMap.get("books");
+
+  metrics.push(
+    {
+      id: "active-days",
+      label: copy.activeDays,
+      value: `${report.summary.activeDays.toLocaleString()} ${copy.daysSuffix}`,
+      sublabel: copy.avgActiveDay,
+      icon: <TrendingUp className="h-4 w-4" />,
+      delta: adComp?.delta,
+      deltaLabel: adComp?.deltaLabel,
+    },
+    {
+      id: "sessions",
+      label: copy.sessions,
+      value: `${report.summary.totalSessions.toLocaleString()} ${copy.sessionsSuffix}`,
+      sublabel: formatMinutes(report.summary.avgSessionTime, isZh),
+      icon: <Layers3 className="h-4 w-4" />,
+      delta: ssComp?.delta,
+      deltaLabel: ssComp?.deltaLabel,
+    },
+    {
+      id: "books",
+      label: copy.books,
+      value: report.summary.booksTouched.toLocaleString(),
+      sublabel: readingVolumeValue,
+      icon: <LibraryBig className="h-4 w-4" />,
+      delta: bkComp?.delta,
+      deltaLabel: bkComp?.deltaLabel,
+    },
+    {
+      id: "streak",
+      label: copy.streak,
+      value: `${
+        report.dimension === "lifetime"
+          ? report.summary.longestStreak.toLocaleString()
+          : report.summary.currentStreak.toLocaleString()
+      } ${copy.daysSuffix}`,
+      sublabel: `${copy.longestSession} ${formatMinutes(report.summary.longestSessionTime, isZh)}`,
+      icon: <Flame className="h-4 w-4" />,
+    },
+    {
+      id: "avg-day",
+      label: readingSpeedValue ? copy.readingSpeed : copy.avgActiveDay,
+      value: readingSpeedValue ?? formatMinutes(report.summary.avgActiveDayTime, isZh),
+      sublabel: readingSpeedValue ? copy.characters : copy.readingTime,
+      icon: <BookOpenText className="h-4 w-4" />,
+    },
+  );
+
+  return metrics;
 }
 
-/** Get the Sunday of the week starting on `weekStart` */
-function getWeekEnd(weekStart: Date): Date {
-  const d = new Date(weekStart);
-  d.setDate(d.getDate() + 6);
-  d.setHours(23, 59, 59, 999);
-  return d;
-}
-
-/** Get first day of month */
-function getMonthStart(year: number, month: number): Date {
-  return new Date(year, month, 1);
-}
-
-/** Get last day of month */
-function getMonthEnd(year: number, month: number): Date {
-  return new Date(year, month + 1, 0, 23, 59, 59, 999);
-}
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ *  Main Component
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
 export function ReadingStatsPanel() {
   const { t, i18n } = useTranslation();
+  const isZh = i18n.language.startsWith("zh");
+  const copy = useMemo(() => getStatsCopy(t), [t, i18n.language]);
   const activeTabId = useAppStore((s) => s.activeTabId);
   const saveCurrentSession = useReadingSessionStore((s) => s.saveCurrentSession);
   const currentSession = useReadingSessionStore((s) => s.currentSession);
-  const [dailyStats, setDailyStats] = useState<DailyStats[]>([]);
-  const [overall, setOverall] = useState<OverallStats | null>(null);
+
+  /* ── State ── */
+  const [dimension, setDimension] = useState<StatsDimension>("month");
+  const [anchorDate, setAnchorDate] = useState<Date>(() => new Date());
+  const [report, setReport] = useState<StatsReport | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Chart state
-  const [chartView, setChartView] = useState<ChartView>("heatmap");
-  const [chartMode, setChartMode] = useState<ChartMode>("week");
-  const [chartDate, setChartDate] = useState<Date>(() => getWeekStart(new Date()));
-  const [chartData, setChartData] = useState<DailyStats[]>([]);
-  const [periodBooks, setPeriodBooks] = useState<PeriodBookStats[]>([]);
-  const [trendData, setTrendData] = useState<TrendPoint[]>([]);
-
-  const lang = i18n.language;
-
-  const loadChartData = useCallback(async () => {
-    try {
-      let barData: DailyStats[];
-      let periodStart: Date;
-      let periodEnd: Date;
-
-      if (chartMode === "week") {
-        barData = await readingStatsService.getWeeklyStats(chartDate);
-        periodStart = chartDate;
-        periodEnd = getWeekEnd(chartDate);
-      } else {
-        const year = chartDate.getFullYear();
-        const month = chartDate.getMonth();
-        barData = await readingStatsService.getMonthlyStats(year, month);
-        periodStart = getMonthStart(year, month);
-        periodEnd = getMonthEnd(year, month);
-      }
-
-      setChartData(barData);
-
-      const books = await readingStatsService.getBookStatsForPeriod(periodStart, periodEnd);
-      setPeriodBooks(books);
-    } catch {
-      // ignore
-    }
-  }, [chartDate, chartMode]);
-
-  const loadStats = useCallback(async () => {
+  /* ── Data loading ── */
+  const loadReport = useCallback(async () => {
+    if (activeTabId !== "stats") return;
     setLoading(true);
+    setError(null);
     try {
-      const endDate = new Date();
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - 365);
-
-      const [daily, overallStats, trend] = await Promise.all([
-        readingStatsService.getDailyStats(startDate, endDate),
-        readingStatsService.getOverallStats(),
-        readingStatsService.getRecentTrend(30),
-      ]);
-
-      setDailyStats(daily);
-      setOverall(overallStats);
-      setTrendData(trend);
-    } catch {
-      // Stats may fail if DB isn't initialized
+      let nextReport: StatsReport;
+      if (dimension === "day") {
+        nextReport = await readingReportsService.getDayReport(anchorDate, currentSession);
+      } else if (dimension === "week") {
+        nextReport = await readingReportsService.getWeekReport(anchorDate, currentSession);
+      } else if (dimension === "month") {
+        nextReport = await readingReportsService.getMonthReport(anchorDate, currentSession);
+      } else if (dimension === "year") {
+        nextReport = await readingReportsService.getYearReport(anchorDate, currentSession);
+      } else {
+        nextReport = await readingReportsService.getLifetimeReport(currentSession);
+      }
+      setReport(nextReport);
+    } catch (statsError) {
+      console.error("[ReadingStatsPanel] Failed to load report", statsError);
+      setError(copy.loadFailed);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-    // Load chart data after base stats are ready
-    void loadChartData();
-  }, [loadChartData]);
+  }, [activeTabId, anchorDate, currentSession, dimension, copy.loadFailed]);
 
   useEffect(() => {
     if (activeTabId === "stats") {
-      void saveCurrentSession().then(() => loadStats());
+      void saveCurrentSession().finally(() => void loadReport());
     }
-  }, [activeTabId, saveCurrentSession, loadStats]);
-
-  // Load chart data when mode or date changes
-  useEffect(() => {
-    if (activeTabId === "stats" && !loading) {
-      void loadChartData();
-    }
-  }, [chartMode, chartDate, activeTabId, loading, loadChartData]);
+  }, [activeTabId, saveCurrentSession, loadReport]);
 
   useEffect(() => {
     return eventBus.on("sync:completed", () => {
       if (activeTabId !== "stats") return;
-      void loadStats();
+      void loadReport();
     });
-  }, [activeTabId, loadStats]);
+  }, [activeTabId, loadReport]);
 
-  // Chart date navigation
-  const navigatePeriod = (direction: -1 | 1) => {
-    setChartDate((prev) => {
-      const d = new Date(prev);
-      if (chartMode === "week") {
-        d.setDate(d.getDate() + direction * 7);
-      } else {
-        d.setMonth(d.getMonth() + direction);
-      }
-      return d;
-    });
-  };
-
-  const switchChartMode = (mode: ChartMode) => {
-    setChartMode(mode);
-    if (mode === "week") {
-      setChartDate(getWeekStart(new Date()));
-    } else {
-      const now = new Date();
-      setChartDate(new Date(now.getFullYear(), now.getMonth(), 1));
-    }
-  };
-
-  // Format the current period label
-  const periodLabel = useMemo(() => {
-    if (chartMode === "week") {
-      const end = getWeekEnd(chartDate);
-      const fmt = (d: Date) =>
-        d.toLocaleDateString(lang === "zh" ? "zh-CN" : "en", { month: "short", day: "numeric" });
-      return `${fmt(chartDate)} – ${fmt(end)}`;
-    }
-    return chartDate.toLocaleDateString(lang === "zh" ? "zh-CN" : "en", {
-      year: "numeric",
-      month: "long",
-    });
-  }, [chartDate, chartMode, lang]);
-
-  // Transform DailyStats → BarChart data
-  const barChartData = useMemo(() => {
-    if (chartMode === "week") {
-      const isChinese = i18n.language.startsWith("zh");
-      const dayNames = isChinese
-        ? ["一", "二", "三", "四", "五", "六", "日"]
-        : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-      return chartData.map((d, i) => ({
-        label: dayNames[i] || d.date.slice(5),
-        value: d.totalTime,
-      }));
-    }
-    // Month mode: show day numbers
-    return chartData.map((d) => ({
-      label: String(new Date(d.date).getDate()),
-      value: d.totalTime,
-    }));
-  }, [chartData, chartMode, i18n.language]);
-
-  // Transform TrendPoint → TrendChart data
-  const trendChartData = useMemo(
-    () => trendData.map((p) => ({ date: p.date, value: p.dailyTime })),
-    [trendData],
+  /* ── Derived data ── */
+  const heroMetrics = useMemo(
+    () => (report ? buildHeroMetrics(report, copy, isZh) : []),
+    [report, copy, isZh],
   );
-  const liveDailyStats = useMemo(
-    () => mergeCurrentSessionIntoDailyStats(dailyStats, currentSession),
-    [dailyStats, currentSession],
+  const headlineMetric = heroMetrics[0] ?? null;
+  const supportMetrics = heroMetrics.slice(1);
+
+  const periodLabel = useMemo(
+    () => (report ? formatPeriodLabel(report, isZh, copy) : ""),
+    [report, isZh, copy],
   );
-  const liveOverall = useMemo(
-    () => mergeCurrentSessionIntoOverallStats(overall, dailyStats, currentSession),
-    [overall, dailyStats, currentSession],
+  const heroNarrative = useMemo(
+    () => (report ? buildHeroNarrative(report, copy, isZh) : ""),
+    [report, copy, isZh],
   );
 
-  if (loading) {
-    return (
-      <div className="flex h-[60vh] items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-primary" />
-      </div>
-    );
-  }
+  const primaryChart = report?.charts[0] ?? null;
+  const monthlyReport = report?.dimension === "month" ? report : null;
+  const yearOrLifetimeReport =
+    report?.dimension === "year" || report?.dimension === "lifetime" ? report : null;
+  const primaryChartTitle =
+    primaryChart?.type === "heatmap" ? copy.readingHeatmap : copy.primaryChart;
+  const primaryChartDesc =
+    primaryChart?.type === "heatmap" ? copy.readingHeatmapDesc : copy.primaryChartDesc;
 
-  return (
-    <div className="h-full space-y-6 overflow-auto p-6">
-      {/* Page Header */}
-      <div className="space-y-1">
-        <h1 className="text-2xl font-bold text-foreground">{t("stats.title")}</h1>
-        <p className="text-sm text-muted-foreground">{t("stats.subtitle")}</p>
-      </div>
-
-      {/* Stat Cards Grid */}
-      {liveOverall && (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <StatCard
-            icon={<BookOpen className="h-4 w-4" />}
-            title={t("stats.booksRead")}
-            value={String(liveOverall.totalBooks)}
-            description={t("stats.booksReadDesc")}
-          />
-          <StatCard
-            icon={<Clock className="h-4 w-4" />}
-            title={t("stats.totalTime")}
-            value={formatTime(liveOverall.totalReadingTime)}
-            description={t("stats.totalTimeDesc")}
-          />
-          <StatCard
-            icon={<Flame className="h-4 w-4" />}
-            title={t("stats.currentStreak")}
-            value={`${liveOverall.currentStreak}d`}
-            description={t("stats.currentStreakDesc")}
-          />
-          <StatCard
-            icon={<TrendingUp className="h-4 w-4" />}
-            title={t("stats.avgDaily")}
-            value={formatTime(liveOverall.avgDailyTime)}
-            description={t("stats.avgDailyDesc")}
-          />
-        </div>
-      )}
-
-      {/* Heatmap / Bar Chart Section (switchable) */}
-      <div className="rounded-xl border border-border p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <div className="space-y-1">
-            <h3 className="text-base font-semibold text-foreground">{t("stats.heatmapTitle")}</h3>
-            <p className="text-xs text-muted-foreground">
-              {chartView === "heatmap"
-                ? t("stats.heatmapDesc")
-                : t("stats.barChartDesc", "查看指定时间段的阅读统计")}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Week/Month toggle + date navigation (only for bar view) */}
-            {chartView === "bar" && (
-              <>
-                <div className="flex items-center gap-1">
-                  <button
-                    className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                    onClick={() => navigatePeriod(-1)}
-                    title={t("stats.prevPeriod")}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </button>
-                  <span className="min-w-[120px] text-center text-xs font-medium text-muted-foreground">
-                    {periodLabel}
-                  </span>
-                  <button
-                    className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                    onClick={() => navigatePeriod(1)}
-                    title={t("stats.nextPeriod")}
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                </div>
-                <div className="flex rounded-lg border border-border bg-muted p-0.5">
-                  <button
-                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                      chartMode === "week"
-                        ? "bg-background text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                    onClick={() => switchChartMode("week")}
-                  >
-                    {t("stats.periodWeek")}
-                  </button>
-                  <button
-                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                      chartMode === "month"
-                        ? "bg-background text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                    onClick={() => switchChartMode("month")}
-                  >
-                    {t("stats.periodMonth")}
-                  </button>
-                </div>
-              </>
-            )}
-
-            {/* Heatmap / Bar toggle - fixed position */}
-            <div className="flex rounded-lg border border-border bg-muted p-0.5">
-              <button
-                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                  chartView === "heatmap"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-                onClick={() => setChartView("heatmap")}
-              >
-                {t("stats.viewHeatmap")}
-              </button>
-              <button
-                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                  chartView === "bar"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-                onClick={() => setChartView("bar")}
-              >
-                {t("stats.viewBarChart")}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Chart content */}
-        {chartView === "heatmap" ? (
-          <>
-            <HeatmapChart dailyStats={liveDailyStats} lang={lang} />
-            <HeatmapLegend />
-          </>
-        ) : (
-          <div className="flex justify-center">
-            <div style={{ maxWidth: "1350px", width: "100%" }}>
-              <BarChart data={barChartData} height={200} emptyMessage={t("stats.noData")} />
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Trend Chart Section */}
-      <div className="rounded-xl border border-border p-5">
-        <div className="mb-4 space-y-1">
-          <h3 className="text-base font-semibold text-foreground">{t("stats.trendTitle")}</h3>
-          <p className="text-xs text-muted-foreground">{t("stats.trendDesc")}</p>
-        </div>
-        <TrendChart data={trendChartData} height={160} emptyMessage={t("stats.noData")} />
-      </div>
-
-      {/* Period Book List */}
-      <div className="rounded-xl border border-border p-5">
-        <div className="mb-4 space-y-1">
-          <h3 className="text-base font-semibold text-foreground">{t("stats.periodBooks")}</h3>
-        </div>
-        <PeriodBookList books={periodBooks} />
-      </div>
-
-      {/* Longest Streak */}
-      {liveOverall && liveOverall.longestStreak > 0 && (
-        <div className="flex items-center gap-3 rounded-xl border border-border p-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-500/10">
-            <Flame className="h-5 w-5 text-orange-500" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-foreground">
-              {t("stats.longestStreak", { days: liveOverall.longestStreak })}
-            </p>
-            <p className="text-xs text-muted-foreground">{t("stats.longestStreakDesc")}</p>
-          </div>
-        </div>
-      )}
-    </div>
+  const localizedInsights = useMemo(
+    () => (report ? report.insights.map((item) => localizeInsight(item, report, copy, isZh)) : []),
+    [report, copy, isZh],
   );
-}
+  const localizedMilestones = useMemo(
+    () =>
+      report?.dimension === "lifetime"
+        ? report.milestones.map((item) => localizeInsight(item, report, copy, isZh))
+        : [],
+    [report, copy, isZh],
+  );
 
-/* ── Heatmap Chart ── */
-
-function HeatmapChart({ dailyStats, lang }: { dailyStats: DailyStats[]; lang: string }) {
-  const { t, i18n } = useTranslation();
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [cellSize, setCellSize] = useState(12);
-  const gap = 2;
-  const labelWidth = 28;
-
-  const updateSize = useCallback(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const availableWidth = el.clientWidth - labelWidth;
-    const computed = Math.floor((availableWidth + gap) / 53 - gap);
-    setCellSize(Math.max(8, Math.min(computed, 22)));
-  }, []);
+  /* ── Goals ── */
+  const goals = useGoalsStore((s) => s.goals);
+  const removeGoal = useGoalsStore((s) => s.removeGoal);
+  const addGoalAction = useGoalsStore((s) => s.addGoal);
+  const [allFacts, setAllFacts] = useState<import("@readany/core/stats").DailyReadingFact[]>([]);
 
   useEffect(() => {
-    updateSize();
-    const observer = new ResizeObserver(updateSize);
-    if (containerRef.current) observer.observe(containerRef.current);
-    return () => observer.disconnect();
-  }, [updateSize]);
+    if (report) {
+      readingReportsService.getAllDailyFacts(currentSession).then(setAllFacts).catch(() => {});
+    }
+  }, [currentSession, report]);
 
-  const unit = cellSize + gap;
+  const goalProgress = useMemo(
+    () => (goals.length > 0 && allFacts.length > 0 ? getAllGoalProgress(goals, allFacts) : []),
+    [goals, allFacts],
+  );
 
-  const { weeks, monthLabels } = useMemo(() => {
-    const statsMap = new Map<string, number>();
-    for (const s of dailyStats) {
-      statsMap.set(s.date, s.totalTime);
+  const activeGoalPeriod = useMemo<"monthly" | "yearly" | null>(() => {
+    if (dimension === "month") return "monthly";
+    if (dimension === "year") return "yearly";
+    return null;
+  }, [dimension]);
+
+  const visibleGoalProgress = useMemo(
+    () =>
+      activeGoalPeriod
+        ? goalProgress.filter(({ goal }) => goal.period === activeGoalPeriod)
+        : [],
+    [goalProgress, activeGoalPeriod],
+  );
+
+  const handleAddGoal = (type: GoalType, target: number, period: "monthly" | "yearly") => {
+    addGoalAction({
+      id: `goal-${Date.now()}`,
+      type,
+      target,
+      period,
+      createdAt: Date.now(),
+    });
+  };
+
+  /* ── Badges ── */
+  const earnedBadges = useMemo(() => {
+    if (allFacts.length === 0) return [];
+    const lifetimeSummary = buildStatsSummary(allFacts);
+    return evaluateBadges(allFacts, lifetimeSummary);
+  }, [allFacts]);
+
+  /* ── Streak risk ── */
+  const streakStatus = useMemo(
+    () => (allFacts.length > 0 ? evaluateStreakStatus(allFacts) : null),
+    [allFacts],
+  );
+
+  const [badgesDialogOpen, setBadgesDialogOpen] = useState(false);
+
+  /* ── Period picker handlers ── */
+  const onPickPeriod = (event: ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
+    if (!value) return;
+
+    if (dimension === "day" || dimension === "week") {
+      setAnchorDate(
+        getWeekStartDate(value) && dimension === "week"
+          ? getWeekStartDate(value)
+          : new Date(value),
+      );
+      if (dimension === "day") setAnchorDate(new Date(value));
+      return;
     }
 
-    const today = new Date();
-    const todayDay = today.getDay();
-    const startDate = new Date(today);
-    startDate.setDate(startDate.getDate() - (52 * 7 + todayDay));
-
-    const weeksArr: Array<Array<{ date: string; time: number; dayOfWeek: number }>> = [];
-    const mLabels: Array<{ label: string; col: number }> = [];
-    let currentWeek: Array<{ date: string; time: number; dayOfWeek: number }> = [];
-    let lastMonth = -1;
-
-    const cursor = new Date(startDate);
-    let weekIdx = 0;
-
-    while (cursor <= today) {
-      const dateStr = cursor.toISOString().split("T")[0];
-      const dow = cursor.getDay();
-      const month = cursor.getMonth();
-
-      if (dow === 0 && currentWeek.length > 0) {
-        weeksArr.push(currentWeek);
-        currentWeek = [];
-        weekIdx++;
-      }
-
-      if (month !== lastMonth) {
-        const monthName = cursor.toLocaleDateString(lang === "zh" ? "zh-CN" : "en", {
-          month: "short",
-        });
-        mLabels.push({ label: monthName, col: weekIdx });
-        lastMonth = month;
-      }
-
-      currentWeek.push({
-        date: dateStr,
-        time: statsMap.get(dateStr) || 0,
-        dayOfWeek: dow,
-      });
-      cursor.setDate(cursor.getDate() + 1);
+    if (dimension === "month") {
+      const [year, month] = value.split("-").map(Number);
+      setAnchorDate(new Date(year, (month || 1) - 1, 1));
+      return;
     }
-    if (currentWeek.length > 0) weeksArr.push(currentWeek);
 
-    return { weeks: weeksArr, monthLabels: mLabels };
-  }, [dailyStats, lang]);
+    if (dimension === "year") {
+      const nextYear = Number(value);
+      if (!Number.isNaN(nextYear)) setAnchorDate(new Date(nextYear, 0, 1));
+    }
+  };
 
-  const dayLabels = useMemo(() => {
-    const isChinese = i18n.language.startsWith("zh");
-    const days = isChinese
-      ? ["日", "一", "二", "三", "四", "五", "六"]
-      : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    return [
-      { idx: 1, label: days[1] },
-      { idx: 3, label: days[3] },
-      { idx: 5, label: days[5] },
-    ];
-  }, [i18n.language]);
+  const resetToCurrentPeriod = () => setAnchorDate(new Date());
+
+  const currentPickerValue =
+    dimension === "month"
+      ? toMonthInputValue(anchorDate)
+      : dimension === "year"
+        ? String(anchorDate.getFullYear())
+        : toDateInputValue(anchorDate);
+
+  /* ━━━━━━━━━━ Render ━━━━━━━━━━ */
 
   return (
-    <TooltipProvider delayDuration={100}>
-      <div ref={containerRef} className="w-full flex justify-center">
-        <div style={{ maxWidth: "1600px" }}>
-          {/* Month labels */}
-          <div className="flex" style={{ paddingLeft: `${labelWidth}px` }}>
-            {monthLabels.map((m, i) => {
-              const nextCol = i + 1 < monthLabels.length ? monthLabels[i + 1].col : weeks.length;
-              const span = nextCol - m.col;
-              return (
-                <div
-                  key={`${m.label}-${m.col}`}
-                  className="text-xs text-muted-foreground"
-                  style={{ width: `${span * unit}px`, minWidth: `${span * unit}px` }}
-                >
-                  {span >= 2 ? m.label : ""}
-                </div>
-              );
-            })}
+    <TooltipProvider delayDuration={120}>
+      <div className="h-full min-w-0 overflow-y-auto overflow-x-hidden bg-background">
+        <div className="mx-auto flex w-full min-w-0 max-w-[1800px] flex-col gap-6 px-5 py-6 sm:px-8 sm:py-8 lg:gap-8">
+
+          {/* ════════ Sticky Header ════════ */}
+          <div className="sticky top-0 z-30 -mx-5 border-b border-border/10 bg-background/92 px-5 py-3 backdrop-blur-md sm:-mx-8 sm:px-8 sm:py-4">
+            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end md:gap-5">
+              <header className="min-w-0 space-y-1 md:max-w-[720px] md:pr-3">
+                <h1 className="text-[26px] font-bold tracking-tight text-foreground sm:text-[30px] lg:text-[34px]">
+                  {copy.pageTitle}
+                </h1>
+              </header>
+
+              <nav className="-mx-1 flex w-full max-w-full items-center gap-1 overflow-x-auto rounded-xl border border-border/30 bg-muted/25 p-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:w-auto md:min-w-[420px] md:max-w-[560px] md:justify-end">
+                {DIMENSIONS.map((dim) => (
+                  <button
+                    key={dim}
+                    className={cn(
+                      "flex-none rounded-[10px] px-4 py-2 text-[13px] font-medium transition-all duration-150 sm:min-w-[72px] sm:px-4 lg:px-5",
+                      dimension === dim
+                        ? "bg-background text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+                        : "text-muted-foreground/55 hover:text-foreground/70",
+                    )}
+                    onClick={() => setDimension(dim)}
+                  >
+                    {copy.dimensions[dim]}
+                  </button>
+                ))}
+              </nav>
+            </div>
           </div>
 
-          <div className="flex gap-0">
-            {/* Day of week labels */}
-            <div
-              className="flex flex-col justify-between pr-1.5"
-              style={{ width: `${labelWidth}px`, height: `${7 * unit - gap}px` }}
-            >
-              {[0, 1, 2, 3, 4, 5, 6].map((d) => {
-                const label = dayLabels.find((l) => l.idx === d);
-                return (
-                  <div key={d} className="flex items-center" style={{ height: `${cellSize}px` }}>
-                    <span className="text-[10px] text-muted-foreground">{label?.label || ""}</span>
+          {/* ════════ Loading ════════ */}
+          {loading ? (
+            <div className="flex min-h-[50vh] items-center justify-center">
+              <div className="flex flex-col items-center gap-4">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-border/40 border-t-foreground/60" />
+                <span className="text-[13px] text-muted-foreground/40">{copy.loading}</span>
+              </div>
+            </div>
+          ) : error || !report ? (
+            /* ════════ Error / Empty ════════ */
+            <StatsCard className="min-h-[50vh]">
+              <EmptyState
+                title={error ?? copy.noDataTitle}
+                description={copy.noDataDesc}
+                icon={<ScanSearch className="h-7 w-7 text-muted-foreground/45" />}
+              />
+            </StatsCard>
+          ) : (
+            <>
+              {/* ════════ Streak at risk banner ════════ */}
+              {streakStatus?.atRisk && streakStatus.streakCount > 0 && (
+                <div className="flex items-center gap-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.08] px-4 py-3">
+                  <Flame className="h-5 w-5 shrink-0 text-amber-600" />
+                  <div className="min-w-0 flex-1 space-y-0.5">
+                    <div className="text-[13px] font-semibold text-amber-700 dark:text-amber-400">
+                      {t("stats.desktop.streakAtRiskTitle", { count: streakStatus.streakCount })}
+                    </div>
+                    <div className="text-[11px] leading-[1.4] text-muted-foreground/75">
+                      {t("stats.desktop.streakAtRiskBody")}
+                    </div>
                   </div>
-                );
-              })}
-            </div>
-
-            {/* Heatmap grid */}
-            <div className="flex" style={{ gap: `${gap}px` }}>
-              {weeks.map((week, wi) => (
-                <div key={wi} className="flex flex-col" style={{ gap: `${gap}px` }}>
-                  {week[0] &&
-                    week[0].dayOfWeek > 0 &&
-                    wi === 0 &&
-                    Array.from({ length: week[0].dayOfWeek }).map((_, i) => (
-                      <div
-                        key={`empty-${i}`}
-                        style={{ height: `${cellSize}px`, width: `${cellSize}px` }}
-                      />
-                    ))}
-                  {week.map((day) => (
-                    <Tooltip key={day.date}>
-                      <TooltipTrigger asChild>
-                        <div
-                          className={`rounded-[2px] transition-colors ${getHeatColor(day.time)}`}
-                          style={{ height: `${cellSize}px`, width: `${cellSize}px` }}
-                        />
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="bg-popover text-popover-foreground">
-                        <p className="text-xs font-medium">
-                          {day.time > 0
-                            ? t("stats.heatmapTooltip", {
-                                time: Math.round(day.time),
-                                date: day.date,
-                              })
-                            : t("stats.heatmapNoReading", { date: day.date })}
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
+              )}
+
+              {/* ════════ Hero Section ════════ */}
+              <section className="relative overflow-hidden rounded-2xl border border-border/30 bg-gradient-to-br from-card via-card to-primary/[0.02]">
+                {/* Decorative glow */}
+                <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-primary/[0.04] blur-3xl" />
+
+                <div className="relative space-y-8 px-6 py-6 sm:px-8 sm:py-8">
+                  {/* Period navigation */}
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                    <div className="space-y-0.5">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-primary/45">
+                        {copy.dimensionTitles[dimension]}
+                      </div>
+                      <div className="text-lg font-semibold text-foreground/85 sm:text-xl">
+                        {periodLabel}
+                      </div>
+                    </div>
+
+                    {dimension !== "lifetime" && (
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        {/* Arrow buttons */}
+                        <div className="inline-flex items-center gap-0.5 rounded-xl border border-border/30 bg-background/50 p-0.5">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 rounded-[10px] text-muted-foreground/50 hover:bg-muted/30 hover:text-foreground"
+                            onClick={() =>
+                              setAnchorDate((p) => shiftAnchorDate(p, dimension, -1))
+                            }
+                            disabled={!report.navigation.canGoPrev}
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 rounded-[10px] text-muted-foreground/50 hover:bg-muted/30 hover:text-foreground"
+                            onClick={() =>
+                              setAnchorDate((p) => shiftAnchorDate(p, dimension, 1))
+                            }
+                            disabled={!report.navigation.canGoNext}
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
+                        </div>
+
+                        {/* Date/month/year picker */}
+                        {dimension === "year" ? (
+                          <input
+                            type="number"
+                            min="2000"
+                            max={String(new Date().getFullYear())}
+                            value={currentPickerValue}
+                            onChange={onPickPeriod}
+                            className="h-9 w-24 rounded-xl border border-border/30 bg-background/50 px-3 text-sm tabular-nums text-foreground outline-none transition-colors focus:border-primary/25 focus:ring-1 focus:ring-primary/15"
+                          />
+                        ) : (
+                          <input
+                            type={dimension === "month" ? "month" : "date"}
+                            value={currentPickerValue}
+                            onChange={onPickPeriod}
+                            className="h-9 rounded-xl border border-border/30 bg-background/50 px-3 text-sm text-foreground outline-none transition-colors focus:border-primary/25 focus:ring-1 focus:ring-primary/15"
+                          />
+                        )}
+
+                        {/* "Today / This week" shortcut */}
+                        <Button
+                          variant="soft"
+                          size="sm"
+                          className="rounded-xl border border-border/30 bg-background/50 px-3.5 text-[13px] text-muted-foreground/60 hover:bg-muted/30 hover:text-foreground"
+                          onClick={resetToCurrentPeriod}
+                        >
+                          {dimension === "day"
+                            ? copy.today
+                            : dimension === "week"
+                              ? copy.thisWeek
+                              : dimension === "month"
+                                ? copy.thisMonth
+                                : copy.thisYear}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Hero metrics grid */}
+                  <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+                    {/* Headline number */}
+                    <div className="min-w-0 space-y-3">
+                      {headlineMetric && (
+                        <div className="space-y-2">
+                          <div className="text-[48px] font-bold leading-none tracking-tighter text-foreground sm:text-[56px] xl:text-[64px]">
+                            {headlineMetric.value}
+                          </div>
+                          <div className="flex items-center gap-2 text-[14px] text-muted-foreground/55">
+                            <span className="text-primary/35">{headlineMetric.icon}</span>
+                            {headlineMetric.label}
+                            {headlineMetric.sublabel && (
+                              <>
+                                <span className="text-border/60">·</span>
+                                <span>{headlineMetric.sublabel}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      <p className="max-w-lg text-[14px] leading-relaxed text-muted-foreground/45">
+                        {heroNarrative}
+                      </p>
+                    </div>
+
+                    {/* Supporting metrics — 3 cols on large screens for density */}
+                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-3">
+                      {supportMetrics.map((metric) => (
+                        <MetricTile key={metric.id} metric={metric} />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* ════════ Content Grid ════════ */}
+              <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(340px,1fr)] xl:gap-8">
+
+                {/* ─── Main column ─── */}
+                <div className="min-w-0 space-y-6">
+                  {/* Day summary */}
+                  {report.dimension === "day" && (
+                    <StatsCard>
+                      <SectionHeader title={copy.daySummary} description={copy.daySummaryDesc} />
+                      <DaySummaryPanel
+                        dayFact={report.dayFact}
+                        topBook={report.topBooks[0]}
+                        copy={copy}
+                        isZh={isZh}
+                      />
+                    </StatsCard>
+                  )}
+
+                  {/* Primary chart */}
+                  {primaryChart && (
+                    <StatsCard>
+                      <SectionHeader title={primaryChartTitle} description={primaryChartDesc} />
+                      <ChartSurface chart={primaryChart} copy={copy} isZh={isZh} />
+                    </StatsCard>
+                  )}
+
+                  {/* Monthly calendar */}
+                  {monthlyReport?.readingCalendar && (
+                    <StatsCard>
+                      <SectionHeader
+                        title={copy.readingCalendar}
+                        description={copy.readingCalendarDesc}
+                      />
+                      <MonthCalendarSection
+                        calendar={monthlyReport.readingCalendar}
+                        isZh={isZh}
+                      />
+                    </StatsCard>
+                  )}
+
+                  {/* Rhythm profile */}
+                  {yearOrLifetimeReport &&
+                    (yearOrLifetimeReport.timeOfDayChart ||
+                      yearOrLifetimeReport.categoryDistribution) && (
+                      <StatsCard>
+                        <SectionHeader
+                          title={undefined}
+                        />
+                        <RhythmProfileSection
+                          timeOfDayChart={yearOrLifetimeReport.timeOfDayChart}
+                          categoryChart={yearOrLifetimeReport.categoryDistribution}
+                          copy={copy}
+                          isZh={isZh}
+                        />
+                      </StatsCard>
+                    )}
+
+                  {/* Journey summary */}
+                  {report.dimension === "lifetime" && (
+                    <StatsCard>
+                      <SectionHeader title={copy.journey} description={copy.journeySubtitle} />
+                      <JourneySummaryPanel report={report} copy={copy} isZh={isZh} />
+                    </StatsCard>
+                  )}
+
+                  {/* Badges preview — lifetime only */}
+                  {report.dimension === "lifetime" && (
+                    <StatsCard>
+                      <SectionHeader
+                        title={copy.badges}
+                        description={copy.badgesDesc}
+                        action={
+                          <button
+                            onClick={() => setBadgesDialogOpen(true)}
+                            className="flex items-center gap-0.5 text-[12px] font-medium text-primary/60 transition-colors hover:text-primary/80"
+                          >
+                            {t("stats.desktop.viewAllBadges")}
+                            <ChevronRight className="h-3.5 w-3.5" />
+                          </button>
+                        }
+                      />
+                      <BadgesPreview
+                        earned={earnedBadges}
+                        copy={copy}
+                        t={t}
+                        onViewAll={() => setBadgesDialogOpen(true)}
+                      />
+                    </StatsCard>
+                  )}
+                </div>
+
+                {/* ─── Sidebar ─── */}
+                <aside className="min-w-0 space-y-6">
+                  {/* Reading goals */}
+                  {activeGoalPeriod && (
+                    <StatsCard>
+                      <SectionHeader
+                        title={copy.goalsTitle(activeGoalPeriod)}
+                        description={copy.goalsDescription(activeGoalPeriod)}
+                      />
+                      <GoalsSection
+                        progress={visibleGoalProgress}
+                        copy={copy}
+                        onAddGoal={handleAddGoal}
+                        onRemoveGoal={removeGoal}
+                        currentDimension={dimension}
+                      />
+                    </StatsCard>
+                  )}
+
+                  {/* Top books — featured variant */}
+                  <StatsCard variant="featured">
+                    <SectionHeader title={copy.topBooks} description={copy.topBooksDesc} />
+                    <TopBooksSection books={report.topBooks} copy={copy} isZh={isZh} allFacts={allFacts} />
+                  </StatsCard>
+
+                  {/* Insights */}
+                  <StatsCard>
+                    <SectionHeader title={copy.insights} description={copy.insightsDesc} />
+                    <InsightsSection insights={localizedInsights} copy={copy} />
+                  </StatsCard>
+
+                  {/* Milestones (lifetime) */}
+                  {report.dimension === "lifetime" && localizedMilestones.length > 0 && (
+                    <StatsCard>
+                      <SectionHeader title={copy.milestones} description={copy.milestonesDesc} />
+                      <InsightsSection insights={localizedMilestones} copy={copy} />
+                    </StatsCard>
+                  )}
+
+                </aside>
+              </div>
+            </>
+          )}
         </div>
       </div>
+
+      {/* Badges full dialog */}
+      <BadgesDialog
+        open={badgesDialogOpen}
+        onOpenChange={setBadgesDialogOpen}
+        earned={earnedBadges}
+        allBadges={ALL_BADGE_DEFINITIONS}
+        t={t}
+      />
     </TooltipProvider>
   );
-}
-
-function HeatmapLegend() {
-  const { t } = useTranslation();
-  return (
-    <div className="mt-3 flex items-center justify-end gap-1.5 text-xs text-muted-foreground">
-      <span>{t("stats.less")}</span>
-      <div className="h-[12px] w-[12px] rounded-[2px] bg-muted" />
-      <div className="h-[12px] w-[12px] rounded-[2px] bg-emerald-500/30 dark:bg-emerald-500/30" />
-      <div className="h-[12px] w-[12px] rounded-[2px] bg-emerald-500/50 dark:bg-emerald-500/50" />
-      <div className="h-[12px] w-[12px] rounded-[2px] bg-emerald-500/70 dark:bg-emerald-500/70" />
-      <div className="h-[12px] w-[12px] rounded-[2px] bg-emerald-500/90 dark:bg-emerald-500/90" />
-      <span>{t("stats.more")}</span>
-    </div>
-  );
-}
-
-function getHeatColor(minutes: number): string {
-  if (minutes <= 0) return "bg-muted";
-  if (minutes < 15) return "bg-emerald-500/30 dark:bg-emerald-500/30";
-  if (minutes < 30) return "bg-emerald-500/50 dark:bg-emerald-500/50";
-  if (minutes < 60) return "bg-emerald-500/70 dark:bg-emerald-500/70";
-  return "bg-emerald-500/90 dark:bg-emerald-500/90";
-}
-
-/* ── Stat Card ── */
-
-function StatCard({
-  icon,
-  title,
-  value,
-  description,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  value: string;
-  description?: string;
-}) {
-  return (
-    <div className="rounded-xl bg-muted p-4 shadow-around">
-      <div className="flex items-center justify-between pb-2">
-        <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
-        <div className="text-muted-foreground">{icon}</div>
-      </div>
-      <div className="space-y-1">
-        <div className="text-2xl font-bold text-foreground">{value}</div>
-        {description && <p className="text-xs text-muted-foreground">{description}</p>}
-      </div>
-    </div>
-  );
-}
-
-function formatTime(minutes: number): string {
-  if (minutes < 60) return `${Math.round(minutes)}m`;
-  const hours = Math.floor(minutes / 60);
-  const mins = Math.round(minutes % 60);
-  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
 }

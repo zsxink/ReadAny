@@ -8,6 +8,11 @@
  *
  * All formats are handled by foliate-js through a single rendering path.
  */
-export { DocumentLoader, getDirection, isFixedLayoutFormat } from "./document-loader";
+export {
+  DocumentLoader,
+  getDirection,
+  isFixedLayoutBook,
+  isFixedLayoutFormat,
+} from "./document-loader";
 export type { BookDoc, BookFormat, BookMetadata, TOCItem, SectionItem } from "./document-loader";
 export { registerIframeEventHandlers } from "./iframe-event-handlers";

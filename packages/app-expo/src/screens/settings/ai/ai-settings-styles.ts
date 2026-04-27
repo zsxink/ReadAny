@@ -13,7 +13,18 @@ export const makeStyles = (colors: ThemeColors) =>
     container: { flex: 1 },
     keyboardView: { flex: 1 },
     scroll: { flex: 1 },
-    scrollContent: { padding: spacing.md, gap: spacing.md },
+    scrollContent: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.xxl,
+      paddingBottom: 48,
+      gap: spacing.lg,
+    },
+    contentColumn: {
+      gap: spacing.lg,
+    },
+    endpointList: {
+      gap: spacing.md,
+    },
 
     addBtn: {
       flexDirection: "row",
@@ -43,7 +54,7 @@ export const makeStyles = (colors: ThemeColors) =>
       alignItems: "center",
       justifyContent: "space-between",
       paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
+      paddingVertical: spacing.md,
     },
     endpointInfo: { flex: 1 },
     endpointNameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
@@ -67,6 +78,7 @@ export const makeStyles = (colors: ThemeColors) =>
       fontSize: fontSize.sm,
       color: colors.mutedForeground,
       marginTop: 2,
+      lineHeight: 20,
     },
     chevron: { fontSize: fontSize.sm, color: colors.mutedForeground },
 
@@ -118,8 +130,8 @@ export const makeStyles = (colors: ThemeColors) =>
       textAlignVertical: "center",
     },
     baseUrlHint: {
-      fontSize: fontSize.xs,
-      lineHeight: 18,
+      fontSize: fontSize.sm,
+      lineHeight: 20,
       color: colors.mutedForeground,
     },
     exactUrlCard: {
@@ -149,9 +161,13 @@ export const makeStyles = (colors: ThemeColors) =>
       justifyContent: "space-between",
       gap: spacing.sm,
     },
-    previewLabel: { fontSize: fontSize.xs, color: colors.mutedForeground },
+    previewLabel: {
+      fontSize: fontSize.sm,
+      color: colors.mutedForeground,
+      lineHeight: 20,
+    },
     previewValue: {
-      fontSize: fontSize.xs,
+      fontSize: fontSize.sm,
       color: colors.foreground,
       fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
     },
@@ -164,7 +180,7 @@ export const makeStyles = (colors: ThemeColors) =>
       backgroundColor: colors.background,
     },
     previewCopyButtonText: {
-      fontSize: fontSize.xs,
+      fontSize: fontSize.sm,
       color: colors.mutedForeground,
       fontWeight: fontWeight.medium,
     },
@@ -209,14 +225,19 @@ export const makeStyles = (colors: ThemeColors) =>
       borderWidth: 1,
       borderColor: colors.border,
     },
-    fetchBtnText: { fontSize: fontSize.xs, color: colors.foreground },
-    endpointTestResult: { fontSize: fontSize.xs, marginTop: spacing.xs },
+    fetchBtnText: { fontSize: fontSize.sm, color: colors.foreground },
+    endpointTestResult: {
+      fontSize: fontSize.sm,
+      marginTop: spacing.xs,
+      lineHeight: 20,
+    },
     endpointTestSuccess: { color: "#16a34a" },
     endpointTestError: { color: colors.destructive },
     errorText: {
-      fontSize: fontSize.xs,
+      fontSize: fontSize.sm,
       color: colors.destructive,
       marginTop: spacing.xs,
+      lineHeight: 20,
     },
     modelTags: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
     modelTag: {
@@ -273,16 +294,25 @@ export const makeStyles = (colors: ThemeColors) =>
       borderColor: colors.border,
       backgroundColor: colors.card,
       padding: spacing.md,
-      gap: spacing.md,
+      gap: spacing.lg,
     },
     sectionTitle: {
       fontSize: fontSize.base,
       fontWeight: fontWeight.semibold,
       color: colors.foreground,
     },
-    sectionDesc: { fontSize: fontSize.sm, color: colors.mutedForeground },
+    sectionDesc: {
+      fontSize: fontSize.sm,
+      color: colors.mutedForeground,
+      lineHeight: 20,
+    },
 
-    paramRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+    paramRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: spacing.md,
+    },
     paramLabel: { fontSize: fontSize.sm, color: colors.foreground },
     paramValue: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.primary },
     paramInput: {
