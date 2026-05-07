@@ -86,7 +86,7 @@ export function ReadSettingsPanel() {
             </div>
             <Slider
               min={12}
-              max={32}
+              max={64}
               step={1}
               value={[readSettings.fontSize]}
               onValueChange={([v]) => updateReadSettings({ fontSize: v })}

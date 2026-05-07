@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ISyncBackend, RemoteFile } from "../sync-backend";
-import { REMOTE_FILES, REMOTE_COVERS } from "../sync-types";
+import { REMOTE_FILES } from "../sync-types";
 
 // --- Mock sync-adapter ---
 const mockAdapter = {

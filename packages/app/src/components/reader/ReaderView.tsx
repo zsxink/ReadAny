@@ -19,7 +19,7 @@ import { useResizablePanel } from "@/hooks/use-resizable-panel";
 import { useResolvedSrc } from "@/hooks/use-resolved-src";
 import { DocumentLoader } from "@/lib/reader/document-loader";
 import type { BookDoc, BookFormat } from "@/lib/reader/document-loader";
-import { isFixedLayoutBook, isFixedLayoutFormat } from "@/lib/reader/document-loader";
+import { isFixedLayoutBook } from "@/lib/reader/document-loader";
 import { resolveDesktopDataPath } from "@/lib/storage/desktop-library-root";
 import { useAnnotationStore } from "@/stores/annotation-store";
 import { useAppStore } from "@/stores/app-store";
@@ -97,20 +97,15 @@ async function measureReflowableBookCharacters(bookDoc: BookDoc): Promise<number
 
 // --- Tauri file loading ---
 async function loadFileAsBlob(filePath: string): Promise<Blob> {
-  // Resolve relative paths (e.g., "books/{id}.epub") to absolute paths
-  let resolvedPath = filePath;
-  if (
-    !filePath.startsWith("/") &&
-    !filePath.startsWith("file://") &&
-    !filePath.startsWith("asset://") &&
-    !filePath.startsWith("http")
-  ) {
-    resolvedPath = await resolveDesktopDataPath(filePath);
-  }
+  // Resolve managed relative paths (e.g., "books/{id}.epub") to the active desktop library root.
+  const resolvedPath = await resolveDesktopDataPath(filePath);
 
   try {
     const { convertFileSrc } = await import("@tauri-apps/api/core");
-    const assetUrl = convertFileSrc(resolvedPath);
+    const assetUrl =
+      resolvedPath.startsWith("asset://") || resolvedPath.startsWith("http")
+        ? resolvedPath
+        : convertFileSrc(resolvedPath);
     const response = await fetch(assetUrl);
     if (!response.ok) throw new Error(`fetch failed: ${response.status}`);
     return await response.blob();
@@ -642,7 +637,6 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   const [bookDoc, setBookDoc] = useState<BookDoc | null>(null);
   const [bookFormat, setBookFormat] = useState<BookFormat>("EPUB");
   const isFixedLayout = isFixedLayoutBook(bookFormat, bookDoc);
-  const shouldDisableReadSettings = isFixedLayoutFormat(bookFormat);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -2750,7 +2744,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
             onChapterTranslationReset={chapterTranslation.reset}
             isChatOpen={showChat}
             isTTSActive={showTTS || ttsPlayState !== "stopped"}
-            isFixedLayout={shouldDisableReadSettings}
+            isFixedLayout={isFixedLayout}
             isPinned={isToolbarPinned}
             onTogglePinned={() => setIsToolbarPinned((prev) => !prev)}
             onMouseEnter={handleMouseEnter}
@@ -2766,6 +2760,10 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
             isVisible={controlsVisible}
             onPrev={handleNavPrev}
             onNext={handleNavNext}
+            onSeek={(fraction) => {
+              suppressProgressTracking(3000);
+              foliateRef.current?.goToFraction(fraction);
+            }}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
           />

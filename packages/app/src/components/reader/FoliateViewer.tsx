@@ -2128,10 +2128,10 @@ function applyRendererSettings(
   if (isFixedLayout) {
     const isSinglePage = (settings.paginatedLayout ?? "double") === "single";
     const spreadMode = isSinglePage ? "none" : "auto";
-    // Fixed layout: respect single/double spread while keeping page-fit zoom.
-    // Image-heavy EPUBs still need fit-page here, otherwise single-page mode can
-    // stretch the canvas to full width and break viewport self-adaptation.
-    renderer.setAttribute("zoom", "fit-page");
+    // Fixed layout: single-page mode should scale to the page width so image-only
+    // EPUBs do not look "shrunk inside a spread". Double-page mode still uses
+    // fit-page to keep both pages fully visible inside the viewport.
+    renderer.setAttribute("zoom", isSinglePage ? "fit-width" : "fit-page");
     if (view.book?.rendition) {
       view.book.rendition.spread = spreadMode;
     }
@@ -2191,6 +2191,15 @@ function getRendererStyles(settings: ViewSettings, theme: AppTheme): string {
     ? settings.customFontFamily
     : `'${fontTheme.cjk}', '${fontTheme.serif}', serif`;
 
+  // paragraphSpacing is stored as px tuned at the default 16px font size.
+  // Scale it with the actual font size so paragraph gaps stay proportional
+  // at the new 12-64 fontSize range — without this, 16px spacing looks
+  // cramped at fontSize 64. BASELINE matches defaultReadSettings.fontSize
+  // in core/stores/settings-store.ts.
+  const BASELINE_FONT_SIZE = 16;
+  const layoutScale = settings.fontSize / BASELINE_FONT_SIZE;
+  const scaledParagraphSpacing = Math.round(settings.paragraphSpacing * layoutScale);
+
   return `${settings.customFontFaceCSS ? `/* Custom font faces */\n${settings.customFontFaceCSS}\n\n` : ""}/* Font styles */
 html {
   --readany-font-family: ${fontFamily};
@@ -2223,8 +2232,8 @@ p, div, blockquote, dd, li, span {
 
 /* Paragraph spacing */
 p {
-  margin-top: ${settings.paragraphSpacing}px !important;
-  margin-bottom: ${settings.paragraphSpacing}px !important;
+  margin-top: ${scaledParagraphSpacing}px !important;
+  margin-bottom: ${scaledParagraphSpacing}px !important;
 }
 
 /* Links */

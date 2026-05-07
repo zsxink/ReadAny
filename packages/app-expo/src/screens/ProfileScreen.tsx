@@ -1,3 +1,4 @@
+import { SyncButton } from "@/components/ui/SyncButton";
 import {
   BarChart3Icon,
   BookOpenIcon,
@@ -37,6 +38,7 @@ import {
 } from "@/styles/theme";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { readingStatsService } from "@readany/core/stats";
 import { eventBus } from "@readany/core/utils/event-bus";
 import Constants from "expo-constants";
@@ -87,19 +89,23 @@ function StatCard({
       <View style={s.statCardHeader}>
         <View style={s.statCardTitleRow}>
           <View style={s.statCardIconWrap}>{icon}</View>
-          <Text style={s.statCardTitle} numberOfLines={1}>
+          <Text style={s.statCardTitle} numberOfLines={1} maxFontSizeMultiplier={1.6}>
             {title}
           </Text>
         </View>
       </View>
       <View style={s.statCardBody}>
-        <Text style={s.statCardValue} numberOfLines={1}>
+        <Text style={s.statCardValue} numberOfLines={1} maxFontSizeMultiplier={1.8}>
           {value}
         </Text>
-        {unit && <Text style={s.statCardUnit}>{unit}</Text>}
+        {unit && (
+          <Text style={s.statCardUnit} maxFontSizeMultiplier={1.6}>
+            {unit}
+          </Text>
+        )}
       </View>
       <View style={s.statCardMetaRow}>
-        <Text style={s.statCardMetaText} numberOfLines={1}>
+        <Text style={s.statCardMetaText} numberOfLines={1} maxFontSizeMultiplier={1.5}>
           <Text style={s.statCardMetaLabel}>{metaLabel}</Text>
           <Text style={s.statCardMetaDivider}> · </Text>
           <Text style={s.statCardMetaValue}>{metaValue}</Text>
@@ -283,7 +289,10 @@ export function ProfileScreen() {
   const s = makeStyles(colors);
   const { t, i18n } = useTranslation();
   const layout = useResponsiveLayout();
+  const statsGridColumns = layout.isTablet ? 4 : 2;
+  const statCardSlotWidth = `${100 / statsGridColumns}%` as `${number}%`;
   const nav = useNavigation<Nav>();
+  const tabBarHeight = useBottomTabBarHeight();
   const [overall, setOverall] = useState<OverallStats | null>(null);
   const [dailyStats, setDailyStats] = useState<DailyStats[]>([]);
   const [statsLoading, setStatsLoading] = useState(true);
@@ -402,7 +411,6 @@ export function ProfileScreen() {
     ? formatCharactersPerMinute(liveOverall.avgCharactersPerMinute ?? 0, isZh)
     : formatCharactersPerMinute(0, isZh);
   const longestStreak = liveOverall?.longestStreak ?? 0;
-  const statCardWidth = layout.isTabletLandscape ? "23.2%" : "48.2%";
   const overviewCards = [
     {
       key: "time",
@@ -443,12 +451,17 @@ export function ProfileScreen() {
   return (
     <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={["top"]}>
       <View style={s.header}>
-        <Text style={s.headerTitle}>{t("profile.title", "我的")}</Text>
+        <View style={s.headerTitleWrap}>
+          <Text style={s.headerTitle} numberOfLines={1} maxFontSizeMultiplier={1.6}>
+            {t("profile.title", "我的")}
+          </Text>
+        </View>
+        <SyncButton size={20} color={colors.mutedForeground} />
       </View>
 
       <ScrollView
         style={s.scrollView}
-        contentContainerStyle={{ paddingTop: 20, paddingBottom: 40 }}
+        contentContainerStyle={{ paddingTop: 20, paddingBottom: tabBarHeight + 24 }}
         showsVerticalScrollIndicator={false}
       >
         {/* Stats cards */}
@@ -460,16 +473,24 @@ export function ProfileScreen() {
           ) : (
             <View style={s.statsGrid}>
               {overviewCards.map((card) => (
-                <StatCard
+                <View
                   key={card.key}
-                  icon={card.icon}
-                  title={card.title}
-                  value={card.value}
-                  unit={card.unit}
-                  metaLabel={card.metaLabel}
-                  metaValue={card.metaValue}
-                  style={{ width: statCardWidth }}
-                />
+                  style={{
+                    width: statCardSlotWidth,
+                    paddingHorizontal: 6,
+                    paddingBottom: 12,
+                  }}
+                >
+                  <StatCard
+                    icon={card.icon}
+                    title={card.title}
+                    value={card.value}
+                    unit={card.unit}
+                    metaLabel={card.metaLabel}
+                    metaValue={card.metaValue}
+                    style={{ width: "100%" }}
+                  />
+                </View>
               ))}
             </View>
           )}
@@ -478,10 +499,14 @@ export function ProfileScreen() {
         {/* Compact heatmap */}
         <View style={s.heatmapSection}>
           <View style={s.heatmapHeader}>
-            <Text style={s.heatmapTitle}>{t("profile.readingActivity", "阅读活动")}</Text>
+            <Text style={s.heatmapTitle} numberOfLines={1} maxFontSizeMultiplier={1.5}>
+              {t("profile.readingActivity", "阅读活动")}
+            </Text>
             <TouchableOpacity style={s.heatmapDetailBtn} onPress={() => nav.navigate("Stats")}>
               <BarChart3Icon size={14} color={colors.primary} />
-              <Text style={s.heatmapDetailText}>{t("profile.viewDetails", "查看详情")}</Text>
+              <Text style={s.heatmapDetailText} numberOfLines={1} maxFontSizeMultiplier={1.4}>
+                {t("profile.viewDetails", "查看详情")}
+              </Text>
             </TouchableOpacity>
           </View>
           <MiniHeatmap dailyStats={liveDailyStats} />
@@ -490,7 +515,9 @@ export function ProfileScreen() {
         {/* Settings menu */}
         {menuSections.map((section) => (
           <View key={section.title} style={s.menuSection}>
-            <Text style={s.menuSectionTitle}>{section.title}</Text>
+            <Text style={s.menuSectionTitle} maxFontSizeMultiplier={1.5}>
+              {section.title}
+            </Text>
             <View style={s.menuCard}>
               {section.items.map((item, idx) => {
                 const Icon = item.icon;
@@ -510,7 +537,9 @@ export function ProfileScreen() {
                     activeOpacity={0.7}
                   >
                     <Icon size={20} color={colors.mutedForeground} />
-                    <Text style={s.menuItemLabel}>{item.label}</Text>
+                    <Text style={s.menuItemLabel} maxFontSizeMultiplier={1.7}>
+                      {item.label}
+                    </Text>
                     <ChevronRightIcon size={16} color={colors.mutedForeground} />
                   </TouchableOpacity>
                 );
@@ -520,7 +549,9 @@ export function ProfileScreen() {
         ))}
 
         {/* Version */}
-        <Text style={s.version}>{t("profile.version", { version: Constants.expoConfig?.version ?? "1.0.0" })}</Text>
+        <Text style={s.version} maxFontSizeMultiplier={1.4}>
+          {t("profile.version", { version: Constants.expoConfig?.version ?? "1.0.0" })}
+        </Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -530,14 +561,23 @@ const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     header: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
       paddingHorizontal: 16,
       paddingTop: 12,
       paddingBottom: 12,
       borderBottomWidth: 0.5,
       borderBottomColor: colors.border,
     },
+    headerTitleWrap: {
+      flex: 1,
+      minWidth: 0,
+      marginRight: 12,
+    },
     headerTitle: {
       fontSize: fontSize["2xl"],
+      lineHeight: fontSize["2xl"] * 1.4,
       fontWeight: fontWeight.bold,
       color: colors.foreground,
     },
@@ -545,7 +585,7 @@ const makeStyles = (colors: ThemeColors) =>
     // Stats
     statsSection: { paddingHorizontal: 16, paddingTop: 16 },
     statsLoading: { alignItems: "center", justifyContent: "center", paddingVertical: 32 },
-    statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+    statsGrid: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -6 },
     statCard: {
       backgroundColor: colors.card,
       borderRadius: radius.xl,
@@ -576,6 +616,7 @@ const makeStyles = (colors: ThemeColors) =>
     statCardTitle: {
       flex: 1,
       fontSize: 11,
+      lineHeight: 16,
       fontWeight: fontWeight.medium,
       color: withOpacity(colors.mutedForeground, 0.8),
     },
@@ -583,12 +624,14 @@ const makeStyles = (colors: ThemeColors) =>
     statCardValue: {
       flexShrink: 1,
       fontSize: 25,
+      lineHeight: 32,
       fontWeight: fontWeight.bold,
       color: colors.foreground,
       letterSpacing: -0.8,
     },
     statCardUnit: {
       fontSize: 12,
+      lineHeight: 18,
       color: withOpacity(colors.mutedForeground, 0.78),
       fontWeight: fontWeight.medium,
     },
@@ -597,6 +640,7 @@ const makeStyles = (colors: ThemeColors) =>
     },
     statCardMetaText: {
       fontSize: 11,
+      lineHeight: 16,
       color: withOpacity(colors.mutedForeground, 0.72),
     },
     statCardMetaLabel: {
@@ -622,16 +666,28 @@ const makeStyles = (colors: ThemeColors) =>
     heatmapHeader: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "space-between",
+      gap: 8,
       marginBottom: 12,
     },
     heatmapTitle: {
+      flex: 1,
+      minWidth: 0,
       fontSize: fontSize.sm,
+      lineHeight: fontSize.sm * 1.5,
       fontWeight: fontWeight.medium,
       color: colors.mutedForeground,
     },
-    heatmapDetailBtn: { flexDirection: "row", alignItems: "center", gap: 4 },
-    heatmapDetailText: { fontSize: fontSize.xs, color: colors.primary },
+    heatmapDetailBtn: {
+      flexShrink: 0,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+    },
+    heatmapDetailText: {
+      fontSize: fontSize.xs,
+      lineHeight: fontSize.xs * 1.5,
+      color: colors.primary,
+    },
     heatmapContainer: { width: "100%" },
     heatmapGrid: { alignSelf: "center" },
     heatmapLegend: {
@@ -647,6 +703,7 @@ const makeStyles = (colors: ThemeColors) =>
     menuSection: { paddingHorizontal: 16, marginTop: 16 },
     menuSectionTitle: {
       fontSize: fontSize.xs,
+      lineHeight: fontSize.xs * 1.5,
       fontWeight: fontWeight.medium,
       color: colors.mutedForeground,
       textTransform: "uppercase",
@@ -668,12 +725,18 @@ const makeStyles = (colors: ThemeColors) =>
       paddingVertical: 14,
     },
     menuItemBorder: { borderBottomWidth: 0.5, borderBottomColor: colors.border },
-    menuItemLabel: { flex: 1, fontSize: fontSize.md, color: colors.foreground },
+    menuItemLabel: {
+      flex: 1,
+      fontSize: fontSize.md,
+      lineHeight: fontSize.md * 1.5,
+      color: colors.foreground,
+    },
     version: {
       textAlign: "center",
       fontSize: fontSize.xs,
+      lineHeight: fontSize.xs * 1.6,
       color: colors.mutedForeground,
       marginTop: 32,
-      marginBottom: 24,
+      marginBottom: 8,
     },
   });

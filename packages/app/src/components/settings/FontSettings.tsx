@@ -3,6 +3,7 @@
  */
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { Download, FileText, Globe, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,7 +22,7 @@ import {
 import type { CustomFont } from "@readany/core/types/font";
 import { PRESET_FONTS } from "@readany/core/types/font";
 
-const FONT_SIZE_LIMIT = 10 * 1024 * 1024;
+const FONT_SIZE_LIMIT = 20 * 1024 * 1024;
 
 export function FontSettings() {
   const { t, i18n } = useTranslation();
@@ -113,6 +114,11 @@ export function FontSettings() {
       if (size > FONT_SIZE_LIMIT) {
         const { remove } = await import("@tauri-apps/plugin-fs");
         await remove(filePath);
+        // Previously failed silently, leaving the user wondering why nothing
+        // happened. Surface the same message mobile shows.
+        toast.error(
+          t("fonts.tooLarge", "字体文件过大（最大 20MB），建议使用 woff2 格式可显著缩小体积"),
+        );
         setImporting(false);
         setPendingFontFile(null);
         return;
@@ -199,8 +205,14 @@ export function FontSettings() {
         <h2 className="mb-3 text-sm font-medium text-foreground">
           {t("fonts.title", "自定义字体")}
         </h2>
-        <p className="mb-4 text-xs text-muted-foreground">
+        <p className="mb-2 text-xs text-muted-foreground">
           {t("fonts.desc", "导入自定义字体，在阅读器中使用。支持 TTF、OTF、WOFF、WOFF2 格式。")}
+        </p>
+        <p className="mb-4 text-xs text-muted-foreground/80">
+          {t(
+            "fonts.importHint",
+            "支持 TTF / OTF / WOFF / WOFF2，推荐 WOFF2（同款字体体积约为 TTF 的 1/3）",
+          )}
         </p>
 
         <div className="flex gap-2">

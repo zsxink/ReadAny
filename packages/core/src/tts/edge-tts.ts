@@ -8,6 +8,11 @@
  */
 
 import { getPlatformService } from "../services/platform";
+import {
+  type EdgeTTSMetadataEvent,
+  parseEdgeTTSMetadataBody,
+  parseEdgeTTSTextFrame,
+} from "./edge-tts-metadata";
 
 // ── Constants ──
 const EDGE_SPEECH_URL =
@@ -252,12 +257,33 @@ function touchEdgeTTSAudioCache(key: string, audioData: ArrayBuffer) {
 }
 
 /**
- * Fetch audio from Edge TTS via IPlatformService.createWebSocket.
- * The platform service allows setting custom headers (User-Agent, Origin, Cookie)
- * that browser native WebSocket cannot set.
- * Returns the accumulated MP3 audio as an ArrayBuffer.
+ * Phase 1 spike: optional callbacks/overrides that let callers observe metadata
+ * frames (WordBoundary / Bookmark) and inject custom SSML. Existing playback
+ * code does not use these — see {@link fetchEdgeTTSAudioWithMetadata}.
  */
-async function fetchEdgeTTSAudioUncached(payload: EdgeTTSPayload): Promise<ArrayBuffer> {
+export interface EdgeTTSCoreOptions {
+  /** Fired for each parsed metadata event (WordBoundary / Bookmark / SentenceBoundary). */
+  onMetadata?: (event: EdgeTTSMetadataEvent) => void;
+  /** Override the SSML sent to the server. Use to inject `<bookmark>` etc. */
+  ssmlOverride?: string;
+  /** Fired with raw text frames whose Path is neither audio.metadata nor turn.end. Diagnostics only. */
+  onUnknownTextFrame?: (raw: string) => void;
+  /** Toggle SentenceBoundary events (default false; current production behavior). */
+  enableSentenceBoundary?: boolean;
+}
+
+/**
+ * Core implementation: opens the WebSocket, sends config + SSML, accumulates
+ * audio bytes, and (optionally) parses metadata text frames into events.
+ *
+ * The default behavior — no callbacks, no override — is identical to the
+ * pre-Phase-1 implementation: only `Path:turn.end` and binary audio frames are
+ * acted on; everything else is dropped.
+ */
+async function fetchEdgeTTSAudioCore(
+  payload: EdgeTTSPayload,
+  options: EdgeTTSCoreOptions = {},
+): Promise<ArrayBuffer> {
   const platform = getPlatformService();
 
   const connectId = randomHex(16);
@@ -282,7 +308,9 @@ async function fetchEdgeTTSAudioUncached(payload: EdgeTTSPayload): Promise<Array
   };
 
   const date = new Date().toString();
-  const ssml = genSSML(payload.lang, payload.text, payload.voice, payload.rate, payload.pitch);
+  const ssml =
+    options.ssmlOverride ??
+    genSSML(payload.lang, payload.text, payload.voice, payload.rate, payload.pitch);
 
   const configMsg = genMessage(
     {
@@ -294,7 +322,10 @@ async function fetchEdgeTTSAudioUncached(payload: EdgeTTSPayload): Promise<Array
       context: {
         synthesis: {
           audio: {
-            metadataoptions: { sentenceBoundaryEnabled: false, wordBoundaryEnabled: true },
+            metadataoptions: {
+              sentenceBoundaryEnabled: options.enableSentenceBoundary ?? false,
+              wordBoundaryEnabled: true,
+            },
             outputFormat: "audio-24khz-48kbitrate-mono-mp3",
           },
         },
@@ -318,6 +349,12 @@ async function fetchEdgeTTSAudioUncached(payload: EdgeTTSPayload): Promise<Array
       .then((ws) => {
         let audioData = new ArrayBuffer(0);
         let settled = false;
+        // Capture diagnostic frames so error messages can include the
+        // server's actual reason instead of a generic "no audio". The Edge
+        // server emits Path:response (success/error JSON) and Path:turn.end
+        // even when synthesis produces 0 bytes — usually with the error in
+        // the response body.
+        let lastResponseBody = "";
 
         const timeout = setTimeout(() => {
           if (!settled) {
@@ -334,15 +371,52 @@ async function fetchEdgeTTSAudioUncached(payload: EdgeTTSPayload): Promise<Array
           fn();
         };
 
+        const buildNoAudioError = () => {
+          const textPreview = ssml.length > 80 ? `${ssml.slice(0, 80)}…` : ssml;
+          const responseInfo = lastResponseBody
+            ? ` server response: ${lastResponseBody.slice(0, 200)}`
+            : "";
+          return new Error(
+            `Edge TTS returned no audio.${responseInfo} ssml="${textPreview}"`,
+          );
+        };
+
         ws.onMessage((data) => {
           try {
             if (typeof data === "string") {
+              // Capture the response body for diagnostics — emitted by the
+              // server before turn.end, success or failure. Cheap to parse:
+              // a single substring + indexOf.
+              const responseIdx = data.search(/Path:\s*response\b/i);
+              if (responseIdx >= 0) {
+                const sep = data.indexOf("\r\n\r\n", responseIdx);
+                if (sep >= 0) lastResponseBody = data.slice(sep + 4).trim();
+              }
+
+              // Fast path for turn.end — preserves pre-Phase-1 behavior so this
+              // check stays cheap when no metadata callback is registered.
               if (data.includes("Path:turn.end") || data.includes("Path: turn.end")) {
                 ws.close();
                 if (!audioData.byteLength) {
-                  return settle(() => reject(new Error("No audio data received from Edge TTS.")));
+                  return settle(() => reject(buildNoAudioError()));
                 }
                 return settle(() => resolve(audioData));
+              }
+
+              // Phase 1: parse text frames so callers can observe WordBoundary /
+              // Bookmark events. When no callbacks are set this is a no-op aside
+              // from the parse itself, which is cheap (a string split + JSON.parse).
+              if (options.onMetadata || options.onUnknownTextFrame) {
+                const frame = parseEdgeTTSTextFrame(data);
+                const path = frame?.path?.toLowerCase() ?? "";
+                if (frame && path.startsWith("audio.metadata")) {
+                  if (options.onMetadata) {
+                    const events = parseEdgeTTSMetadataBody(frame.body);
+                    for (const ev of events) options.onMetadata(ev);
+                  }
+                } else if (options.onUnknownTextFrame) {
+                  options.onUnknownTextFrame(data);
+                }
               }
             } else {
               const bytes = new Uint8Array(data);
@@ -362,12 +436,28 @@ async function fetchEdgeTTSAudioUncached(payload: EdgeTTSPayload): Promise<Array
         });
 
         ws.onError((error) => {
-          settle(() => reject(new Error(`Edge TTS WebSocket error: ${formatEdgeTTSError(error)}`)));
+          settle(() =>
+            reject(
+              new Error(
+                `Edge TTS WebSocket error: ${formatEdgeTTSError(error)}${
+                  lastResponseBody ? ` (last response: ${lastResponseBody.slice(0, 200)})` : ""
+                }`,
+              ),
+            ),
+          );
         });
 
         ws.onClose(() => {
           if (!audioData.byteLength) {
-            settle(() => reject(new Error("Edge TTS WebSocket closed without audio data")));
+            settle(() =>
+              reject(
+                new Error(
+                  `Edge TTS WebSocket closed without audio data${
+                    lastResponseBody ? ` (last response: ${lastResponseBody.slice(0, 200)})` : ""
+                  }`,
+                ),
+              ),
+            );
           } else {
             settle(() => resolve(audioData));
           }
@@ -380,6 +470,18 @@ async function fetchEdgeTTSAudioUncached(payload: EdgeTTSPayload): Promise<Array
         reject(new Error(`Edge TTS WebSocket error: ${formatEdgeTTSError(error)}`));
       });
   });
+}
+
+/**
+ * Fetch audio from Edge TTS via IPlatformService.createWebSocket.
+ * The platform service allows setting custom headers (User-Agent, Origin, Cookie)
+ * that browser native WebSocket cannot set.
+ * Returns the accumulated MP3 audio as an ArrayBuffer.
+ *
+ * This is the cache-eligible production path. Behavior matches pre-Phase-1.
+ */
+async function fetchEdgeTTSAudioUncached(payload: EdgeTTSPayload): Promise<ArrayBuffer> {
+  return fetchEdgeTTSAudioCore(payload);
 }
 
 export async function fetchEdgeTTSAudio(payload: EdgeTTSPayload): Promise<ArrayBuffer> {
@@ -407,4 +509,56 @@ export async function fetchEdgeTTSAudio(payload: EdgeTTSPayload): Promise<ArrayB
 
   edgeTtsInflightCache.set(cacheKey, request);
   return cloneAudioBuffer(await request);
+}
+
+// ── Phase 1 spike: SSML with bookmarks + metadata-aware fetch ──
+
+/**
+ * Build SSML where each text segment is preceded by a `<bookmark mark="..."/>`
+ * element. Microsoft's SSML extension uses `<bookmark>` (not the standard
+ * `<mark>`); the readaloud server emits a Bookmark metadata event as
+ * synthesis crosses each one.
+ *
+ * Used by the Phase 1 spike to verify Edge TTS actually fires Bookmark events.
+ * Once verified this becomes the basis for foliate.tts integration.
+ */
+export function genEdgeTTSBookmarkSSML(params: {
+  lang: string;
+  voice: string;
+  rate: number;
+  pitch: number;
+  /** Each segment becomes `<bookmark mark="<name>"/><text>`. Order is preserved. */
+  segments: { name: string; text: string }[];
+}): string {
+  const { lang, voice, rate, pitch, segments } = params;
+  const rateStr = `${rate >= 1 ? "+" : ""}${Math.round((rate - 1) * 100)}%`;
+  const pitchStr = `${pitch >= 1 ? "+" : ""}${Math.round((pitch - 1) * 50)}Hz`;
+
+  const inner = segments
+    .map(({ name, text }) => {
+      // Bookmark name must be a safe XML attribute value; SSML spec allows
+      // any string, but we're conservative and reuse XML escaping.
+      return `<bookmark mark="${escapeXml(name)}"/>${escapeXml(text)}`;
+    })
+    .join("");
+
+  return `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="${lang}"><voice name="${voice}"><prosody rate="${rateStr}" pitch="${pitchStr}">${inner}</prosody></voice></speak>`;
+}
+
+/**
+ * Phase 1 entry point: fetch Edge TTS audio while observing metadata events.
+ *
+ * Bypasses the audio cache (otherwise we'd skip the WebSocket roundtrip and
+ * miss every event). Designed for spikes and for the upcoming
+ * `EdgeTTSPlayer.speakSSML` path; **not** wired into the production playback
+ * pipeline yet.
+ *
+ * @param payload  - voice/lang/rate/pitch (text is ignored if `ssmlOverride` set)
+ * @param options  - callbacks + optional SSML override
+ */
+export async function fetchEdgeTTSAudioWithMetadata(
+  payload: EdgeTTSPayload,
+  options: EdgeTTSCoreOptions = {},
+): Promise<ArrayBuffer> {
+  return fetchEdgeTTSAudioCore(payload, options);
 }

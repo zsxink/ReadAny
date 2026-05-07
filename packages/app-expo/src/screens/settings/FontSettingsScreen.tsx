@@ -31,7 +31,7 @@ import { SettingsHeader } from "./SettingsHeader";
 import { useColors, fontSize, fontWeight, radius, spacing } from "@/styles/theme";
 import { PlusIcon, Trash2Icon, TypeIcon, LinkIcon, GlobeIcon } from "@/components/ui/Icon";
 
-const FONT_SIZE_LIMIT = 10 * 1024 * 1024;
+const FONT_SIZE_LIMIT = 20 * 1024 * 1024;
 
 export default function FontSettingsScreen() {
   const { t, i18n } = useTranslation();
@@ -128,7 +128,10 @@ export default function FontSettingsScreen() {
       if (size > FONT_SIZE_LIMIT) {
         const platform = getPlatformService();
         await platform.deleteFile(filePath);
-        Alert.alert(t("fonts.error", "错误"), t("fonts.tooLarge", "字体文件过大（最大 10MB）"));
+        Alert.alert(
+          t("fonts.error", "错误"),
+          t("fonts.tooLarge", "字体文件过大（最大 20MB），建议使用 woff2 格式可显著缩小体积"),
+        );
         setImporting(false);
         setPendingFontFile(null);
         return;
@@ -244,6 +247,12 @@ export default function FontSettingsScreen() {
           <View style={s.section}>
             <Text style={[s.hint, { color: colors.mutedForeground }]}>
               {t("fonts.desc", "导入自定义字体，在阅读器中使用。支持 TTF、OTF、WOFF、WOFF2 格式。")}
+            </Text>
+            <Text style={[s.hint, { color: colors.mutedForeground, marginTop: 6, fontSize: 12 }]}>
+              {t(
+                "fonts.importHint",
+                "支持 TTF / OTF / WOFF / WOFF2，推荐 WOFF2（同款字体体积约为 TTF 的 1/3）",
+              )}
             </Text>
           </View>
 

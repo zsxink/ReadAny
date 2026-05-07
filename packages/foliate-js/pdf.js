@@ -353,6 +353,32 @@ export const makePDF = async (file) => {
     standardFontDataUrl: "/vendor/pdfjs/standard_fonts/",
   }).promise;
 
+  return _buildPDFBook(pdf, file.name);
+};
+
+/**
+ * Create a foliate-js compatible book object from a PDF URL with Range support.
+ * pdf.js will use HTTP Range requests to lazily load pages on demand,
+ * avoiding loading the entire file into memory upfront.
+ */
+export const makePDFFromURL = async (url, fileName) => {
+  const pdf = await pdfjsLib.getDocument({
+    url,
+    rangeChunkSize: 65536,
+    disableAutoFetch: true,
+    disableStream: false,
+    useWorkerFetch: false,
+    isEvalSupported: false,
+    useSystemFonts: true,
+    cMapUrl: "/vendor/pdfjs/cmaps/",
+    cMapPacked: true,
+    standardFontDataUrl: "/vendor/pdfjs/standard_fonts/",
+  }).promise;
+
+  return _buildPDFBook(pdf, fileName);
+};
+
+async function _buildPDFBook(pdf, fileName) {
   const numPages = pdf.numPages;
   const firstPage = await pdf.getPage(1);
   const viewport = firstPage.getViewport({ scale: 1 });
@@ -362,7 +388,7 @@ export const makePDF = async (file) => {
   // Metadata
   const { metadata, info } = (await pdf.getMetadata()) ?? {};
   book.metadata = {
-    title: metadata?.get?.("dc:title") ?? info?.Title ?? file.name?.replace(/\.pdf$/i, ""),
+    title: metadata?.get?.("dc:title") ?? info?.Title ?? fileName?.replace(/\.pdf$/i, ""),
     author: metadata?.get?.("dc:creator") ?? info?.Author,
     contributor: metadata?.get?.("dc:contributor"),
     description: metadata?.get?.("dc:description") ?? info?.Subject,
@@ -441,4 +467,4 @@ export const makePDF = async (file) => {
   book.destroy = () => pdf.destroy();
 
   return book;
-};
+}

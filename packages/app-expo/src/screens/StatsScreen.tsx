@@ -40,7 +40,7 @@ import { useGoalsStore } from "@readany/core/stores";
 import { eventBus } from "@readany/core/utils/event-bus";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useResolvedCovers } from "./notes/useResolvedCovers";
 import { makeStyles } from "./stats/stats-styles";
@@ -113,10 +113,7 @@ export default function StatsScreen() {
   const primarySectionWidth = Math.floor((statsContentWidth - sectionGap) * 0.58);
   const secondarySectionWidth = statsContentWidth - sectionGap - primarySectionWidth;
   const metricColumns = layout.isTabletLandscape ? 5 : layout.isTablet ? 4 : 2;
-  const heroMetricPadding = 20 * 2;
-  const metricTileWidth = Math.floor(
-    (statsContentWidth - heroMetricPadding - 8 * (metricColumns - 1)) / metricColumns,
-  );
+  const metricTileSlotWidth = `${100 / metricColumns}%` as `${number}%`;
   const s = makeStyles(colors);
   const saveCurrentSession = useReadingSessionStore((ss) => ss.saveCurrentSession);
   const currentSession = useReadingSessionStore((ss) => ss.currentSession);
@@ -546,15 +543,23 @@ export default function StatsScreen() {
               {/* Supporting metrics grid */}
               <View style={s.metricsGrid}>
                 {supportMetrics.map((m) => (
-                  <MetricTile
+                  <View
                     key={m.label}
-                    label={m.label}
-                    value={m.value}
-                    sublabel={m.sublabel}
-                    delta={m.delta}
-                    deltaLabel={m.deltaLabel}
-                    style={layout.isTablet ? { width: metricTileWidth } : s.metricTileHalf}
-                  />
+                    style={{
+                      width: metricTileSlotWidth,
+                      paddingHorizontal: 4,
+                      paddingBottom: 8,
+                    }}
+                  >
+                    <MetricTile
+                      label={m.label}
+                      value={m.value}
+                      sublabel={m.sublabel}
+                      delta={m.delta}
+                      deltaLabel={m.deltaLabel}
+                      style={{ width: "100%" }}
+                    />
+                  </View>
                 ))}
               </View>
             </View>

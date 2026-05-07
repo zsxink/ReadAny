@@ -20,7 +20,8 @@ export function sanitizeWebDavRemoteRoot(remoteRoot: string): string {
     .replace(/[\u0000-\u001F\u007F]/g, "")
     .trim()
     .replace(/^\/+|\/+$/g, "")
-    .replace(/\/{2,}/g, "/");
+    .replace(/\/{2,}/g, "/")
+    .toLowerCase();
   return normalized;
 }
 
@@ -65,13 +66,13 @@ export class WebDavError extends Error {
   }
 }
 
-function summarizeStatus(status: number, statusText: string): string {
-  return [status, statusText.trim()].filter(Boolean).join(" ");
+function summarizeStatus(status: number, statusText?: string): string {
+  return [status, statusText?.trim()].filter(Boolean).join(" ");
 }
 
 function createHttpWebDavError(
   status: number,
-  statusText: string,
+  statusText: string | undefined,
   method: string,
   url: string,
 ): WebDavError {
@@ -335,7 +336,7 @@ export class WebDavClient {
     if (status === 405 || status === 409) {
       return;
     }
-    throw new Error(`WebDAV MKCOL failed for ${path}: ${status} ${resp.statusText}`);
+    throw new Error(`WebDAV MKCOL failed for ${path}: ${status} ${resp.statusText || ""}`);
   }
 
   /** Ensure a full directory path exists (creates each segment) */
@@ -367,7 +368,7 @@ export class WebDavClient {
       contentType,
     });
     if (!resp.ok) {
-      throw new Error(`WebDAV PUT failed for ${path}: ${resp.status} ${resp.statusText}`);
+      throw new Error(`WebDAV PUT failed for ${path}: ${resp.status} ${resp.statusText || ""}`);
     }
   }
 
@@ -382,7 +383,7 @@ export class WebDavClient {
       responseType: "arraybuffer",
     });
     if (!resp.ok) {
-      throw new Error(`WebDAV GET failed for ${path}: ${resp.status} ${resp.statusText}`);
+      throw new Error(`WebDAV GET failed for ${path}: ${resp.status} ${resp.statusText || ""}`);
     }
     const buffer = await resp.arrayBuffer();
     return new Uint8Array(buffer);
@@ -394,7 +395,7 @@ export class WebDavClient {
       responseType: "text",
     });
     if (!resp.ok) {
-      throw new Error(`WebDAV GET failed for ${path}: ${resp.status} ${resp.statusText}`);
+      throw new Error(`WebDAV GET failed for ${path}: ${resp.status} ${resp.statusText || ""}`);
     }
     return resp.text();
   }
@@ -416,7 +417,7 @@ export class WebDavClient {
     const resp = await this.request("DELETE", path);
     // 204 No Content or 404 Not Found — both OK for delete
     if (!resp.ok && resp.status !== 404) {
-      throw new Error(`WebDAV DELETE failed for ${path}: ${resp.status} ${resp.statusText}`);
+      throw new Error(`WebDAV DELETE failed for ${path}: ${resp.status} ${resp.statusText || ""}`);
     }
   }
 
@@ -457,7 +458,7 @@ export class WebDavClient {
     });
     if (!resp.ok && resp.status !== 207) {
       if (resp.status === 404 || resp.status === 409) return [];
-      throw new Error(`WebDAV PROPFIND failed for ${path}: ${resp.status} ${resp.statusText}`);
+      throw new Error(`WebDAV PROPFIND failed for ${path}: ${resp.status} ${resp.statusText || ""}`);
     }
     const xml = await resp.text();
     return parsePropfindResponse(xml, path);

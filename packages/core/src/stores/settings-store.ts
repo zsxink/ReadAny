@@ -53,6 +53,7 @@ const defaultReadSettings: ReadSettings = {
   showTopTitleProgress: true,
   showBottomTimeBattery: true,
   volumeButtonsPageTurn: false,
+  followSystemFontScale: false,
 };
 
 const defaultTranslationConfig: TranslationConfig = {

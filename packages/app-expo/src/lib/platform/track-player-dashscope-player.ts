@@ -2,14 +2,26 @@ import { getPlatformService } from "@readany/core/services";
 import type { ITTSPlayer, TTSConfig } from "@readany/core/tts";
 import { splitIntoChunks } from "@readany/core/tts";
 import { File, Paths } from "expo-file-system";
-import { Image } from "react-native";
+import { AppState, type AppStateStatus, Image, Platform } from "react-native";
 import TrackPlayer, { Event, State } from "react-native-track-player";
 
+import { ensureSilenceFile } from "./tts-silence-keeper";
+import {
+  chunkIndexFromTrackId,
+  trackIdForChunkIndex,
+} from "./track-player-chunk-id";
+
 const CHUNK_MAX_CHARS = 500;
-const DEFAULT_ARTWORK = Image.resolveAssetSource(require("../../../assets/icon.png")).uri;
+const DEFAULT_ARTWORK = (() => {
+  try {
+    return Image.resolveAssetSource(require("../../../assets/icon.png"))?.uri || "";
+  } catch {
+    return "";
+  }
+})();
 
 export class TrackPlayerDashScopeTTSPlayer implements ITTSPlayer {
-  private static readonly INITIAL_BUFFER_CHUNKS = 4;
+  private static readonly INITIAL_BUFFER_CHUNKS = 8;
   private static readonly FETCH_CONCURRENCY = 8;
   private static readonly STARVE_RESUME_BUFFER_CHUNKS = 2;
   private static readonly MAX_RETRIES = 3;
@@ -37,11 +49,18 @@ export class TrackPlayerDashScopeTTSPlayer implements ITTSPlayer {
   private _progressPollTimer: ReturnType<typeof setInterval> | null = null;
   private _getArtwork: (() => string | undefined) | null = null;
   private _currentArtwork = DEFAULT_ARTWORK;
+  private _getTitle: (() => string | undefined) | null = null;
+  private _currentTitle = "";
   private _producerRunning = false;
   private _retryCount = 0;
+  private _silenceTrackIds = new Set<string>();
 
   setArtworkGetter(getter: () => string | undefined): void {
     this._getArtwork = getter;
+  }
+
+  setTitleGetter(getter: () => string | undefined): void {
+    this._getTitle = getter;
   }
 
   async speak(text: string | string[], config: TTSConfig): Promise<void> {
@@ -73,7 +92,9 @@ export class TrackPlayerDashScopeTTSPlayer implements ITTSPlayer {
     this._playStarted = false;
     this._lastNotifiedIndex = -1;
     this._currentArtwork = this._getArtwork?.() || DEFAULT_ARTWORK;
+    this._currentTitle = this._getTitle?.() || "";
     this._producerRunning = false;
+    this._silenceTrackIds.clear();
 
     if (this._chunks.length === 0) {
       this.onStateChange?.("stopped");
@@ -108,8 +129,13 @@ export class TrackPlayerDashScopeTTSPlayer implements ITTSPlayer {
       Event.PlaybackActiveTrackChanged,
       (event) => {
         if (gen !== this._speakGen || this._stopped) return;
-        if (event.index != null && event.index >= 0) {
-          this._notifyChunkChange(event.index);
+        // Skip notifications for silence keep-alive tracks
+        if (event.track && this._silenceTrackIds.has(event.track.id as string)) return;
+        // Resolve chunk index by track ID — silence keep-alive tracks shift
+        // queue indices off-by-one or more from chunk indices.
+        const chunkIndex = chunkIndexFromTrackId(event.track?.id);
+        if (chunkIndex != null) {
+          this._notifyChunkChange(chunkIndex);
         }
       },
     );
@@ -119,12 +145,28 @@ export class TrackPlayerDashScopeTTSPlayer implements ITTSPlayer {
       if (event.state === State.Playing) {
         this.onStateChange?.("playing");
       } else if (event.state === State.Paused) {
-        // Queue starvation can temporarily report Paused while the producer is
-        // still generating audio. Treat that as buffering, not a user pause.
+        // RNTP reports Paused for several reasons that are NOT real starvation:
+        //   1. The Paused state right after `TrackPlayer.reset()` in speak(),
+        //      which fires before any chunk has been added.
+        //   2. Brief transitions while RNTP loads the next track (we see this
+        //      every time _resumeStarvedQueue calls TrackPlayer.skip()).
+        //   3. Transient buffering hiccups while real chunks are queued ahead.
+        // Misclassifying any of these as starvation makes _addFetchedChunk
+        // call _resumeStarvedQueue → TrackPlayer.skip(currentIndex + 1), which
+        // chops off the currently playing track and jumps to the next one.
+        //
+        // Treat Paused as starvation only when (a) we already started real
+        // playback and (b) we genuinely have no chunk queued past the current
+        // playing one. Real end-of-queue starvation still gets caught by the
+        // PlaybackQueueEnded handler below, which carries an authoritative
+        // track index.
         if (this._paused) {
           this.onStateChange?.("paused");
-        } else if (!this._downloadComplete) {
-          this._markQueueStarved();
+        } else if (!this._downloadComplete && this._playStarted) {
+          const hasChunksAhead = this._nextChunkToAdd > this._currentIndex + 1;
+          if (!hasChunksAhead) {
+            this._markQueueStarved();
+          }
         } else if (this._isAtFinalTrack()) {
           this._finishPlayback();
         }
@@ -161,6 +203,17 @@ export class TrackPlayerDashScopeTTSPlayer implements ITTSPlayer {
       unsubQueueEnded.remove,
       unsubSeek.remove,
     );
+
+    // Resume chunk fetching when app returns to foreground.
+    const appStateSub = AppState.addEventListener("change", (state: AppStateStatus) => {
+      if (state !== "active") return;
+      if (gen !== this._speakGen || this._stopped) return;
+      this._ensureProducerRunning(gen);
+      if (this._queueStarved) {
+        this._recoverFromStarvation(gen);
+      }
+    });
+    this._unsubscribers.push(() => appStateSub.remove());
   }
 
   private _ensureProducerRunning(gen: number): void {
@@ -251,8 +304,11 @@ export class TrackPlayerDashScopeTTSPlayer implements ITTSPlayer {
     await TrackPlayer.play();
     this._playStarted = true;
     this._startProgressPolling(gen);
-    const activeIndex = await TrackPlayer.getActiveTrackIndex().catch(() => undefined);
-    this._notifyChunkChange(activeIndex ?? 0);
+    const activeTrack = await TrackPlayer.getActiveTrack().catch(() => null);
+    const chunkIndex = chunkIndexFromTrackId(activeTrack?.id);
+    if (chunkIndex != null) {
+      this._notifyChunkChange(chunkIndex);
+    }
     this.onStateChange?.("playing");
   }
 
@@ -260,9 +316,9 @@ export class TrackPlayerDashScopeTTSPlayer implements ITTSPlayer {
     if (gen !== this._speakGen || this._stopped) throw new Error("aborted");
 
     await TrackPlayer.add({
-      id: `tts-dashscope-${index}`,
+      id: trackIdForChunkIndex(index),
       url: audioUri,
-      title: `Segment ${index + 1}`,
+      title: this._currentTitle || `Segment ${index + 1}`,
       artwork: this._currentArtwork,
     });
 
@@ -289,23 +345,59 @@ export class TrackPlayerDashScopeTTSPlayer implements ITTSPlayer {
     if (gen !== this._speakGen || this._stopped || this._paused) return;
 
     try {
+      // Remove silence keep-alive tracks before resuming real audio
+      await this._removeSilenceTracks();
+
       const queue = await TrackPlayer.getQueue();
       if (queue.length === 0) return;
 
-      const targetIndex = Math.min(Math.max(this._currentIndex + 1, 0), queue.length - 1);
+      // Resolve queue position by track ID rather than treating chunk index
+      // as queue index. See track-player-chunk-id.ts for the why.
+      const targetChunkIndex = this._currentIndex + 1;
+      const targetTrackId = trackIdForChunkIndex(targetChunkIndex);
+      let targetQueuePos = queue.findIndex((track) => track.id === targetTrackId);
+      if (targetQueuePos < 0) {
+        for (let i = 0; i < queue.length; i++) {
+          const idx = chunkIndexFromTrackId(queue[i].id);
+          if (idx != null && idx > this._currentIndex) {
+            targetQueuePos = i;
+            break;
+          }
+        }
+        if (targetQueuePos < 0) return;
+      }
+
       this._queueStarved = false;
-      await TrackPlayer.skip(targetIndex).catch(() => {});
+      await TrackPlayer.skip(targetQueuePos).catch(() => {});
       await TrackPlayer.play();
-      this._notifyChunkChange(targetIndex);
+      const resolvedTrack = await TrackPlayer.getActiveTrack().catch(() => null);
+      const resolvedChunkIndex =
+        chunkIndexFromTrackId(resolvedTrack?.id) ?? targetChunkIndex;
+      this._notifyChunkChange(resolvedChunkIndex);
       this._startProgressPolling(gen);
       this.onStateChange?.("playing");
       console.log("[TrackPlayerDashScopeTTSPlayer] resumed after queue starvation", {
-        targetIndex,
+        targetQueuePos,
+        resolvedChunkIndex,
         queueLength: queue.length,
       });
     } catch (error) {
       console.warn("[TrackPlayerDashScopeTTSPlayer] failed to resume starved queue", error);
     }
+  }
+
+  private async _removeSilenceTracks(): Promise<void> {
+    if (this._silenceTrackIds.size === 0) return;
+    try {
+      const ids = new Set(this._silenceTrackIds);
+      this._silenceTrackIds.clear();
+      const queue = await TrackPlayer.getQueue();
+      const indexes = queue
+        .map((track, index) => (ids.has(String(track.id)) ? index : -1))
+        .filter((index) => index >= 0)
+        .sort((a, b) => b - a);
+      if (indexes.length > 0) await TrackPlayer.remove(indexes).catch(() => {});
+    } catch {}
   }
 
   private async _fetchChunkFileWithRetry(index: number, gen: number): Promise<string> {
@@ -364,23 +456,30 @@ export class TrackPlayerDashScopeTTSPlayer implements ITTSPlayer {
     }
 
     try {
-      const [activeIndex, playbackState] = await Promise.all([
-        TrackPlayer.getActiveTrackIndex().catch(() => undefined),
+      const [activeTrack, playbackState] = await Promise.all([
+        TrackPlayer.getActiveTrack().catch(() => null),
         TrackPlayer.getPlaybackState().catch(() => null),
       ]);
 
       if (gen !== this._speakGen || this._stopped) return;
 
-      if (activeIndex != null) {
-        this._notifyChunkChange(activeIndex);
+      const chunkIndex = chunkIndexFromTrackId(activeTrack?.id);
+      if (chunkIndex != null) {
+        this._notifyChunkChange(chunkIndex);
       }
 
       if (playbackState?.state === State.Ended || playbackState?.state === State.Stopped) {
-        this._handlePlaybackEnded(gen, activeIndex);
+        this._handlePlaybackEnded(gen, chunkIndex ?? undefined);
         return;
       }
 
-      if (!this._downloadComplete || this._paused || !this._isAtFinalTrack(activeIndex)) return;
+      if (
+        !this._downloadComplete ||
+        this._paused ||
+        chunkIndex == null ||
+        !this._isAtFinalTrack(chunkIndex)
+      )
+        return;
 
       const progress = await TrackPlayer.getProgress().catch(() => null);
       if (gen !== this._speakGen || this._stopped || !progress) return;
@@ -402,11 +501,11 @@ export class TrackPlayerDashScopeTTSPlayer implements ITTSPlayer {
 
   private _markQueueStarved(track?: number): void {
     this._queueStarved = true;
-    const lastQueuedIndex = Math.max(0, this._nextChunkToAdd - 1);
+    // Don't bump _currentIndex to lastQueuedIndex when track is unknown —
+    // see edge-player for why (caused _resumeStarvedQueue to skip past
+    // unplayed chunks once the producer caught up).
     if (typeof track === "number") {
       this._currentIndex = Math.max(this._currentIndex, track);
-    } else {
-      this._currentIndex = Math.max(this._currentIndex, lastQueuedIndex);
     }
     console.warn(
       "[TrackPlayerDashScopeTTSPlayer] queue starved, waiting for next generated chunk",
@@ -417,6 +516,42 @@ export class TrackPlayerDashScopeTTSPlayer implements ITTSPlayer {
         total: this._chunks.length,
       },
     );
+
+    // On iOS, keep the audio session alive by inserting a silent track.
+    if (Platform.OS === "ios") {
+      void this._insertSilenceKeepAlive();
+    }
+  }
+
+  private async _insertSilenceKeepAlive(): Promise<void> {
+    try {
+      const silenceUri = ensureSilenceFile();
+      const silenceId = `tts-silence-${Date.now()}`;
+      this._silenceTrackIds.add(silenceId);
+      await TrackPlayer.add({
+        id: silenceId,
+        url: silenceUri,
+        title: "Buffering…",
+        artwork: this._currentArtwork,
+        duration: 1,
+      });
+      const state = await TrackPlayer.getPlaybackState().catch(() => null);
+      if (state?.state !== State.Playing && !this._paused && !this._stopped) {
+        await TrackPlayer.play();
+      }
+    } catch (error) {
+      console.warn("[TrackPlayerDashScopeTTSPlayer] failed to insert silence keep-alive", error);
+    }
+  }
+
+  /**
+   * Called when app returns to foreground after being suspended.
+   * Restarts the producer and attempts to resume playback if queue was starved.
+   */
+  private _recoverFromStarvation(gen: number): void {
+    if (gen !== this._speakGen || this._stopped) return;
+    console.log("[TrackPlayerDashScopeTTSPlayer] recovering from background starvation");
+    this._ensureProducerRunning(gen);
   }
 
   private _isAtFinalTrack(index = this._currentIndex): boolean {
@@ -514,6 +649,7 @@ export class TrackPlayerDashScopeTTSPlayer implements ITTSPlayer {
     this._nextChunkToFetch = 0;
     this._producerRunning = false;
     this._fetchPromises.clear();
+    this._silenceTrackIds.clear();
     this._stopProgressPolling();
     TrackPlayer.stop();
     TrackPlayer.reset();
@@ -530,6 +666,7 @@ export class TrackPlayerDashScopeTTSPlayer implements ITTSPlayer {
     this._nextChunkToFetch = 0;
     this._producerRunning = false;
     this._fetchPromises.clear();
+    this._silenceTrackIds.clear();
     this._stopProgressPolling();
     this._cleanupEvents();
     try {

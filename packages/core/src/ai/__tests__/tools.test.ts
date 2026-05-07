@@ -149,6 +149,8 @@ describe("getAvailableTools", () => {
       enabled: true,
       builtIn: false,
       parameters: [{ name: "input", type: "string" as const, description: "Input text", required: true }],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     };
     const tools = getAvailableTools({ bookId: null, isVectorized: false, enabledSkills: [skill] });
     const skillTool = findTool(tools, "custom-skill");
@@ -1070,6 +1072,8 @@ describe("skillToTool conversion", () => {
       parameters: [
         { name: "topic", type: "string" as const, description: "The topic", required: true },
       ],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     };
 
     const tools = getAvailableTools({ bookId: null, isVectorized: false, enabledSkills: [skill] });

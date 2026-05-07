@@ -1,17 +1,20 @@
-import { extractBookMetadata } from "@/lib/book/metadata-extractor";
+import {
+  createRangeReadableFile,
+  extractBookMetadata,
+  extractBookMetadataFromFile,
+} from "@/lib/book/metadata-extractor";
 import { queueBook as queueAutoVectorize } from "@/lib/rag/auto-vectorize-service";
 import {
+  type ImportBooksResult,
   createEmptyImportBooksResult,
   createImportDuplicateIndex,
   findDuplicateBookByHash,
-  type ImportBooksResult,
 } from "@readany/core";
 import * as db from "@readany/core/db/database";
 import { runWithDbRetry } from "@readany/core/db/write-retry";
 import { getPlatformService } from "@readany/core/services";
-import type { Book, LibraryFilter, SortField, SortOrder } from "@readany/core/types";
+import type { Book, BookGroup, LibraryFilter, SortField, SortOrder } from "@readany/core/types";
 import { generateId } from "@readany/core/utils";
-import * as Crypto from "expo-crypto";
 import { create } from "zustand";
 import { debouncedSave, loadFromFS } from "./persist";
 import { useVectorModelStore } from "./vector-model-store";
@@ -49,15 +52,21 @@ export interface RemoveBookOptions {
 
 export interface LibraryState {
   books: Book[];
+  groups: BookGroup[];
   filter: LibraryFilter;
   viewMode: LibraryViewMode;
+  isGroupView: boolean;
   isImporting: boolean;
   isLoaded: boolean;
   allTags: string[];
   activeTag: string;
+  activeGroupId: string;
 
   loadBooks: (deletedTags?: string[]) => Promise<void>;
+  loadGroups: () => Promise<void>;
   setBooks: (books: Book[]) => void;
+  setGroupView: (enabled: boolean) => void;
+  setActiveGroupId: (groupId: string) => void;
   addBook: (book: Book) => Promise<void>;
   removeBook: (bookId: string, options?: RemoveBookOptions) => Promise<void>;
   updateBook: (bookId: string, updates: Partial<Book>) => void;
@@ -83,6 +92,12 @@ export interface LibraryState {
   addTag: (tag: string) => void;
   removeTag: (tag: string) => void;
   renameTag: (oldName: string, newName: string) => void;
+  addGroup: (name: string) => Promise<BookGroup | null>;
+  renameGroup: (groupId: string, name: string) => void;
+  removeGroup: (groupId: string) => Promise<void>;
+  moveBookToGroup: (bookId: string, groupId?: string) => void;
+  moveBooksToGroup: (bookIds: string[], groupId?: string) => void;
+  removeBookFromGroup: (bookId: string) => void;
   addTagToBook: (bookId: string, tag: string) => void;
   removeTagFromBook: (bookId: string, tag: string) => void;
 }
@@ -135,12 +150,59 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-async function hashBytes(bytes: Uint8Array): Promise<string> {
-  return Crypto.digestStringAsync(
-    Crypto.CryptoDigestAlgorithm.SHA256,
-    bytesToBase64(bytes),
-    { encoding: Crypto.CryptoEncoding.HEX },
-  );
+const MOBILE_IMPORT_METADATA_MAX_BYTES = 32 * 1024 * 1024;
+const MOBILE_AUTO_VECTORIZER_MAX_BYTES = 12 * 1024 * 1024;
+
+async function getMobileFileStat(path: string): Promise<{ size: number; md5?: string }> {
+  const LegacyFileSystem = await import("expo-file-system/legacy");
+  const info = await LegacyFileSystem.getInfoAsync(path);
+  return {
+    size: info.exists && !info.isDirectory ? (info.size ?? 0) : 0,
+    md5: undefined,
+  };
+}
+
+async function extractMobileImportMetadata(params: {
+  filePath: string;
+  format: Book["format"];
+  fileName: string;
+  fileSize: number;
+  sourceBytes?: Uint8Array;
+}) {
+  const { filePath, format, fileName, fileSize, sourceBytes } = params;
+
+  if (format === "epub") {
+    const bytes =
+      sourceBytes ??
+      (fileSize > 0 && fileSize <= MOBILE_IMPORT_METADATA_MAX_BYTES
+        ? await getPlatformService().readFile(filePath)
+        : null);
+    if (bytes) {
+      return extractBookMetadata(bytes, format, fileName);
+    }
+    console.warn(
+      `[extractMobileImportMetadata] Skip EPUB metadata for large file: ${fileName} (${fileSize} bytes)`,
+    );
+  }
+
+  if (format === "mobi" || format === "azw" || format === "azw3") {
+    const rangeReadable = await createRangeReadableFile(filePath, fileSize);
+    return extractBookMetadataFromFile(rangeReadable, format, fileName);
+  }
+
+  return {
+    title: fileName.replace(/\.\w+$/i, "") || "Untitled",
+    author: "",
+    coverBytes: null,
+    coverMimeType: null,
+  };
+}
+
+function shouldAutoVectorizeMobile(format: Book["format"], size: number): boolean {
+  if (size <= 0 || size > MOBILE_AUTO_VECTORIZER_MAX_BYTES) {
+    return false;
+  }
+  return format === "epub" || format === "txt";
 }
 
 /**
@@ -167,7 +229,7 @@ function ensureUtf8Bytes(bytes: Uint8Array): Uint8Array {
   // otherwise a multi-byte char split at the boundary causes a false failure.
   let sampleEnd = Math.min(bytes.length, 64 * 1024);
   // Back up past any UTF-8 continuation bytes (10xxxxxx = 0x80-0xBF) at the end
-  while (sampleEnd > 0 && sampleEnd < bytes.length && (bytes[sampleEnd]! & 0xC0) === 0x80) {
+  while (sampleEnd > 0 && sampleEnd < bytes.length && ((bytes[sampleEnd] ?? 0) & 0xc0) === 0x80) {
     sampleEnd--;
   }
   try {
@@ -175,16 +237,16 @@ function ensureUtf8Bytes(bytes: Uint8Array): Uint8Array {
     if (bytes.length > sampleEnd * 2) {
       let midStart = Math.floor(bytes.length / 2);
       // Align mid-sample start to a UTF-8 character boundary
-      while (midStart < bytes.length && (bytes[midStart]! & 0xC0) === 0x80) {
+      while (midStart < bytes.length && ((bytes[midStart] ?? 0) & 0xc0) === 0x80) {
         midStart++;
       }
       let midEnd = Math.min(midStart + 8192, bytes.length);
-      while (midEnd > midStart && midEnd < bytes.length && (bytes[midEnd]! & 0xC0) === 0x80) {
+      while (midEnd > midStart && midEnd < bytes.length && ((bytes[midEnd] ?? 0) & 0xc0) === 0x80) {
         midEnd--;
       }
       new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(midStart, midEnd));
     }
-    console.log(`[ensureUtf8Bytes] passed UTF-8 validation`);
+    console.log("[ensureUtf8Bytes] passed UTF-8 validation");
     return bytes; // Valid UTF-8
   } catch {
     // Not valid UTF-8 — detect which encoding it is
@@ -196,19 +258,23 @@ function ensureUtf8Bytes(bytes: Uint8Array): Uint8Array {
   const sample = bytes.subarray(0, Math.min(4096, bytes.length));
   let highBytes = 0;
   for (let i = 0; i < sample.length; i++) {
-    if (sample[i]! >= 0x80) highBytes++;
+    if ((sample[i] ?? 0) >= 0x80) highBytes++;
   }
   const highRatio = sample.length > 0 ? highBytes / sample.length : 0;
 
   let gbkPairs = 0;
   let sjisDistinctPairs = 0;
   for (let i = 0; i < sample.length - 1; i++) {
-    const b1 = sample[i]!;
-    const b2 = sample[i + 1]!;
-    if (b1 >= 0xA1 && b1 <= 0xFE && b2 >= 0xA1 && b2 <= 0xFE) {
+    const b1 = sample[i] ?? 0;
+    const b2 = sample[i + 1] ?? 0;
+    if (b1 >= 0xa1 && b1 <= 0xfe && b2 >= 0xa1 && b2 <= 0xfe) {
       gbkPairs++;
       i++;
-    } else if (b1 >= 0x81 && b1 <= 0x9F && ((b2 >= 0x40 && b2 <= 0x7E) || (b2 >= 0x80 && b2 <= 0xFC))) {
+    } else if (
+      b1 >= 0x81 &&
+      b1 <= 0x9f &&
+      ((b2 >= 0x40 && b2 <= 0x7e) || (b2 >= 0x80 && b2 <= 0xfc))
+    ) {
       sjisDistinctPairs++;
       i++;
     }
@@ -227,20 +293,36 @@ function ensureUtf8Bytes(bytes: Uint8Array): Uint8Array {
   }
 }
 
+/**
+ * Copy book to app data directory. Uses OS-level file copy when possible
+ * to avoid loading the full file into JS memory.
+ * Falls back to readFile+writeFile only when sourceBytes are already available.
+ */
 async function copyBookToAppData(
   bookId: string,
   ext: string,
   srcPath: string,
   sourceBytes?: Uint8Array,
-): Promise<{ relativePath: string; fileBytes: Uint8Array }> {
+): Promise<{ relativePath: string; absPath: string }> {
   const platform = getPlatformService();
   await ensureAppSubDir("books");
   const relativePath = `books/${bookId}.${ext}`;
   const absPath = await resolveAppPath(relativePath);
 
-  const fileBytes = sourceBytes ?? (await platform.readFile(srcPath));
-  await platform.writeFile(absPath, fileBytes);
-  return { relativePath, fileBytes };
+  if (sourceBytes) {
+    // If bytes are already in memory (e.g. from hash calculation), just write them
+    await platform.writeFile(absPath, sourceBytes);
+  } else {
+    // Use expo-file-system File.copy() for OS-level copy (no JS memory)
+    const ExpoFS = await import("expo-file-system");
+    const srcFile = new ExpoFS.File(srcPath);
+    const destFile = new ExpoFS.File(absPath);
+    if (destFile.exists) {
+      destFile.delete();
+    }
+    srcFile.copy(destFile);
+  }
+  return { relativePath, absPath };
 }
 
 async function persistBookUpdate(bookId: string, updates: Partial<Book>): Promise<void> {
@@ -275,16 +357,10 @@ async function restoreDeletedMobileBook(
   const format: Book["format"] = formatMap[ext || ""] || "epub";
   const fileName = originalName;
   const platform = getPlatformService();
-  const sourceBytes = await platform.readFile(filePath);
-
-  let fileHash: string | undefined;
-  try {
-    fileHash = await hashBytes(sourceBytes);
-  } catch {
-    // Hash calculation is best effort.
-  }
+  const { size: fileSize, md5: fileHash } = await getMobileFileStat(filePath);
 
   if (ext === "txt") {
+    const sourceBytes = await platform.readFile(filePath);
     const { TxtToEpubConverter } = await import("@readany/core/utils/txt-to-epub");
     const bytes = ensureUtf8Bytes(sourceBytes);
     const txtFile = {
@@ -337,19 +413,19 @@ async function restoreDeletedMobileBook(
     };
   }
 
-  const { relativePath, fileBytes } = await copyBookToAppData(
-    bookId,
-    ext || "epub",
-    filePath,
-    sourceBytes,
-  );
+  const { relativePath } = await copyBookToAppData(bookId, ext || "epub", filePath);
 
   let title = originalBook.meta.title || fileName.replace(/\.\w+$/i, "") || "Untitled";
   let author = originalBook.meta.author || "";
   let coverUrl = originalBook.meta.coverUrl;
 
   try {
-    const meta = await extractBookMetadata(fileBytes, format, fileName);
+    const meta = await extractMobileImportMetadata({
+      filePath,
+      format,
+      fileName,
+      fileSize,
+    });
     if (meta.title) title = meta.title;
     if (meta.author) author = meta.author;
 
@@ -417,26 +493,22 @@ async function inspectDeletedMobileBookCandidate(
   };
   const format: Book["format"] = formatMap[ext || ""] || "epub";
   const fileName = originalName;
-  const platform = getPlatformService();
-  const sourceBytes = await platform.readFile(filePath);
-
-  let fileHash: string | undefined;
-  try {
-    fileHash = await hashBytes(sourceBytes);
-  } catch {
-    // Best effort.
-  }
+  const { size: fileSize, md5: fileHash } = await getMobileFileStat(filePath);
 
   if (ext === "txt") {
     try {
       const { TxtToEpubConverter } = await import("@readany/core/utils/txt-to-epub");
+      const platform = getPlatformService();
+      const sourceBytes = await platform.readFile(filePath);
       const bytes = ensureUtf8Bytes(sourceBytes);
       const txtFile = {
         name: fileName,
         size: bytes.byteLength,
         type: "text/plain",
         arrayBuffer: () =>
-          Promise.resolve(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)),
+          Promise.resolve(
+            bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+          ),
         slice: (start?: number, end?: number) => {
           const sliced = bytes.slice(start ?? 0, end ?? bytes.byteLength);
           return {
@@ -475,7 +547,12 @@ async function inspectDeletedMobileBookCandidate(
   let title = fileName.replace(/\.\w+$/i, "") || originalBook.meta.title || "Untitled";
   let author = "";
   try {
-    const meta = await extractBookMetadata(sourceBytes, format, fileName);
+    const meta = await extractMobileImportMetadata({
+      filePath,
+      format,
+      fileName,
+      fileSize,
+    });
     if (meta.title) title = meta.title;
     if (meta.author) author = meta.author;
   } catch {
@@ -487,6 +564,7 @@ async function inspectDeletedMobileBookCandidate(
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
   books: [],
+  groups: [],
   filter: {
     search: "",
     tags: [],
@@ -494,10 +572,12 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     sortOrder: "desc",
   },
   viewMode: "grid",
+  isGroupView: true,
   isImporting: false,
   isLoaded: false,
   allTags: [],
   activeTag: "",
+  activeGroupId: "",
 
   loadBooks: async (deletedTags?: string[]) => {
     const computeTags = (books: Book[]) => {
@@ -508,8 +588,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
     try {
       const cached = await loadFromFS<Book[]>("library-books");
+      const cachedGroups = await loadFromFS<BookGroup[]>("library-groups");
       if (cached && cached.length > 0) {
-        set({ books: cached, isLoaded: true, allTags: computeTags(cached) });
+        set({
+          books: cached,
+          groups: cachedGroups ?? get().groups,
+          isLoaded: true,
+          allTags: computeTags(cached),
+        });
       }
     } catch {
       /* cache miss */
@@ -517,7 +603,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
     try {
       await db.initDatabase();
-      const books = await db.getBooks();
+      const [books, groups] = await Promise.all([db.getBooks(), db.getGroups()]);
       const dbTags = computeTags(books);
 
       // Load saved tags from FS (may include empty tags not assigned to any book)
@@ -538,8 +624,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       const emptyTags = savedTags.filter((t) => !dbTagSet.has(t) && !deletedSet.has(t));
       const allTags = [...dbTags, ...emptyTags].sort();
 
-      set({ books, isLoaded: true, allTags });
+      set({ books, groups, isLoaded: true, allTags });
       debouncedSave("library-books", books);
+      debouncedSave("library-groups", groups);
       debouncedSave("library-tags", allTags);
     } catch (err) {
       console.error("Failed to load books from database:", err);
@@ -547,7 +634,31 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     }
   },
 
+  loadGroups: async () => {
+    try {
+      await db.initDatabase();
+      const groups = await db.getGroups();
+      set({ groups });
+      debouncedSave("library-groups", groups);
+    } catch (err) {
+      console.error("Failed to load groups from database:", err);
+    }
+  },
+
   setBooks: (books) => set({ books }),
+
+  setGroupView: (enabled) =>
+    set((state) => ({
+      isGroupView: enabled,
+      activeGroupId: enabled ? state.activeGroupId : "",
+    })),
+
+  setActiveGroupId: (groupId) =>
+    set({
+      activeGroupId: groupId,
+      activeTag: "",
+      isGroupView: Boolean(groupId) || get().isGroupView,
+    }),
 
   addBook: async (book) => {
     set((state) => ({ books: [...state.books, book] }));
@@ -577,7 +688,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           const absPath = await resolveAppPath(bookToRemove.filePath);
           await platform.deleteFile(absPath);
         }
-        if (!preserveData && bookToRemove.meta.coverUrl && isRelativeAppPath(bookToRemove.meta.coverUrl)) {
+        if (
+          !preserveData &&
+          bookToRemove.meta.coverUrl &&
+          isRelativeAppPath(bookToRemove.meta.coverUrl)
+        ) {
           const coverAbsPath = await resolveAppPath(bookToRemove.meta.coverUrl);
           await platform.deleteFile(coverAbsPath);
         }
@@ -631,14 +746,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           const format: Book["format"] = formatMap[ext || ""] || "epub";
           const fileName = originalName;
           const platform = getPlatformService();
-          const sourceBytes = await platform.readFile(filePath);
-
-          let fileHash: string | undefined;
-          try {
-            fileHash = await hashBytes(sourceBytes);
-          } catch {
-            // Hash calculation is best effort.
-          }
+          const { size: fileSize, md5: fileHash } = await getMobileFileStat(filePath);
 
           const existingDuplicate = findDuplicateBookByHash(duplicateIndex, fileHash);
           if (existingDuplicate) {
@@ -662,6 +770,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           if (ext === "txt") {
             try {
               const { TxtToEpubConverter } = await import("@readany/core/utils/txt-to-epub");
+              const sourceBytes = await platform.readFile(filePath);
 
               // Hermes only supports UTF-8 in TextDecoder. Convert GBK/GB18030
               // etc. to UTF-8 using text-encoding polyfill before passing to converter.
@@ -673,20 +782,30 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
                 name: fileName,
                 size: bytes.byteLength,
                 type: "text/plain",
-                arrayBuffer: () => Promise.resolve(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)),
+                arrayBuffer: () =>
+                  Promise.resolve(
+                    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+                  ),
                 slice: (start?: number, end?: number) => {
                   const sliced = bytes.slice(start ?? 0, end ?? bytes.byteLength);
                   return {
-                    arrayBuffer: () => Promise.resolve(sliced.buffer.slice(sliced.byteOffset, sliced.byteOffset + sliced.byteLength)),
+                    arrayBuffer: () =>
+                      Promise.resolve(
+                        sliced.buffer.slice(
+                          sliced.byteOffset,
+                          sliced.byteOffset + sliced.byteLength,
+                        ),
+                      ),
                     size: sliced.byteLength,
                   };
                 },
-                stream: () => new ReadableStream({
-                  start(controller) {
-                    controller.enqueue(bytes);
-                    controller.close();
-                  },
-                }),
+                stream: () =>
+                  new ReadableStream({
+                    start(controller) {
+                      controller.enqueue(bytes);
+                      controller.close();
+                    },
+                  }),
               } as unknown as File;
 
               // Use convertToBytes: pure-JS ZIP builder, no Blob bridge
@@ -712,6 +831,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
                   author: "",
                   coverUrl: deletedMatch?.meta.coverUrl,
                 },
+                groupId: deletedMatch?.groupId,
                 progress: deletedMatch?.progress ?? 0,
                 currentCfi: deletedMatch?.currentCfi,
                 isVectorized: false,
@@ -754,9 +874,17 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
               // successful import doesn't get reported as a failed import.
               try {
                 const vmState = useVectorModelStore.getState();
-                if (vmState.vectorModelEnabled && vmState.hasVectorCapability()) {
+                if (
+                  vmState.vectorModelEnabled &&
+                  vmState.hasVectorCapability() &&
+                  shouldAutoVectorizeMobile("txt", conversion.epubBytes.byteLength)
+                ) {
                   const base64 = bytesToBase64(conversion.epubBytes);
                   queueAutoVectorize(book, base64, "application/epub+zip");
+                } else if (vmState.vectorModelEnabled && vmState.hasVectorCapability()) {
+                  console.warn(
+                    `[importBooks] Skip auto-vectorize for large TXT conversion: ${fileName} (${conversion.epubBytes.byteLength} bytes)`,
+                  );
                 }
               } catch (autoVectorizeErr) {
                 console.warn(
@@ -766,20 +894,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
               }
               continue;
             } catch (convErr) {
-              console.error(`[importBooks] TXT conversion failed:`, convErr);
+              console.error("[importBooks] TXT conversion failed:", convErr);
               throw convErr;
             }
           }
 
-          const { relativePath, fileBytes } = await copyBookToAppData(
-            bookId,
-            ext || "epub",
-            filePath,
-            sourceBytes,
-          );
-          console.log(
-            `[importBooks] File copied. Bytes length: ${fileBytes.length}, relativePath: ${relativePath}`,
-          );
+          const { relativePath } = await copyBookToAppData(bookId, ext || "epub", filePath);
+          console.log(`[importBooks] File copied. relativePath: ${relativePath}`);
 
           // Extract metadata (title, author, cover) from book content
           let title = fileName.replace(/\.\w+$/i, "") || "Untitled";
@@ -788,7 +909,12 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
           try {
             console.log(`[importBooks] Extracting metadata for format=${format}...`);
-            const meta = await extractBookMetadata(fileBytes, format, fileName);
+            const meta = await extractMobileImportMetadata({
+              filePath,
+              format,
+              fileName,
+              fileSize,
+            });
             console.log(
               `[importBooks] Metadata result: title="${meta.title}", author="${meta.author}", hasCover=${!!meta.coverBytes}, coverSize=${meta.coverBytes?.length ?? 0}`,
             );
@@ -829,6 +955,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
               author,
               coverUrl: coverUrl || deletedMatch?.meta.coverUrl,
             },
+            groupId: deletedMatch?.groupId,
             progress: deletedMatch?.progress ?? 0,
             currentCfi: deletedMatch?.currentCfi,
             isVectorized: false,
@@ -869,8 +996,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           // successful import doesn't get reported as a failed import.
           try {
             const vmState = useVectorModelStore.getState();
-            if (vmState.vectorModelEnabled && vmState.hasVectorCapability()) {
-              const base64 = bytesToBase64(fileBytes);
+            if (
+              vmState.vectorModelEnabled &&
+              vmState.hasVectorCapability() &&
+              shouldAutoVectorizeMobile(format, fileSize)
+            ) {
+              const sourceBytes = await platform.readFile(filePath);
+              const base64 = bytesToBase64(sourceBytes);
               const mimeTypes: Record<string, string> = {
                 epub: "application/epub+zip",
                 pdf: "application/pdf",
@@ -885,6 +1017,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
               };
               const mimeType = mimeTypes[format] || "application/epub+zip";
               queueAutoVectorize(book, base64, mimeType);
+            } else if (vmState.vectorModelEnabled && vmState.hasVectorCapability()) {
+              console.warn(
+                `[importBooks] Skip auto-vectorize for large/unsupported mobile import: ${fileName} (${fileSize} bytes, format=${format})`,
+              );
             }
           } catch (autoVectorizeErr) {
             console.warn(
@@ -946,7 +1082,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     return restoredBook;
   },
 
-  setActiveTag: (tag) => set({ activeTag: tag }),
+  setActiveTag: (tag) => set({ activeTag: tag, activeGroupId: "" }),
 
   addTag: (tag) => {
     const trimmed = tag.trim();
@@ -957,6 +1093,89 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       debouncedSave("library-tags", allTags);
       return { allTags };
     });
+  },
+
+  addGroup: async (name) => {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    const existing = get().groups.find((group) => group.name === trimmed);
+    if (existing) return existing;
+
+    try {
+      await db.initDatabase();
+      const group = await db.insertGroup({
+        name: trimmed,
+        sortOrder: get().groups.length,
+      });
+      const groups = [...get().groups, group].sort((a, b) => a.sortOrder - b.sortOrder);
+      set({ groups });
+      debouncedSave("library-groups", groups);
+      return group;
+    } catch (err) {
+      console.error("Failed to create group:", err);
+      return null;
+    }
+  },
+
+  renameGroup: (groupId, name) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    set((state) => {
+      const groups = state.groups.map((group) =>
+        group.id === groupId ? { ...group, name: trimmed, updatedAt: Date.now() } : group,
+      );
+      debouncedSave("library-groups", groups);
+      return { groups };
+    });
+    db.updateGroup(groupId, { name: trimmed }).catch((err) =>
+      console.error("Failed to rename group:", err),
+    );
+  },
+
+  removeGroup: async (groupId) => {
+    set((state) => {
+      const groups = state.groups.filter((group) => group.id !== groupId);
+      const books = state.books.map((book) =>
+        book.groupId === groupId ? { ...book, groupId: undefined } : book,
+      );
+      debouncedSave("library-groups", groups);
+      debouncedSave("library-books", books);
+      return {
+        groups,
+        books,
+        activeGroupId: state.activeGroupId === groupId ? "" : state.activeGroupId,
+        isGroupView: state.activeGroupId === groupId ? true : state.isGroupView,
+      };
+    });
+    try {
+      await db.deleteGroup(groupId);
+    } catch (err) {
+      console.error("Failed to delete group:", err);
+    }
+  },
+
+  moveBookToGroup: (bookId, groupId) => {
+    get().moveBooksToGroup([bookId], groupId);
+  },
+
+  moveBooksToGroup: (bookIds, groupId) => {
+    const targetIds = new Set(bookIds);
+    set((state) => {
+      const books = state.books.map((book) =>
+        targetIds.has(book.id) ? { ...book, groupId } : book,
+      );
+      debouncedSave("library-books", books);
+      return { books };
+    });
+    for (const bookId of bookIds) {
+      db.updateBook(bookId, { groupId }).catch((err) =>
+        console.error("Failed to move book to group:", err),
+      );
+    }
+  },
+
+  removeBookFromGroup: (bookId) => {
+    get().moveBookToGroup(bookId, undefined);
   },
 
   removeTag: (tag) => {

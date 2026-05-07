@@ -37,6 +37,7 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
     viewMode: settingViewMode,
     showTopTitleProgress,
     showBottomTimeBattery,
+    followSystemFontScale,
   } = readSettings;
 
   return (
@@ -53,8 +54,6 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
           { paddingBottom: insets.bottom || 16 },
           layout.isTablet && {
             width: "100%",
-            maxWidth: Math.min(layout.centeredContentWidth, 720),
-            alignSelf: "center",
           },
         ]}
       >
@@ -78,7 +77,7 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
               <Text style={s.settingValue}>{settingFontSize}</Text>
               <TouchableOpacity
                 style={s.stepBtn}
-                onPress={() => onUpdateSetting("fontSize", Math.min(32, settingFontSize + 1))}
+                onPress={() => onUpdateSetting("fontSize", Math.min(64, settingFontSize + 1))}
               >
                 <Text style={s.stepBtnText}>A+</Text>
               </TouchableOpacity>
@@ -227,6 +226,26 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
             >
               <Text style={[s.settingToggleText, showBottomTimeBattery !== false && s.settingToggleTextActive]}>
                 {showBottomTimeBattery !== false ? t("settings.enabled") : t("settings.disabled")}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <View style={s.settingRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.settingLabel}>
+                {t("settings.followSystemFontScale", "跟随系统字号")}
+              </Text>
+              <Text style={[s.settingLabel, { fontSize: 11, opacity: 0.6, marginTop: 2 }]}>
+                {t("settings.followSystemFontScaleDesc", "按系统辅助功能字号自动放大")}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[s.settingToggleBtn, !!followSystemFontScale && s.settingToggleBtnActive]}
+              onPress={() => onUpdateSetting("followSystemFontScale", !followSystemFontScale)}
+            >
+              <Text
+                style={[s.settingToggleText, !!followSystemFontScale && s.settingToggleTextActive]}
+              >
+                {followSystemFontScale ? t("settings.enabled") : t("settings.disabled")}
               </Text>
             </TouchableOpacity>
           </View>

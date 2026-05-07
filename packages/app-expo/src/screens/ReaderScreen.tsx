@@ -1,6 +1,7 @@
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import { BookmarkRibbon } from "@/components/reader/BookmarkRibbon";
 import { ChapterTranslationSheet } from "@/components/reader/ChapterTranslationSheet";
+import { ReadingProgressSlider } from "@/components/reader/ReadingProgressSlider";
 import { SelectionPopover } from "@/components/reader/SelectionPopover";
 import { TTSPage } from "@/components/reader/TTSPage";
 import { TranslationPanel } from "@/components/reader/TranslationPanel";
@@ -17,6 +18,7 @@ import {
   XIcon,
 } from "@/components/ui/Icon";
 import { useReaderBridge } from "@/hooks/use-reader-bridge";
+import { startFileServer, stopFileServer } from "@/lib/reader/local-file-server";
 import type { RelocateEvent, SelectionEvent, VisibleTTSSegment } from "@/hooks/use-reader-bridge";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import {
@@ -29,7 +31,7 @@ import {
 } from "@/stores";
 import { useMissingBookPromptStore } from "@/stores/missing-book-prompt-store";
 import { useTheme } from "@/styles/ThemeContext";
-import { useColors } from "@/styles/theme";
+import { useColors, withOpacity } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { readingContextService } from "@readany/core/ai/reading-context-service";
 import { runWithDbRetry } from "@readany/core/db/write-retry";
@@ -43,7 +45,6 @@ import { eventBus } from "@readany/core/utils/event-bus";
 import { throttle } from "@readany/core/utils/throttle";
 import { Asset } from "expo-asset";
 import * as DocumentPicker from "expo-document-picker";
-import * as FileSystem from "expo-file-system/legacy";
 /**
  * ReaderScreen — WebView-based reader with foliate-js engine.
  */
@@ -64,6 +65,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
@@ -87,6 +89,19 @@ const BOOK_MIME_TYPES = [
   "text/plain",
   "application/octet-stream",
 ];
+
+const BOOK_FORMAT_MIME_TYPES: Partial<Record<string, string>> = {
+  epub: "application/epub+zip",
+  pdf: "application/pdf",
+  mobi: "application/x-mobipocket-ebook",
+  azw: "application/vnd.amazon.ebook",
+  azw3: "application/vnd.amazon.ebook",
+  cbz: "application/vnd.comicbook+zip",
+  cbr: "application/vnd.comicbook+zip",
+  fb2: "application/x-fictionbook+xml",
+  fbz: "application/x-zip-compressed-fb2",
+  txt: "text/plain",
+};
 
 function normalizeBookIdentityText(value?: string): string {
   return (value || "").toLowerCase().replace(/[\s\p{P}\p{S}_-]+/gu, "");
@@ -143,6 +158,7 @@ import { useReaderSearch } from "./reader/useReaderSearch";
 import { useReaderSystemInfo } from "./reader/useReaderSystemInfo";
 import { useReaderTTS } from "./reader/useReaderTTS";
 import { useVolumeButtonPaging } from "./reader/useVolumeButtonPaging";
+import { SyncButton } from "@/components/ui/SyncButton";
 
 const READER_HTML_ASSET = Asset.fromModule(require("../../assets/reader/reader.html"));
 
@@ -258,7 +274,9 @@ export function ReaderScreen({ route, navigation }: Props) {
       after?: number,
     ) => Promise<{ before: TTSSegment[]; after: TTSSegment[] }>;
     getHrefTTSSegments?: (href: string, count?: number) => Promise<TTSSegment[]>;
+    getSectionTTSSegments?: (sectionIndex: number, count?: number) => Promise<TTSSegment[]>;
     goToFraction: (fraction: number) => void;
+    goToSection: (sectionIndex: number) => void;
     goToCFI: (cfi: string) => void;
     goToHref: (href: string) => void;
     flashHighlight: (cfi: string, color?: string, duration?: number) => void;
@@ -292,6 +310,19 @@ export function ReaderScreen({ route, navigation }: Props) {
   const showBottomTimeBattery = readSettings.showBottomTimeBattery !== false;
   const volumeButtonsPageTurn = readSettings.volumeButtonsPageTurn === true;
 
+  // Track OS-level accessibility font scale; re-renders when the user
+  // changes the system font size while the reader is open.
+  const { fontScale: systemFontScale } = useWindowDimensions();
+  // Apply the system scale only when the user has opted into
+  // followSystemFontScale. The store keeps the user's raw fontSize, so
+  // toggling the option (or changing OS font size) doesn't drift the
+  // stepper value.
+  const computeEffectiveFontSize = useCallback(
+    (rawFontSize: number, follow: boolean | undefined): number =>
+      follow ? Math.max(1, Math.round(rawFontSize * systemFontScale)) : rawFontSize,
+    [systemFontScale],
+  );
+
   // Custom fonts — build @font-face CSS per-font using individual filePath
   const customFonts = useFontStore((s) => s.fonts);
   const selectedFontId = useFontStore((s) => s.selectedFontId);
@@ -312,6 +343,7 @@ export function ReaderScreen({ route, navigation }: Props) {
   const progressRef = useRef(0);
   const locationHistoryRef = useRef<string[]>([]);
   const lastNavigatedCfiRef = useRef<string | undefined>(undefined);
+  const fileServerRef = useRef<string | null>(null);
   const sessionProgressRef = useRef<{
     mode: "location" | "page" | "characters";
     current: number;
@@ -538,11 +570,13 @@ export function ReaderScreen({ route, navigation }: Props) {
         fontCSSLength: fontCSS.length,
       });
       bridge.applySettings({
-        fontSize: settings.fontSize,
+        fontSize: computeEffectiveFontSize(settings.fontSize, settings.followSystemFontScale),
         lineHeight: settings.lineHeight,
         paragraphSpacing: settings.paragraphSpacing,
+        pageMargin: settings.pageMargin,
         fontTheme: settings.fontTheme,
         viewMode: settings.viewMode,
+        paginatedLayout: settings.paginatedLayout,
         customFontFaceCSS: fontCSS,
         customFontFamily: fontFamily,
       });
@@ -900,14 +934,17 @@ export function ReaderScreen({ route, navigation }: Props) {
       const { fonts, selectedFontId: selId } = useFontStore.getState();
       const fontCSS = buildCustomFontFaceCSS(fonts, selId);
       const fontFamily = selId ? fonts.find((f) => f.id === selId)?.fontFamily : undefined;
+      // Recompute effective fontSize after every settings change — covers
+      // both stepper changes and toggling followSystemFontScale on/off.
+      const merged = { ...currentSettings, ...updates };
       bridge.applySettings({
-        ...currentSettings,
-        ...updates,
+        ...merged,
+        fontSize: computeEffectiveFontSize(merged.fontSize, merged.followSystemFontScale),
         customFontFaceCSS: fontCSS,
         customFontFamily: fontFamily,
       });
     },
-    [bridge, updateReadSettings],
+    [bridge, updateReadSettings, computeEffectiveFontSize],
   );
 
   // Selection popover handlers
@@ -967,6 +1004,10 @@ export function ReaderScreen({ route, navigation }: Props) {
   // Save progress immediately on unmount
   useEffect(() => {
     return () => {
+      if (fileServerRef.current) {
+        stopFileServer();
+        fileServerRef.current = null;
+      }
       if (lastCfiRef.current) {
         const db = require("@readany/core/db/database");
         runWithDbRetry(
@@ -978,6 +1019,8 @@ export function ReaderScreen({ route, navigation }: Props) {
           { attempts: 10, initialDelayMs: 150 },
         ).catch((err: Error) => console.error("Failed to save progress on unmount:", err));
       }
+      const { useSyncStore } = require("@readany/core/stores/sync-store");
+      useSyncStore.getState().syncNow?.();
     };
   }, [bookId]);
 
@@ -995,15 +1038,26 @@ export function ReaderScreen({ route, navigation }: Props) {
         const appData = await platform.getAppDataDir();
         const absPath = await platform.joinPath(appData, book.filePath);
         const lastLocation = book.currentCfi || undefined;
+        const fileName = book.filePath.split("/").pop() || "book.epub";
+        const mimeType = BOOK_FORMAT_MIME_TYPES[book.format] || "application/octet-stream";
 
-        const base64 = await FileSystem.readAsStringAsync(absPath, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
+        // Start a local HTTP server so the WebView can fetch the file directly.
+        // This avoids loading the entire file into RN memory + base64 encoding (33% overhead)
+        // and the massive JSON serialization through injectJavaScript.
+        const serverUrl = await startFileServer(appData);
+        fileServerRef.current = serverUrl;
+        const encodedPath = book.filePath
+          .split("/")
+          .map((s) => encodeURIComponent(s))
+          .join("/");
+
         bridge.openBook({
-          base64,
-          fileName: book.filePath.split("/").pop() || "book.epub",
+          uri: `${serverUrl}/${encodedPath}`,
+          fileName,
+          mimeType,
           lastLocation,
           pageMargin: readSettings.pageMargin,
+          paginatedLayout: readSettings.paginatedLayout,
         });
 
         bridge.setThemeColors({
@@ -1099,6 +1153,35 @@ export function ReaderScreen({ route, navigation }: Props) {
       customFontFamily: customFontFamily,
     });
   }, [customFontFaceCSS, customFontFamily, webViewReady]);
+
+  // Re-apply effective fontSize when the OS-level font scale changes while
+  // the reader is open (e.g. user changes "Display & Brightness → Text Size"
+  // in iOS Settings, then comes back). Only fires when followSystemFontScale
+  // is on; otherwise the stored fontSize is used as-is and there's nothing
+  // to re-push.
+  //
+  // We also re-send paragraphSpacing and pageMargin so the webview's
+  // layoutScale-based scaling (in reader.template.html) re-runs against the
+  // new effective font size — otherwise the renderer would keep margins
+  // computed from the previous size.
+  useEffect(() => {
+    if (!webViewReady) return;
+    if (!readSettings.followSystemFontScale) return;
+    bridge.applySettings({
+      fontSize: computeEffectiveFontSize(readSettings.fontSize, true),
+      paragraphSpacing: readSettings.paragraphSpacing,
+      pageMargin: readSettings.pageMargin,
+    });
+  }, [
+    systemFontScale,
+    readSettings.followSystemFontScale,
+    readSettings.fontSize,
+    readSettings.paragraphSpacing,
+    readSettings.pageMargin,
+    webViewReady,
+    bridge,
+    computeEffectiveFontSize,
+  ]);
 
   // Load annotations into reader when ready
   useEffect(() => {
@@ -1405,7 +1488,8 @@ export function ReaderScreen({ route, navigation }: Props) {
                   {currentChapter || bookTitle}
                 </Text>
               </View>
-              <View style={[s.topToolbarSideSlot, s.topToolbarMetaWrap]}>
+              <View style={[s.topToolbarSideSlot, s.topToolbarMetaWrap, { flexDirection: "row", alignItems: "center", gap: 6 }]}>
+                <SyncButton size={16} color={colors.foreground} />
                 <Text style={s.topToolbarMetaText}>
                   {currentPage > 0 && totalPages > 0
                     ? `${currentPage}/${totalPages}`
@@ -1642,9 +1726,17 @@ export function ReaderScreen({ route, navigation }: Props) {
               },
             ]}
           >
-            <View style={s.bottomToolbarProgressTrack}>
-              <View style={[s.bottomToolbarProgressFill, { width: `${percent}%` }]} />
-            </View>
+            <ReadingProgressSlider
+              progress={progress}
+              onDragStart={() => suppressProgressTracking(99999)}
+              onDragEnd={() => suppressProgressTracking(2000)}
+              onSeek={(fraction) => {
+                bridgeRef.current?.goToFraction(fraction);
+              }}
+              accentColor={colors.primary}
+              trackColor={withOpacity(colors.foreground, 0.12)}
+              textColor={withOpacity(colors.foreground, 0.6)}
+            />
             <View style={s.bottomDockRow}>
               <TouchableOpacity
                 style={s.bottomDockBtn}

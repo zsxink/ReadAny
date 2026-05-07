@@ -3,7 +3,9 @@ import "react-native-get-random-values";
 import * as ExpoCrypto from "expo-crypto";
 
 import { registerRootComponent } from "expo";
+import TrackPlayer from "react-native-track-player";
 import App from "./src/App";
+import { PlaybackService } from "./src/services/PlaybackService";
 
 function bytesToString(bytes) {
   if (typeof TextDecoder !== "undefined") {
@@ -39,6 +41,19 @@ function resolveDigestAlgorithm(algorithm) {
   }
 }
 
+function toUint8Array(data) {
+  if (data instanceof Uint8Array) {
+    return data;
+  }
+  if (ArrayBuffer.isView(data)) {
+    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  }
+  if (data instanceof ArrayBuffer) {
+    return new Uint8Array(data);
+  }
+  throw new TypeError("subtle.digest expects an ArrayBuffer or TypedArray");
+}
+
 const cryptoObject = globalThis.crypto ?? {};
 if (!globalThis.crypto) {
   globalThis.crypto = cryptoObject;
@@ -50,21 +65,11 @@ if (!cryptoObject.subtle) {
     enumerable: true,
     value: {
       async digest(algorithm, data) {
-        const bytes =
-          data instanceof Uint8Array
-            ? data
-            : ArrayBuffer.isView(data)
-              ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
-              : new Uint8Array(data);
-        const hex = await ExpoCrypto.digestStringAsync(
-          resolveDigestAlgorithm(algorithm),
-          bytesToString(bytes),
-          { encoding: ExpoCrypto.CryptoEncoding.HEX },
-        );
-        return hexToArrayBuffer(hex);
+        return ExpoCrypto.digest(resolveDigestAlgorithm(algorithm), toUint8Array(data));
       },
     },
   });
 }
 
 registerRootComponent(App);
+TrackPlayer.registerPlaybackService(() => PlaybackService);

@@ -153,6 +153,7 @@
     let currentThemeColors = { bg: '#1c1c1e', fg: '#e8e8ed', muted: '#7c7c82', primary: '#3b82f6' };
     let lastRendererStyles = '';
     let currentViewMode = 'paginated';
+    let currentPaginatedLayout = 'double';
     let currentFontSize = 16;
     let currentLineHeight = 1.6;
     let currentParagraphSpacing = 8;
@@ -208,6 +209,21 @@
       tapNavigationResetTimer = setTimeout(() => {
         clearTapNavigationLock();
       }, 220);
+    }
+
+    function applyFixedLayoutRendererSettings(renderer, paginatedLayout) {
+      if (!renderer) return;
+      const layout = paginatedLayout === 'single' ? 'single' : 'double';
+      const spreadMode = layout === 'single' ? 'none' : 'auto';
+      const zoomMode = layout === 'single' ? 'fit-width' : 'fit-page';
+
+      renderer.setAttribute('spread', spreadMode);
+      renderer.setAttribute('zoom', zoomMode);
+
+      const host = renderer.closest && renderer.closest('foliate-view');
+      if (host && host.book && host.book.rendition) {
+        host.book.rendition.spread = spreadMode;
+      }
     }
 
     function getPullBookmarkElements() {
@@ -843,15 +859,94 @@
             type: msg.mimeType || 'application/epub+zip'
           });
         } else if (msg.uri) {
-          const res = await fetch(msg.uri);
-          if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
-          const blob = await res.blob();
-          file = new File([blob], msg.fileName || 'book.epub');
+          // Try Range-based lazy loading for ZIP-based formats (EPUB, CBZ, FBZ)
+          // This avoids loading the entire file into memory — only reads
+          // the ZIP central directory (~few KB) then fetches entries on demand.
+          const isZipFormat = /\.(epub|cbz|fb2\.zip|fbz)$/i.test(msg.fileName || '');
+          let lazyBook = null;
+
+          if (isZipFormat) {
+            try {
+              // HEAD request to get file size and check Range support
+              const headRes = await fetch(msg.uri, { method: 'HEAD' });
+              const acceptRanges = headRes.headers.get('Accept-Ranges');
+              const contentLength = parseInt(headRes.headers.get('Content-Length'), 10);
+
+              if (acceptRanges === 'bytes' && contentLength > 0) {
+                // Create a HttpRangeReader compatible with zip.js's ZipReader
+                const bookUri = msg.uri;
+                const rangeReader = {
+                  size: contentLength,
+                  async readUint8Array(offset, length) {
+                    const end = Math.min(offset + length - 1, contentLength - 1);
+                    const res = await fetch(bookUri, {
+                      headers: { 'Range': `bytes=${offset}-${end}` }
+                    });
+                    if (!res.ok && res.status !== 206) {
+                      throw new Error(`Range request failed: ${res.status}`);
+                    }
+                    return new Uint8Array(await res.arrayBuffer());
+                  }
+                };
+
+                // Use zip.js and EPUB from the bundled globals
+                const { configure, ZipReader, TextWriter, BlobWriter } = window._zipJs;
+                configure({ useWebWorkers: false });
+                const zipReader = new ZipReader(rangeReader);
+                const entries = await zipReader.getEntries();
+                const map = new Map(entries.map(entry => [entry.filename, entry]));
+
+                const load = (f) => (name, ...args) =>
+                  map.has(name) ? f(map.get(name), ...args) : null;
+                const loadText = load(entry => entry.getData(new TextWriter()));
+                const loadBlob = load((entry, type) => entry.getData(new BlobWriter(type)));
+                const getSize = (name) => map.get(name)?.uncompressedSize ?? 0;
+                const loader = { entries, loadText, loadBlob, getSize };
+
+                // Initialize EPUB from lazy loader
+                const EPUB = window._EPUB;
+                lazyBook = await new EPUB(loader).init();
+              }
+            } catch (lazyErr) {
+              console.warn('[Reader] Lazy loading failed, falling back to full fetch:', lazyErr);
+              lazyBook = null;
+            }
+          }
+
+          // Try Range-based lazy loading for PDF
+          // pdf.js natively supports Range requests via url + disableAutoFetch
+          if (!lazyBook && /\.pdf$/i.test(msg.fileName || '')) {
+            try {
+              const headRes = await fetch(msg.uri, { method: 'HEAD' });
+              const acceptRanges = headRes.headers.get('Accept-Ranges');
+              const contentLength = parseInt(headRes.headers.get('Content-Length'), 10);
+
+              if (acceptRanges === 'bytes' && contentLength > 0 && window._makePDFFromURL) {
+                lazyBook = await window._makePDFFromURL(msg.uri, msg.fileName || 'book.pdf');
+              }
+            } catch (pdfLazyErr) {
+              console.warn('[Reader] PDF lazy loading failed, falling back to full fetch:', pdfLazyErr);
+              lazyBook = null;
+            }
+          }
+
+          if (!lazyBook) {
+            const res = await fetch(msg.uri);
+            const isLocalFileStatus = res.status === 0 && /^file:\/\//i.test(msg.uri);
+            if (!res.ok && !isLocalFileStatus) throw new Error(`Failed to fetch: ${res.status}`);
+            const blob = await res.blob();
+            file = new File([blob], msg.fileName || 'book.epub', {
+              type: msg.mimeType || blob.type || 'application/octet-stream'
+            });
+          } else {
+            // Skip makeBook below — we already have the book object
+            file = lazyBook;
+          }
         } else {
           throw new Error('No book data provided');
         }
 
-        const book = await makeBook(file);
+        const book = (file && file.sections) ? file : await makeBook(file);
         currentBook = book;
 
         const el = document.createElement('foliate-view');
@@ -890,10 +985,16 @@
               clearTapNavigationLock();
             }, 80);
           }
+          let relocatedSectionTotal = totalSections;
           if (detail.section != null) {
             currentSectionIndex = typeof detail.section === 'number'
               ? detail.section
               : detail.section.current;
+            if (typeof detail.section === 'object' && detail.section.total != null) {
+              relocatedSectionTotal = detail.section.total;
+            }
+          } else if (typeof detail.index === 'number') {
+            currentSectionIndex = detail.index;
           }
           const rendererPage = view && view.renderer && typeof view.renderer.page === 'number'
             ? view.renderer.page
@@ -909,7 +1010,7 @@
             : null;
           postToRN('relocate', {
             fraction: detail.fraction,
-            section: detail.section,
+            section: { current: currentSectionIndex, total: relocatedSectionTotal },
             location: detail.location,
             page: actualPage,
             tocItem: detail.tocItem,
@@ -1020,6 +1121,13 @@
           const gapPercent = Math.max(1, Math.round((margin / 393) * 100));
           renderer.setAttribute('gap', gapPercent + '%');
           renderer.setAttribute('margin', margin + 'px');
+        } else if (renderer && el.isFixedLayout) {
+          const paginatedLayout =
+            msg.paginatedLayout === 'single' || msg.paginatedLayout === 'double'
+              ? msg.paginatedLayout
+              : currentPaginatedLayout;
+          currentPaginatedLayout = paginatedLayout;
+          applyFixedLayoutRendererSettings(renderer, currentPaginatedLayout);
         }
 
         if (msg.lastLocation) {
@@ -1114,6 +1222,10 @@
       if (settings.fontTheme !== undefined) {
         currentFontTheme = settings.fontTheme || 'default';
       }
+      if (settings.paginatedLayout !== undefined) {
+        currentPaginatedLayout =
+          settings.paginatedLayout === 'single' ? 'single' : 'double';
+      }
 
       if (settings.fontSize !== undefined || settings.lineHeight !== undefined || settings.fontTheme !== undefined || settings.paragraphSpacing !== undefined
           || settings.customFontFamily !== undefined || settings.customFontFaceCSS !== undefined) {
@@ -1132,7 +1244,14 @@
         }
         const fSize = currentFontSize;
         const lh = currentLineHeight;
-        const ps = currentParagraphSpacing;
+        // paragraphSpacing/pageMargin are stored as px tuned at the
+        // default 16px font size. Scale them with the actual font size so
+        // spacing reads proportionally at large font sizes — without this
+        // a 16px paragraphSpacing looks cramped at fontSize 64.
+        // BASELINE matches defaultReadSettings.fontSize in core/stores/settings-store.ts.
+        const BASELINE_FONT_SIZE = 16;
+        const layoutScale = currentFontSize / BASELINE_FONT_SIZE;
+        const ps = Math.round(currentParagraphSpacing * layoutScale);
 
         const baseStyles = `
           :root {
@@ -1167,10 +1286,19 @@
       }
 
       if (settings.pageMargin != null) {
-        const margin = settings.pageMargin;
+        // Scale pageMargin with fontSize so the page edges stay
+        // proportionally placed at large font sizes. Same baseline (16) as
+        // the paragraphSpacing scaling above.
+        const BASELINE_FONT_SIZE = 16;
+        const layoutScale = currentFontSize / BASELINE_FONT_SIZE;
+        const margin = Math.round(settings.pageMargin * layoutScale);
         const gapPercent = Math.max(1, Math.round((margin / 393) * 100));
         renderer.setAttribute('gap', gapPercent + '%');
         renderer.setAttribute('margin', margin + 'px');
+      }
+
+      if (view && view.isFixedLayout) {
+        applyFixedLayoutRendererSettings(renderer, currentPaginatedLayout);
       }
 
       if (settings.viewMode) {
@@ -2282,7 +2410,13 @@ a { color: ${primary} !important; }
       return Array.from(blocks).filter((block) => {
         if (!block || !block.textContent || !block.textContent.trim()) return false;
         if (block.closest && block.closest('.readany-translation')) return false;
-        return isRectVisibleInReader(block.getBoundingClientRect(), renderer, win);
+        try {
+          const range = doc.createRange();
+          range.selectNodeContents(block);
+          return isRangeVisibleInReader(range, renderer, win);
+        } catch (e) {
+          return isRectVisibleInReader(block.getBoundingClientRect(), renderer, win);
+        }
       });
     }
 
@@ -2317,8 +2451,33 @@ a { color: ${primary} !important; }
       return (matches.length ? matches : [normalized]).map((segment) => segment.trim()).filter(Boolean);
     }
 
+    function stripCfiAssertions(value) {
+      return String(value || '').replace(/\[[^\]]*\]/g, '');
+    }
+
+    function getTTSCfiStartIdentity(cfi) {
+      const raw = String(cfi || '').trim();
+      if (!raw) return '';
+      const inner = raw.startsWith('epubcfi(') && raw.endsWith(')')
+        ? raw.slice(8, -1)
+        : raw;
+      const bangIndex = inner.indexOf('!');
+      if (bangIndex < 0) return stripCfiAssertions(inner);
+
+      const sectionPath = stripCfiAssertions(inner.slice(0, bangIndex));
+      const localPath = stripCfiAssertions(inner.slice(bangIndex + 1));
+      const commaIndex = localPath.indexOf(',');
+      if (commaIndex < 0) return `${sectionPath}!${localPath}`;
+
+      const commonPath = localPath.slice(0, commaIndex);
+      const rangePath = localPath.slice(commaIndex + 1);
+      const rangeEndIndex = rangePath.indexOf(',');
+      const startPath = rangeEndIndex >= 0 ? rangePath.slice(0, rangeEndIndex) : rangePath;
+      return `${sectionPath}!${commonPath}${startPath}`;
+    }
+
     function getTTSSegmentIdentity(cfi, text) {
-      return `${cfi || ''}::${String(text || '').replace(/\s+/g, ' ').trim()}`;
+      return `${getTTSCfiStartIdentity(cfi)}::${String(text || '').replace(/\s+/g, ' ').trim()}`;
     }
 
     function summarizeTTSSegmentsForLog(segments, limit) {
@@ -2617,6 +2776,25 @@ a { color: ${primary} !important; }
       }
     }
 
+    async function getSectionTTSSegmentsFromBook(sectionIndex, maxCount) {
+      try {
+        if (!currentBook || !currentBook.sections || !view) return [];
+        const index = Number(sectionIndex);
+        if (!Number.isInteger(index) || index < 0 || index >= currentBook.sections.length) {
+          return [];
+        }
+
+        const section = currentBook.sections[index];
+        if (!section || typeof section.createDocument !== 'function') return [];
+
+        const doc = await section.createDocument();
+        return extractTTSSegmentsFromDocument(doc, index, maxCount, null);
+      } catch (e) {
+        console.log('[sectionTTSSegments] error:', e);
+        return [];
+      }
+    }
+
     function extractVisibleTTSSegments(alignCfi) {
       try {
         const renderer = view && view.renderer;
@@ -2630,10 +2808,11 @@ a { color: ${primary} !important; }
           skippedTooShort: 0,
           skippedNoBoundary: 0,
           skippedNotStartVisible: 0,
+          skippedNotVisible: 0,
           skippedEmptyText: 0,
           skippedCFI: 0,
           skippedDuplicate: 0,
-          startVisibilityMode: 'range-start',
+          startVisibilityMode: 'range-intersection',
         };
         const seenVisibleIdentities = new Set();
         // Track the first visible range for range-based TTS cursor alignment
@@ -2719,7 +2898,8 @@ a { color: ${primary} !important; }
               const range = doc.createRange();
               range.setStart(startPos.node, startPos.offset);
               range.setEnd(endPos.node, endPos.offset);
-              if (!isRangeStartVisibleInReader(range, renderer, win)) {
+              if (!isRangeVisibleInReader(range, renderer, win)) {
+                stats.skippedNotVisible++;
                 stats.skippedNotStartVisible++;
                 continue;
               }
@@ -2837,7 +3017,7 @@ a { color: ${primary} !important; }
           filteredAlignedCount: 0,
           returnedCount: fallbackSegments.length,
           stats: {
-            startVisibilityMode: 'range-start',
+            startVisibilityMode: 'range-intersection',
           },
           directPreview: [],
           alignedPreview: summarizeTTSSegmentsForLog(fallbackSegments, 8),
@@ -2855,6 +3035,19 @@ a { color: ${primary} !important; }
     window.goLeft = function () { if (view) view.goLeft(); };
     window.goRight = function () { if (view) view.goRight(); };
     window.goToHref = function (href) { if (view) view.goTo(href); };
+    window.goToSection = async function (sectionIndex) {
+      if (!view) return;
+      const index = Number(sectionIndex);
+      if (!Number.isInteger(index)) return;
+      try {
+        const resolved = typeof view.resolveNavigation === 'function'
+          ? await Promise.resolve(view.resolveNavigation(index))
+          : { index };
+        return view.goTo(resolved);
+      } catch (e) {
+        try { return view.goTo({ index }); } catch (_) {}
+      }
+    };
     window.goToCFI = function (cfi) { if (view) view.goTo(cfi); };
     window.goToProgress = function (p) { if (view) view.goToFraction(p); };
     window.search = function (q) { handleSearch(q); };
@@ -2866,6 +3059,7 @@ a { color: ${primary} !important; }
     window.setPageMargin = function (m) { applySettings({ pageMargin: m }); };
     window.setFontTheme = function (t) { applySettings({ fontTheme: t }); };
     window.setViewMode = function (m) { applySettings({ viewMode: m }); };
+    window.setPaginatedLayout = function (m) { applySettings({ paginatedLayout: m }); };
     window.addAnnotation = function (a) { if (view) view.addAnnotation(a); };
     window.removeAnnotation = function (a) { if (view) view.deleteAnnotation(a); };
     window.setTTSHighlight = function (cfi, color) { return setTTSHighlight(cfi, color); };
@@ -2978,6 +3172,10 @@ a { color: ${primary} !important; }
     window.doGetHrefTTSSegments = async function (href, count, requestId) {
       const segments = await getHrefTTSSegmentsFromBook(href, count);
       postToRN('hrefTTSSegments', { requestId: requestId || null, segments });
+    };
+    window.doGetSectionTTSSegments = async function (sectionIndex, count, requestId) {
+      const segments = await getSectionTTSSegmentsFromBook(sectionIndex, count);
+      postToRN('sectionTTSSegments', { requestId: requestId || null, segments });
     };
     window.doGetChapterParagraphs = function () {
       handleGetChapterParagraphs();

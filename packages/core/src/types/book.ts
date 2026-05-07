@@ -21,6 +21,7 @@ export interface Book {
   filePath: string;
   format: BookFormat;
   meta: BookMeta;
+  groupId?: string;
   addedAt: number;
   lastOpenedAt?: number;
   updatedAt: number;
@@ -32,6 +33,14 @@ export interface Book {
   tags: string[];
   fileHash?: string;
   syncStatus: "local" | "remote" | "downloading"; // File availability status
+}
+
+export interface BookGroup {
+  id: string;
+  name: string;
+  sortOrder: number;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export type ViewMode = "paginated" | "scroll";
@@ -48,7 +57,7 @@ export interface FontTheme {
 }
 
 export interface ViewSettings {
-  fontSize: number; // 12-32
+  fontSize: number; // 12-64
   lineHeight: number; // 1.2-2.5
   fontTheme: string; // FontTheme id
   customFontFamily?: string; // custom font family (overrides fontTheme)
@@ -64,6 +73,13 @@ export interface ReadSettings extends ViewSettings {
   showTopTitleProgress: boolean;
   showBottomTimeBattery: boolean;
   volumeButtonsPageTurn: boolean;
+  /**
+   * Mobile-only opt-in: when true, the reader scales fontSize by the OS
+   * accessibility font scale (PixelRatio.getFontScale()) before rendering.
+   * Default false so existing users see no behavior change. Optional so
+   * existing persisted settings deserialize cleanly.
+   */
+  followSystemFontScale?: boolean;
 }
 
 export type SortField = "title" | "author" | "addedAt" | "lastOpenedAt" | "progress";

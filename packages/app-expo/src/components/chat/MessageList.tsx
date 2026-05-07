@@ -11,9 +11,12 @@ import { useTranslation } from "react-i18next";
 import {
   FlatList,
   Keyboard,
+  Modal,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -116,6 +119,11 @@ export function MessageList({
     flatListRef.current?.scrollToEnd({ animated: true });
   }, []);
 
+  const [selectModalText, setSelectModalText] = useState<string | null>(null);
+  const handleBubbleLongPress = useCallback((text: string) => {
+    setSelectModalText(text);
+  }, []);
+
   const renderMessage = useCallback(
     ({ item, index }: { item: MessageV2; index: number }) => {
       const isLastMsg = index === messages.length - 1;
@@ -129,10 +137,11 @@ export function MessageList({
           isStreaming={isLastMsgStreaming}
           currentStep={currentStep}
           onCitationClick={onCitationClick}
+          onLongPress={handleBubbleLongPress}
         />
       );
     },
-    [colors, messages.length, isStreaming, currentStep, onCitationClick],
+    [colors, messages.length, isStreaming, currentStep, onCitationClick, handleBubbleLongPress],
   );
 
   // Show indicator when streaming but no assistant content yet
@@ -179,6 +188,12 @@ export function MessageList({
           </TouchableOpacity>
         </View>
       )}
+
+      <SelectableTextModal
+        text={selectModalText}
+        colors={colors}
+        onClose={() => setSelectModalText(null)}
+      />
     </View>
   );
 }
@@ -227,6 +242,24 @@ interface MessageBubbleProps {
   isStreaming?: boolean;
   currentStep?: "thinking" | "tool_calling" | "responding" | "idle";
   onCitationClick?: (citation: CitationPart) => void;
+  onLongPress?: (text: string) => void;
+}
+
+function extractPlainText(message: MessageV2): string {
+  const parts: string[] = [];
+  for (const p of message.parts) {
+    if (p.type === "quote") {
+      const q = p as QuotePart;
+      if (q.text) parts.push(`> ${q.text}`);
+    } else if (p.type === "text") {
+      const t = p as TextPart;
+      if (t.text.trim()) parts.push(t.text);
+    } else if (p.type === "reasoning") {
+      const r = p as { reasoning?: string };
+      if (r.reasoning?.trim()) parts.push(r.reasoning);
+    }
+  }
+  return parts.join("\n\n");
 }
 
 function MessageBubble({
@@ -235,6 +268,7 @@ function MessageBubble({
   isStreaming,
   currentStep,
   onCitationClick,
+  onLongPress,
 }: MessageBubbleProps) {
   const s = makeStyles(colors);
 
@@ -243,13 +277,23 @@ function MessageBubble({
     return message.parts.filter((p): p is CitationPart => p.type === "citation");
   }, [message.parts]);
 
+  const triggerLongPress = useCallback(() => {
+    if (!onLongPress) return;
+    const text = extractPlainText(message);
+    if (text) onLongPress(text);
+  }, [message, onLongPress]);
+
   if (message.role === "user") {
     const quoteParts = message.parts.filter((p) => p.type === "quote") as QuotePart[];
     const textParts = message.parts.filter((p) => p.type === "text") as TextPart[];
 
     return (
       <View style={s.userRow}>
-        <View style={s.userBubble}>
+        <Pressable
+          style={s.userBubble}
+          onLongPress={triggerLongPress}
+          delayLongPress={300}
+        >
           {quoteParts.length > 0 && (
             <View style={{ gap: 4, marginBottom: textParts.length > 0 ? 6 : 0 }}>
               {quoteParts.map((q) => (
@@ -262,7 +306,7 @@ function MessageBubble({
               {part.text}
             </Text>
           ))}
-        </View>
+        </Pressable>
       </View>
     );
   }
@@ -299,14 +343,16 @@ function MessageBubble({
 
   return (
     <View style={s.assistantRow}>
-      {message.parts.map((part) => (
-        <PartRenderer
-          key={part.id}
-          part={part}
-          citations={citations}
-          onCitationClick={onCitationClick}
-        />
-      ))}
+      <Pressable onLongPress={triggerLongPress} delayLongPress={300}>
+        {message.parts.map((part) => (
+          <PartRenderer
+            key={part.id}
+            part={part}
+            citations={citations}
+            onCitationClick={onCitationClick}
+          />
+        ))}
+      </Pressable>
       {showGapIndicator && <StreamingIndicator step="thinking" />}
       {!isStreaming && (
         <CopyButton onPress={copyText} colors={colors} />
@@ -341,6 +387,120 @@ function CopyButton({ onPress, colors }: { onPress: () => void; colors: ThemeCol
         <CopyIcon size={13} color={colors.mutedForeground} />
       )}
     </TouchableOpacity>
+  );
+}
+
+function SelectableTextModal({
+  text,
+  colors,
+  onClose,
+}: {
+  text: string | null;
+  colors: ThemeColors;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const [copied, setCopied] = useState(false);
+  const visible = text !== null;
+
+  useEffect(() => {
+    if (!visible) setCopied(false);
+  }, [visible]);
+
+  const handleCopyAll = useCallback(() => {
+    if (!text) return;
+    Clipboard.setStringAsync(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }, [text]);
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <Pressable
+        style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}
+        onPress={onClose}
+      >
+        <Pressable
+          style={{
+            backgroundColor: colors.background,
+            borderTopLeftRadius: 16,
+            borderTopRightRadius: 16,
+            paddingHorizontal: 16,
+            paddingTop: 12,
+            paddingBottom: 24,
+            maxHeight: "75%",
+          }}
+          onPress={() => {}}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 8,
+            }}
+          >
+            <Text style={{ color: colors.mutedForeground, fontSize: fs.xs }}>
+              {t("chat.selectAndCopy", "长按选中文字复制")}
+            </Text>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <TouchableOpacity
+                onPress={handleCopyAll}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                  paddingHorizontal: 8,
+                  paddingVertical: 4,
+                  borderRadius: 6,
+                  backgroundColor: copied ? `${colors.primary}14` : colors.muted,
+                }}
+              >
+                {copied ? (
+                  <CheckIcon size={13} color={colors.primary} />
+                ) : (
+                  <CopyIcon size={13} color={colors.foreground} />
+                )}
+                <Text style={{ color: colors.foreground, fontSize: fs.xs }}>
+                  {t("common.copyAll", "全部复制")}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={onClose}
+                style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+              >
+                <Text style={{ color: colors.mutedForeground, fontSize: fs.sm }}>
+                  {t("common.close", "关闭")}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          <TextInput
+            value={text ?? ""}
+            editable={false}
+            multiline
+            scrollEnabled
+            textAlignVertical="top"
+            selectionColor={colors.primary}
+            style={{
+              color: colors.foreground,
+              fontSize: fs.sm,
+              lineHeight: 22,
+              padding: 12,
+              backgroundColor: colors.muted,
+              borderRadius: 8,
+              minHeight: 200,
+              maxHeight: 480,
+            }}
+          />
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
