@@ -159,10 +159,6 @@ export default function App() {
     setSplashDone(true);
   }, []);
 
-  const handleSplashFinish = useCallback(() => {
-    setSplashDone(true);
-  }, []);
-
   if (bootError) {
     return (
       <View
