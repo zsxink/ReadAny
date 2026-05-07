@@ -66,7 +66,7 @@ function sanitizeCustomHeaders(headers?: Headers): Headers | undefined {
   return sanitized;
 }
 
-function getEndpointFetch(endpoint: AIEndpoint, model?: string): typeof globalThis.fetch {
+export function getEndpointFetch(endpoint: AIEndpoint, model?: string): typeof globalThis.fetch {
   const exactUrl = endpoint.useExactRequestUrl ? endpoint.baseUrl?.trim() : "";
   const baseFetch = (_streamingFetch ?? globalThis.fetch).bind(globalThis);
 
