@@ -60,7 +60,7 @@ jobs:
           workspaces: "./packages/app/src-tauri -> target"
 
       - name: Install frontend dependencies
-        run: pnpm install
+        run: pnpm install --no-frozen-lockfile
 
       - name: Verify version consistency
         run: node scripts/bump-version.js --check
@@ -98,7 +98,7 @@ jobs:
           version: 9
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --no-frozen-lockfile
 
       - name: Build reader assets
         run: pnpm --filter @readany/app-expo run build:reader
