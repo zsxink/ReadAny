@@ -36,7 +36,11 @@
       "Bash(npx vitest *)",
       "Bash(awk 'NR>=520 && NR<=580 {print NR\": \"$0}' /Users/tuntuntutu/Project/ReadAny/packages/app/src/stores/library-store.ts)",
       "Bash(node *)",
-      "Bash(npx eas-cli *)"
+      "Bash(npx eas-cli *)",
+      "Bash(git config *)",
+      "Bash(gh workflow *)",
+      "Bash(gh repo *)",
+      "Bash(curl *)"
     ]
   }
 }
