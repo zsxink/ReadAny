@@ -1,0 +1,8 @@
+{
+  "name": "@readany/volume-key-paging",
+  "version": "0.1.0",
+  "main": "index.ts",
+  "peerDependencies": {
+    "expo": "*"
+  }
+}
