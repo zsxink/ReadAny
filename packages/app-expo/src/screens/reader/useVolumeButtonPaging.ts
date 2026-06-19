@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Platform } from "react-native";
-import VolumeKeyPaging from "../../../modules/volume-key-paging";
+import VolumeKeyPaging from "@readany/volume-key-paging";
 
 const THROTTLE_MS = 120;
 
