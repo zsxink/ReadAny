@@ -110,10 +110,20 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
+      - name: Prebuild Android project
+        env:
+          APP_VARIANT: production
+          EXPO_PUBLIC_FEEDBACK_WORKER_URL: ${{ secrets.FEEDBACK_WORKER_URL }}
+          EXPO_NO_METRO_WORKSPACE_ROOT: "1"
+        run: |
+          cd packages/app-expo
+          npx expo prebuild --platform android
+
       - name: Build Android APK (Local)
         env:
           EXPO_PUBLIC_FEEDBACK_WORKER_URL: ${{ secrets.FEEDBACK_WORKER_URL }}
           APP_VARIANT: production
+          EXPO_NO_METRO_WORKSPACE_ROOT: "1"
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           cd packages/app-expo
