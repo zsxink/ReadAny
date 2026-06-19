@@ -80,10 +80,11 @@ module.exports = {
       ],
     ],
     scheme: variant.scheme,
+    owner: "zsxink",
     extra: {
       appVariant: variant.key,
       eas: {
-        projectId: "e9c65825-d965-4d58-a3af-46406ee8a9ae",
+        projectId: "c1284dfd-3b05-4cd6-bed7-fb904b45e0ca",
       },
     },
   },
