@@ -47,7 +47,7 @@ export default function TranslationSettingsScreen() {
   const selectedEndpointId = translationConfig.provider.endpointId || aiConfig.activeEndpointId;
   const selectedModel = translationConfig.provider.model || aiConfig.activeModel;
 
-  const handleProviderChange = (providerId: "ai" | "deepl", providerName: string) => {
+  const handleProviderChange = (providerId: "ai" | "deepl" | "microsoft", providerName: string) => {
     updateTranslationConfig({
       provider: {
         ...translationConfig.provider,
@@ -100,16 +100,21 @@ export default function TranslationSettingsScreen() {
                       styles.listItem,
                       idx < TRANSLATOR_PROVIDERS.length - 1 && styles.listItemBorder,
                     ]}
-                    onPress={() => handleProviderChange(p.id, p.name)}
+                    onPress={() => handleProviderChange(p.id, p.labelKey)}
                     activeOpacity={0.7}
                   >
                     <View>
-                      <Text style={styles.listItemText}>{p.name}</Text>
+                      <Text style={styles.listItemText}>{t(p.labelKey)}</Text>
                       {p.id === "ai" && (
                         <Text style={styles.listItemSub}>
                           {t("translation.useAIModel", {
                             model: selectedModel || "AI",
                           })}
+                        </Text>
+                      )}
+                      {p.id === "microsoft" && (
+                        <Text style={styles.listItemSub}>
+                          {t("translation.microsoftHint", "免费，无需配置")}
                         </Text>
                       )}
                     </View>

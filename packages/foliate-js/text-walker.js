@@ -19,7 +19,8 @@ const filter = NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT | NodeFilter.SHOW_
 const acceptNode = (node) => {
   if (node.nodeType === 1) {
     const name = node.tagName.toLowerCase();
-    if (name === "script" || name === "style") return NodeFilter.FILTER_REJECT;
+    if (name === "script" || name === "style" || name === "rt" || name === "rp")
+      return NodeFilter.FILTER_REJECT;
     return NodeFilter.FILTER_SKIP;
   }
   return NodeFilter.FILTER_ACCEPT;

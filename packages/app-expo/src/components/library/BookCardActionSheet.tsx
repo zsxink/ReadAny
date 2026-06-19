@@ -1,17 +1,19 @@
+import { GroupPickerSheet } from "@/components/library/GroupPickerSheet";
 import {
   CheckIcon,
   DatabaseIcon,
   FolderInputIcon,
   HashIcon,
+  InfoIcon,
   Trash2Icon,
 } from "@/components/ui/Icon";
-import { GroupPickerSheet } from "@/components/library/GroupPickerSheet";
 import { useLibraryStore } from "@/stores/library-store";
 import { type ThemeColors, fontSize, fontWeight, radius, spacing, useColors } from "@/styles/theme";
 import type { Book } from "@readany/core/types";
 import { type ReactNode, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  Alert,
   type LayoutRectangle,
   Modal,
   Pressable,
@@ -27,6 +29,7 @@ interface BookCardActionSheetProps {
   anchor: LayoutRectangle | null;
   book: Book;
   onClose: () => void;
+  onShowDetails?: (book: Book) => void;
   onManageTags?: (book: Book) => void;
   onVectorize?: (book: Book) => void;
   onDelete: (bookId: string, options?: { preserveData?: boolean }) => void;
@@ -37,6 +40,7 @@ export function BookCardActionSheet({
   anchor,
   book,
   onClose,
+  onShowDetails,
   onManageTags,
   onVectorize,
   onDelete,
@@ -59,6 +63,17 @@ export function BookCardActionSheet({
   };
 
   const items = [
+    onShowDetails
+      ? {
+          key: "details",
+          icon: <InfoIcon size={18} color={colors.foreground} />,
+          label: t("library.detailsAction", "书籍详情"),
+          onPress: () => {
+            onClose();
+            onShowDetails(book);
+          },
+        }
+      : null,
     {
       key: "group",
       icon: <FolderInputIcon size={18} color={colors.foreground} />,
@@ -87,7 +102,21 @@ export function BookCardActionSheet({
             : t("home.vec_vectorize", "向量化"),
           onPress: () => {
             onClose();
-            onVectorize(book);
+            if (book.isVectorized) {
+              Alert.alert(
+                t("home.vec_reindex", "重新索引"),
+                t(
+                  "home.vec_reindexConfirm",
+                  "该书已完成索引，重新索引将重置现有数据，确定继续吗？",
+                ),
+                [
+                  { text: t("common.cancel"), style: "cancel" },
+                  { text: t("common.confirm"), onPress: () => onVectorize(book) },
+                ],
+              );
+            } else {
+              onVectorize(book);
+            }
           },
         }
       : null,

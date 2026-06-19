@@ -1,3 +1,4 @@
+import { GroupPickerPopover } from "@/components/home/GroupPickerPopover";
 import { ConfigGuideDialog, type ConfigGuideType } from "@/components/shared/ConfigGuideDialog";
 import {
   Dialog,
@@ -7,7 +8,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { GroupPickerPopover } from "@/components/home/GroupPickerPopover";
 import { useResolvedSrc, useSyncVersion } from "@/hooks/use-resolved-src";
 import { openDesktopBook } from "@/lib/library/open-book";
 /**
@@ -15,10 +15,12 @@ import { openDesktopBook } from "@/lib/library/open-book";
  */
 import { triggerVectorizeBook } from "@/lib/rag/vectorize-trigger";
 import { useAppStore } from "@/stores/app-store";
+import { useDownloadProgressStore } from "@/stores/download-progress-store";
 import { useLibraryStore } from "@/stores/library-store";
 import { useReaderStore } from "@/stores/reader-store";
 import { useVectorModelStore } from "@/stores/vector-model-store";
 import type { Book, VectorizeProgress } from "@readany/core/types";
+import { getBookProgressPercent } from "@readany/core/utils";
 import {
   Check,
   ChevronRight,
@@ -26,6 +28,7 @@ import {
   FolderInput,
   FolderMinus,
   Hash,
+  Info,
   Loader2,
   MoreVertical,
   Plus,
@@ -39,6 +42,7 @@ interface BookCardProps {
   isSelectionMode?: boolean;
   isSelected?: boolean;
   onSelect?: (bookId: string) => void;
+  onShowDetails?: (book: Book) => void;
 }
 
 export const BookCard = memo(function BookCard({
@@ -46,6 +50,7 @@ export const BookCard = memo(function BookCard({
   isSelectionMode,
   isSelected,
   onSelect,
+  onShowDetails,
 }: BookCardProps) {
   const { t } = useTranslation();
   const removeBook = useLibraryStore((s) => s.removeBook);
@@ -70,16 +75,18 @@ export const BookCard = memo(function BookCard({
   const [vectorProgress, setVectorProgress] = useState<VectorizeProgress | null>(null);
   const [configGuide, setConfigGuide] = useState<ConfigGuideType>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showReindexConfirm, setShowReindexConfirm] = useState(false);
   const [preserveDataOnDelete, setPreserveDataOnDelete] = useState(true);
   const coverRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const suppressOpenUntilRef = useRef(0);
-  const progressPct = Math.round(book.progress * 100);
+  const progressPct = getBookProgressPercent(book.progress);
   const coverSrc = useResolvedSrc(book.meta.coverUrl);
   const syncVersion = useSyncVersion();
   const coverImageKey = coverSrc ? `${coverSrc}-${syncVersion}` : "";
+  const downloadProgress = useDownloadProgressStore((s) => s.progress[book.id]);
 
   useEffect(() => {
     setImageError(false);
@@ -97,7 +104,12 @@ export const BookCard = memo(function BookCard({
       onSelect?.(book.id);
       return;
     }
-    if (showMenu || showDeleteDialog || Date.now() < suppressOpenUntilRef.current) {
+    if (
+      showMenu ||
+      showDeleteDialog ||
+      showReindexConfirm ||
+      Date.now() < suppressOpenUntilRef.current
+    ) {
       return;
     }
     await openDesktopBook({ book, t });
@@ -112,6 +124,20 @@ export const BookCard = memo(function BookCard({
     setShowDeleteDialog(true);
   }, []);
 
+  const doVectorize = useCallback(async () => {
+    setVectorizing(true);
+    try {
+      await triggerVectorizeBook(book.id, book.filePath, (progress) => {
+        setVectorProgress({ ...progress });
+      });
+    } catch (err) {
+      console.error("[BookCard] Vectorization failed:", err);
+    } finally {
+      setVectorizing(false);
+      setVectorProgress(null);
+    }
+  }, [book.id, book.filePath]);
+
   const handleVectorize = useCallback(
     async (e: React.MouseEvent) => {
       e.stopPropagation();
@@ -125,30 +151,34 @@ export const BookCard = memo(function BookCard({
         return;
       }
 
-      setVectorizing(true);
-      try {
-        await triggerVectorizeBook(book.id, book.filePath, (progress) => {
-          setVectorProgress({ ...progress });
-        });
-      } catch (err) {
-        console.error("[BookCard] Vectorization failed:", err);
-      } finally {
-        setVectorizing(false);
-        setVectorProgress(null);
+      // Confirm before re-vectorizing an already indexed book
+      if (book.isVectorized) {
+        setShowReindexConfirm(true);
+        return;
       }
+
+      doVectorize();
     },
-    [book.id, book.filePath, hasVectorCapability, vectorizing],
+    [book.isVectorized, hasVectorCapability, vectorizing, doVectorize],
   );
 
-  const handleMoveGroup = useCallback(
+  const handleMoveGroup = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    suppressOpenUntilRef.current = Date.now() + 300;
+    setShowMenu(false);
+    setMenuPos(null);
+    setShowGroupPicker(true);
+  }, []);
+
+  const handleShowDetails = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      suppressOpenUntilRef.current = Date.now() + 300;
+      suppressOpenUntilRef.current = Date.now() + 400;
       setShowMenu(false);
       setMenuPos(null);
-      setShowGroupPicker(true);
+      onShowDetails?.(book);
     },
-    [],
+    [book, onShowDetails],
   );
 
   const handleImageLoad = (event: React.SyntheticEvent<HTMLImageElement>) => {
@@ -164,15 +194,18 @@ export const BookCard = memo(function BookCard({
   const hasVisibleCover = Boolean(coverSrc && imageLoaded && !imageError);
 
   // Vectorize progress percentage for display
+  // Use local state (from manual trigger) OR store progress (from auto-vectorize after import)
   const vecPct = vectorProgress
     ? vectorProgress.totalChunks > 0
       ? Math.round((vectorProgress.processedChunks / vectorProgress.totalChunks) * 100)
       : 0
-    : 0;
+    : book.vectorizeProgress > 0 && book.vectorizeProgress < 1
+      ? Math.round(book.vectorizeProgress * 100)
+      : 0;
 
   return (
     <div
-      className="group relative flex h-full cursor-pointer flex-col justify-end"
+      className="group relative flex h-full cursor-pointer flex-col"
       onClick={handleOpen}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -248,7 +281,7 @@ export const BookCard = memo(function BookCard({
         )}
 
         {/* Vectorization progress overlay */}
-        {vectorizing && (
+        {(vectorizing || (book.vectorizeProgress > 0 && book.vectorizeProgress < 1)) && (
           <div className="absolute inset-0 z-15 flex flex-col items-center justify-center rounded bg-black/50 backdrop-blur-sm">
             <Loader2 className="h-6 w-6 animate-spin text-white" />
             <span className="mt-1.5 text-xs font-medium text-white">
@@ -258,7 +291,9 @@ export const BookCard = memo(function BookCard({
                   ? `${vecPct}%`
                   : vectorProgress?.status === "indexing"
                     ? t("home.vec_indexing")
-                    : t("home.vec_processing")}
+                    : vecPct > 0
+                      ? `${vecPct}%`
+                      : t("home.vec_processing")}
             </span>
           </div>
         )}
@@ -282,13 +317,17 @@ export const BookCard = memo(function BookCard({
             <span className="mt-1.5 text-sm font-medium text-white">
               {t("home.downloading", "下载中")}
             </span>
+            {downloadProgress && downloadProgress.total > 0 && (
+              <span className="mt-0.5 text-xs text-white/80 tabular-nums">
+                {Math.round((downloadProgress.downloaded / downloadProgress.total) * 100)}%
+              </span>
+            )}
           </div>
         )}
 
         {/* Vectorized badge — top-left corner */}
         {book.isVectorized && !vectorizing && (
-          <div className="absolute left-1 top-1 z-10 flex items-center gap-0.5 rounded bg-green-600/80 px-1 py-0.5 backdrop-blur-sm">
-            <Database className="h-2.5 w-2.5 text-white" />
+          <div className="absolute left-1 top-1 z-10 flex items-center rounded bg-green-600/80 px-1 py-0.5 backdrop-blur-sm">
             <span className="text-[9px] font-medium text-white">{t("home.vec_indexed")}</span>
           </div>
         )}
@@ -341,6 +380,16 @@ export const BookCard = memo(function BookCard({
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.stopPropagation()}
           >
+            {onShowDetails && (
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-foreground hover:bg-muted"
+                onClick={handleShowDetails}
+              >
+                <Info className="h-3.5 w-3.5" />
+                {t("library.detailsAction", "书籍详情")}
+              </button>
+            )}
             {/* Vectorize button */}
             <button
               id="tour-vectorize"
@@ -590,6 +639,39 @@ export const BookCard = memo(function BookCard({
               }}
             >
               {t("common.remove", "删除")}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Re-index confirmation dialog */}
+      <Dialog open={showReindexConfirm} onOpenChange={setShowReindexConfirm}>
+        <DialogContent className="max-w-sm" onClick={(e) => e.stopPropagation()}>
+          <DialogHeader>
+            <DialogTitle>{t("home.vec_reindex")}</DialogTitle>
+            <DialogDescription>{t("home.vec_reindexConfirm")}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <button
+              type="button"
+              className="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium transition-colors hover:bg-muted"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowReindexConfirm(false);
+              }}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowReindexConfirm(false);
+                doVectorize();
+              }}
+            >
+              {t("common.confirm")}
             </button>
           </DialogFooter>
         </DialogContent>

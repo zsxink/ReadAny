@@ -57,7 +57,7 @@
 | Reading Stats | ✅ | ❌ | ❌ | Limited |
 | WebDAV Sync | ✅ | ❌ | ❌ | ❌ |
 | Skills System | ✅ | ❌ | ❌ | ❌ |
-| Format Support | 8+ | 15+ | 10+ | 2 |
+| Format Support | 10+ | 15+ | 10+ | 2 |
 | Note Export | 5 formats | Limited | Limited | Limited |
 | Open Source | ✅ | ✅ | ✅ | ❌ |
 
@@ -146,7 +146,9 @@
 
 ### 📚 Multi-Format Support
 
-**EPUB** · **PDF** · **MOBI** · **AZW** · **AZW3** · **FB2** · **FBZ** · **CBZ**
+**EPUB** · **PDF** · **MOBI** · **AZW** · **AZW3** · **FB2** · **FBZ** · **CBZ** · **TXT** · **UMD**
+
+TXT and UMD are imported by converting them to EPUB for reading, notes, search, and sync.
 
 ### 🎨 Customizable Experience
 
@@ -169,7 +171,14 @@
 | Windows | [Download .msi](https://github.com/codedogQBY/ReadAny/releases/latest) |
 | Linux | [Download .AppImage](https://github.com/codedogQBY/ReadAny/releases/latest) |
 | iOS | App Store (Coming Soon) |
-| Android | Google Play (Coming Soon) |
+| Android | [Download .apk](https://github.com/codedogQBY/ReadAny/releases/latest) |
+
+#### Homebrew (macOS)
+
+```bash
+brew tap codedogQBY/readany
+brew install --cask readany
+```
 
 ### 3 Steps to Get Started
 
@@ -188,12 +197,29 @@ git clone https://github.com/codedogQBY/ReadAny.git
 cd ReadAny
 pnpm install
 
-# Run iOS
+# Install/run the development build on iOS
 pnpm expo:ios
 
-# Run Android
+# Install/run the development build on iOS Simulator
+pnpm expo:ios:simulator
+
+# Install/run the development build on Android
+# Start an Android emulator first, or connect a device.
 pnpm expo:android
+
+# Start Metro for the installed development build
+pnpm expo:start
 ```
+
+Mobile development uses an Expo development build with `expo-dev-client`, not
+Expo Go. Expo Go cannot load ReadAny's native modules and app configuration. Use
+`pnpm expo:ios`, `pnpm expo:ios:simulator`, or `pnpm expo:android` the first
+time, or whenever native dependencies/configuration change, then use
+`pnpm expo:start` for daily JS debugging in the installed ReadAny development
+app.
+
+For simulators, use `pnpm expo:ios:simulator` on iOS. For Android, start an
+Android emulator first, then run `pnpm expo:android`.
 
 Mobile app source lives in [`packages/app-expo`](packages/app-expo).
 
@@ -238,14 +264,26 @@ pnpm install
 # Dev (Desktop)
 pnpm tauri dev
 
-# Dev (Mobile - Expo)
+# Dev (Mobile - Expo development build, not Expo Go)
+# First install/run the native development build:
+pnpm expo:ios
+pnpm expo:ios:simulator
+pnpm expo:android
+
+# Then start Metro for the installed development app:
 pnpm expo:start
 
 # Build
 pnpm tauri build
 ```
 
-**Requirements:** Node.js ≥18, pnpm ≥9, Rust (for Tauri)
+Mobile development uses `expo-dev-client`, so Expo Go is not supported. Re-run
+`pnpm expo:ios`, `pnpm expo:ios:simulator`, or `pnpm expo:android` after
+changing native dependencies, `app.config.js`, permissions, schemes, or build
+plugins.
+
+**Requirements:** Node.js ≥18, pnpm ≥9, Rust (for Tauri), plus Xcode for iOS or
+Android Studio/SDK for Android mobile development.
 
 ---
 
@@ -321,6 +359,10 @@ If you find ReadAny helpful, consider buying me a coffee to support ongoing deve
 <p align="center">
   <img src="assets/微信赞赏码.jpg" width="200" alt="微信赞赏码">
   <img src="assets/支付宝收款码.jpg" width="200" alt="支付宝收款码">
+</p>
+
+<p align="center">
+  <a href="https://ifdian.net/a/codedogQBY">Dining Table on Afdian</a>
 </p>
 
 ---

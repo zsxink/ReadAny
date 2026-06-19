@@ -191,15 +191,36 @@ export class TauriPlatformService implements IPlatformService {
       allowInsecure,
       timeoutMs: _timeoutMs,
       responseType: _responseType,
+      onDownloadProgress: _onDownloadProgress,
       ...fetchOptions
     } = options ?? {};
-    if (allowInsecure) {
-      return tauriFetch(url, {
-        ...fetchOptions,
-        danger: { acceptInvalidCerts: true, acceptInvalidHostnames: true },
-      } as any);
+    const tauriOptions = allowInsecure
+      ? {
+          ...fetchOptions,
+          danger: { acceptInvalidCerts: true, acceptInvalidHostnames: true },
+        } as any
+      : fetchOptions;
+    try {
+      return await tauriFetch(url, tauriOptions);
+    } catch (error: unknown) {
+      // Tauri's fetch (Chromium-based) rejects when the server sends response
+      // headers containing characters outside the ISO-8859-1 range (e.g.
+      // Chinese filenames in Content-Disposition from WebDAV servers like dufs).
+      // Fall back to the browser's native fetch which is more lenient, aligning
+      // behaviour with the mobile (XHR) implementation.
+      const msg = (error as { message?: string })?.message ?? "";
+      if (
+        msg.includes("ISO-8859-1") ||
+        msg.includes("non ISO") ||
+        msg.includes("Failed to construct 'Headers'")
+      ) {
+        console.warn(
+          "[TauriPlatform] tauriFetch failed due to non-ASCII response headers; falling back to native fetch",
+        );
+        return globalThis.fetch(url, fetchOptions);
+      }
+      throw error;
     }
-    return tauriFetch(url, fetchOptions);
   }
 
   async createWebSocket(url: string, options?: WebSocketOptions): Promise<IWebSocket> {
@@ -338,8 +359,8 @@ export class TauriPlatformService implements IPlatformService {
       const { invoke } = await import("@tauri-apps/api/core");
       const ip = await invoke<string>("get_local_ip");
       if (ip) return ip;
-    } catch {
-      // Fallback to WebRTC
+    } catch (err) {
+      console.warn("[Platform] Rust get_local_ip failed, falling back to WebRTC:", err);
     }
 
     // Try WebRTC approach

@@ -125,7 +125,8 @@ export function AIPage({ onNext, onPrev, step, totalSteps }: any) {
         modelsFetched: false,
       });
       setStatus("success");
-    } catch {
+    } catch (err) {
+      console.warn("[Onboarding] AI connection test failed:", err);
       setStatus("error");
     }
   };

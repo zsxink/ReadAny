@@ -32,6 +32,26 @@ export interface ISyncBackend {
   /** Download data from a path */
   get(path: string): Promise<Uint8Array>;
 
+  /** Download data with progress reporting (optional — falls back to get() if not implemented) */
+  getWithProgress?(
+    path: string,
+    onProgress?: (loaded: number, total: number) => void,
+  ): Promise<Uint8Array>;
+
+  /** Upload a local file directly when the platform/backend supports native file transfer. */
+  putFile?(
+    path: string,
+    localFilePath: string,
+    onProgress?: (loaded: number, total: number) => void,
+  ): Promise<void>;
+
+  /** Download directly into a local file when the platform/backend supports native file transfer. */
+  getFileToPath?(
+    path: string,
+    localFilePath: string,
+    onProgress?: (loaded: number, total: number) => void,
+  ): Promise<void>;
+
   /** Get JSON data from a path, returns null if not found */
   getJSON<T>(path: string): Promise<T | null>;
 
@@ -46,6 +66,14 @@ export interface ISyncBackend {
 
   /** Check if a file exists */
   exists(path: string): Promise<boolean>;
+
+  /**
+   * Move/rename a file from `fromPath` to `toPath`.
+   * Implementations should create intermediate directories on the destination side.
+   * Should be atomic where the backend supports it; otherwise copy + delete.
+   * Throws if the source does not exist or if the destination already exists.
+   */
+  move(fromPath: string, toPath: string): Promise<void>;
 
   /** Get a display name for the backend (for UI) */
   getDisplayName(): Promise<string>;
@@ -76,6 +104,7 @@ export interface S3Config {
   region: string;
   bucket: string;
   accessKeyId: string;
+  remoteRoot?: string;
   pathStyle?: boolean;
   autoSync: boolean;
   syncIntervalMins: number;
@@ -100,6 +129,7 @@ export const DEFAULT_SYNC_CONFIG = {
 } as const;
 
 export const DEFAULT_WEBDAV_REMOTE_ROOT = "readany";
+export const DEFAULT_S3_REMOTE_ROOT = "readany";
 
 /** Secret keys for each backend type */
 export const SYNC_SECRET_KEYS = {
@@ -109,3 +139,12 @@ export const SYNC_SECRET_KEYS = {
 
 /** Configuration storage key */
 export const SYNC_CONFIG_KEY = "sync_config";
+
+/** Active backend storage key. Backend configs are persisted separately so switching providers keeps prior settings. */
+export const SYNC_ACTIVE_BACKEND_KEY = "sync_active_backend";
+
+/** Per-backend configuration storage keys. */
+export const SYNC_BACKEND_CONFIG_KEYS = {
+  webdav: "sync_webdav_config",
+  s3: "sync_s3_config",
+} as const;

@@ -3,10 +3,13 @@
  */
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { type SettingsTab, useAppStore } from "@/stores/app-store";
+import { refreshAndCountUnreadFeedback } from "@readany/core/feedback";
 import { cn } from "@readany/core/utils";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AISettings } from "./AISettings";
 import { AboutSettings } from "./AboutSettings";
+import { FeedbackSettings } from "./FeedbackSettings";
 import { FontSettings } from "./FontSettings";
 import { GeneralSettings } from "./GeneralSettings";
 import { ReadSettingsPanel } from "./ReadSettings";
@@ -29,6 +32,7 @@ const TAB_IDS: SettingsTab[] = [
   "tts",
   "translation",
   "sync",
+  "feedback",
   "about",
 ];
 const TAB_KEYS: Record<SettingsTab, string> = {
@@ -40,6 +44,7 @@ const TAB_KEYS: Record<SettingsTab, string> = {
   tts: "settings.tts",
   translation: "settings.translationTab",
   sync: "settings.sync",
+  feedback: "feedback.title",
   about: "settings.about",
 };
 
@@ -47,6 +52,23 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const { t } = useTranslation();
   const settingsTab = useAppStore((s) => s.settingsTab);
   const setShowSettings = useAppStore((s) => s.setShowSettings);
+  const [unreadFeedback, setUnreadFeedback] = useState(0);
+
+  // Refresh unread feedback count whenever the dialog opens or the user
+  // switches into the feedback tab (the screen also marks replies as seen,
+  // so we re-fetch when leaving the tab too).
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    refreshAndCountUnreadFeedback()
+      .then((count) => {
+        if (!cancelled) setUnreadFeedback(count);
+      })
+      .catch((err) => console.warn("[SettingsDialog] feedback unread refresh:", err));
+    return () => {
+      cancelled = true;
+    };
+  }, [open, settingsTab]);
 
   const setActiveTab = (tab: SettingsTab) => {
     setShowSettings(true, tab);
@@ -69,14 +91,20 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 <button
                   key={id}
                   className={cn(
-                    "flex w-full items-center rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors",
+                    "flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors",
                     settingsTab === id
                       ? "bg-muted/80 font-medium text-foreground"
                       : "text-muted-foreground hover:bg-muted/50",
                   )}
                   onClick={() => setActiveTab(id)}
                 >
-                  {t(TAB_KEYS[id])}
+                  <span>{t(TAB_KEYS[id])}</span>
+                  {id === "feedback" && unreadFeedback > 0 ? (
+                    <span
+                      className="h-2 w-2 flex-shrink-0 rounded-full bg-destructive"
+                      aria-label={t("feedback.hasNewReply", "有新回复")}
+                    />
+                  ) : null}
                 </button>
               ))}
             </nav>
@@ -92,6 +120,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             {settingsTab === "tts" && <TTSSettings />}
             {settingsTab === "translation" && <TranslationSettings />}
             {settingsTab === "sync" && <SyncSettings />}
+            {settingsTab === "feedback" && <FeedbackSettings />}
             {settingsTab === "about" && <AboutSettings />}
           </div>
         </div>

@@ -19,6 +19,7 @@ export function TranslationSettings() {
   const modelPopoverRef = useRef<HTMLDivElement>(null);
 
   const isAIProvider = translationConfig.provider.id === "ai";
+  const isDeepLProvider = translationConfig.provider.id === "deepl";
 
   // Get all endpoints with models
   const endpointsWithModels = aiConfig.endpoints.filter((e) => e.models.length > 0);
@@ -45,8 +46,8 @@ export function TranslationSettings() {
     updateTranslationConfig({
       provider: {
         ...translationConfig.provider,
-        id: providerId as "ai" | "deepl",
-        name: TRANSLATOR_PROVIDERS.find((p) => p.id === providerId)?.name || "",
+        id: providerId as "ai" | "deepl" | "microsoft",
+        name: TRANSLATOR_PROVIDERS.find((p) => p.id === providerId)?.labelKey || "",
       },
     });
   };
@@ -108,14 +109,14 @@ export function TranslationSettings() {
         <div className="space-y-4">
           {/* 翻译引擎选择 */}
           <div className="space-y-2">
-            <label className="text-sm text-foreground">{t("settings.translationProvider")}</label>
+            <span className="text-sm text-foreground">{t("settings.translationProvider")}</span>
             <div className="relative" ref={providerPopoverRef}>
               <button
                 type="button"
                 onClick={() => setProviderOpen(!providerOpen)}
                 className="flex w-full items-center justify-between rounded-lg border border-input bg-background px-3 py-2 text-sm hover:bg-muted"
               >
-                <span>{currentProvider?.name || t("settings.selectEngine")}</span>
+                <span>{currentProvider ? t(currentProvider.labelKey) : t("settings.selectEngine")}</span>
                 <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
               </button>
               {providerOpen && (
@@ -134,7 +135,7 @@ export function TranslationSettings() {
                           isActive ? "bg-primary/10 text-primary" : "hover:bg-muted"
                         }`}
                       >
-                        <span>{provider.name}</span>
+                        <span>{t(provider.labelKey)}</span>
                         {isActive && <Check className="h-4 w-4 shrink-0" />}
                       </button>
                     );
@@ -147,7 +148,7 @@ export function TranslationSettings() {
           {/* AI 模型选择 (only show for AI provider) */}
           {isAIProvider && (
             <div className="space-y-2">
-              <label className="text-sm text-foreground">{t("settings.translationModel")}</label>
+              <span className="text-sm text-foreground">{t("settings.translationModel")}</span>
               {endpointsWithModels.length > 0 ? (
                 <div className="relative" ref={modelPopoverRef}>
                   <button
@@ -204,11 +205,14 @@ export function TranslationSettings() {
           )}
 
           {/* DeepL API Key (only show for DeepL) */}
-          {!isAIProvider && (
+          {isDeepLProvider && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <label className="text-sm text-foreground">{t("settings.apiKey")}</label>
+                <label htmlFor="translation-deepl-api-key" className="text-sm text-foreground">
+                  {t("settings.apiKey")}
+                </label>
                 <PasswordInput
+                  id="translation-deepl-api-key"
                   placeholder={t("settings.apiKeyPlaceholder")}
                   value={translationConfig.provider.apiKey || ""}
                   onChange={(e) => handleApiKeyChange(e.target.value)}
@@ -217,15 +221,16 @@ export function TranslationSettings() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm text-foreground">{t("translation.deeplBaseUrl")}</label>
+                <label htmlFor="translation-deepl-base-url" className="text-sm text-foreground">
+                  {t("translation.deeplBaseUrl")}
+                </label>
                 <Input
+                  id="translation-deepl-base-url"
                   placeholder={t("translation.deeplBaseUrlPlaceholder")}
                   value={translationConfig.provider.baseUrl || ""}
                   onChange={(e) => handleBaseUrlChange(e.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">
-                  {t("translation.deeplBaseUrlHint")}
-                </p>
+                <p className="text-xs text-muted-foreground">{t("translation.deeplBaseUrlHint")}</p>
               </div>
             </div>
           )}

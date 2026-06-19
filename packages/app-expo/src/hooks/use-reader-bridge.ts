@@ -44,6 +44,16 @@ export interface VisibleTTSContext {
   after: VisibleTTSSegment[];
 }
 
+export interface ReaderInitialSettings {
+  fontSize?: number;
+  lineHeight?: number;
+  paragraphSpacing?: number;
+  pageMargin?: number;
+  fontTheme?: string;
+  viewMode?: "paginated" | "scroll";
+  paginatedLayout?: "single" | "double";
+}
+
 export interface ReaderBridgeCallbacks {
   onRelocate?: (detail: RelocateEvent) => void;
   onBookTextMetrics?: (detail: { totalCharacters: number }) => void;
@@ -99,6 +109,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
   const pendingChapterParagraphsResolveRef = useRef<
     ((paragraphs: Array<{ id: string; text: string; tagName: string }>) => void) | null
   >(null);
+  const pendingChapterTranslationInjectionResolveRef = useRef(new Map<string, () => void>());
 
   // ─── Send commands to WebView ───
 
@@ -120,6 +131,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       lastLocation?: string;
       pageMargin?: number;
       paginatedLayout?: "single" | "double";
+      settings?: ReaderInitialSettings;
     }) => {
       const msg = JSON.stringify({ type: "openBook", ...params });
       inject(`handleCommand(${msg})`);
@@ -127,13 +139,19 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
     [inject],
   );
 
-  const goNext = useCallback(() => {
-    inject("window.goNext()");
-  }, [inject]);
+  const goNext = useCallback(
+    (distance?: number) => {
+      inject(`window.goNext(${Number.isFinite(distance) ? distance : ""})`);
+    },
+    [inject],
+  );
 
-  const goPrev = useCallback(() => {
-    inject("window.goPrev()");
-  }, [inject]);
+  const goPrev = useCallback(
+    (distance?: number) => {
+      inject(`window.goPrev(${Number.isFinite(distance) ? distance : ""})`);
+    },
+    [inject],
+  );
 
   const goLeft = useCallback(() => {
     inject("window.goLeft()");
@@ -563,20 +581,54 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
   }, []);
 
   const injectChapterTranslations = useCallback(
-    (results: Array<{ paragraphId: string; originalText: string; translatedText: string }>) => {
-      const payload = JSON.stringify(results);
-      webViewRef.current?.injectJavaScript(`
-        (function() {
-          try {
-            if (window.doInjectChapterTranslations) {
-              window.doInjectChapterTranslations(${payload});
+    (
+      results: Array<{ paragraphId: string; originalText: string; translatedText: string }>,
+      visibility = { originalVisible: true, translationVisible: true },
+    ) => {
+      return new Promise<void>((resolve) => {
+        const requestId = createRequestId("chapter-translation-inject");
+        pendingChapterTranslationInjectionResolveRef.current.set(requestId, resolve);
+
+        const payload = JSON.stringify(results);
+        const visibilityPayload = JSON.stringify(visibility);
+        webViewRef.current?.injectJavaScript(`
+          (function() {
+            var requestId = ${JSON.stringify(requestId)};
+            var done = function(error) {
+              try {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                  type: 'chapterTranslationsInjected',
+                  requestId: requestId,
+                  error: error || null
+                }));
+              } catch(e) {}
+            };
+            try {
+              if (window.doInjectChapterTranslations) {
+                Promise.resolve(window.doInjectChapterTranslations(${payload}, ${visibilityPayload}))
+                  .then(function() { done(null); })
+                  .catch(function(e) { done(String(e)); });
+              } else {
+                done('doInjectChapterTranslations not defined');
+              }
+            } catch(e) {
+              done(String(e));
             }
-          } catch(e) { console.error('[WebView] injectChapterTranslations error:', e); }
-        })();
-        true;
-      `);
+          })();
+          true;
+        `);
+
+        setTimeout(() => {
+          const pendingResolve =
+            pendingChapterTranslationInjectionResolveRef.current.get(requestId);
+          if (pendingResolve === resolve) {
+            pendingChapterTranslationInjectionResolveRef.current.delete(requestId);
+            resolve();
+          }
+        }, 3000);
+      });
     },
-    [],
+    [createRequestId],
   );
 
   const removeChapterTranslations = useCallback(() => {
@@ -592,70 +644,43 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
     `);
   }, []);
 
-  // ─── Handle continuous scroll for chapter navigation ───
-  const scrollTransitioningRef = useRef(false);
+  // ─── Ruby Annotation Commands ───
+  const setRubyDicts = useCallback((wordDictJson: string | null, charDictJson: string | null) => {
+    const wordArg = wordDictJson ? JSON.stringify(wordDictJson) : "null";
+    const charArg = charDictJson ? JSON.stringify(charDictJson) : "null";
+    webViewRef.current?.injectJavaScript(`
+        (function() {
+          try {
+            if (window.setRubyDicts) {
+              window.setRubyDicts(${wordArg}, ${charArg});
+            }
+          } catch(e) { console.error('[WebView] setRubyDicts error:', e); }
+        })();
+        true;
+      `);
+  }, []);
 
-  const handleContinuousScroll = useCallback(
-    (msg: {
-      deltaY: number;
-      start: number;
-      end: number;
-      viewSize: number;
-      size: number;
-      currentSectionIndex: { current: number; total: number } | number;
-      totalSections: number;
-    }) => {
-      if (scrollTransitioningRef.current) {
-        console.log("[ReaderBridge] continuous-scroll: already transitioning, skip");
-        return;
-      }
+  const injectRuby = useCallback((mode: string) => {
+    webViewRef.current?.injectJavaScript(`
+        (function() {
+          try {
+            if (window.injectRuby) window.injectRuby(${JSON.stringify(mode)});
+          } catch(e) { console.error('[WebView] injectRuby error:', e); }
+        })();
+        true;
+      `);
+  }, []);
 
-      const { deltaY, start, end, viewSize, size, totalSections } = msg;
-      const currentIndex =
-        typeof msg.currentSectionIndex === "number"
-          ? msg.currentSectionIndex
-          : msg.currentSectionIndex.current;
-      const threshold = 30;
-
-      const atStart = start <= Math.abs(deltaY) || start <= size * 0.3;
-      const atEnd =
-        Math.ceil(end) >= viewSize - Math.abs(deltaY) || Math.ceil(end) >= viewSize - size * 0.3;
-
-      console.log("[ReaderBridge] continuous-scroll:", {
-        deltaY,
-        start,
-        end,
-        viewSize,
-        size,
-        currentIndex,
-        totalSections,
-        atStart,
-        atEnd,
-        thresholdCheck: deltaY < -threshold,
-        indexCheck: currentIndex < totalSections - 1,
-      });
-
-      // Finger moves up (deltaY < 0) at end of chapter → go to next
-      if (deltaY < -threshold && atEnd && currentIndex < totalSections - 1) {
-        console.log("[ReaderBridge] Going to next chapter");
-        scrollTransitioningRef.current = true;
-        goNext();
-        setTimeout(() => {
-          scrollTransitioningRef.current = false;
-        }, 500);
-      }
-      // Finger moves down (deltaY > 0) at start of chapter → go to prev
-      else if (deltaY > threshold && atStart && currentIndex > 0) {
-        console.log("[ReaderBridge] Going to previous chapter");
-        scrollTransitioningRef.current = true;
-        goPrev();
-        setTimeout(() => {
-          scrollTransitioningRef.current = false;
-        }, 500);
-      }
-    },
-    [goNext, goPrev],
-  );
+  const removeRuby = useCallback(() => {
+    webViewRef.current?.injectJavaScript(`
+      (function() {
+        try {
+          if (window.removeRuby) window.removeRuby();
+        } catch(e) { console.error('[WebView] removeRuby error:', e); }
+      })();
+      true;
+    `);
+  }, []);
 
   // ─── Handle messages from WebView ───
 
@@ -854,8 +879,24 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
               );
             }
             break;
-          case "continuous-scroll":
-            handleContinuousScroll(msg);
+          case "chapterTranslationsInjected":
+            {
+              const requestId = typeof msg.requestId === "string" ? msg.requestId : null;
+              const pendingResolve = requestId
+                ? pendingChapterTranslationInjectionResolveRef.current.get(requestId)
+                : pendingChapterTranslationInjectionResolveRef.current.values().next().value;
+              if (pendingResolve) {
+                if (msg.error) {
+                  console.warn("[ChapterTranslation] WebView injection error:", msg.error);
+                }
+                pendingResolve();
+                if (requestId) {
+                  pendingChapterTranslationInjectionResolveRef.current.delete(requestId);
+                } else {
+                  pendingChapterTranslationInjectionResolveRef.current.clear();
+                }
+              }
+            }
             break;
           case "debug":
             console.log("[WebView]", msg.message);
@@ -867,7 +908,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
         console.error("[ReaderBridge] Parse error:", err);
       }
     },
-    [handleContinuousScroll],
+    [],
   );
 
   return useMemo(
@@ -905,6 +946,9 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       getChapterParagraphs,
       injectChapterTranslations,
       removeChapterTranslations,
+      setRubyDicts,
+      injectRuby,
+      removeRuby,
     }),
     [
       handleMessage,
@@ -938,6 +982,9 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       getChapterParagraphs,
       injectChapterTranslations,
       removeChapterTranslations,
+      setRubyDicts,
+      injectRuby,
+      removeRuby,
     ],
   );
 }

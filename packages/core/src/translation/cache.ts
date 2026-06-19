@@ -51,8 +51,8 @@ export async function getFromCache(
       }
       await platform.kvRemoveItem(key);
     }
-  } catch {
-    // Ignore storage errors
+  } catch (err) {
+    console.warn("[Translation] Cache read error:", err);
   }
   return null;
 }
@@ -75,8 +75,8 @@ export async function storeInCache(
         timestamp: Date.now(),
       }),
     );
-  } catch {
-    // Ignore storage errors (quota exceeded, etc.)
+  } catch (err) {
+    console.warn("[Translation] Cache write error:", err);
   }
 }
 
@@ -87,7 +87,7 @@ export async function clearTranslationCache(): Promise<void> {
     const allKeys = await platform.kvGetAllKeys();
     const keysToRemove = allKeys.filter((key) => key.startsWith(CACHE_PREFIX));
     await Promise.all(keysToRemove.map((key) => platform.kvRemoveItem(key)));
-  } catch {
-    // Ignore storage errors
+  } catch (err) {
+    console.warn("[Translation] Failed to clear translation cache:", err);
   }
 }

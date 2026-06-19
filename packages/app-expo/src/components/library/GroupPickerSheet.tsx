@@ -4,7 +4,9 @@ import type { BookGroup } from "@readany/core/types";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -12,6 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 interface GroupPickerSheetProps {
   visible: boolean;
@@ -31,7 +34,8 @@ export function GroupPickerSheet({
   onClose,
 }: GroupPickerSheetProps) {
   const colors = useColors();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => makeStyles(colors, insets.bottom), [colors, insets.bottom]);
   const { t } = useTranslation();
   const [isCreating, setIsCreating] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
@@ -53,77 +57,83 @@ export function GroupPickerSheet({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.overlay} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={() => {}}>
-          <View style={styles.handle} />
-          <Text style={styles.title}>
-            {t("library.moveToGroup", "移入分组")}
-          </Text>
+        <KeyboardAvoidingView
+          style={styles.keyboardWrap}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
+            <View style={styles.handle} />
+            <Text style={styles.title}>
+              {t("library.moveToGroup", "移入分组")}
+            </Text>
 
-          {groups.length > 0 && (
-            <View style={styles.groupList}>
-              {groups.map((group) => (
+            {groups.length > 0 && (
+              <View style={styles.groupList}>
+                {groups.map((group) => (
+                  <TouchableOpacity
+                    key={group.id}
+                    style={styles.groupItem}
+                    activeOpacity={0.7}
+                    onPress={() => handleSelect(group.id)}
+                  >
+                    <Text style={styles.groupName}>{group.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {isCreating ? (
+              <View style={styles.createRow}>
+                <TextInput
+                  style={styles.createInput}
+                  placeholder={t("library.groupNamePlaceholder", "分组名称")}
+                  placeholderTextColor={colors.mutedForeground}
+                  value={newGroupName}
+                  onChangeText={setNewGroupName}
+                  autoFocus
+                  onSubmitEditing={handleCreate}
+                  returnKeyType="done"
+                />
                 <TouchableOpacity
-                  key={group.id}
-                  style={styles.groupItem}
-                  activeOpacity={0.7}
-                  onPress={() => handleSelect(group.id)}
+                  style={[styles.createBtn, !newGroupName.trim() && styles.createBtnDisabled]}
+                  disabled={!newGroupName.trim()}
+                  onPress={handleCreate}
                 >
-                  <Text style={styles.groupName}>{group.name}</Text>
+                  <Text style={styles.createBtnText}>{t("common.confirm", "确定")}</Text>
                 </TouchableOpacity>
-              ))}
-            </View>
-          )}
-
-          {isCreating ? (
-            <View style={styles.createRow}>
-              <TextInput
-                style={styles.createInput}
-                placeholder={t("library.groupNamePlaceholder", "分组名称")}
-                placeholderTextColor={colors.mutedForeground}
-                value={newGroupName}
-                onChangeText={setNewGroupName}
-                autoFocus
-                onSubmitEditing={handleCreate}
-              />
+              </View>
+            ) : (
               <TouchableOpacity
-                style={[styles.createBtn, !newGroupName.trim() && styles.createBtnDisabled]}
-                disabled={!newGroupName.trim()}
-                onPress={handleCreate}
+                style={styles.newGroupBtn}
+                activeOpacity={0.7}
+                onPress={() => setIsCreating(true)}
               >
-                <Text style={styles.createBtnText}>{t("common.confirm", "确定")}</Text>
+                <FolderPlusIcon size={20} color={colors.primary} />
+                <Text style={styles.newGroupText}>
+                  {t("library.createGroup", "新建分组")}
+                </Text>
               </TouchableOpacity>
-            </View>
-          ) : (
-            <TouchableOpacity
-              style={styles.newGroupBtn}
-              activeOpacity={0.7}
-              onPress={() => setIsCreating(true)}
-            >
-              <FolderPlusIcon size={20} color={colors.primary} />
-              <Text style={styles.newGroupText}>
-                {t("library.createGroup", "新建分组")}
-              </Text>
-            </TouchableOpacity>
-          )}
+            )}
 
-          {currentGroupId && (
-            <TouchableOpacity
-              style={styles.ungroupedBtn}
-              activeOpacity={0.7}
-              onPress={() => handleSelect(undefined)}
-            >
-              <Text style={styles.ungroupedText}>
-                {t("library.removeFromGroup", "移出分组")}
-              </Text>
-            </TouchableOpacity>
-          )}
-        </Pressable>
+            {currentGroupId && (
+              <TouchableOpacity
+                style={styles.ungroupedBtn}
+                activeOpacity={0.7}
+                onPress={() => handleSelect(undefined)}
+              >
+                <Text style={styles.ungroupedText}>
+                  {t("library.removeFromGroup", "移出分组")}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </Pressable>
+        </KeyboardAvoidingView>
       </Pressable>
     </Modal>
   );
 }
 
-const makeStyles = (colors: ThemeColors) =>
+const makeStyles = (colors: ThemeColors, bottomInset: number) =>
   StyleSheet.create({
     overlay: {
       flex: 1,
@@ -135,8 +145,12 @@ const makeStyles = (colors: ThemeColors) =>
       borderTopLeftRadius: radius.xxl,
       borderTopRightRadius: radius.xxl,
       paddingTop: 10,
-      paddingBottom: 34,
+      paddingBottom: Math.max(34, bottomInset + 18),
       paddingHorizontal: spacing.lg,
+    },
+    keyboardWrap: {
+      width: "100%",
+      justifyContent: "flex-end",
     },
     handle: {
       width: 36,

@@ -25,6 +25,14 @@ export interface FetchOptions extends RequestInit {
   timeoutMs?: number;
   /** Preferred response type for platforms that support native request tuning */
   responseType?: "text" | "arraybuffer";
+  /** Download progress callback — receives loaded bytes and total (0 if unknown) */
+  onDownloadProgress?: (loaded: number, total: number) => void;
+}
+
+export interface FileTransferOptions {
+  headers?: Record<string, string>;
+  allowInsecure?: boolean;
+  onProgress?: (loaded: number, total: number) => void;
 }
 
 export interface UpdateInfo {
@@ -83,6 +91,8 @@ export interface IPlatformService {
 
   // ---- Network (for scenarios requiring custom headers) ----
   fetch(url: string, options?: FetchOptions): Promise<Response>;
+  downloadFile?(url: string, filePath: string, options?: FileTransferOptions): Promise<void>;
+  uploadFile?(url: string, filePath: string, options?: FileTransferOptions): Promise<void>;
   createWebSocket(url: string, options?: WebSocketOptions): Promise<IWebSocket>;
 
   // ---- App info ----

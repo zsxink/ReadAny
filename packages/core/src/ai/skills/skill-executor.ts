@@ -109,24 +109,24 @@ export class SkillExecutor {
       const contextParts: string[] = [];
 
       if (context.bookTitle) {
-        contextParts.push(`当前书籍: ${context.bookTitle}`);
+        contextParts.push(`Current Book: ${context.bookTitle}`);
       }
       if (context.currentChapter) {
-        contextParts.push(`当前章节: ${context.currentChapter}`);
+        contextParts.push(`Current Chapter: ${context.currentChapter}`);
       }
       if (context.surroundingText) {
-        contextParts.push(`周围文本:\n${context.surroundingText.slice(0, 1000)}`);
+        contextParts.push(`Surrounding Text:\n${context.surroundingText.slice(0, 1000)}`);
       }
       if (context.highlights && context.highlights.length > 0) {
         contextParts.push(
-          `用户标注:\n${context.highlights
-            .map((h) => `- ${h.text}${h.note ? ` (笔记: ${h.note})` : ""}`)
+          `User Highlights:\n${context.highlights
+            .map((h) => `- ${h.text}${h.note ? ` (note: ${h.note})` : ""}`)
             .join("\n")}`,
         );
       }
 
       if (contextParts.length > 0) {
-        systemContent += `\n\n## 上下文信息\n${contextParts.join("\n")}`;
+        systemContent += `\n\n## Context\n${contextParts.join("\n")}`;
       }
     }
 
@@ -139,8 +139,8 @@ export class SkillExecutor {
       .join("\n");
 
     const humanContent = argsDescription
-      ? `执行技能: ${skill.name}\n\n参数:\n${argsDescription}`
-      : `执行技能: ${skill.name}`;
+      ? `Execute skill: ${skill.name}\n\nParameters:\n${argsDescription}`
+      : `Execute skill: ${skill.name}`;
 
     messages.push(new HumanMessage(humanContent));
 

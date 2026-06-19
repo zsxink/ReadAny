@@ -6,32 +6,40 @@
  * - RAG Tools: ragSearch, ragToc, ragContext
  * - Analysis Tools: summarize, extractEntities, analyzeArguments, findQuotes, compareSections
  * - Annotation Tools: getAnnotations, addCitation
- * - Library Tools: listBooks, searchAllHighlights, searchAllNotes, readingStats, classifyBooks, tagBooks, manageBookTags
+ * - Library Tools: listBooks, searchAllHighlights, searchAllNotes, readingStats, classifyBooks,
+ *   tagBooks, manageBookTags, updateBookMetadata, manageBookGroups
  * - Skill Tools: getSkills, skillToTool
  * - Mindmap Tools: mindmap
  * - Context Tools: getCurrentChapter, getSelection, getReadingProgress, getRecentHighlights, getSurroundingContext
  */
 import type { Skill } from "../../types";
 import {
-  createSummarizeTool,
-  createExtractEntitiesTool,
   createAnalyzeArgumentsTool,
-  createFindQuotesTool,
   createCompareSectionsTool,
+  createExtractEntitiesTool,
+  createFindQuotesTool,
+  createSummarizeTool,
 } from "./analysis-tools";
-import { createGetAnnotationsTool, createAddCitationTool } from "./annotation-tools";
+import { createAddCitationTool, createGetAnnotationsTool } from "./annotation-tools";
 import { getContextTools } from "./context-tools";
 import {
+  createFallbackChapterContextTool,
+  createFallbackSearchTool,
+  createFallbackTocTool,
+} from "./fallback-content-tools";
+import {
+  createClassifyBooksTool,
   createListBooksTool,
+  createManageBookGroupsTool,
+  createManageBookTagsTool,
+  createReadingStatsTool,
   createSearchAllHighlightsTool,
   createSearchAllNotesTool,
-  createReadingStatsTool,
-  createClassifyBooksTool,
   createTagBooksTool,
-  createManageBookTagsTool,
+  createUpdateBookMetadataTool,
 } from "./library-tools";
 import { createMindmapTool } from "./mindmap-tools";
-import { createRagSearchTool, createRagTocTool, createRagContextTool } from "./rag-tools";
+import { createRagContextTool, createRagSearchTool, createRagTocTool } from "./rag-tools";
 import { createGetSkillsTool, skillToTool } from "./skill-tools";
 import type { ToolDefinition } from "./tool-types";
 
@@ -51,6 +59,8 @@ function getGeneralTools(): ToolDefinition[] {
     createClassifyBooksTool(),
     createTagBooksTool(),
     createManageBookTagsTool(),
+    createUpdateBookMetadataTool(),
+    createManageBookGroupsTool(),
   ];
 }
 
@@ -85,9 +95,16 @@ export function getAvailableTools(options: {
         createFindQuotesTool(options.bookId),
         createCompareSectionsTool(options.bookId),
       );
+    } else {
+      tools.push(
+        createFallbackTocTool(options.bookId),
+        createFallbackSearchTool(options.bookId),
+        createFallbackChapterContextTool(options.bookId),
+      );
     }
 
-    // Annotation & citation tools (always available when book is loaded)
+    // Citations are available for indexed chunks and for fallback sources that
+    // can be validated against concrete reader segments.
     tools.push(createGetAnnotationsTool(options.bookId), createAddCitationTool(options.bookId));
   }
 

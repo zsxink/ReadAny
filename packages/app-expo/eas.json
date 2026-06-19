@@ -1,13 +1,17 @@
 {
   "cli": {
-    "version": ">= 14.1.0",
+    "version": ">= 18.11.0",
     "appVersionSource": "remote"
   },
   "build": {
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "node": "20.18.0"
+      "node": "20.18.0",
+      "env": {
+        "APP_VARIANT": "development",
+        "EXPO_NO_METRO_WORKSPACE_ROOT": "1"
+      }
     },
     "development-simulator": {
       "developmentClient": true,
@@ -17,10 +21,12 @@
       },
       "node": "20.18.0",
       "env": {
+        "APP_VARIANT": "development",
         "EXPO_NO_METRO_WORKSPACE_ROOT": "1"
       }
     },
     "preview": {
+      "distribution": "internal",
       "android": {
         "buildType": "apk",
         "gradleCommand": ":app:assembleRelease -PreactNativeArchitectures=arm64-v8a"
@@ -30,6 +36,7 @@
       },
       "node": "20.18.0",
       "env": {
+        "APP_VARIANT": "preview",
         "EXPO_NO_METRO_WORKSPACE_ROOT": "1"
       }
     },
@@ -40,6 +47,20 @@
       },
       "node": "20.18.0",
       "env": {
+        "APP_VARIANT": "production",
+        "EXPO_NO_METRO_WORKSPACE_ROOT": "1"
+      }
+    },
+    "production-apk": {
+      "autoIncrement": true,
+      "distribution": "store",
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease -PreactNativeArchitectures=arm64-v8a"
+      },
+      "node": "20.18.0",
+      "env": {
+        "APP_VARIANT": "production",
         "EXPO_NO_METRO_WORKSPACE_ROOT": "1"
       }
     }

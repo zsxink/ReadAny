@@ -39,7 +39,8 @@ async function loadFontIndex(): Promise<FontIndex | null> {
     if (!(await platform.exists(filePath))) return null;
     const text = await platform.readTextFile(filePath);
     return JSON.parse(text) as FontIndex;
-  } catch {
+  } catch (err) {
+    console.warn("[FontStore] Failed to load font index:", err);
     return null;
   }
 }
@@ -252,7 +253,8 @@ async function loadFontIndexLegacy(): Promise<CustomFont[] | null> {
     const text = await platform.readTextFile(legacyPath);
     const parsed = JSON.parse(text) as { fonts?: CustomFont[] };
     return parsed.fonts ?? null;
-  } catch {
+  } catch (err) {
+    console.warn("[FontStore] Failed to load legacy font index:", err);
     return null;
   }
 }

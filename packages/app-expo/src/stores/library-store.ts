@@ -50,6 +50,11 @@ export interface RemoveBookOptions {
   preserveData?: boolean;
 }
 
+function keepActiveGroupId(activeGroupId: string, groups: BookGroup[]): string {
+  if (!activeGroupId) return "";
+  return groups.some((group) => group.id === activeGroupId) ? activeGroupId : "";
+}
+
 export interface LibraryState {
   books: Book[];
   groups: BookGroup[];
@@ -202,7 +207,7 @@ function shouldAutoVectorizeMobile(format: Book["format"], size: number): boolea
   if (size <= 0 || size > MOBILE_AUTO_VECTORIZER_MAX_BYTES) {
     return false;
   }
-  return format === "epub" || format === "txt";
+  return format === "epub" || format === "txt" || format === "umd";
 }
 
 /**
@@ -353,6 +358,7 @@ async function restoreDeletedMobileBook(
     fb2: "fb2",
     fbz: "fbz",
     txt: "txt",
+    umd: "umd",
   };
   const format: Book["format"] = formatMap[ext || ""] || "epub";
   const fileName = originalName;
@@ -402,6 +408,65 @@ async function restoreDeletedMobileBook(
         title: conversion.bookTitle || originalBook.meta.title || fileName.replace(/\.\w+$/i, ""),
         author: originalBook.meta.author || "",
         coverUrl: originalBook.meta.coverUrl,
+      },
+      deletedAt: undefined,
+      fileHash,
+      syncStatus: "local",
+      isVectorized: false,
+      vectorizeProgress: 0,
+      updatedAt: Date.now(),
+      lastOpenedAt: Date.now(),
+    };
+  }
+
+  if (ext === "umd") {
+    const sourceBytes = await platform.readFile(filePath);
+    const [{ UmdToEpubConverter }, pakoMod] = await Promise.all([
+      import("@readany/core/utils/umd-to-epub"),
+      import("pako"),
+    ]);
+    const pako = pakoMod.default || pakoMod;
+    const umdFile = {
+      name: fileName,
+      size: sourceBytes.byteLength,
+      type: "application/octet-stream",
+      arrayBuffer: () =>
+        Promise.resolve(
+          sourceBytes.buffer.slice(
+            sourceBytes.byteOffset,
+            sourceBytes.byteOffset + sourceBytes.byteLength,
+          ),
+        ),
+    } as unknown as File;
+
+    const conversion = await new UmdToEpubConverter((b) => pako.inflate(b)).convertToBytes({
+      file: umdFile,
+    });
+    await ensureAppSubDir("books");
+    const relativePath = `books/${bookId}.epub`;
+    await platform.writeFile(await resolveAppPath(relativePath), conversion.epubBytes);
+
+    let coverUrl = originalBook.meta.coverUrl;
+    if (conversion.coverBytes && conversion.coverBytes.length > 0) {
+      try {
+        await ensureAppSubDir("covers");
+        const coverRelPath = `covers/${bookId}.jpg`;
+        await platform.writeFile(await resolveAppPath(coverRelPath), conversion.coverBytes);
+        coverUrl = coverRelPath;
+      } catch (coverErr) {
+        console.warn(`[restoreDeletedMobileBook] UMD cover save failed: ${coverErr}`);
+      }
+    }
+
+    return {
+      ...originalBook,
+      filePath: relativePath,
+      format: "umd",
+      meta: {
+        ...originalBook.meta,
+        title: conversion.bookTitle || originalBook.meta.title || fileName.replace(/\.\w+$/i, ""),
+        author: conversion.author || originalBook.meta.author || "",
+        coverUrl,
       },
       deletedAt: undefined,
       fileHash,
@@ -490,6 +555,7 @@ async function inspectDeletedMobileBookCandidate(
     fb2: "fb2",
     fbz: "fbz",
     txt: "txt",
+    umd: "umd",
   };
   const format: Book["format"] = formatMap[ext || ""] || "epub";
   const fileName = originalName;
@@ -534,11 +600,53 @@ async function inspectDeletedMobileBookCandidate(
         format: "epub",
         fileHash,
       };
-    } catch {
+    } catch (err) {
+      console.warn("[Library] TXT conversion failed during reimport inspection:", err);
       return {
         title: fileName.replace(/\.\w+$/i, "") || originalBook.meta.title,
         author: "",
         format: "epub",
+        fileHash,
+      };
+    }
+  }
+
+  if (ext === "umd") {
+    try {
+      const [{ UmdToEpubConverter }, pakoMod] = await Promise.all([
+        import("@readany/core/utils/umd-to-epub"),
+        import("pako"),
+      ]);
+      const pako = pakoMod.default || pakoMod;
+      const platform = getPlatformService();
+      const sourceBytes = await platform.readFile(filePath);
+      const umdFile = {
+        name: fileName,
+        size: sourceBytes.byteLength,
+        type: "application/octet-stream",
+        arrayBuffer: () =>
+          Promise.resolve(
+            sourceBytes.buffer.slice(
+              sourceBytes.byteOffset,
+              sourceBytes.byteOffset + sourceBytes.byteLength,
+            ),
+          ),
+      } as unknown as File;
+      const conversion = await new UmdToEpubConverter((b) => pako.inflate(b)).convertToBytes({
+        file: umdFile,
+      });
+      return {
+        title: conversion.bookTitle || fileName.replace(/\.\w+$/i, "") || originalBook.meta.title,
+        author: conversion.author || "",
+        format: "umd",
+        fileHash,
+      };
+    } catch (err) {
+      console.warn("[Library] UMD inspection failed during reimport:", err);
+      return {
+        title: fileName.replace(/\.\w+$/i, "") || originalBook.meta.title,
+        author: "",
+        format: "umd",
         fileHash,
       };
     }
@@ -555,8 +663,8 @@ async function inspectDeletedMobileBookCandidate(
     });
     if (meta.title) title = meta.title;
     if (meta.author) author = meta.author;
-  } catch {
-    // Fallback to filename only.
+  } catch (err) {
+    console.warn("[Library] Failed to extract metadata during reimport inspection:", err);
   }
 
   return { title, author, format, fileHash };
@@ -590,15 +698,17 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       const cached = await loadFromFS<Book[]>("library-books");
       const cachedGroups = await loadFromFS<BookGroup[]>("library-groups");
       if (cached && cached.length > 0) {
-        set({
+        const groups = cachedGroups ?? get().groups;
+        set((state) => ({
           books: cached,
-          groups: cachedGroups ?? get().groups,
+          groups,
           isLoaded: true,
           allTags: computeTags(cached),
-        });
+          activeGroupId: keepActiveGroupId(state.activeGroupId, groups),
+        }));
       }
-    } catch {
-      /* cache miss */
+    } catch (err) {
+      console.warn("[Library] Failed to load cached books:", err);
     }
 
     try {
@@ -611,8 +721,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       try {
         const loaded = await loadFromFS<string[]>("library-tags");
         if (loaded) savedTags = loaded;
-      } catch {
-        /* no saved tags */
+      } catch (err) {
+        console.warn("[Library] Failed to load saved tags:", err);
       }
 
       // Remove deleted tags from savedTags
@@ -624,7 +734,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       const emptyTags = savedTags.filter((t) => !dbTagSet.has(t) && !deletedSet.has(t));
       const allTags = [...dbTags, ...emptyTags].sort();
 
-      set({ books, groups, isLoaded: true, allTags });
+      set((state) => ({
+        books,
+        groups,
+        isLoaded: true,
+        allTags,
+        activeGroupId: keepActiveGroupId(state.activeGroupId, groups),
+      }));
       debouncedSave("library-books", books);
       debouncedSave("library-groups", groups);
       debouncedSave("library-tags", allTags);
@@ -638,7 +754,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     try {
       await db.initDatabase();
       const groups = await db.getGroups();
-      set({ groups });
+      set((state) => ({
+        groups,
+        activeGroupId: keepActiveGroupId(state.activeGroupId, groups),
+      }));
       debouncedSave("library-groups", groups);
     } catch (err) {
       console.error("Failed to load groups from database:", err);
@@ -706,6 +825,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   updateBook: (bookId, updates) => {
     set((state) => ({
       books: state.books.map((b) => (b.id === bookId ? { ...b, ...updates } : b)),
+      allTags:
+        updates.tags !== undefined
+          ? Array.from(new Set([...state.allTags, ...updates.tags])).sort()
+          : state.allTags,
     }));
     persistBookUpdate(bookId, updates).catch((err) =>
       console.error("Failed to update book in database:", err),
@@ -742,6 +865,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             fb2: "fb2",
             fbz: "fbz",
             txt: "txt",
+            umd: "umd",
           };
           const format: Book["format"] = formatMap[ext || ""] || "epub";
           const fileName = originalName;
@@ -758,7 +882,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           }
 
           const deletedMatch = fileHash
-            ? await db.getDeletedBookByFileHash(fileHash).catch(() => null)
+            ? await db.getDeletedBookByFileHash(fileHash).catch((err) => {
+                console.warn("[Library] Failed to check deleted book by hash:", err);
+                return null;
+              })
             : null;
           const bookId = deletedMatch?.id ?? generateId();
 
@@ -875,13 +1002,18 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
               try {
                 const vmState = useVectorModelStore.getState();
                 if (
+                  vmState.autoVectorizeOnImport &&
                   vmState.vectorModelEnabled &&
                   vmState.hasVectorCapability() &&
                   shouldAutoVectorizeMobile("txt", conversion.epubBytes.byteLength)
                 ) {
                   const base64 = bytesToBase64(conversion.epubBytes);
                   queueAutoVectorize(book, base64, "application/epub+zip");
-                } else if (vmState.vectorModelEnabled && vmState.hasVectorCapability()) {
+                } else if (
+                  vmState.autoVectorizeOnImport &&
+                  vmState.vectorModelEnabled &&
+                  vmState.hasVectorCapability()
+                ) {
                   console.warn(
                     `[importBooks] Skip auto-vectorize for large TXT conversion: ${fileName} (${conversion.epubBytes.byteLength} bytes)`,
                   );
@@ -895,6 +1027,127 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
               continue;
             } catch (convErr) {
               console.error("[importBooks] TXT conversion failed:", convErr);
+              throw convErr;
+            }
+          }
+
+          // For UMD files: parse + convert to EPUB bytes inline (Chinese mobile ebook format)
+          if (ext === "umd") {
+            try {
+              const [{ UmdToEpubConverter }, pakoMod] = await Promise.all([
+                import("@readany/core/utils/umd-to-epub"),
+                import("pako"),
+              ]);
+              const pako = pakoMod.default || pakoMod;
+              const sourceBytes = await platform.readFile(filePath);
+
+              // File-like shim — same approach as TXT branch (RN Blob/File
+              // constructors don't accept ArrayBuffer/Uint8Array).
+              const umdFile = {
+                name: fileName,
+                size: sourceBytes.byteLength,
+                type: "application/octet-stream",
+                arrayBuffer: () =>
+                  Promise.resolve(
+                    sourceBytes.buffer.slice(
+                      sourceBytes.byteOffset,
+                      sourceBytes.byteOffset + sourceBytes.byteLength,
+                    ),
+                  ),
+              } as unknown as File;
+
+              const converter = new UmdToEpubConverter((b) => pako.inflate(b));
+              const conversion = await converter.convertToBytes({ file: umdFile });
+
+              await ensureAppSubDir("books");
+              const relativePath = `books/${bookId}.epub`;
+              const absPath = await resolveAppPath(relativePath);
+              await platform.writeFile(absPath, conversion.epubBytes);
+
+              let coverUrl: string | undefined;
+              if (conversion.coverBytes && conversion.coverBytes.length > 0) {
+                try {
+                  await ensureAppSubDir("covers");
+                  const coverRelPath = `covers/${bookId}.jpg`;
+                  const coverAbsPath = await resolveAppPath(coverRelPath);
+                  await platform.writeFile(coverAbsPath, conversion.coverBytes);
+                  coverUrl = coverRelPath;
+                } catch (coverErr) {
+                  console.warn(`[importBooks] Failed to save UMD cover for ${fileName}:`, coverErr);
+                }
+              }
+
+              const title = conversion.bookTitle || fileName.replace(/\.\w+$/i, "") || "Untitled";
+              const author = conversion.author || "";
+              const book: Book = {
+                id: bookId,
+                filePath: relativePath,
+                format: "umd",
+                meta: {
+                  ...(deletedMatch?.meta ?? {}),
+                  title,
+                  author,
+                  coverUrl: coverUrl || deletedMatch?.meta.coverUrl,
+                },
+                groupId: deletedMatch?.groupId,
+                progress: deletedMatch?.progress ?? 0,
+                currentCfi: deletedMatch?.currentCfi,
+                isVectorized: false,
+                vectorizeProgress: 0,
+                tags: deletedMatch?.tags ?? [],
+                fileHash,
+                syncStatus: "local",
+                addedAt: deletedMatch?.addedAt ?? Date.now(),
+                updatedAt: Date.now(),
+                lastOpenedAt: deletedMatch?.lastOpenedAt ?? Date.now(),
+              };
+
+              if (deletedMatch) {
+                set((state) => ({ books: [...state.books, book] }));
+                await db.updateBook(book.id, {
+                  filePath: book.filePath,
+                  format: book.format,
+                  meta: book.meta,
+                  deletedAt: undefined,
+                  progress: book.progress,
+                  currentCfi: book.currentCfi,
+                  isVectorized: false,
+                  vectorizeProgress: 0,
+                  tags: book.tags,
+                  fileHash: book.fileHash,
+                  syncStatus: "local",
+                  lastOpenedAt: Date.now(),
+                });
+                debouncedSave("library-books", get().books);
+              } else {
+                await get().addBook(book);
+              }
+              result.imported.push(book);
+              if (fileHash) {
+                duplicateIndex.byHash.set(fileHash, book);
+              }
+              console.log(`[importBooks] UMD imported as EPUB: ${title}`);
+
+              try {
+                const vmState = useVectorModelStore.getState();
+                if (
+                  vmState.autoVectorizeOnImport &&
+                  vmState.vectorModelEnabled &&
+                  vmState.hasVectorCapability() &&
+                  shouldAutoVectorizeMobile("umd", conversion.epubBytes.byteLength)
+                ) {
+                  const base64 = bytesToBase64(conversion.epubBytes);
+                  queueAutoVectorize(book, base64, "application/epub+zip");
+                }
+              } catch (autoVectorizeErr) {
+                console.warn(
+                  `[importBooks] Auto-vectorize enqueue failed for ${fileName}:`,
+                  autoVectorizeErr,
+                );
+              }
+              continue;
+            } catch (convErr) {
+              console.error("[importBooks] UMD conversion failed:", convErr);
               throw convErr;
             }
           }
@@ -997,6 +1250,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           try {
             const vmState = useVectorModelStore.getState();
             if (
+              vmState.autoVectorizeOnImport &&
               vmState.vectorModelEnabled &&
               vmState.hasVectorCapability() &&
               shouldAutoVectorizeMobile(format, fileSize)
@@ -1017,7 +1271,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
               };
               const mimeType = mimeTypes[format] || "application/epub+zip";
               queueAutoVectorize(book, base64, mimeType);
-            } else if (vmState.vectorModelEnabled && vmState.hasVectorCapability()) {
+            } else if (
+              vmState.autoVectorizeOnImport &&
+              vmState.vectorModelEnabled &&
+              vmState.hasVectorCapability()
+            ) {
               console.warn(
                 `[importBooks] Skip auto-vectorize for large/unsupported mobile import: ${fileName} (${fileSize} bytes, format=${format})`,
               );
@@ -1149,6 +1407,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     });
     try {
       await db.deleteGroup(groupId);
+      const [books, groups] = await Promise.all([db.getBooks(), db.getGroups()]);
+      set((state) => ({
+        books,
+        groups,
+        activeGroupId: keepActiveGroupId(state.activeGroupId, groups),
+      }));
+      debouncedSave("library-groups", groups);
+      debouncedSave("library-books", books);
     } catch (err) {
       console.error("Failed to delete group:", err);
     }
@@ -1190,7 +1456,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     });
     const books = get().books;
     for (const b of books) {
-      db.updateBook(b.id, { tags: b.tags }).catch(() => {});
+      db.updateBook(b.id, { tags: b.tags }).catch((err) =>
+        console.warn("[Library] Failed to update book tags:", err),
+      );
     }
   },
 
@@ -1210,7 +1478,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     });
     for (const b of get().books) {
       if (b.tags.includes(trimmed)) {
-        db.updateBook(b.id, { tags: b.tags }).catch(() => {});
+        db.updateBook(b.id, { tags: b.tags }).catch((err) =>
+          console.warn("[Library] Failed to update book tags:", err),
+        );
       }
     }
   },

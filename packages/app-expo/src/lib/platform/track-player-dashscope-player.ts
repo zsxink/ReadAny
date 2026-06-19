@@ -396,8 +396,10 @@ export class TrackPlayerDashScopeTTSPlayer implements ITTSPlayer {
         .map((track, index) => (ids.has(String(track.id)) ? index : -1))
         .filter((index) => index >= 0)
         .sort((a, b) => b - a);
-      if (indexes.length > 0) await TrackPlayer.remove(indexes).catch(() => {});
-    } catch {}
+      if (indexes.length > 0) await TrackPlayer.remove(indexes).catch((err) => console.warn("[TTS] TrackPlayer remove failed:", err));
+    } catch (err) {
+      console.warn("[TTS] Failed to clear silence tracks:", err);
+    }
   }
 
   private async _fetchChunkFileWithRetry(index: number, gen: number): Promise<string> {
@@ -672,7 +674,9 @@ export class TrackPlayerDashScopeTTSPlayer implements ITTSPlayer {
     try {
       await TrackPlayer.stop();
       await TrackPlayer.reset();
-    } catch {}
+    } catch (err) {
+      console.warn("[TTS] TrackPlayer stop/reset failed during cleanup:", err);
+    }
     this._cleanupTempFiles();
   }
 

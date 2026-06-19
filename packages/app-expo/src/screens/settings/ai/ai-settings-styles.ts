@@ -239,7 +239,7 @@ export const makeStyles = (colors: ThemeColors) =>
       marginTop: spacing.xs,
       lineHeight: 20,
     },
-    modelTags: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
+    modelTags: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, maxHeight: 120, overflow: "hidden" },
     modelTag: {
       flexDirection: "row",
       alignItems: "center",
@@ -255,7 +255,7 @@ export const makeStyles = (colors: ThemeColors) =>
       borderColor: colors.primary,
       backgroundColor: withOpacity(colors.primary, 0.1),
     },
-    modelTagText: { fontSize: fontSize.xs, color: colors.foreground, maxWidth: 120 },
+    modelTagText: { fontSize: fontSize.xs, color: colors.foreground, maxWidth: 180 },
     modelTagTextActive: { color: colors.primary, fontWeight: fontWeight.medium },
 
     addModelRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs },

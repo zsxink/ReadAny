@@ -10,16 +10,17 @@ import {
 } from "@/components/ui/Icon";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import type { SelectionEvent } from "@/hooks/use-reader-bridge";
-import { radius, spacing, useColors } from "@/styles/theme";
+import { radius, spacing, useColors, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
+import { HIGHLIGHT_COLORS, HIGHLIGHT_COLOR_HEX } from "@readany/core/types";
+import type { HighlightColor } from "@readany/core/types";
 import * as Clipboard from "expo-clipboard";
-import * as Speech from "expo-speech";
 /**
  * SelectionPopover — floating action bar shown when text is selected in the reader.
  * Provides highlight (5 colors), note, copy, translate, AI chat, TTS, and delete actions.
  * Matches app-mobile styling with icon buttons and expandable color picker.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Dimensions,
@@ -32,20 +33,16 @@ import {
   View,
 } from "react-native";
 
-const HIGHLIGHT_COLORS = [
-  { key: "yellow", hex: "#facc15" },
-  { key: "red", hex: "#f87171" },
-  { key: "green", hex: "#4ade80" },
-  { key: "blue", hex: "#60a5fa" },
-  { key: "violet", hex: "#a78bfa" },
-  { key: "pink", hex: "#f472b6" },
-] as const;
-
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SCREEN_HEIGHT = Dimensions.get("window").height;
 const POPOVER_MARGIN = 8;
 const POPOVER_PADDING = 4;
 const BUTTON_SIZE = 36;
+const COLOR_DOT_SIZE = 28;
+const COLOR_REMOVE_BUTTON_SIZE = 28;
+const COLOR_ROW_GAP = 6;
+const COLOR_ROW_PADDING_X = 8;
+const COLOR_ROW_DIVIDER_WIDTH = 1;
 const GAP = 2;
 const SAFE_TOP = 14;
 const SAFE_BOTTOM = 20;
@@ -54,14 +51,16 @@ const SELECTION_POPOVER_BELOW_OFFSET = 6;
 
 interface Props {
   selection: SelectionEvent;
-  onHighlight: (color: string) => void;
+  onHighlight: (color: HighlightColor) => void;
   onDismiss: () => void;
   onCopy: () => void;
   onAIChat: () => void;
+  onSpeak?: (text: string, cfi: string) => void;
   onNote?: (text: string, cfi: string) => void;
   onTranslate?: (text: string) => void;
   onRemoveHighlight?: () => void;
-  existingHighlight?: { id: string; color: string; note?: string } | null;
+  existingHighlight?: { id: string; color: HighlightColor; note?: string } | null;
+  defaultColor?: HighlightColor;
 }
 
 export function SelectionPopover({
@@ -70,28 +69,58 @@ export function SelectionPopover({
   onDismiss,
   onCopy,
   onAIChat,
+  onSpeak,
   onNote,
   onTranslate,
   onRemoveHighlight,
   existingHighlight,
+  defaultColor = "yellow",
 }: Props) {
   const { t } = useTranslation();
   const colors = useColors();
   const s = useMemo(() => makeStyles(colors), [colors]);
   const [showNoteModal, setShowNoteModal] = useState(false);
-  const [showColors, setShowColors] = useState(!!existingHighlight);
+  const [showColors, setShowColors] = useState(true);
   const [noteContent, setNoteContent] = useState(existingHighlight?.note || "");
+  const existingHighlightNote = existingHighlight?.note || "";
+  const hasExistingHighlight = !!existingHighlight;
+  const canRemoveHighlight = hasExistingHighlight && !!onRemoveHighlight;
+  const activeHighlightColor = existingHighlight?.color ?? defaultColor;
+  const previousSelectionCfiRef = useRef(selection.cfi);
 
   useEffect(() => {
-    setNoteContent(existingHighlight?.note || "");
-  }, [existingHighlight?.id, existingHighlight?.note, selection.cfi]);
+    setNoteContent(existingHighlightNote);
+  }, [existingHighlightNote]);
+
+  useEffect(() => {
+    if (previousSelectionCfiRef.current !== selection.cfi || hasExistingHighlight) {
+      previousSelectionCfiRef.current = selection.cfi;
+      setShowColors(true);
+    }
+  }, [selection.cfi, hasExistingHighlight]);
 
   const buttonCount =
-    5 + (onNote ? 1 : 0) + (onTranslate ? 1 : 0) + (existingHighlight && onRemoveHighlight ? 1 : 0);
+    4 +
+    (onNote ? 1 : 0) +
+    (onTranslate ? 1 : 0) +
+    (onSpeak ? 1 : 0);
+  const colorRowItemCount = HIGHLIGHT_COLORS.length + (canRemoveHighlight ? 2 : 0);
+  const colorRowWidth = showColors
+    ? HIGHLIGHT_COLORS.length * COLOR_DOT_SIZE +
+      (canRemoveHighlight ? COLOR_ROW_DIVIDER_WIDTH + COLOR_REMOVE_BUTTON_SIZE : 0) +
+      Math.max(0, colorRowItemCount - 1) * COLOR_ROW_GAP +
+      COLOR_ROW_PADDING_X * 2
+    : 0;
+  const actionRowWidth = buttonCount * (BUTTON_SIZE + GAP) + POPOVER_PADDING * 2;
   const colorRowHeight = showColors ? 40 : 0;
-  const popoverHeight = 44 + colorRowHeight + POPOVER_PADDING * 2 + GAP;
+  const actionRowHeight = 44;
+  const popoverHeight =
+    actionRowHeight +
+    colorRowHeight +
+    POPOVER_PADDING * 2 +
+    (showColors && actionRowHeight ? GAP : 0);
   const popoverWidth = Math.min(
-    buttonCount * (BUTTON_SIZE + GAP) + POPOVER_PADDING * 2,
+    Math.max(actionRowWidth, colorRowWidth + POPOVER_PADDING * 2),
     SCREEN_WIDTH - POPOVER_MARGIN * 2,
   );
 
@@ -109,18 +138,14 @@ export function SelectionPopover({
     const yAbove = selTop - popoverHeight + SELECTION_POPOVER_ABOVE_OFFSET;
     const yBelow = selBottom + SELECTION_POPOVER_BELOW_OFFSET;
     const aboveValid = yAbove >= SAFE_TOP;
-    const belowValid =
-      yBelow + popoverHeight + POPOVER_MARGIN <= SCREEN_HEIGHT - SAFE_BOTTOM;
+    const belowValid = yBelow + popoverHeight + POPOVER_MARGIN <= SCREEN_HEIGHT - SAFE_BOTTOM;
 
     if (aboveValid) {
       y = yAbove;
     } else if (belowValid) {
       y = yBelow;
     } else {
-      y = Math.max(
-        SAFE_TOP,
-        Math.min(yBelow, SCREEN_HEIGHT - popoverHeight - POPOVER_MARGIN),
-      );
+      y = Math.max(SAFE_TOP, Math.min(yBelow, SCREEN_HEIGHT - popoverHeight - POPOVER_MARGIN));
     }
 
     return { x, y };
@@ -132,9 +157,12 @@ export function SelectionPopover({
   }, [selection.text, onCopy]);
 
   const handleSpeak = useCallback(() => {
-    Speech.speak(selection.text, { language: undefined });
+    const text = selection.text.trim();
+    if (text && onSpeak) {
+      onSpeak(text, selection.cfi);
+    }
     onDismiss();
-  }, [selection.text, onDismiss]);
+  }, [selection.text, selection.cfi, onSpeak, onDismiss]);
 
   const handleNote = useCallback(() => {
     setShowNoteModal(true);
@@ -162,34 +190,57 @@ export function SelectionPopover({
     onDismiss();
   }, [onRemoveHighlight, onDismiss]);
 
-  const toggleColors = useCallback(() => {
-    setShowColors((prev) => !prev);
-  }, []);
+  const handleHighlightPress = useCallback(() => {
+    if (hasExistingHighlight) {
+      setShowColors((prev) => !prev);
+      return;
+    }
+
+    if (showColors) {
+      onHighlight(defaultColor);
+      return;
+    }
+
+    setShowColors(true);
+  }, [defaultColor, hasExistingHighlight, onHighlight, showColors]);
 
   return (
     <View style={[s.overlay]} pointerEvents="box-none">
       <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onDismiss} />
       <View style={[s.popover, { left: position.x, top: position.y }]}>
         {showColors && (
-          <View style={s.colorRow}>
-            {HIGHLIGHT_COLORS.map((c) => (
+          <View style={[s.colorRow, !hasExistingHighlight && s.colorRowWithActions]}>
+            {HIGHLIGHT_COLORS.map((color) => (
               <TouchableOpacity
-                key={c.key}
+                key={color}
                 style={[
                   s.colorDot,
-                  { backgroundColor: c.hex },
-                  existingHighlight?.color === c.key && s.colorDotActive,
+                  { backgroundColor: HIGHLIGHT_COLOR_HEX[color] },
+                  activeHighlightColor === color && s.colorDotActive,
                 ]}
-                onPress={() => onHighlight(c.key)}
+                onPress={() => onHighlight(color)}
               />
             ))}
+            {canRemoveHighlight && (
+              <>
+                <View style={s.colorRowDivider} />
+                <TouchableOpacity
+                  style={s.colorRemoveBtn}
+                  onPress={handleRemove}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("notebook.deleteHighlight", "删除高亮")}
+                >
+                  <Trash2Icon size={16} color={colors.destructive} />
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         )}
 
         <View style={s.actionRow}>
           <TouchableOpacity
             style={[s.iconBtn, showColors && s.iconBtnActive]}
-            onPress={toggleColors}
+            onPress={handleHighlightPress}
           >
             <HighlighterIcon size={18} color={showColors ? colors.primary : colors.foreground} />
           </TouchableOpacity>
@@ -214,15 +265,12 @@ export function SelectionPopover({
             <SparklesIcon size={18} color={colors.foreground} />
           </TouchableOpacity>
 
-          <TouchableOpacity style={s.iconBtn} onPress={handleSpeak}>
-            <Volume2Icon size={18} color={colors.foreground} />
-          </TouchableOpacity>
-
-          {existingHighlight && onRemoveHighlight && (
-            <TouchableOpacity style={s.iconBtn} onPress={handleRemove}>
-              <Trash2Icon size={18} color={colors.destructive} />
+          {onSpeak && (
+            <TouchableOpacity style={s.iconBtn} onPress={handleSpeak}>
+              <Volume2Icon size={18} color={colors.foreground} />
             </TouchableOpacity>
           )}
+
         </View>
       </View>
 
@@ -297,19 +345,35 @@ const makeStyles = (colors: ThemeColors) =>
     colorRow: {
       flexDirection: "row",
       justifyContent: "center",
+      alignItems: "center",
       gap: 6,
       paddingVertical: 6,
       paddingHorizontal: 8,
+    },
+    colorRowWithActions: {
       marginBottom: GAP,
     },
     colorDot: {
-      width: 28,
-      height: 28,
-      borderRadius: 14,
+      width: COLOR_DOT_SIZE,
+      height: COLOR_DOT_SIZE,
+      borderRadius: COLOR_DOT_SIZE / 2,
     },
     colorDotActive: {
       borderWidth: 2,
       borderColor: colors.primary,
+    },
+    colorRowDivider: {
+      width: COLOR_ROW_DIVIDER_WIDTH,
+      height: 20,
+      backgroundColor: colors.border,
+    },
+    colorRemoveBtn: {
+      width: COLOR_REMOVE_BUTTON_SIZE,
+      height: COLOR_REMOVE_BUTTON_SIZE,
+      borderRadius: radius.lg,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: withOpacity(colors.destructive, 0.08),
     },
     actionRow: {
       flexDirection: "row",

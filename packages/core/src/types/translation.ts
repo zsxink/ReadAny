@@ -2,7 +2,7 @@
  * Translation Types
  */
 
-export type TranslatorName = "ai" | "deepl";
+export type TranslatorName = "ai" | "deepl" | "microsoft";
 
 export interface TranslationProvider {
   id: TranslatorName;
@@ -33,16 +33,18 @@ export type TranslationTargetLang =
   | "tr"
   | "pl"
   | "nl"
-  | "sv";
+  | "sv"
+  | "ug";
 
 export interface TranslationConfig {
   provider: TranslationProvider;
   targetLang: TranslationTargetLang;
 }
 
-export const TRANSLATOR_PROVIDERS: Array<{ id: TranslatorName; name: string }> = [
-  { id: "ai", name: "AI 翻译" },
-  { id: "deepl", name: "DeepL" },
+export const TRANSLATOR_PROVIDERS: Array<{ id: TranslatorName; labelKey: string }> = [
+  { id: "microsoft", labelKey: "translation.providerMicrosoft" },
+  { id: "ai", labelKey: "translation.providerAI" },
+  { id: "deepl", labelKey: "translation.providerDeepL" },
 ];
 
 export const TRANSLATOR_LANGS: Record<TranslationTargetLang, string> = {
@@ -65,4 +67,5 @@ export const TRANSLATOR_LANGS: Record<TranslationTargetLang, string> = {
   pl: "Polski",
   nl: "Nederlands",
   sv: "Svenska",
+  ug: "ئۇيغۇرچە",
 };

@@ -1,4 +1,3 @@
-import { SyncButton } from "@/components/ui/SyncButton";
 import {
   BarChart3Icon,
   BookOpenIcon,
@@ -11,23 +10,24 @@ import {
   HelpCircleIcon,
   InfoIcon,
   LanguagesIcon,
+  MessageSquareIcon,
   PaletteIcon,
   PuzzleIcon,
+  Trash2Icon,
   TypeIcon,
   Volume2Icon,
 } from "@/components/ui/Icon";
+import { SyncButton } from "@/components/ui/SyncButton";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
-import type { RootStackParamList } from "@/navigation/RootNavigator";
-import {
-  formatCharacterCount,
-  formatCharactersPerMinute,
-  formatTimeLocalized,
-} from "@/screens/stats/stats-utils";
-import { useReadingSessionStore } from "@/stores";
+import { clearMobileRuntimeCache, formatCacheSize } from "@/lib/platform/mobile-cache";
+import { stopTTSPreview } from "@/lib/platform/tts-preview";
 import {
   mergeCurrentSessionIntoDailyStats,
   mergeCurrentSessionIntoOverallStats,
 } from "@/lib/stats/live-reading-stats";
+import type { RootStackParamList } from "@/navigation/RootNavigator";
+import { formatCharacterCount, formatTimeLocalized } from "@/screens/stats/stats-utils";
+import { useReadingSessionStore, useTTSStore } from "@/stores";
 import {
   type ThemeColors,
   fontSize,
@@ -38,11 +38,11 @@ import {
 } from "@/styles/theme";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
+import { refreshAndCountUnreadFeedback } from "@readany/core/feedback";
 import { readingStatsService } from "@readany/core/stats";
+import type { DailyStats, OverallStats } from "@readany/core/stats";
 import { eventBus } from "@readany/core/utils/event-bus";
 import Constants from "expo-constants";
-import type { DailyStats, OverallStats } from "@readany/core/stats";
 /**
  * ProfileScreen — matching Tauri mobile ProfilePage exactly.
  * Features: reading stats cards, heatmap, settings menu (general/skills/about),
@@ -52,47 +52,83 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
+  Alert,
   Linking,
   ScrollView,
   type StyleProp,
   StyleSheet,
   Text,
   TouchableOpacity,
-  type ViewStyle,
   View,
+  type ViewStyle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+type ProfileMenuIcon = (props: {
+  size?: number;
+  color?: string;
+  strokeWidth?: number;
+}) => React.ReactNode;
+type ProfileMenuRoute = Extract<
+  keyof RootStackParamList,
+  | "AppearanceSettings"
+  | "FontSettings"
+  | "SyncSettings"
+  | "AISettings"
+  | "TTSSettings"
+  | "TranslationSettings"
+  | "Skills"
+  | "VectorModelSettings"
+  | "Feedback"
+  | "About"
+>;
+type ProfileMenuItem =
+  | {
+      icon: ProfileMenuIcon;
+      label: string;
+      route: ProfileMenuRoute;
+      showDot?: boolean;
+    }
+  | {
+      icon: ProfileMenuIcon;
+      label: string;
+      url: string;
+    }
+  | {
+      icon: ProfileMenuIcon;
+      label: string;
+      action: () => void;
+      disabled?: boolean;
+    };
+
+const ICP_NUMBER = "粤ICP备2025444251号-2A";
+const ICP_URL = "https://beian.miit.gov.cn/";
 
 function StatCard({
   icon,
   title,
   value,
   unit,
-  metaLabel,
-  metaValue,
+  onPress,
   style,
 }: {
   icon: React.ReactNode;
   title: string;
   value: string;
   unit?: string;
-  metaLabel: string;
-  metaValue: string;
+  onPress?: () => void;
   style?: StyleProp<ViewStyle>;
 }) {
   const colors = useColors();
   const s = makeStyles(colors);
   return (
-    <View style={[s.statCard, style]}>
-      <View style={s.statCardHeader}>
-        <View style={s.statCardTitleRow}>
-          <View style={s.statCardIconWrap}>{icon}</View>
-          <Text style={s.statCardTitle} numberOfLines={1} maxFontSizeMultiplier={1.6}>
-            {title}
-          </Text>
-        </View>
+    <TouchableOpacity activeOpacity={0.7} onPress={onPress} style={[s.statCard, style]}>
+      <View style={s.statCardTitleRow}>
+        <View style={s.statCardIconWrap}>{icon}</View>
+        <Text style={s.statCardTitle} numberOfLines={1} maxFontSizeMultiplier={1.6}>
+          {title}
+        </Text>
       </View>
       <View style={s.statCardBody}>
         <Text style={s.statCardValue} numberOfLines={1} maxFontSizeMultiplier={1.8}>
@@ -104,14 +140,7 @@ function StatCard({
           </Text>
         )}
       </View>
-      <View style={s.statCardMetaRow}>
-        <Text style={s.statCardMetaText} numberOfLines={1} maxFontSizeMultiplier={1.5}>
-          <Text style={s.statCardMetaLabel}>{metaLabel}</Text>
-          <Text style={s.statCardMetaDivider}> · </Text>
-          <Text style={s.statCardMetaValue}>{metaValue}</Text>
-        </Text>
-      </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -219,9 +248,9 @@ function MiniHeatmap({ dailyStats }: { dailyStats: DailyStats[] }) {
     >
       {containerWidth > 0 && (
         <View style={[s.heatmapGrid, { width: gridWidth, height: gridHeight }]}>
-          {cells.map((cell, i) => (
+          {cells.map((cell) => (
             <TouchableOpacity
-              key={i}
+              key={cell.date}
               style={{
                 position: "absolute",
                 left: cell.col * (CELL + GAP),
@@ -292,12 +321,14 @@ export function ProfileScreen() {
   const statsGridColumns = layout.isTablet ? 4 : 2;
   const statCardSlotWidth = `${100 / statsGridColumns}%` as `${number}%`;
   const nav = useNavigation<Nav>();
-  const tabBarHeight = useBottomTabBarHeight();
   const [overall, setOverall] = useState<OverallStats | null>(null);
   const [dailyStats, setDailyStats] = useState<DailyStats[]>([]);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [unreadFeedback, setUnreadFeedback] = useState(0);
+  const [clearingCache, setClearingCache] = useState(false);
   const saveCurrentSession = useReadingSessionStore((s) => s.saveCurrentSession);
   const currentSession = useReadingSessionStore((s) => s.currentSession);
+  const stopTTS = useTTSStore((s) => s.stop);
 
   const loadStats = useCallback(async () => {
     try {
@@ -324,6 +355,9 @@ export function ProfileScreen() {
   useFocusEffect(
     useCallback(() => {
       void loadStats();
+      refreshAndCountUnreadFeedback()
+        .then(setUnreadFeedback)
+        .catch((err) => console.warn("[ProfileScreen] feedback unread refresh:", err));
     }, [loadStats]),
   );
 
@@ -342,16 +376,57 @@ export function ProfileScreen() {
     [overall, dailyStats, currentSession],
   );
   const isZh = i18n.language.startsWith("zh");
+  const handleClearCache = useCallback(() => {
+    Alert.alert(
+      t("profile.clearCacheTitle", "清除缓存"),
+      t(
+        "profile.clearCacheConfirm",
+        "将清除临时导入文件、TTS 音频缓存和其他运行缓存。书籍、笔记、设置和同步数据不会被删除。",
+      ),
+      [
+        { text: t("common.cancel", "取消"), style: "cancel" },
+        {
+          text: t("profile.clearCacheAction", "清除缓存"),
+          style: "destructive",
+          onPress: async () => {
+            setClearingCache(true);
+            try {
+              stopTTS();
+              stopTTSPreview();
+              const result = await clearMobileRuntimeCache();
+              Alert.alert(
+                t("profile.clearCacheDoneTitle", "缓存已清除"),
+                t("profile.clearCacheDoneDesc", {
+                  count: result.deletedFiles,
+                  size: formatCacheSize(result.deletedBytes),
+                }),
+              );
+            } catch (error) {
+              console.error("[ProfileScreen] Failed to clear cache:", error);
+              Alert.alert(
+                t("profile.clearCacheFailedTitle", "清除失败"),
+                error instanceof Error
+                  ? error.message
+                  : t("profile.clearCacheFailedDesc", "请稍后重试。"),
+              );
+            } finally {
+              setClearingCache(false);
+            }
+          },
+        },
+      ],
+    );
+  }, [stopTTS, t]);
 
   // Settings menu — matching Tauri ProfilePage exactly
-  const menuSections = useMemo(
+  const menuSections = useMemo<{ title: string; items: ProfileMenuItem[] }[]>(
     () => [
       {
         title: t("settings.general", "通用"),
         items: [
           {
             icon: PaletteIcon,
-            label: t("settings.appearance", "外观"),
+            label: t("settings.general", "通用"),
             route: "AppearanceSettings" as const,
           },
           {
@@ -360,6 +435,19 @@ export function ProfileScreen() {
             route: "FontSettings" as const,
           },
           { icon: CloudIcon, label: t("settings.sync", "同步"), route: "SyncSettings" as const },
+        ],
+      },
+      {
+        title: t("profile.storage", "存储"),
+        items: [
+          {
+            icon: Trash2Icon,
+            label: clearingCache
+              ? t("profile.clearingCache", "清除中...")
+              : t("profile.clearCache", "清除缓存"),
+            action: handleClearCache,
+            disabled: clearingCache,
+          },
         ],
       },
       {
@@ -388,6 +476,12 @@ export function ProfileScreen() {
         title: t("settings.other", "更多"),
         items: [
           {
+            icon: MessageSquareIcon,
+            label: t("feedback.title", "反馈建议"),
+            route: "Feedback" as const,
+            showDot: unreadFeedback > 0,
+          },
+          {
             icon: HelpCircleIcon,
             label: t("about.supportCenter", "帮助中心"),
             url: `https://codedogqby.github.io/ReadAny/${i18n.language === "zh" ? "zh/" : ""}support/`,
@@ -396,37 +490,29 @@ export function ProfileScreen() {
         ],
       },
     ],
-    [t],
+    [t, i18n.language, unreadFeedback, clearingCache, handleClearCache],
   );
 
   const booksRead = liveOverall?.totalBooks ?? 0;
-  const totalTime = liveOverall ? formatTimeLocalized(liveOverall.totalReadingTime, isZh) : formatTimeLocalized(0, isZh);
+  const totalTime = liveOverall
+    ? formatTimeLocalized(liveOverall.totalReadingTime, isZh)
+    : formatTimeLocalized(0, isZh);
   const totalCharacters = liveOverall
     ? formatCharacterCount(liveOverall.totalCharactersRead ?? 0, isZh)
     : formatCharacterCount(0, isZh);
   const streak = liveOverall?.currentStreak ?? 0;
-  const activeDays = liveOverall?.totalReadingDays ?? 0;
-  const totalSessions = liveOverall?.totalSessions ?? 0;
-  const avgSpeed = liveOverall
-    ? formatCharactersPerMinute(liveOverall.avgCharactersPerMinute ?? 0, isZh)
-    : formatCharactersPerMinute(0, isZh);
-  const longestStreak = liveOverall?.longestStreak ?? 0;
   const overviewCards = [
     {
       key: "time",
       icon: <ClockIcon size={16} color={colors.primary} />,
       title: t("profile.totalTime", "总时长"),
       value: totalTime,
-      metaLabel: t("profile.activeDays", "活跃天数"),
-      metaValue: `${activeDays} ${t("profile.daysUnit", "天")}`,
     },
     {
       key: "volume",
       icon: <TypeIcon size={16} color={colors.primary} />,
       title: t("profile.readingVolume", "阅读字数"),
       value: totalCharacters,
-      metaLabel: t("profile.readingSpeed", "阅读速度"),
-      metaValue: avgSpeed,
     },
     {
       key: "books",
@@ -434,8 +520,6 @@ export function ProfileScreen() {
       title: t("profile.booksRead", "已读"),
       value: String(booksRead),
       unit: t("profile.booksUnit", "本"),
-      metaLabel: t("profile.sessions", "阅读会话"),
-      metaValue: `${totalSessions}`,
     },
     {
       key: "streak",
@@ -443,8 +527,6 @@ export function ProfileScreen() {
       title: t("profile.streak", "连续阅读"),
       value: String(streak),
       unit: t("profile.daysUnit", "天"),
-      metaLabel: t("profile.longestStreak", "最长连续"),
-      metaValue: `${longestStreak} ${t("profile.daysUnit", "天")}`,
     },
   ];
 
@@ -461,7 +543,7 @@ export function ProfileScreen() {
 
       <ScrollView
         style={s.scrollView}
-        contentContainerStyle={{ paddingTop: 20, paddingBottom: tabBarHeight + 24 }}
+        contentContainerStyle={{ paddingTop: 20, paddingBottom: 12 }}
         showsVerticalScrollIndicator={false}
       >
         {/* Stats cards */}
@@ -486,8 +568,7 @@ export function ProfileScreen() {
                     title={card.title}
                     value={card.value}
                     unit={card.unit}
-                    metaLabel={card.metaLabel}
-                    metaValue={card.metaValue}
+                    onPress={() => nav.navigate("Stats")}
                     style={{ width: "100%" }}
                   />
                 </View>
@@ -521,12 +602,18 @@ export function ProfileScreen() {
             <View style={s.menuCard}>
               {section.items.map((item, idx) => {
                 const Icon = item.icon;
-                const itemKey = "route" in item ? item.route : item.url;
+                const itemKey =
+                  "route" in item ? item.route : "url" in item ? item.url : item.label;
                 const handlePress = () => {
-                  if ("url" in item && item.url) {
+                  if ("disabled" in item && item.disabled) {
+                    return;
+                  }
+                  if ("action" in item && item.action) {
+                    item.action();
+                  } else if ("url" in item && item.url) {
                     Linking.openURL(item.url);
                   } else if ("route" in item) {
-                    nav.navigate(item.route as any);
+                    nav.navigate(item.route);
                   }
                 };
                 return (
@@ -534,12 +621,14 @@ export function ProfileScreen() {
                     key={itemKey}
                     style={[s.menuItem, idx < section.items.length - 1 && s.menuItemBorder]}
                     onPress={handlePress}
+                    disabled={"disabled" in item && item.disabled}
                     activeOpacity={0.7}
                   >
                     <Icon size={20} color={colors.mutedForeground} />
                     <Text style={s.menuItemLabel} maxFontSizeMultiplier={1.7}>
                       {item.label}
                     </Text>
+                    {"showDot" in item && item.showDot ? <View style={s.menuItemDot} /> : null}
                     <ChevronRightIcon size={16} color={colors.mutedForeground} />
                   </TouchableOpacity>
                 );
@@ -552,6 +641,15 @@ export function ProfileScreen() {
         <Text style={s.version} maxFontSizeMultiplier={1.4}>
           {t("profile.version", { version: Constants.expoConfig?.version ?? "1.0.0" })}
         </Text>
+        <TouchableOpacity
+          style={s.icpLink}
+          onPress={() => Linking.openURL(ICP_URL)}
+          activeOpacity={0.7}
+        >
+          <Text style={s.icpText} maxFontSizeMultiplier={1.4}>
+            {ICP_NUMBER}
+          </Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -731,12 +829,29 @@ const makeStyles = (colors: ThemeColors) =>
       lineHeight: fontSize.md * 1.5,
       color: colors.foreground,
     },
+    menuItemDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: colors.destructive,
+    },
     version: {
       textAlign: "center",
       fontSize: fontSize.xs,
       lineHeight: fontSize.xs * 1.6,
       color: colors.mutedForeground,
-      marginTop: 32,
-      marginBottom: 8,
+      marginTop: 16,
+      marginBottom: 2,
+    },
+    icpLink: {
+      alignSelf: "center",
+      paddingHorizontal: 12,
+      paddingVertical: 4,
+    },
+    icpText: {
+      textAlign: "center",
+      fontSize: fontSize.xs,
+      lineHeight: fontSize.xs * 1.6,
+      color: colors.mutedForeground,
     },
   });

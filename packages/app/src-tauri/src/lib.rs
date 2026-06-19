@@ -24,6 +24,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_websocket::init())
+        .plugin(tauri_plugin_window_state::Builder::new().build())
         .manage(VectorDBState {
             db: Mutex::new(None),
         })

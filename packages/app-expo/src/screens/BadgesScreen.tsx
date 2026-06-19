@@ -91,7 +91,7 @@ export default function BadgesScreen() {
   const sharePosterRef = React.useRef<View>(null);
 
   useEffect(() => {
-    readingReportsService.getAllDailyFacts(currentSession).then(setAllFacts).catch(() => {});
+    readingReportsService.getAllDailyFacts(currentSession).then(setAllFacts).catch((err) => console.warn("[Stats] Failed to load daily facts:", err));
   }, [currentSession]);
 
   const earnedBadges = useMemo(() => {

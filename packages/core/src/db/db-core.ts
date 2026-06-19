@@ -347,6 +347,8 @@ export async function initDatabase(): Promise<void> {
       description TEXT,
       cover_url TEXT,
       publish_date TEXT,
+      rating REAL,
+      reviews TEXT,
       subjects TEXT,
       total_pages INTEGER DEFAULT 0,
       total_chapters INTEGER DEFAULT 0,
@@ -442,6 +444,9 @@ export async function initDatabase(): Promise<void> {
       id TEXT PRIMARY KEY,
       book_id TEXT,
       title TEXT NOT NULL DEFAULT '',
+      memory_summary TEXT,
+      memory_updated_at INTEGER,
+      memory_message_count INTEGER DEFAULT 0,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     )
@@ -631,6 +636,17 @@ export async function initDatabase(): Promise<void> {
         // Column already exists
       }
 
+      try {
+        await database.execute("ALTER TABLE books ADD COLUMN rating REAL");
+      } catch {
+        // Column already exists
+      }
+      try {
+        await database.execute("ALTER TABLE books ADD COLUMN reviews TEXT");
+      } catch {
+        // Column already exists
+      }
+
       // Migration 10: Add updated_at and id to tags/book_tags for sync; add updated_at to reading_sessions
       try {
         await database.execute("ALTER TABLE tags ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0");
@@ -678,9 +694,36 @@ export async function initDatabase(): Promise<void> {
         // Older installs may fail to add the column on the first pass; don't block startup.
       }
 
+      // Migration: Create feedback table
+      await database.execute(`
+    CREATE TABLE IF NOT EXISTS feedback (
+      id TEXT PRIMARY KEY,
+      issue_number INTEGER NOT NULL,
+      issue_url TEXT NOT NULL,
+      title TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'other',
+      status TEXT NOT NULL DEFAULT 'open',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER,
+      has_new_reply INTEGER NOT NULL DEFAULT 0,
+      comment_count INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+
       const platform = getPlatformService();
       if (platform.isDesktop) {
         await cleanupOrphanedSyncRows(database);
+      }
+
+      // Any book left in "downloading" state must have been interrupted
+      // (app killed / OS suspended mid-download). Reset to "remote" so the
+      // user can retry instead of seeing a permanent spinner.
+      try {
+        await database.execute(
+          "UPDATE books SET sync_status = 'remote' WHERE sync_status = 'downloading'",
+        );
+      } catch {
+        // sync_status column missing on very old schemas — safe to ignore.
       }
 
       dbInitialized = true;

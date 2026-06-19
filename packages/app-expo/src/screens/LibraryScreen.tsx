@@ -43,6 +43,7 @@ import {
   type WebDavImportSource,
   getPlatformService,
 } from "@readany/core";
+import { setFallbackContentProvider } from "@readany/core/ai";
 import { onLibraryChanged } from "@readany/core/events/library-events";
 import { useSyncStore } from "@readany/core/stores";
 import { SYNC_SECRET_KEYS } from "@readany/core/sync/sync-backend";
@@ -212,11 +213,10 @@ export function LibraryScreen() {
     renameTag,
   } = useLibraryStore();
 
-  const { downloadingBookId, downloadingBookTitle, downloadBook } = useBookDownload({
+  const { downloadingBookId, downloadProgress, downloadBook } = useBookDownload({
     loadBooks,
-    onSuccess: (bookId) => {
-      void openMobileBook({ bookId, navigation: nav, t });
-    },
+    // Download finishes silently — user can re-tap the book to open it.
+    onSuccess: () => {},
   });
 
   const { vectorQueue, vectorizingBookId, vectorProgress, handleVectorize } = useVectorizationQueue(
@@ -246,6 +246,42 @@ export function LibraryScreen() {
 
   useEffect(() => {
     setExtractorRef(extractorRef.current);
+    setFallbackContentProvider({
+      async getChapters(book) {
+        if (!extractorRef.current) throw new Error("Mobile fallback extractor is not ready");
+        const platform = getPlatformService();
+        const appData = await platform.getAppDataDir();
+        const filePath =
+          book.filePath.startsWith("/") ||
+          book.filePath.startsWith("file://") ||
+          book.filePath.startsWith("asset://") ||
+          book.filePath.startsWith("http")
+            ? book.filePath
+            : await platform.joinPath(appData, book.filePath);
+        const bytes = await platform.readFile(filePath);
+        const chunkSize = 0x8000;
+        let binary = "";
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+        }
+        const mimeTypes: Record<string, string> = {
+          epub: "application/epub+zip",
+          pdf: "application/pdf",
+          mobi: "application/x-mobipocket-ebook",
+          azw: "application/vnd.amazon.ebook",
+          azw3: "application/vnd.amazon.ebook",
+          cbz: "application/vnd.comicbook+zip",
+          cbr: "application/vnd.comicbook+zip",
+          fb2: "application/x-fictionbook+xml",
+          fbz: "application/x-zip-compressed-fb2",
+          txt: "text/plain",
+        };
+        return extractorRef.current.extractChapters(
+          btoa(binary),
+          mimeTypes[String(book.format || "").toLowerCase()] || "application/epub+zip",
+        );
+      },
+    });
     setCallback((bookId, progress) => {
       console.log(
         `[AutoVectorize] Book ${bookId}: ${progress.status} (${Math.round(progress.progress * 100)}%)`,
@@ -253,6 +289,7 @@ export function LibraryScreen() {
     });
     return () => {
       setExtractorRef(null);
+      setFallbackContentProvider(null);
       setCallback(null);
     };
   }, []);
@@ -518,6 +555,19 @@ export function LibraryScreen() {
     setTagSheetOpen(true);
   }, []);
 
+  const handleShowDetails = useCallback(
+    (book: Book) => {
+      if (showSearch) {
+        searchAnim.setValue(0);
+        setShowSearch(false);
+        setFilter({ search: "" });
+        Keyboard.dismiss();
+      }
+      nav.navigate("BookDetails", { bookId: book.id });
+    },
+    [nav, searchAnim, setFilter, showSearch],
+  );
+
   const handleSortChange = useCallback(
     (field: SortField) => {
       if (filter.sortField === field) {
@@ -686,11 +736,13 @@ export function LibraryScreen() {
             cardWidth={gridItemWidth}
             onOpen={handleOpen}
             onDelete={removeBook}
+            onShowDetails={handleShowDetails}
             onManageTags={handleManageTags}
             onVectorize={handleVectorize}
             isVectorizing={vectorizingBookId === item.book.id}
             isQueued={vectorQueue.some((b) => b.id === item.book.id)}
             vectorProgress={vectorizingBookId === item.book.id ? vectorProgress : null}
+            downloadProgress={downloadingBookId === item.book.id ? downloadProgress : null}
             isSelectionMode={selectionMode}
             isSelected={selectedBookIds.has(item.book.id)}
             onSelect={toggleBookSelection}
@@ -704,6 +756,7 @@ export function LibraryScreen() {
       gridItemWidth,
       handleGroupLongPress,
       handleManageTags,
+      handleShowDetails,
       handleOpen,
       handleVectorize,
       removeBook,
@@ -715,6 +768,8 @@ export function LibraryScreen() {
       vectorProgress,
       vectorQueue,
       vectorizingBookId,
+      downloadingBookId,
+      downloadProgress,
     ],
   );
 
@@ -977,17 +1032,6 @@ export function LibraryScreen() {
               <Text style={s.importBannerText}>{t("library.importing", "正在导入...")}</Text>
             </View>
           )}
-          {downloadingBookId && (
-            <View style={s.downloadBanner}>
-              <ActivityIndicator size="small" color={colors.primary} />
-              <View style={s.downloadBannerInfo}>
-                <Text style={s.downloadBannerStatus}>{t("library.downloading", "下载中")}</Text>
-                <Text style={s.downloadBannerTitle} numberOfLines={1}>
-                  {downloadingBookTitle}
-                </Text>
-              </View>
-            </View>
-          )}
           {isLoaded && books.length === 0 && (
             <View style={s.emptyWrap}>
               <Image
@@ -1023,6 +1067,7 @@ export function LibraryScreen() {
             <FlatList
               data={gridItems}
               renderItem={renderGridItem}
+              extraData={{ vectorProgress, vectorizingBookId }}
               keyExtractor={(item) =>
                 item.type === "group" ? `group-${item.group.id}` : item.book.id
               }
@@ -1254,23 +1299,6 @@ const makeStyles = (
       marginBottom: 12,
     },
     importBannerText: { fontSize: fontSize.xs, color: colors.primary },
-    downloadBanner: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      backgroundColor: `${colors.muted}0D`,
-      borderRadius: radius.lg,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      marginBottom: 12,
-    },
-    downloadBannerInfo: { flex: 1, minWidth: 0 },
-    downloadBannerStatus: {
-      fontSize: fontSize.xs,
-      fontWeight: fontWeight.medium,
-      color: colors.primary,
-    },
-    downloadBannerTitle: { fontSize: 12, color: colors.mutedForeground, marginTop: 2 },
     vecBanner: {
       backgroundColor: `${colors.muted}0D`,
       borderRadius: radius.lg,

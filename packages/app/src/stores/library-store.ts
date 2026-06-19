@@ -325,6 +325,11 @@ export interface RemoveBookOptions {
   preserveData?: boolean;
 }
 
+function keepActiveGroupId(activeGroupId: string, groups: BookGroup[]): string {
+  if (!activeGroupId) return "";
+  return groups.some((group) => group.id === activeGroupId) ? activeGroupId : "";
+}
+
 export interface LibraryState {
   books: Book[];
   groups: BookGroup[];
@@ -397,6 +402,7 @@ async function restoreDeletedDesktopBook(bookId: string, filePath: string): Prom
     fb2: "fb2",
     fbz: "fbz",
     txt: "txt",
+    umd: "umd",
   };
   const format: Book["format"] = formatMap[ext] || "epub";
   let title = originalBook.meta.title || fileName.replace(/\.\w+$/i, "") || "Untitled";
@@ -407,8 +413,8 @@ async function restoreDeletedDesktopBook(bookId: string, filePath: string): Prom
   try {
     const { invoke } = await import("@tauri-apps/api/core");
     fileHash = await invoke<string>("sync_hash_file", { path: filePath });
-  } catch {
-    // Hash calculation is best effort.
+  } catch (err) {
+    console.warn("[Library] File hash calculation failed:", err);
   }
 
   const { relativePath, destPath } =
@@ -435,11 +441,37 @@ async function restoreDeletedDesktopBook(bookId: string, filePath: string): Prom
           await writeFile(dest, epubBytes);
           return { relativePath: relPath, destPath: dest };
         })()
-      : await copyBookToAppData(bookId, ext, filePath);
+      : ext === "umd"
+        ? await (async () => {
+            const [{ UmdToEpubConverter }, fflate, { readFile, writeFile, mkdir }, { join }] =
+              await Promise.all([
+                import("@readany/core/utils/umd-to-epub"),
+                import("foliate-js/vendor/fflate.js"),
+                import("@tauri-apps/plugin-fs"),
+                import("@tauri-apps/api/path"),
+              ]);
+            const rawBytes = await readFile(filePath);
+            const umdFile = new File(
+              [rawBytes],
+              filePath.replace(/\\/g, "/").split("/").pop() || "book.umd",
+              { type: "application/octet-stream" },
+            );
+            const conversion = await new UmdToEpubConverter((b) =>
+              fflate.unzlibSync(b),
+            ).convertToBytes({ file: umdFile });
+            if (conversion.bookTitle) title = conversion.bookTitle;
+            if (conversion.author) author = conversion.author;
+            await mkdir(await join(await getDesktopLibraryRoot(), "books"), { recursive: true });
+            const relPath = `books/${bookId}.epub`;
+            const dest = await resolveAppPath(relPath);
+            await writeFile(dest, conversion.epubBytes);
+            return { relativePath: relPath, destPath: dest };
+          })()
+        : await copyBookToAppData(bookId, ext, filePath);
 
   // Extract metadata using lightweight approach (avoids full file load for EPUB/PDF)
   try {
-    if (format === "epub" || ext === "txt") {
+    if (format === "epub" || ext === "txt" || ext === "umd") {
       const { readFile } = await import("@tauri-apps/plugin-fs");
       const epubBytes = await readFile(destPath);
       const blob = new Blob([epubBytes]);
@@ -460,7 +492,8 @@ async function restoreDeletedDesktopBook(bookId: string, filePath: string): Prom
       const { readFile } = await import("@tauri-apps/plugin-fs");
       const fileBytes = await readFile(destPath);
       const blob = new Blob([fileBytes]);
-      const effectiveFileName = ext === "txt" ? fileName.replace(/\.txt$/i, ".epub") : fileName;
+      const effectiveFileName =
+        ext === "txt" || ext === "umd" ? fileName.replace(/\.\w+$/i, ".epub") : fileName;
       const file = new File([blob], effectiveFileName, {
         type: blob.type || "application/octet-stream",
       });
@@ -497,8 +530,8 @@ async function restoreDeletedDesktopBook(bookId: string, filePath: string): Prom
         if (coverBlob) {
           coverUrl = await saveCoverToAppData(bookId, coverBlob);
         }
-      } catch {
-        // Non-critical.
+      } catch (err) {
+        console.warn("[Library] PDF cover generation failed:", err);
       }
     }
   }
@@ -549,6 +582,7 @@ async function inspectDeletedDesktopBookCandidate(
     fb2: "fb2",
     fbz: "fbz",
     txt: "txt",
+    umd: "umd",
   };
   const format: Book["format"] = formatMap[ext] || "epub";
   let title = fileName.replace(/\.\w+$/i, "") || originalBook.meta.title || "Untitled";
@@ -558,8 +592,8 @@ async function inspectDeletedDesktopBookCandidate(
   try {
     const { invoke } = await import("@tauri-apps/api/core");
     fileHash = await invoke<string>("sync_hash_file", { path: filePath });
-  } catch {
-    // Best effort.
+  } catch (err) {
+    console.warn("[Library] File hash calculation failed:", err);
   }
 
   if (ext === "txt") {
@@ -574,10 +608,34 @@ async function inspectDeletedDesktopBookCandidate(
       );
       const conversion = await new TxtToEpubConverter().convert({ file: txtFile });
       title = conversion.bookTitle || title;
-    } catch {
-      // Fallback to filename.
+    } catch (err) {
+      console.warn("[Library] TXT title extraction failed:", err);
     }
     return { title, author, format: "epub", fileHash };
+  }
+
+  if (ext === "umd") {
+    try {
+      const [{ UmdToEpubConverter }, fflate, { readFile }] = await Promise.all([
+        import("@readany/core/utils/umd-to-epub"),
+        import("foliate-js/vendor/fflate.js"),
+        import("@tauri-apps/plugin-fs"),
+      ]);
+      const rawBytes = await readFile(filePath);
+      const umdFile = new File(
+        [rawBytes],
+        filePath.replace(/\\/g, "/").split("/").pop() || "book.umd",
+        { type: "application/octet-stream" },
+      );
+      const conversion = await new UmdToEpubConverter((b) => fflate.unzlibSync(b)).convertToBytes({
+        file: umdFile,
+      });
+      if (conversion.bookTitle) title = conversion.bookTitle;
+      if (conversion.author) author = conversion.author;
+    } catch (err) {
+      console.warn("[Library] UMD inspection failed:", err);
+    }
+    return { title, author, format: "umd", fileHash };
   }
 
   try {
@@ -603,8 +661,8 @@ async function inspectDeletedDesktopBookCandidate(
       const rawAuthor = typeof meta.author === "string" ? meta.author : meta.author?.name || "";
       if (rawAuthor) author = rawAuthor;
     }
-  } catch {
-    // Fallback to filename only.
+  } catch (err) {
+    console.warn("[Library] Metadata extraction failed, using filename:", err);
   }
 
   return { title, author, format, fileHash };
@@ -639,15 +697,17 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       const cached = await loadFromFS<Book[]>("library-books");
       const cachedGroups = await loadFromFS<BookGroup[]>("library-groups");
       if (cached && cached.length > 0) {
-        set({
+        const groups = cachedGroups ?? get().groups;
+        set((state) => ({
           books: cached,
-          groups: cachedGroups ?? get().groups,
+          groups,
           isLoaded: true,
           allTags: computeTags(cached),
-        });
+          activeGroupId: keepActiveGroupId(state.activeGroupId, groups),
+        }));
       }
-    } catch {
-      // cache miss is fine
+    } catch (err) {
+      console.warn("[Library] Failed to load cached books:", err);
     }
 
     // 2) Full path: init DB and load from SQLite (source of truth for books)
@@ -661,8 +721,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       try {
         const loaded = await loadFromFS<string[]>("library-tags");
         if (loaded) savedTags = loaded;
-      } catch {
-        /* no saved tags */
+      } catch (err) {
+        console.warn("[Library] Failed to load saved tags:", err);
       }
 
       // Remove deleted tags from savedTags
@@ -674,7 +734,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       const emptyTags = savedTags.filter((t) => !dbTagSet.has(t) && !deletedSet.has(t));
       const allTags = [...dbTags, ...emptyTags].sort();
 
-      set({ books, groups, isLoaded: true, allTags });
+      set((state) => ({
+        books,
+        groups,
+        isLoaded: true,
+        allTags,
+        activeGroupId: keepActiveGroupId(state.activeGroupId, groups),
+      }));
       // Update the cache for next launch
       debouncedSave("library-books", books);
       debouncedSave("library-groups", groups);
@@ -689,7 +755,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     try {
       await db.initDatabase();
       const groups = await db.getGroups();
-      set({ groups });
+      set((state) => ({
+        groups,
+        activeGroupId: keepActiveGroupId(state.activeGroupId, groups),
+      }));
       debouncedSave("library-groups", groups);
     } catch (err) {
       console.error("Failed to load groups from database:", err);
@@ -773,6 +842,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   updateBook: (bookId, updates) => {
     set((state) => ({
       books: state.books.map((b) => (b.id === bookId ? { ...b, ...updates } : b)),
+      allTags:
+        updates.tags !== undefined
+          ? Array.from(new Set([...state.allTags, ...updates.tags])).sort()
+          : state.allTags,
     }));
     db.updateBook(bookId, updates).catch((err) =>
       console.error("Failed to update book in database:", err),
@@ -814,6 +887,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             fb2: "fb2",
             fbz: "fbz",
             txt: "txt",
+            umd: "umd",
           };
           const format: Book["format"] = formatMap[ext] || "epub";
           let title = fileName.replace(/\.\w+$/i, "") || "Untitled";
@@ -824,8 +898,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           try {
             const { invoke } = await import("@tauri-apps/api/core");
             fileHash = await invoke<string>("sync_hash_file", { path: filePath });
-          } catch {
-            // Hash calculation is best effort.
+          } catch (err) {
+            console.warn("[Library] File hash calculation failed:", err);
           }
 
           const existingDuplicate = findDuplicateBookByHash(duplicateIndex, fileHash);
@@ -838,11 +912,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           }
 
           let deletedMatch = fileHash
-            ? await db.getDeletedBookByFileHash(fileHash).catch(() => null)
+            ? await db.getDeletedBookByFileHash(fileHash).catch((err) => { console.warn("[Library] Failed to check deleted book by hash:", err); return null; })
             : null;
           // Fallback: match by title if hash lookup failed (e.g. hash was null on first import)
           if (!deletedMatch && title) {
-            deletedMatch = await db.getDeletedBookByTitle(title).catch(() => null);
+            deletedMatch = await db.getDeletedBookByTitle(title).catch((err) => { console.warn("[Library] Failed to check deleted book by title:", err); return null; });
           }
           const bookId = deletedMatch?.id ?? crypto.randomUUID();
 
@@ -871,11 +945,35 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             await writeFile(tmpPath, epubBytes);
           }
 
+          // For UMD files, parse and convert to EPUB before storing
+          if (ext === "umd") {
+            const [{ UmdToEpubConverter }, fflate, { readFile }] = await Promise.all([
+              import("@readany/core/utils/umd-to-epub"),
+              import("foliate-js/vendor/fflate.js"),
+              import("@tauri-apps/plugin-fs"),
+            ]);
+            const rawBytes = await readFile(filePath);
+            const umdFile = new File(
+              [rawBytes],
+              filePath.replace(/\\/g, "/").split("/").pop() || "book.umd",
+              { type: "application/octet-stream" },
+            );
+            const converter = new UmdToEpubConverter((b) => fflate.unzlibSync(b));
+            const result = await converter.convertToBytes({ file: umdFile });
+            if (result.bookTitle) title = result.bookTitle;
+            if (result.author) author = result.author;
+            const { writeFile, mkdir } = await import("@tauri-apps/plugin-fs");
+            const { join } = await import("@tauri-apps/api/path");
+            await mkdir(await join(await getDesktopLibraryRoot(), "books"), { recursive: true });
+            const destEpub = await resolveAppPath(`books/${bookId}.epub`);
+            await writeFile(destEpub, result.epubBytes);
+          }
+
           // Copy book file into the managed library root (books/{id}.{ext})
-          // For TXT: already written above; for others: OS-level copy (no JS memory)
+          // For TXT/UMD: already written above; for others: OS-level copy (no JS memory)
           let relativePath: string;
           let destPath: string;
-          if (ext === "txt") {
+          if (ext === "txt" || ext === "umd") {
             relativePath = `books/${bookId}.epub`;
             destPath = await resolveAppPath(relativePath);
           } else {
@@ -889,7 +987,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           // For PDF: use pdfjs with file URL (streams from disk).
           // For other formats (MOBI/AZW/FB2/CBZ): fall back to DocumentLoader (requires File).
           try {
-            if (format === "epub" || ext === "txt") {
+            if (format === "epub" || ext === "txt" || ext === "umd") {
               // Lightweight EPUB metadata: only decompress container.xml + OPF + cover
               const { readFile } = await import("@tauri-apps/plugin-fs");
               const epubBytes = await readFile(destPath);
@@ -921,8 +1019,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
                 const pdfTitle = (metadata?.info as Record<string, unknown>)?.Title as string;
                 if (pdfTitle?.trim()) title = pdfTitle.trim();
                 pdfDoc.destroy();
-              } catch {
-                // PDF metadata extraction is best effort
+              } catch (err) {
+                console.warn("[Library] PDF metadata extraction failed:", err);
               }
             } else {
               // Other formats (MOBI/AZW/FB2/CBZ): need DocumentLoader, load file into memory
@@ -1014,8 +1112,18 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
           // Auto-vectorize if enabled
           const vmState = useVectorModelStore.getState();
-          if (vmState.vectorModelEnabled && vmState.hasVectorCapability()) {
-            triggerVectorizeBook(book.id, relativePath).catch((err) => {
+          if (
+            vmState.autoVectorizeOnImport &&
+            vmState.vectorModelEnabled &&
+            vmState.hasVectorCapability()
+          ) {
+            triggerVectorizeBook(book.id, relativePath, (progress) => {
+              // Update book's vectorizeProgress so BookCard can show it
+              const pct = progress.totalChunks > 0
+                ? progress.processedChunks / progress.totalChunks
+                : 0;
+              get().updateBook(book.id, { vectorizeProgress: pct });
+            }).catch((err) => {
               console.warn(`[importBooks] Auto-vectorize failed for ${title}:`, err);
             });
           }
@@ -1142,6 +1250,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     });
     try {
       await db.deleteGroup(groupId);
+      const [books, groups] = await Promise.all([db.getBooks(), db.getGroups()]);
+      set((state) => ({
+        books,
+        groups,
+        activeGroupId: keepActiveGroupId(state.activeGroupId, groups),
+      }));
+      debouncedSave("library-groups", groups);
+      debouncedSave("library-books", books);
     } catch (err) {
       console.error("Failed to delete group:", err);
     }
@@ -1185,7 +1301,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     // Persist book tag changes to DB
     const books = get().books;
     for (const b of books) {
-      db.updateBook(b.id, { tags: b.tags }).catch(() => {});
+      db.updateBook(b.id, { tags: b.tags }).catch((err) => console.warn("[Library] Failed to update book tags:", err));
     }
   },
 
@@ -1205,7 +1321,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     });
     for (const b of get().books) {
       if (b.tags.includes(trimmed)) {
-        db.updateBook(b.id, { tags: b.tags }).catch(() => {});
+        db.updateBook(b.id, { tags: b.tags }).catch((err) => console.warn("[Library] Failed to update book tags:", err));
       }
     }
   },
@@ -1222,7 +1338,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       return { books, allTags };
     });
     const book = get().books.find((b) => b.id === bookId);
-    if (book) db.updateBook(bookId, { tags: book.tags }).catch(() => {});
+    if (book) db.updateBook(bookId, { tags: book.tags }).catch((err) => console.warn("[Library] Failed to update book tags:", err));
   },
 
   removeTagFromBook: (bookId, tag) => {
@@ -1234,6 +1350,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       return { books };
     });
     const book = get().books.find((b) => b.id === bookId);
-    if (book) db.updateBook(bookId, { tags: book.tags }).catch(() => {});
+    if (book) db.updateBook(bookId, { tags: book.tags }).catch((err) => console.warn("[Library] Failed to update book tags:", err));
   },
 }));

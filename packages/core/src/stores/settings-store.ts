@@ -54,11 +54,12 @@ const defaultReadSettings: ReadSettings = {
   showTopTitleProgress: true,
   showBottomTimeBattery: true,
   volumeButtonsPageTurn: false,
+  defaultHighlightColor: "yellow",
   followSystemFontScale: false,
 };
 
 const defaultTranslationConfig: TranslationConfig = {
-  provider: { id: "ai", name: "AI 翻译" },
+  provider: { id: "microsoft", name: "微软翻译 (免费)" },
   targetLang: "zh-CN",
 };
 
@@ -150,18 +151,22 @@ async function fetchOpenAIModels(endpoint: AIEndpoint): Promise<string[]> {
   try {
     data = JSON.parse(rawBody);
   } catch {
+    const contentType = response.headers.get("content-type") || "";
     logAIEndpointDebug("error", endpoint, {
       action: "fetch-models",
       method: "GET",
       requestUrl,
       status: response.status,
       statusText: response.statusText,
-      contentType: response.headers.get("content-type"),
+      contentType,
       responseLength: rawBody.length,
       responseBodyPreview: summarizeDebugText(rawBody),
     });
+    const lookedLikeHtml = /^\s*<(!doctype|html)/i.test(rawBody) || contentType.includes("html");
     throw new Error(
-      "The endpoint did not return JSON. Check whether the base URL points to the API root instead of a console page.",
+      lookedLikeHtml
+        ? "The endpoint returned an HTML page instead of JSON. Make sure the base URL starts with http:// or https:// and points to the API root, not a console/dashboard page."
+        : "The endpoint did not return JSON. Make sure the base URL starts with http:// or https:// and points to the API root, not a console page.",
     );
   }
 
@@ -282,8 +287,8 @@ async function fetchDeepSeekModels(endpoint: AIEndpoint): Promise<string[]> {
         .sort((a: string, b: string) => a.localeCompare(b));
       if (models.length > 0) return models;
     }
-  } catch {
-    // Fall through to fallback
+  } catch (err) {
+    console.warn("[Settings] Failed to fetch DeepSeek models, using fallback:", err);
   }
   return ["deepseek-chat", "deepseek-reasoner"];
 }

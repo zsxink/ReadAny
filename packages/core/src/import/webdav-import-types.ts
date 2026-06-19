@@ -37,9 +37,20 @@ export const WEBDAV_IMPORT_SUPPORTED_EXTENSIONS = [
   "fb2",
   "fbz",
   "txt",
+  "umd",
 ] as const;
 
 export const DEFAULT_WEBDAV_IMPORT_REMOTE_ROOT = "";
+
+export const WEBDAV_IMPORT_TEMPORARY_CONFIG_KEY = "import_webdav_temporary_config";
+export const WEBDAV_IMPORT_TEMPORARY_SECRET_KEY = "import_webdav_temporary_password";
+
+export interface PersistedWebDavImportInput {
+  url: string;
+  username: string;
+  remoteRoot?: string;
+  allowInsecure?: boolean;
+}
 
 export function normalizeWebDavImportPath(path?: string): string {
   if (!path) return "/";

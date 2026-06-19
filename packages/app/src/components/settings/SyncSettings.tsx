@@ -2,17 +2,31 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { Switch } from "@/components/ui/switch";
 import { useSyncStore } from "@/stores/sync-store";
 import { getPlatformService } from "@readany/core/services";
-import { Cloud, Database, Download, Upload, Wifi } from "lucide-react";
+import { Cloud, Database, Download, Info, Upload, Wifi } from "lucide-react";
 /**
  * SyncSettings — Multi-backend sync configuration and status panel.
  * Supports WebDAV, S3, and LAN sync.
  */
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { ConfigTransfer } from "./ConfigTransfer";
 import { LANSyncDialog } from "./LANSyncDialog";
 
 type BackendType = "webdav" | "s3" | "lan";
+
+function formatSyncBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex++;
+  }
+  const precision = value >= 10 || unitIndex === 0 ? 0 : 1;
+  return `${value.toFixed(precision)} ${units[unitIndex]}`;
+}
 
 export function SyncSettings() {
   const { t } = useTranslation();
@@ -27,6 +41,7 @@ export function SyncSettings() {
     progress,
     pendingDirection,
     loadConfig,
+    loadBackendConfig,
     testWebDavConnection,
     saveWebDavConfig,
     testS3Connection,
@@ -49,6 +64,7 @@ export function SyncSettings() {
   const [s3Endpoint, setS3Endpoint] = useState("");
   const [s3Region, setS3Region] = useState("auto");
   const [s3Bucket, setS3Bucket] = useState("");
+  const [s3RemoteRoot, setS3RemoteRoot] = useState("readany");
   const [s3AccessKeyId, setS3AccessKeyId] = useState("");
   const [s3SecretAccessKey, setS3SecretAccessKey] = useState("");
   const [s3PathStyle, setS3PathStyle] = useState(false);
@@ -89,6 +105,7 @@ export function SyncSettings() {
         setS3Endpoint(config.endpoint);
         setS3Region(config.region);
         setS3Bucket(config.bucket);
+        setS3RemoteRoot(config.remoteRoot ?? "readany");
         setS3AccessKeyId(config.accessKeyId);
         setS3PathStyle(config.pathStyle ?? false);
         setSyncIntervalInput(String(config.syncIntervalMins ?? 30));
@@ -100,6 +117,43 @@ export function SyncSettings() {
       }
     }
   }, [config]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const platform = getPlatformService();
+
+    if (selectedBackend === "webdav") {
+      loadBackendConfig("webdav").then((savedConfig) => {
+        if (cancelled || savedConfig?.type !== "webdav") return;
+        setWebdavUrl(savedConfig.url);
+        setWebdavUsername(savedConfig.username);
+        setWebdavRemoteRoot(savedConfig.remoteRoot ?? "readany");
+        setWebdavAllowInsecure(savedConfig.allowInsecure ?? false);
+        setSyncIntervalInput(String(savedConfig.syncIntervalMins ?? 30));
+        platform.kvGetItem("sync_webdav_password").then((pw) => {
+          if (!cancelled && pw) setWebdavPassword(pw);
+        });
+      });
+    } else if (selectedBackend === "s3") {
+      loadBackendConfig("s3").then((savedConfig) => {
+        if (cancelled || savedConfig?.type !== "s3") return;
+        setS3Endpoint(savedConfig.endpoint);
+        setS3Region(savedConfig.region);
+        setS3Bucket(savedConfig.bucket);
+        setS3RemoteRoot(savedConfig.remoteRoot ?? "readany");
+        setS3AccessKeyId(savedConfig.accessKeyId);
+        setS3PathStyle(savedConfig.pathStyle ?? false);
+        setSyncIntervalInput(String(savedConfig.syncIntervalMins ?? 30));
+        platform.kvGetItem("sync_s3_secret_key").then((key) => {
+          if (!cancelled && key) setS3SecretAccessKey(key);
+        });
+      });
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedBackend, loadBackendConfig]);
 
   const isBusy = status !== "idle" && status !== "error";
   const isLanContext = selectedBackend === "lan" || backendType === "lan";
@@ -169,6 +223,7 @@ export function SyncSettings() {
           endpoint: s3Endpoint,
           region: s3Region,
           bucket: s3Bucket,
+          remoteRoot: s3RemoteRoot,
           accessKeyId: s3AccessKeyId,
           pathStyle: s3PathStyle,
         },
@@ -188,6 +243,7 @@ export function SyncSettings() {
     s3Endpoint,
     s3Region,
     s3Bucket,
+    s3RemoteRoot,
     s3AccessKeyId,
     s3SecretAccessKey,
     s3PathStyle,
@@ -203,6 +259,7 @@ export function SyncSettings() {
           endpoint: s3Endpoint,
           region: s3Region,
           bucket: s3Bucket,
+          remoteRoot: s3RemoteRoot,
           accessKeyId: s3AccessKeyId,
           pathStyle: s3PathStyle,
         },
@@ -211,11 +268,28 @@ export function SyncSettings() {
     } finally {
       setSaving(false);
     }
-  }, [s3Endpoint, s3Region, s3Bucket, s3AccessKeyId, s3SecretAccessKey, s3PathStyle, saveS3Config]);
+  }, [
+    s3Endpoint,
+    s3Region,
+    s3Bucket,
+    s3RemoteRoot,
+    s3AccessKeyId,
+    s3SecretAccessKey,
+    s3PathStyle,
+    saveS3Config,
+  ]);
 
   const handleSync = useCallback(async () => {
-    await syncNow();
-  }, [syncNow]);
+    const result = await syncNow();
+    if (result?.success && (result.filesUploadFailed > 0 || result.filesDownloadFailed > 0)) {
+      toast.error(
+        t("settings.syncFilesPartialFailed", {
+          uploadFailed: result.filesUploadFailed,
+          downloadFailed: result.filesDownloadFailed,
+        }),
+      );
+    }
+  }, [syncNow, t]);
 
   const handleConflict = useCallback(
     async (direction: "upload" | "download") => {
@@ -235,6 +309,7 @@ export function SyncSettings() {
       setS3Endpoint("");
       setS3Region("auto");
       setS3Bucket("");
+      setS3RemoteRoot("readany");
       setS3AccessKeyId("");
       setS3SecretAccessKey("");
     }
@@ -296,16 +371,39 @@ export function SyncSettings() {
     }
   };
 
+  const progressPercent = () => {
+    if (!progress || progress.phase === "database") return null;
+    if (progress.totalTransferBytes && progress.totalTransferBytes > 0) {
+      const ratio = (progress.totalCurrentBytes ?? 0) / progress.totalTransferBytes;
+      return Math.round(Math.max(0, Math.min(1, ratio)) * 100);
+    }
+    const totalFiles = Math.max(progress.totalFiles, 1);
+    if (progress.totalBytes && progress.totalBytes > 0) {
+      const currentBytes = progress.currentBytes ?? 0;
+      const fileRatio = Math.max(0, Math.min(1, currentBytes / progress.totalBytes));
+      return Math.round(((progress.completedFiles + fileRatio) / totalFiles) * 100);
+    }
+    return progress.totalFiles > 0
+      ? Math.round((progress.completedFiles / progress.totalFiles) * 100)
+      : 0;
+  };
+
   const progressLabel = () => {
     if (!progress) return null;
+    const byteProgress =
+      progress.phase === "files" && progress.totalTransferBytes && progress.totalTransferBytes > 0
+        ? ` - ${formatSyncBytes(progress.totalCurrentBytes ?? 0)} / ${formatSyncBytes(progress.totalTransferBytes)}`
+        : progress.phase === "files" && progress.totalBytes && progress.totalBytes > 0
+          ? ` - ${formatSyncBytes(progress.currentBytes ?? 0)} / ${formatSyncBytes(progress.totalBytes)}`
+          : "";
 
     if (isLanContext) {
       return progress.phase === "database"
         ? t("settings.syncLANImportProgressDatabase")
-        : t("settings.syncLANImportProgressFiles", {
+        : `${t("settings.syncLANImportProgressFiles", {
             completed: progress.completedFiles,
             total: progress.totalFiles,
-          });
+          })}${byteProgress}`;
     }
 
     return progress.phase === "database"
@@ -315,14 +413,14 @@ export function SyncSettings() {
               ? t("settings.syncUploading")
               : t("settings.syncDownloading"),
         })
-      : t("settings.syncProgressFiles", {
+      : `${t("settings.syncProgressFiles", {
           operation:
             progress.operation === "upload"
               ? t("settings.syncUploading")
               : t("settings.syncDownloading"),
           completed: progress.completedFiles,
           total: progress.totalFiles,
-        });
+        })}${byteProgress}`;
   };
 
   const renderBackendSelector = () => (
@@ -330,6 +428,7 @@ export function SyncSettings() {
       <h2 className="mb-4 text-sm font-medium text-foreground">{t("settings.syncBackendType")}</h2>
       <div className="grid grid-cols-3 gap-3">
         <button
+          type="button"
           onClick={() => setSelectedBackend("webdav")}
           className={`rounded-lg border p-3 text-left transition-colors ${
             selectedBackend === "webdav"
@@ -342,6 +441,7 @@ export function SyncSettings() {
           <div className="text-xs text-muted-foreground mt-0.5">{t("settings.syncWebdavDesc")}</div>
         </button>
         <button
+          type="button"
           onClick={() => setSelectedBackend("s3")}
           className={`rounded-lg border p-3 text-left transition-colors ${
             selectedBackend === "s3"
@@ -354,6 +454,7 @@ export function SyncSettings() {
           <div className="text-xs text-muted-foreground mt-0.5">{t("settings.syncS3Desc")}</div>
         </button>
         <button
+          type="button"
           onClick={() => setSelectedBackend("lan")}
           className={`rounded-lg border p-3 text-left transition-colors ${
             selectedBackend === "lan"
@@ -374,8 +475,11 @@ export function SyncSettings() {
       <h2 className="mb-4 text-sm font-medium text-foreground">{t("settings.syncWebDavConfig")}</h2>
       <div className="space-y-3">
         <div>
-          <label className="mb-1 block text-sm text-foreground">{t("settings.syncUrl")}</label>
+          <label htmlFor="sync-webdav-url" className="mb-1 block text-sm text-foreground">
+            {t("settings.syncUrl")}
+          </label>
           <input
+            id="sync-webdav-url"
             type="url"
             value={webdavUrl}
             onChange={(e) => setWebdavUrl(e.target.value)}
@@ -385,10 +489,11 @@ export function SyncSettings() {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="mb-1 block text-sm text-foreground">
+            <label htmlFor="sync-webdav-username" className="mb-1 block text-sm text-foreground">
               {t("settings.syncUsername")}
             </label>
             <input
+              id="sync-webdav-username"
               type="text"
               value={webdavUsername}
               onChange={(e) => setWebdavUsername(e.target.value)}
@@ -396,10 +501,11 @@ export function SyncSettings() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm text-foreground">
+            <label htmlFor="sync-webdav-password" className="mb-1 block text-sm text-foreground">
               {t("settings.syncPassword")}
             </label>
             <PasswordInput
+              id="sync-webdav-password"
               value={webdavPassword}
               onChange={(e) => setWebdavPassword(e.target.value)}
               className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground outline-none focus:border-primary"
@@ -407,8 +513,11 @@ export function SyncSettings() {
           </div>
         </div>
         <div>
-          <label className="mb-1 block text-sm text-foreground">{t("settings.syncRemoteRoot")}</label>
+          <label htmlFor="sync-webdav-remote-root" className="mb-1 block text-sm text-foreground">
+            {t("settings.syncRemoteRoot")}
+          </label>
           <input
+            id="sync-webdav-remote-root"
             type="text"
             value={webdavRemoteRoot}
             onChange={(e) => setWebdavRemoteRoot(e.target.value)}
@@ -420,7 +529,9 @@ export function SyncSettings() {
         <div className="flex items-center justify-between pt-1">
           <div>
             <span className="text-sm text-foreground">{t("settings.syncAllowInsecure")}</span>
-            <p className="mt-0.5 text-xs text-muted-foreground">{t("settings.syncAllowInsecureDesc")}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {t("settings.syncAllowInsecureDesc")}
+            </p>
           </div>
           <Switch
             checked={webdavAllowInsecure}
@@ -430,6 +541,7 @@ export function SyncSettings() {
         <div className="space-y-2 pt-1">
           <div className="flex flex-wrap items-center gap-2">
             <button
+              type="button"
               onClick={handleTestWebDav}
               disabled={testing || !webdavUrl}
               className="rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground transition-colors hover:bg-muted disabled:opacity-50"
@@ -437,6 +549,7 @@ export function SyncSettings() {
               {testing ? t("settings.syncTesting") : t("settings.syncTestConnection")}
             </button>
             <button
+              type="button"
               onClick={handleSaveWebDav}
               disabled={saving || !webdavUrl || !webdavUsername}
               className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
@@ -463,10 +576,11 @@ export function SyncSettings() {
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="mb-1 block text-sm text-foreground">
+            <label htmlFor="sync-s3-endpoint" className="mb-1 block text-sm text-foreground">
               {t("settings.syncS3Endpoint")}
             </label>
             <input
+              id="sync-s3-endpoint"
               type="url"
               value={s3Endpoint}
               onChange={(e) => setS3Endpoint(e.target.value)}
@@ -475,10 +589,11 @@ export function SyncSettings() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm text-foreground">
+            <label htmlFor="sync-s3-region" className="mb-1 block text-sm text-foreground">
               {t("settings.syncS3Region")}
             </label>
             <input
+              id="sync-s3-region"
               type="text"
               value={s3Region}
               onChange={(e) => setS3Region(e.target.value)}
@@ -488,8 +603,11 @@ export function SyncSettings() {
           </div>
         </div>
         <div>
-          <label className="mb-1 block text-sm text-foreground">{t("settings.syncS3Bucket")}</label>
+          <label htmlFor="sync-s3-bucket" className="mb-1 block text-sm text-foreground">
+            {t("settings.syncS3Bucket")}
+          </label>
           <input
+            id="sync-s3-bucket"
             type="text"
             value={s3Bucket}
             onChange={(e) => setS3Bucket(e.target.value)}
@@ -497,12 +615,29 @@ export function SyncSettings() {
             className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground outline-none focus:border-primary"
           />
         </div>
+        <div>
+          <label htmlFor="sync-s3-remote-root" className="mb-1 block text-sm text-foreground">
+            {t("settings.syncS3RemoteRoot", t("settings.syncRemoteRoot"))}
+          </label>
+          <input
+            id="sync-s3-remote-root"
+            type="text"
+            value={s3RemoteRoot}
+            onChange={(e) => setS3RemoteRoot(e.target.value)}
+            placeholder={t("settings.syncRemoteRootPlaceholder")}
+            className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground outline-none focus:border-primary"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            {t("settings.syncS3RemoteRootDesc", t("settings.syncRemoteRootDesc"))}
+          </p>
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="mb-1 block text-sm text-foreground">
+            <label htmlFor="sync-s3-access-key-id" className="mb-1 block text-sm text-foreground">
               {t("settings.syncS3AccessKeyId")}
             </label>
             <input
+              id="sync-s3-access-key-id"
               type="text"
               value={s3AccessKeyId}
               onChange={(e) => setS3AccessKeyId(e.target.value)}
@@ -510,10 +645,14 @@ export function SyncSettings() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm text-foreground">
+            <label
+              htmlFor="sync-s3-secret-access-key"
+              className="mb-1 block text-sm text-foreground"
+            >
               {t("settings.syncS3SecretAccessKey")}
             </label>
             <PasswordInput
+              id="sync-s3-secret-access-key"
               value={s3SecretAccessKey}
               onChange={(e) => setS3SecretAccessKey(e.target.value)}
               className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground outline-none focus:border-primary"
@@ -534,6 +673,7 @@ export function SyncSettings() {
         </div>
         <div className="flex items-center gap-2 pt-1">
           <button
+            type="button"
             onClick={handleTestS3}
             disabled={testing || !s3Endpoint || !s3Bucket}
             className="rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground transition-colors hover:bg-muted disabled:opacity-50"
@@ -541,6 +681,7 @@ export function SyncSettings() {
             {testing ? t("settings.syncTesting") : t("settings.syncTestConnection")}
           </button>
           <button
+            type="button"
             onClick={handleSaveS3}
             disabled={saving || !s3Endpoint || !s3Bucket || !s3AccessKeyId}
             className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
@@ -567,6 +708,7 @@ export function SyncSettings() {
         <p className="text-sm text-muted-foreground">{t("settings.syncLANDescFull")}</p>
         <div className="grid grid-cols-2 gap-3">
           <button
+            type="button"
             className="rounded-lg border border-input bg-background p-4 text-left transition-colors hover:bg-muted/50"
             onClick={() => {
               setLanDialogMode("server");
@@ -580,6 +722,7 @@ export function SyncSettings() {
             </div>
           </button>
           <button
+            type="button"
             className="rounded-lg border border-input bg-background p-4 text-left transition-colors hover:bg-muted/50"
             onClick={() => {
               setLanDialogMode("client");
@@ -619,7 +762,7 @@ export function SyncSettings() {
                     <div
                       className="h-full rounded-full bg-primary transition-all duration-300 ease-out"
                       style={{
-                        width: `${progress.totalFiles > 0 ? Math.round((progress.completedFiles / progress.totalFiles) * 100) : 0}%`,
+                        width: `${progressPercent() ?? 0}%`,
                       }}
                     />
                   )}
@@ -630,6 +773,7 @@ export function SyncSettings() {
           </div>
           {!isLanContext && (
             <button
+              type="button"
               onClick={handleSync}
               disabled={isBusy}
               className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
@@ -658,6 +802,14 @@ export function SyncSettings() {
                       : t("settings.syncFilesDown", { count: lastResult.filesDownloaded })}
                   </p>
                 )}
+                {(lastResult.filesUploadFailed > 0 || lastResult.filesDownloadFailed > 0) && (
+                  <p className="text-red-500">
+                    {t("settings.syncFilesPartialFailed", {
+                      uploadFailed: lastResult.filesUploadFailed,
+                      downloadFailed: lastResult.filesDownloadFailed,
+                    })}
+                  </p>
+                )}
                 <p className="text-muted-foreground/60">
                   {t("settings.syncDuration", { ms: lastResult.durationMs })}
                 </p>
@@ -681,17 +833,23 @@ export function SyncSettings() {
             <div className="flex items-center justify-between pt-1">
               <div>
                 <span className="text-sm text-foreground">{t("settings.syncAutoSync")}</span>
-                <p className="mt-0.5 text-xs text-muted-foreground">{t("settings.syncAutoSyncDesc")}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {t("settings.syncAutoSyncDesc")}
+                </p>
               </div>
               <Switch
-                checked={config?.type === "webdav" || config?.type === "s3" ? config.autoSync : false}
+                checked={
+                  config?.type === "webdav" || config?.type === "s3" ? config.autoSync : false
+                }
                 onCheckedChange={(checked) => setAutoSync(checked)}
               />
             </div>
             <div className="flex items-center justify-between gap-3 border-t border-border/40 pt-3">
               <div>
                 <span className="text-sm text-foreground">{t("settings.syncInterval")}</span>
-                <p className="mt-0.5 text-xs text-muted-foreground">{t("settings.syncIntervalDesc")}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {t("settings.syncIntervalDesc")}
+                </p>
               </div>
               <div className="flex items-center gap-2">
                 <input
@@ -709,7 +867,11 @@ export function SyncSettings() {
                   }}
                   className="w-20 rounded-md border border-input bg-background px-3 py-1.5 text-right text-sm text-foreground outline-none focus:border-primary"
                 />
-                <span className="text-xs text-muted-foreground">{t("settings.syncIntervalMinutes", { count: Number.parseInt(syncIntervalInput || "30", 10) || 30 })}</span>
+                <span className="text-xs text-muted-foreground">
+                  {t("settings.syncIntervalMinutes", {
+                    count: Number.parseInt(syncIntervalInput || "30", 10) || 30,
+                  })}
+                </span>
               </div>
             </div>
           </>
@@ -720,6 +882,11 @@ export function SyncSettings() {
 
   return (
     <div className="space-y-6 p-4 pt-3">
+      <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+        <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+        <span>{t("settings.syncLayoutMigrationNotice")}</span>
+      </p>
+
       {renderBackendSelector()}
 
       {selectedBackend === "webdav" && renderWebDavConfig()}
@@ -735,12 +902,14 @@ export function SyncSettings() {
           <p className="mb-3 text-xs text-muted-foreground">{t("settings.syncConflictDesc")}</p>
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={() => handleConflict("upload")}
               className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground transition-colors hover:bg-primary/90"
             >
               {t("settings.syncConflictUpload")}
             </button>
             <button
+              type="button"
               onClick={() => handleConflict("download")}
               className="rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground transition-colors hover:bg-muted"
             >
@@ -756,6 +925,7 @@ export function SyncSettings() {
       {isConfigured && selectedBackend !== "lan" && (
         <section className="rounded-lg bg-muted/60 p-4">
           <button
+            type="button"
             onClick={() => setShowAdvanced(!showAdvanced)}
             className="mb-2 text-sm font-medium text-foreground"
           >
@@ -766,6 +936,7 @@ export function SyncSettings() {
             <div className="space-y-3">
               <div className="grid gap-3 md:grid-cols-2">
                 <button
+                  type="button"
                   onClick={handleForceFullUpload}
                   disabled={isBusy}
                   className="rounded-lg border border-input bg-background p-4 text-left transition-colors hover:bg-muted/50 disabled:opacity-50"
@@ -779,6 +950,7 @@ export function SyncSettings() {
                   </p>
                 </button>
                 <button
+                  type="button"
                   onClick={handleForceFullDownload}
                   disabled={isBusy}
                   className="rounded-lg border border-input bg-background p-4 text-left transition-colors hover:bg-muted/50 disabled:opacity-50"
@@ -794,6 +966,7 @@ export function SyncSettings() {
               </div>
               <div className="pt-2">
                 <button
+                  type="button"
                   onClick={handleReset}
                   className="rounded-md border border-destructive/30 px-3 py-1.5 text-sm text-destructive transition-colors hover:bg-destructive/10"
                 >
@@ -838,9 +1011,7 @@ export function SyncSettings() {
               saveS3Config(d.config as never, (d.secretAccessKey as string) || "");
             }
           }}
-          validate={(d) =>
-            typeof d === "object" && d !== null && "backendType" in d
-          }
+          validate={(d) => typeof d === "object" && d !== null && "backendType" in d}
         />
       </section>
 

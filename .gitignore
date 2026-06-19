@@ -37,8 +37,12 @@ tauri-signing-key.key.pub
 npm-debug.log*
 pnpm-debug.log*
 
+# Python
+__pycache__/
+*.py[cod]
+
 readese/*
 
 # Local WebDAV test server
 webdav-server/
-theme-studio/
+theme-studio/.claude/settings.local.json

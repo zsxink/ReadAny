@@ -46,6 +46,13 @@
       transition: opacity 140ms ease, transform 180ms ease;
     }
 
+    /* While the finger is actively dragging the indicator, kill the transition
+       so the pill follows touch instantly. Re-enable on release for the
+       spring-back animation. */
+    #pull-bookmark-indicator[data-following="true"] {
+      transition: none;
+    }
+
     #pull-bookmark-indicator .pill {
       min-width: 164px;
       padding: 10px 14px;
@@ -109,6 +116,28 @@
       padding: 20px;
     }
 
+    #footnote-tip {
+      position: absolute;
+      z-index: 80;
+      display: none;
+      overflow-y: auto;
+      border: 1px solid rgba(127, 127, 127, 0.24);
+      border-radius: 8px;
+      background: var(--bg, #1c1c1e);
+      color: var(--fg, #e8e8ed);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+      padding: 12px 14px;
+      font-size: 15px;
+      line-height: 1.65;
+      text-align: left;
+      word-break: break-word;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    #footnote-tip[data-visible="true"] {
+      display: block;
+    }
+
     /* Suppress iOS selection callout */
     * {
       -webkit-touch-callout: none !important;
@@ -125,6 +154,7 @@
     <div id="pull-bookmark-indicator" aria-hidden="true" data-armed="false">
       <div class="pill" id="pull-bookmark-indicator-text"></div>
     </div>
+    <button id="footnote-tip" type="button" aria-hidden="true"></button>
     <div id="loading">
       <div class="spinner"></div>
       <div id="loading-text">Loading...</div>
@@ -141,6 +171,8 @@
     function postToRN(type, data) {
       if (RN) RN.postMessage(JSON.stringify({ type, ...data }));
     }
+    window.__READANY_READER_BUILD_ID = 'selection-paging-page-growth';
+    postToRN('debug', { message: '[ReaderBuild] ' + window.__READANY_READER_BUILD_ID });
 
     // State
     let view = null;
@@ -153,6 +185,7 @@
     let currentThemeColors = { bg: '#1c1c1e', fg: '#e8e8ed', muted: '#7c7c82', primary: '#3b82f6' };
     let lastRendererStyles = '';
     let currentViewMode = 'paginated';
+    let currentSectionUsesVerticalWriting = false;
     let currentPaginatedLayout = 'double';
     let currentFontSize = 16;
     let currentLineHeight = 1.6;
@@ -167,6 +200,8 @@
     let bookTextMetricsTimer = null;
     let bookmarkPullGestureActive = false;
     let pullBookmarkResetTimer = null;
+    let refreshAnnotationsTimer = null;
+    let activeFootnoteTipKey = null;
     let bookmarkPullStateMeta = {
       bookmarked: false,
       pullToAdd: '下滑添加书签',
@@ -211,6 +246,25 @@
       }, 220);
     }
 
+    function refreshUserAnnotations(delay) {
+      if (!view) return;
+      if (refreshAnnotationsTimer) clearTimeout(refreshAnnotationsTimer);
+      refreshAnnotationsTimer = setTimeout(() => {
+        refreshAnnotationsTimer = null;
+        if (!view) return;
+
+        for (const [, annotation] of userAnnotations) {
+          view.addAnnotation(annotation).catch(() => {
+            // Ignore annotations outside the currently rendered section.
+          });
+        }
+
+        if (ttsHighlightState.cfi) {
+          setTTSHighlight(ttsHighlightState.cfi, ttsHighlightState.color);
+        }
+      }, delay == null ? 100 : delay);
+    }
+
     function applyFixedLayoutRendererSettings(renderer, paginatedLayout) {
       if (!renderer) return;
       const layout = paginatedLayout === 'single' ? 'single' : 'double';
@@ -224,6 +278,223 @@
       if (host && host.book && host.book.rendition) {
         host.book.rendition.spread = spreadMode;
       }
+    }
+
+    function getMobileReflowMaxInlineSize() {
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 720;
+      const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 393;
+      return Math.ceil(Math.max(720, viewportHeight, viewportWidth));
+    }
+
+    function applyMobileReflowRendererSizing(renderer) {
+      if (!renderer) return;
+      renderer.setAttribute('max-column-count', '1');
+      renderer.setAttribute('max-block-size', '1440px');
+      renderer.setAttribute('max-inline-size', getMobileReflowMaxInlineSize() + 'px');
+    }
+
+    function applyRendererFlowMode(renderer) {
+      if (!renderer || !view) return;
+
+      if (view.isFixedLayout) {
+        renderer.removeAttribute('no-continuous-scroll');
+        return;
+      }
+
+      if (currentViewMode === 'scroll') {
+        renderer.removeAttribute('no-continuous-scroll');
+        renderer.setAttribute('flow', 'scrolled');
+        renderer.setAttribute('max-inline-size', '9999px');
+        return;
+      }
+
+      applyMobileReflowRendererSizing(renderer);
+      if (currentSectionUsesVerticalWriting) {
+        renderer.setAttribute('flow', 'scrolled');
+        renderer.setAttribute('no-continuous-scroll', '');
+      } else {
+        renderer.removeAttribute('no-continuous-scroll');
+        renderer.removeAttribute('flow');
+      }
+    }
+
+    function getTransformViewportSize() {
+      const root = document.documentElement;
+      const viewport = window.visualViewport;
+      return {
+        width: Math.max(1, Math.round(viewport?.width || window.innerWidth || root.clientWidth || 393)),
+        height: Math.max(1, Math.round(viewport?.height || window.innerHeight || root.clientHeight || 720)),
+      };
+    }
+
+    function getVerticalWritingCompatibilityStyles() {
+      return `
+        :root.vrtl {
+          -webkit-writing-mode: vertical-rl;
+          writing-mode: vertical-rl;
+        }
+        :root.vltr {
+          -webkit-writing-mode: vertical-lr;
+          writing-mode: vertical-lr;
+        }
+        :root:is(.vrtl, .vltr),
+        :root:is(.vrtl, .vltr) body {
+          -webkit-text-size-adjust: none;
+          text-size-adjust: none;
+        }
+        :root:is(.vrtl, .vltr) body {
+          line-height: normal;
+          -webkit-line-break: strict;
+          line-break: strict;
+          overflow-wrap: normal;
+          word-break: normal;
+        }
+        :root:is(.vrtl, .vltr) p,
+        :root:is(.vrtl, .vltr) div,
+        :root:is(.vrtl, .vltr) span {
+          max-width: none;
+        }
+        :root:is(.vrtl, .vltr) .koboSpan {
+          line-height: inherit;
+          -webkit-text-combine: none;
+          -webkit-text-combine-upright: none;
+          text-combine-upright: none;
+        }
+        :root:is(.vrtl, .vltr) .tcy,
+        :root:is(.vrtl, .vltr) .tcy .koboSpan {
+          -webkit-text-combine: horizontal;
+          -webkit-text-combine-upright: all;
+          text-combine-upright: all;
+        }
+        :root:is(.vrtl, .vltr) ruby,
+        :root:is(.vrtl, .vltr) rb,
+        :root:is(.vrtl, .vltr) rt {
+          line-height: 1;
+        }
+        :root:is(.vrtl, .vltr) rt {
+          font-size: 0.5em;
+          -webkit-text-combine: none;
+          -webkit-text-combine-upright: none;
+          text-combine-upright: none;
+        }
+      `;
+    }
+
+    function normalizeWritingModeValue(value) {
+      const trimmed = String(value || '').trim();
+      return /^vertical-(?:rl|lr)$/i.test(trimmed) ? 'horizontal-tb' : trimmed;
+    }
+
+    function normalizeVerticalWritingClasses(className) {
+      const classes = String(className || '')
+        .split(/\s+/)
+        .filter(Boolean);
+      let changed = false;
+      const normalized = classes.map((name) => {
+        if (name === 'vrtl' || name === 'vltr') {
+          changed = true;
+          return 'hltr';
+        }
+        return name;
+      });
+      if (!changed) return className;
+      return Array.from(new Set(normalized)).join(' ');
+    }
+
+    function transformBookStylesheet(css) {
+      if (typeof css !== 'string' || !css) return css;
+      const { width, height } = getTransformViewportSize();
+      const ruleRegex = /([^{]+)({[^}]+})/g;
+
+      css = css.replace(ruleRegex, (match, selector, block) => {
+        if (/white-space\s*:\s*nowrap\s*[;$]/i.test(block) && !/overflow\s*:/i.test(block)) {
+          return selector + block.replace(/}$/, ' overflow: clip !important; }');
+        }
+        return match;
+      });
+
+      css = css.replace(ruleRegex, (match, selector, block) => {
+        const widthMatch = /(?:^|[^a-z-])width\s*:\s*(\d+(?:\.\d+)?)px/i.exec(block);
+        const pxWidth = widthMatch ? parseFloat(widthMatch[1] || '0') : 0;
+        if (pxWidth > width && !/max-width\s*:/i.test(block)) {
+          return selector + block.replace(
+            /}$/,
+            ' width: 100%; max-width: 100%; box-sizing: border-box; }',
+          );
+        }
+        return match;
+      });
+
+      return css
+        .replace(/-webkit-writing-mode\s*:\s*([^;}{]+)/gi, (_, value) => {
+          const normalized = normalizeWritingModeValue(value);
+          return `-webkit-writing-mode: ${normalized}; writing-mode: ${normalized}`;
+        })
+        .replace(/-epub-writing-mode\s*:\s*([^;}{]+)/gi, (_, value) => `writing-mode: ${normalizeWritingModeValue(value)}`)
+        .replace(/([{\s;])writing-mode\s*:\s*([^;}{]+)/gi, (_, prefix, value) => `${prefix}writing-mode: ${normalizeWritingModeValue(value)}`)
+        .replace(/-webkit-line-break\s*:\s*([^;}{]+)/gi, '-webkit-line-break: $1; line-break: $1')
+        .replace(/-epub-line-break\s*:\s*([^;}{]+)/gi, 'line-break: $1')
+        .replace(/-webkit-word-break\s*:\s*([^;}{]+)/gi, '-webkit-word-break: $1; word-break: $1')
+        .replace(/-epub-word-break\s*:\s*([^;}{]+)/gi, 'word-break: $1')
+        .replace(/-webkit-text-orientation\s*:\s*([^;}{]+)/gi, '-webkit-text-orientation: $1; text-orientation: $1')
+        .replace(/-epub-text-orientation\s*:\s*([^;}{]+)/gi, 'text-orientation: $1')
+        .replace(/-webkit-text-combine-upright\s*:\s*([^;}{]+)/gi, '-webkit-text-combine-upright: $1; text-combine-upright: $1')
+        .replace(/-webkit-text-combine\s*:\s*([^;}{]+)/gi, (_, value) => {
+          const trimmed = String(value).trim();
+          const upright = trimmed.toLowerCase() === 'horizontal' ? 'all' : trimmed;
+          return `-webkit-text-combine: ${trimmed}; text-combine-upright: ${upright}`;
+        })
+        .replace(/-epub-text-combine\s*:\s*([^;}{]+)/gi, (_, value) => {
+          const trimmed = String(value).trim();
+          return `text-combine-upright: ${trimmed.toLowerCase() === 'horizontal' ? 'all' : trimmed}`;
+        })
+        .replace(/(\d*\.?\d+)vw/gi, (_, d) => `${parseFloat(d) * width / 100}px`)
+        .replace(/(\d*\.?\d+)vh/gi, (_, d) => `${parseFloat(d) * height / 100}px`)
+        .replace(/page-break-(after|before|inside)\s*:/gi, (_, x) => `-webkit-column-break-${x}:`)
+        .replace(/break-(after|before|inside)\s*:\s*(avoid-)?page/gi, (_, x, y) => `break-${x}: ${y || ''}column`)
+        .replace(/([{\s;])-epub-/gi, '$1');
+    }
+
+    function transformBookContentMarkup(markup) {
+      if (typeof markup !== 'string' || !markup) return markup;
+      const withoutScripts = markup
+        .replace(/<script\b[^>]*\/\s*>/gi, '')
+        .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
+      const normalizedMarkup = withoutScripts
+        .replace(/\bclass\s*=\s*(['"])([^'"]*)\1/gi, (match, quote, className) => {
+          const normalized = normalizeVerticalWritingClasses(className);
+          return normalized === className ? match : `class=${quote}${normalized}${quote}`;
+        })
+        .replace(/\bstyle\s*=\s*(['"])([^'"]*)\1/gi, (_, quote, css) => `style=${quote}${transformBookStylesheet(css)}${quote}`);
+      if (!/<style[\s>]/i.test(normalizedMarkup)) return normalizedMarkup;
+      return normalizedMarkup.replace(/<style\b([^>]*)>([\s\S]*?)<\/style>/gi, (_, attrs, css) => {
+        return `<style${attrs}>${transformBookStylesheet(css)}</style>`;
+      });
+    }
+
+    function attachBookTransformHandler(book) {
+      if (!book || !book.transformTarget || book.__readany_mobile_transform_attached) return;
+      book.__readany_mobile_transform_attached = true;
+      book.transformTarget.addEventListener('load', ({ detail }) => {
+        if (detail && detail.isScript) detail.allow = false;
+      });
+      book.transformTarget.addEventListener('data', ({ detail }) => {
+        if (!detail || !detail.type) return;
+        const type = String(detail.type).toLowerCase();
+        const isStylesheet = type === 'text/css';
+        const isHtml = type === 'application/xhtml+xml' || type === 'text/html';
+        if (!isStylesheet && !isHtml) return;
+
+        detail.data = Promise.resolve(detail.data)
+          .then((data) => {
+            if (typeof data !== 'string') return data;
+            return isStylesheet ? transformBookStylesheet(data) : transformBookContentMarkup(data);
+          })
+          .catch((error) => {
+            console.warn('[Reader] Failed to transform book resource:', detail.name, error);
+            return '';
+          });
+      });
     }
 
     function getPullBookmarkElements() {
@@ -251,6 +522,7 @@
       bookmarkPullGestureActive = pullOffset > 0;
       if (text) text.textContent = getPullBookmarkLabel(armed);
       if (indicator) {
+        indicator.dataset.following = 'true';
         indicator.dataset.armed = armed ? 'true' : 'false';
         indicator.style.opacity = String(Math.min(1, pullOffset / 18));
         indicator.style.transform =
@@ -265,6 +537,7 @@
       bookmarkPullGestureActive = false;
       if (text) text.textContent = getPullBookmarkLabel(false);
       if (indicator) {
+        indicator.dataset.following = 'false';
         indicator.dataset.armed = 'false';
         indicator.style.opacity = '0';
         indicator.style.transform = 'translate(-50%, -12px) scale(0.96)';
@@ -295,11 +568,23 @@
       return contents.find((content) => content.doc === doc) || null;
     }
 
+    function getPrimaryRendererContent() {
+      const contents = getRendererContents();
+      if (!contents.length) return null;
+      const primaryIndex = view && view.renderer ? view.renderer.primaryIndex : null;
+      return (
+        contents.find((content) => content.doc && content.index === primaryIndex) ||
+        contents.find((content) => content.doc && content.index === currentSectionIndex) ||
+        contents.find((content) => content.doc) ||
+        null
+      );
+    }
+
     function getRendererContentForCfi(cfi) {
       const contents = getRendererContents();
       if (!contents.length) return null;
       if (!cfi || !view || !view.resolveCFI) {
-        return contents.find((content) => content.overlayer) || contents[0] || null;
+        return getPrimaryRendererContent() || contents.find((content) => content.overlayer) || contents[0] || null;
       }
 
       try {
@@ -320,7 +605,7 @@
         console.log('[ttsHighlight] failed to resolve content for cfi:', e);
       }
 
-      return contents.find((content) => content.overlayer) || contents[0] || null;
+      return getPrimaryRendererContent() || contents.find((content) => content.overlayer) || contents[0] || null;
     }
 
     function getAllTTSOverlayerContexts() {
@@ -337,6 +622,8 @@
     }
 
     function getCurrentTTSOverlayerContext() {
+      const primary = getPrimaryRendererContent();
+      if (primary && primary.overlayer) return primary;
       return getAllTTSOverlayerContexts()[0] || null;
     }
 
@@ -597,6 +884,70 @@
       }
     }
 
+    // User annotation registry: per-doc WeakMap of cfi -> { range }
+    const docAnnotationRegistries = new WeakMap();
+
+    function isUserTapAnnotation(annotation) {
+      const value = annotation?.value;
+      if (!annotation || !value) return false;
+      return !annotation.flash &&
+        annotation.type !== 'tts-highlight' &&
+        !value.startsWith('flash-') &&
+        !value.startsWith('foliate-search:') &&
+        !value.startsWith(TTS_ANNOTATION_PREFIX);
+    }
+
+    function registerAnnotationRange(doc, cfi, range) {
+      let registry = docAnnotationRegistries.get(doc);
+      if (!registry) {
+        registry = new Map();
+        docAnnotationRegistries.set(doc, registry);
+      }
+      registry.set(cfi, { range });
+    }
+
+    function unregisterAnnotationRange(doc, cfi) {
+      const registry = docAnnotationRegistries.get(doc);
+      if (registry) registry.delete(cfi);
+    }
+
+    function isPointInAnnotationRange(doc, x, y) {
+      const registry = docAnnotationRegistries.get(doc);
+      if (!registry || registry.size === 0) return null;
+      const pad = 8;
+      for (const [cfi, entry] of registry) {
+        try {
+          for (const rect of entry.range.getClientRects()) {
+            if (x >= rect.left - pad && x <= rect.right + pad &&
+                y >= rect.top - pad && y <= rect.bottom + pad + 4) {
+              return { cfi, range: entry.range };
+            }
+          }
+        } catch {
+          registry.delete(cfi);
+        }
+      }
+      return null;
+    }
+
+    function postShowAnnotation(value, range) {
+      const doc = range?.startContainer?.ownerDocument;
+      if (!value || !range || !doc) return;
+      armNoteTapGuard(doc, 900);
+      const rect = range.getBoundingClientRect();
+      const iframe = doc.defaultView?.frameElement;
+      const iframeRect = iframe ? iframe.getBoundingClientRect() : { left: 0, top: 0 };
+      postToRN('show-annotation', {
+        value,
+        position: {
+          x: iframeRect.left + rect.left + rect.width / 2,
+          y: iframeRect.top + rect.top - 8,
+          selectionTop: iframeRect.top + rect.top,
+          selectionBottom: iframeRect.top + rect.bottom,
+        },
+      });
+    }
+
     // Note tooltip registry: per-doc WeakMap of cfi -> { range, note }
     const docNoteRegistries = new WeakMap();
 
@@ -636,6 +987,176 @@
 
     function isNoteTapGuardActive(doc) {
       return !!doc?.__readany_noteTapGuardUntil && doc.__readany_noteTapGuardUntil > Date.now();
+    }
+
+    function isFootnoteMarkerText(text) {
+      const value = String(text || '').replace(/\s+/g, '').trim();
+      if (!value) return false;
+      if (value === '注' || value === '註') return true;
+      return /^[\[\(（【〔［]?(?:\d{1,4}|[一二三四五六七八九十百千万零〇两]{1,8}|[ivxlcdmIVXLCDM]{1,10})[\]\)）】〕］]?$/.test(value);
+    }
+
+    function getHrefFragmentId(href) {
+      const value = String(href || '');
+      const hashIndex = value.indexOf('#');
+      if (hashIndex < 0 || hashIndex === value.length - 1) return null;
+      try {
+        return decodeURIComponent(value.slice(hashIndex + 1));
+      } catch {
+        return value.slice(hashIndex + 1);
+      }
+    }
+
+    function findElementByFragmentId(doc, fragmentId) {
+      if (!doc || !fragmentId) return null;
+      const byId = doc.getElementById(fragmentId);
+      if (byId) return byId;
+      try {
+        return doc.getElementsByName(fragmentId)[0] || null;
+      } catch {
+        return null;
+      }
+    }
+
+    function isFootnoteLikeElement(element) {
+      if (!element) return false;
+      const haystack = [
+        element.id,
+        element.getAttribute && element.getAttribute('role'),
+        element.getAttribute && element.getAttribute('type'),
+        element.getAttribute && element.getAttribute('epub:type'),
+        element.className,
+      ].map((value) => String(value || '').toLowerCase()).join(' ');
+      return /\b(doc-)?(noteref|footnote|endnote|rearnote|note)\b|fn(ref)?|duokan-footnote|calibre-footnote/.test(haystack);
+    }
+
+    function isLikelyFootnoteLink(anchor, href) {
+      if (!anchor) return false;
+      const rawHref = anchor.getAttribute('href') || href || '';
+      const hrefLower = String(rawHref).toLowerCase();
+      if (
+        isFootnoteLikeElement(anchor) ||
+        isFootnoteLikeElement(anchor.closest && anchor.closest('sup, span, a, [role], [type], [epub\\:type]'))
+      ) {
+        return true;
+      }
+      if (/(^|[#/_-])(fn|footnote|endnote|note|noteref|duokan-footnote|calibre-footnote)/i.test(hrefLower)) {
+        return true;
+      }
+      return isFootnoteMarkerText(anchor.textContent || '') && !!getHrefFragmentId(rawHref);
+    }
+
+    function getFootnoteTipKey(anchor, href) {
+      return [
+        anchor?.ownerDocument?.location?.href || '',
+        anchor?.getAttribute?.('href') || href || '',
+        anchor?.textContent?.trim() || '',
+      ].join('::');
+    }
+
+    function getFootnoteElementText(element) {
+      if (!element) return '';
+      let cloned;
+      try {
+        cloned = element instanceof Range
+          ? element.cloneContents()
+          : (() => {
+              const fragment = document.createDocumentFragment();
+              fragment.appendChild(element.cloneNode(true));
+              return fragment;
+            })();
+      } catch {
+        return '';
+      }
+
+      for (const node of Array.from(cloned.querySelectorAll('script, style, rt, rp, a[href]'))) {
+        const text = node.textContent || '';
+        if (node.matches('a[href]') && !isFootnoteMarkerText(text)) continue;
+        node.remove();
+      }
+
+      return String(cloned.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 600);
+    }
+
+    async function resolveFootnoteTipText(anchor, href) {
+      const rawHref = anchor?.getAttribute?.('href') || href || '';
+      const sourceDoc = anchor?.ownerDocument;
+      const localTarget = findElementByFragmentId(sourceDoc, getHrefFragmentId(rawHref));
+      if (localTarget && (isFootnoteLikeElement(localTarget) || isLikelyFootnoteLink(anchor, href))) {
+        return getFootnoteElementText(localTarget);
+      }
+
+      if (!view || !href) return '';
+      try {
+        const resolved = typeof view.resolveNavigation === 'function'
+          ? await Promise.resolve(view.resolveNavigation(href))
+          : currentBook?.resolveHref
+            ? await Promise.resolve(currentBook.resolveHref(href))
+            : null;
+        const targetIndex = resolved && Number.isInteger(resolved.index) ? resolved.index : -1;
+        if (targetIndex < 0) return '';
+        const currentContent = getRendererContents().find((item) => item && item.index === targetIndex && item.doc);
+        const targetDoc =
+          currentContent?.doc ||
+          (currentBook?.sections?.[targetIndex]?.createDocument
+            ? await currentBook.sections[targetIndex].createDocument()
+            : null);
+        if (!targetDoc) return '';
+        const target = typeof resolved.anchor === 'function' ? resolved.anchor(targetDoc) : null;
+        return getFootnoteElementText(target);
+      } catch {
+        return '';
+      }
+    }
+
+    function hideFootnoteTip() {
+      const tip = document.getElementById('footnote-tip');
+      activeFootnoteTipKey = null;
+      if (!tip) return;
+      tip.dataset.visible = 'false';
+      tip.setAttribute('aria-hidden', 'true');
+      tip.textContent = '';
+    }
+
+    function positionFootnoteTip(anchor, text) {
+      const tip = document.getElementById('footnote-tip');
+      const container = document.getElementById('reader-container');
+      if (!tip || !container || !anchor || !text) return false;
+
+      const rect = anchor.getBoundingClientRect();
+      const iframe = anchor.ownerDocument?.defaultView?.frameElement;
+      const iframeRect = iframe ? iframe.getBoundingClientRect() : { left: 0, top: 0 };
+      const containerRect = container.getBoundingClientRect();
+      const scaleX = iframe && iframe.clientWidth > 0 ? iframeRect.width / iframe.clientWidth : 1;
+      const scaleY = iframe && iframe.clientHeight > 0 ? iframeRect.height / iframe.clientHeight : 1;
+      const anchorX = iframeRect.left + rect.left * scaleX + rect.width * scaleX / 2 - containerRect.left;
+      const anchorTop = iframeRect.top + rect.top * scaleY - containerRect.top;
+      const anchorBottom = anchorTop + rect.height * scaleY;
+      const width = Math.max(180, Math.min(340, containerRect.width - 32));
+      const maxLeft = Math.max(16, containerRect.width - width - 16);
+      const left = Math.max(16, Math.min(maxLeft, anchorX - width / 2));
+      const belowTop = anchorBottom + 12;
+      const belowSpace = containerRect.height - belowTop - 16;
+      const aboveSpace = anchorTop - 16;
+      const placeAbove = belowSpace < 120 && aboveSpace > belowSpace;
+      const maxHeight = placeAbove
+        ? Math.max(96, Math.min(240, aboveSpace - 10))
+        : Math.max(96, Math.min(240, belowSpace));
+
+      tip.textContent = text;
+      tip.style.left = `${left}px`;
+      tip.style.width = `${width}px`;
+      tip.style.maxHeight = `${maxHeight}px`;
+      tip.style.top = '';
+      tip.style.bottom = '';
+      if (placeAbove) {
+        tip.style.bottom = `${Math.max(16, containerRect.height - anchorTop + 10)}px`;
+      } else {
+        tip.style.top = `${Math.max(16, Math.min(containerRect.height - maxHeight - 16, belowTop))}px`;
+      }
+      tip.dataset.visible = 'true';
+      tip.setAttribute('aria-hidden', 'false');
+      return true;
     }
 
     // Attach long-press note tooltip detection to each doc
@@ -723,10 +1244,10 @@
           await openBook(msg);
           break;
         case 'goNext':
-          if (view) await view.next();
+          if (view) await goNextByMode();
           break;
         case 'goPrev':
-          if (view) await view.prev();
+          if (view) await goPrevByMode();
           break;
         case 'goToFraction':
           if (view && msg.fraction != null) await view.goToFraction(msg.fraction);
@@ -822,7 +1343,7 @@
           postToRN('ttsSegmentContext', getTTSSegmentContextFromEngine(msg.cfi, msg.before, msg.after));
           break;
         case 'injectChapterTranslations':
-          handleInjectChapterTranslations(msg.results || []);
+          await handleInjectChapterTranslations(msg.results || [], msg.visibility);
           break;
         case 'removeChapterTranslations':
           handleRemoveChapterTranslations();
@@ -948,6 +1469,7 @@
 
         const book = (file && file.sections) ? file : await makeBook(file);
         currentBook = book;
+        attachBookTransformHandler(book);
 
         const el = document.createElement('foliate-view');
         readerElement = el;
@@ -956,30 +1478,31 @@
         resetPullBookmarkUI(false);
 
         el.addEventListener('load', (e) => {
-          const { doc, index } = e.detail;
+          const { doc, index, primary } = e.detail;
           markLoaded();
+          normalizeBrOnlyParagraphs(doc);
+          if (primary !== false) {
+            currentSectionUsesVerticalWriting = !el.isFixedLayout && isVerticalDoc(doc);
+            applyRendererFlowMode(el.renderer);
+          }
           applyDocStyles(doc);
           attachTapListener(doc);
           attachPullBookmarkListener(doc);
           attachSelectionListener(doc);
           attachNoteLongPress(doc);
-          attachContinuousScrollListener(doc);
-          // Re-add all user annotations for this page
-          // foliate-view will only render those that belong to current section
-          for (const [cfi, annotation] of userAnnotations) {
-            view.addAnnotation(annotation).catch(err => {
-              // Ignore errors for annotations not on current page
-            });
-          }
-          if (ttsHighlightState.cfi) {
-            setTTSHighlight(ttsHighlightState.cfi, ttsHighlightState.color);
+          refreshUserAnnotations(100);
+          // Auto-inject ruby annotations if enabled
+          if (_rubyMode && (_rubyWordDict || _rubyCharDict)) {
+            try { doInjectRubyAnnotations(doc, _rubyMode); } catch(e) {}
           }
         });
 
         var snippetTimer = null;
         el.addEventListener('relocate', (e) => {
           markLoaded();
+          hideFootnoteTip();
           const detail = e.detail;
+          const previousSectionIndex = currentSectionIndex;
           if (tapNavigationInFlight) {
             setTimeout(() => {
               clearTapNavigationLock();
@@ -1017,6 +1540,9 @@
             pageItem: detail.pageItem,
             cfi: detail.cfi,
           });
+          if (currentSectionIndex !== previousSectionIndex) {
+            refreshUserAnnotations(120);
+          }
           // Extract text after page render settles
           if (snippetTimer) clearTimeout(snippetTimer);
           snippetTimer = setTimeout(() => {
@@ -1036,6 +1562,7 @@
             green: 'rgba(74, 222, 128, 0.4)',
             blue: 'rgba(96, 165, 250, 0.4)',
             pink: 'rgba(236, 72, 153, 0.4)',
+            purple: 'rgba(192, 132, 252, 0.4)',
             violet: 'rgba(167, 139, 250, 0.4)',
             orange: 'rgba(251, 146, 60, 0.5)',
           };
@@ -1057,11 +1584,17 @@
             draw(Overlayer.squiggly, { color: '#000000', width: 1.5 });
             // Register for long-press tooltip
             if (doc && range && annotation.value) {
+              registerAnnotationRange(doc, annotation.value, range);
               registerNoteRange(doc, annotation.value, range, annotation.note);
               console.log('[draw-annotation] registered note range for:', annotation.value);
             }
           } else {
             draw(Overlayer.highlight, { color: colorMap[color] || colorMap.yellow });
+            if (doc && range && isUserTapAnnotation(annotation)) {
+              registerAnnotationRange(doc, annotation.value, range);
+            } else if (doc && annotation.value) {
+              unregisterAnnotationRange(doc, annotation.value);
+            }
             // Remove stale tooltip registration if note was removed
             if (doc && annotation.value) {
               unregisterNoteRange(doc, annotation.value);
@@ -1069,28 +1602,47 @@
           }
         });
 
-        el.addEventListener('delete-annotation', () => { /* no-op */ });
+        el.addEventListener('delete-annotation', (e) => {
+          const { value, doc } = e.detail || {};
+          if (!value || !doc) return;
+          unregisterAnnotationRange(doc, value);
+          unregisterNoteRange(doc, value);
+        });
 
         el.addEventListener('show-annotation', (e) => {
           const { value, index, range } = e.detail;
           if (!value || !range) return;
-          armNoteTapGuard(range.startContainer.ownerDocument, 900);
-          const rect = range.getBoundingClientRect();
-          const iframe = range.startContainer.ownerDocument?.defaultView?.frameElement;
-          const iframeRect = iframe ? iframe.getBoundingClientRect() : { left: 0, top: 0 };
-          postToRN('show-annotation', {
-            value,
-            position: {
-              x: iframeRect.left + rect.left + rect.width / 2,
-              y: iframeRect.top + rect.top - 8,
-              selectionTop: iframeRect.top + rect.top,
-              selectionBottom: iframeRect.top + rect.bottom,
-            },
-          });
+          postShowAnnotation(value, range);
+        });
+
+        el.addEventListener('link', (e) => {
+          const detail = e.detail || {};
+          const anchor = detail.a;
+          const href = detail.href;
+          if (!anchor || !isLikelyFootnoteLink(anchor, href)) return;
+
+          e.preventDefault();
+          const key = getFootnoteTipKey(anchor, href);
+          if (activeFootnoteTipKey === key) {
+            hideFootnoteTip();
+            return;
+          }
+
+          Promise.resolve(resolveFootnoteTipText(anchor, href))
+            .then((text) => {
+              if (!text) {
+                hideFootnoteTip();
+                return;
+              }
+              activeFootnoteTipKey = key;
+              if (!positionFootnoteTip(anchor, text)) hideFootnoteTip();
+            })
+            .catch(() => hideFootnoteTip());
         });
 
         container.appendChild(el);
         view = el;
+        currentSectionUsesVerticalWriting = false;
 
         await el.open(book);
 
@@ -1112,10 +1664,7 @@
 
         const renderer = el.renderer;
         if (renderer && !el.isFixedLayout) {
-          renderer.setAttribute('max-column-count', '1');
-          renderer.setAttribute('max-block-size', '100%');
-          renderer.setAttribute('max-inline-size', '100%');
-          renderer.setAttribute('animated', '');
+          applyMobileReflowRendererSizing(renderer);
           // Default gap/margin
           const margin = msg.pageMargin || 16;
           const gapPercent = Math.max(1, Math.round((margin / 393) * 100));
@@ -1130,7 +1679,13 @@
           applyFixedLayoutRendererSettings(renderer, currentPaginatedLayout);
         }
 
-        if (msg.lastLocation) {
+        if (msg.settings) {
+          applySettings(msg.settings);
+        }
+
+        if (el.isFixedLayout) {
+          await el.init({});
+        } else if (msg.lastLocation) {
           try {
             await el.init({ lastLocation: msg.lastLocation });
           } catch (err) {
@@ -1230,17 +1785,24 @@
       if (settings.fontSize !== undefined || settings.lineHeight !== undefined || settings.fontTheme !== undefined || settings.paragraphSpacing !== undefined
           || settings.customFontFamily !== undefined || settings.customFontFaceCSS !== undefined) {
         const fontThemes = {
-          default: { cjk: 'system-ui', serif: 'system-ui' },
-          system: { cjk: 'system-ui', serif: 'system-ui' },
+          default: { cjk: '-apple-system, BlinkMacSystemFont, system-ui, sans-serif', serif: '-apple-system, BlinkMacSystemFont, system-ui, sans-serif' },
+          system: { cjk: '-apple-system, BlinkMacSystemFont, system-ui, sans-serif', serif: '-apple-system, BlinkMacSystemFont, system-ui, sans-serif' },
           literata: { cjk: "'Noto Serif SC', 'Source Han Serif SC', serif", serif: "Literata, Georgia, serif" },
         };
 
         let fontFamily;
         if (currentCustomFontFamily) {
-          fontFamily = currentCustomFontFamily;
+          fontFamily = cssString(currentCustomFontFamily);
         } else {
           const theme = fontThemes[currentFontTheme] || fontThemes.default;
-          fontFamily = "'" + theme.cjk + "', '" + theme.serif + "', serif";
+          // For themes with multi-value font stacks (like system default), use as-is
+          // For named font themes (like literata), wrap in quotes
+          const needsQuotes = !theme.cjk.includes(',');
+          if (needsQuotes) {
+            fontFamily = "'" + theme.cjk + "', '" + theme.serif + "', serif";
+          } else {
+            fontFamily = theme.cjk;
+          }
         }
         const fSize = currentFontSize;
         const lh = currentLineHeight;
@@ -1257,22 +1819,46 @@
           :root {
             --readany-font-family: ${fontFamily};
           }
-          html, body {
+          :root:not(.vrtl):not(.vltr),
+          :root:not(.vrtl):not(.vltr) body {
             font-family: var(--readany-font-family) !important;
             font-size: ${fSize}px !important;
             -webkit-text-size-adjust: none;
+            text-size-adjust: none;
           }
-          body *:not(svg):not(svg *):not(code):not(pre):not(kbd):not(samp) {
-            font-family: var(--readany-font-family) !important;
+          :root:is(.vrtl, .vltr),
+          :root:is(.vrtl, .vltr) body {
+            font-family: var(--readany-font-family);
+            font-size: ${fSize}px;
+            -webkit-text-size-adjust: none;
+            text-size-adjust: none;
           }
-          p, div, blockquote, li, span, h1, h2, h3, h4, h5, h6 {
+          :root:not(.vrtl):not(.vltr) p,
+          :root:not(.vrtl):not(.vltr) div,
+          :root:not(.vrtl):not(.vltr) blockquote,
+          :root:not(.vrtl):not(.vltr) li,
+          :root:not(.vrtl):not(.vltr) span,
+          :root:not(.vrtl):not(.vltr) h1,
+          :root:not(.vrtl):not(.vltr) h2,
+          :root:not(.vrtl):not(.vltr) h3,
+          :root:not(.vrtl):not(.vltr) h4,
+          :root:not(.vrtl):not(.vltr) h5,
+          :root:not(.vrtl):not(.vltr) h6 {
             line-height: ${lh} !important;
           }
           pre, code, kbd, samp {
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
           }
-          p { margin-top: ${ps}px !important; margin-bottom: ${ps}px !important; }
-          img, svg { max-width: 100% !important; height: auto !important; }
+          :root:not(.vrtl):not(.vltr) p {
+            margin-top: ${ps}px !important;
+            margin-bottom: ${ps}px !important;
+          }
+          :root:not(.vrtl):not(.vltr) img,
+          :root:not(.vrtl):not(.vltr) svg {
+            max-width: 100% !important;
+            height: auto !important;
+          }
+          ${getVerticalWritingCompatibilityStyles()}
         `;
         lastRendererStyles = baseStyles;
         const themedStyles = injectThemeIntoStyles(
@@ -1281,7 +1867,9 @@
           currentThemeColors.fg,
           currentThemeColors.primary,
         );
-        renderer.setStyles(themedStyles);
+        if (typeof renderer.setStyles === 'function') {
+          renderer.setStyles(themedStyles);
+        }
         syncCustomFontStylesForAllDocs(currentCustomFontFaceCSS);
       }
 
@@ -1303,13 +1891,32 @@
 
       if (settings.viewMode) {
         currentViewMode = settings.viewMode;
-        if (settings.viewMode === 'scroll') {
-          renderer.setAttribute('flow', 'scrolled');
-          renderer.setAttribute('max-inline-size', '9999px');
-        } else {
-          renderer.removeAttribute('flow');
-          renderer.setAttribute('max-inline-size', '100%');
-        }
+        applyRendererFlowMode(renderer);
+      }
+    }
+
+    function getScrollNavigationDistance() {
+      if (!view || !view.renderer) return Math.max(1, window.innerHeight - 96);
+      const size = Number(view.renderer.size || 0);
+      const fallbackSize = window.innerHeight || document.documentElement.clientHeight || 720;
+      return Math.max(1, (Number.isFinite(size) && size > 0 ? size : fallbackSize) - 96);
+    }
+
+    async function goNextByMode(distance) {
+      if (!view) return;
+      if (view.renderer && view.renderer.scrolled) {
+        await view.next(Math.max(1, Number(distance || getScrollNavigationDistance())));
+      } else {
+        await view.next();
+      }
+    }
+
+    async function goPrevByMode(distance) {
+      if (!view) return;
+      if (view.renderer && view.renderer.scrolled) {
+        await view.prev(Math.max(1, Number(distance || getScrollNavigationDistance())));
+      } else {
+        await view.prev();
       }
     }
 
@@ -1332,6 +1939,10 @@
         importUrls,
         fontFaceCSS: fontFaceLines.join('\n').trim(),
       };
+    }
+
+    function cssString(value) {
+      return JSON.stringify(String(value || ''));
     }
 
     function syncCustomFontStylesForDoc(doc, css) {
@@ -1415,23 +2026,160 @@ a { color: ${primary} !important; }
     }
 
     // ─── Document styles ───
+    function normalizeBrOnlyParagraphs(doc) {
+      if (!doc || doc.__readany_br_paragraphs_normalized) return;
+      doc.__readany_br_paragraphs_normalized = true;
+
+      const body = doc.body;
+      if (!body || body.querySelectorAll('p').length > 2) return;
+
+      const containers = Array.from(body.querySelectorAll('div, section, article, main'));
+      if (shouldNormalizeBrParagraphContainer(body)) containers.push(body);
+
+      for (const container of containers) {
+        if (normalizeBrParagraphContainer(doc, container)) return;
+      }
+    }
+
+    function shouldNormalizeBrParagraphContainer(container) {
+      if (!container || container.querySelector('p')) return false;
+
+      const inlineTags = new Set([
+        'a', 'abbr', 'b', 'bdi', 'bdo', 'br', 'cite', 'code', 'em', 'font',
+        'i', 'img', 'kbd', 'mark', 'q', 'ruby', 'rb', 'rp', 'rt', 's', 'small',
+        'span', 'strong', 'sub', 'sup', 'time', 'u', 'var',
+      ]);
+      let brCount = 0;
+      let textLength = 0;
+
+      for (const node of Array.from(container.childNodes)) {
+        if (isBrNode(node)) {
+          brCount += 1;
+        } else if (node.nodeType === 3) {
+          textLength += node.nodeValue.trim().length;
+        } else if (node.nodeType === 1) {
+          const tag = node.localName && node.localName.toLowerCase();
+          if (!inlineTags.has(tag) && node.textContent.trim()) return false;
+        }
+      }
+
+      return brCount >= 4 && textLength >= 80;
+    }
+
+    function normalizeBrParagraphContainer(doc, container) {
+      const fragment = doc.createDocumentFragment();
+      let pending = [];
+      let breakNodes = [];
+      let breakCount = 0;
+      let paragraphCount = 0;
+
+      const flushPending = () => {
+        while (pending.length && isBlankTextNode(pending[0])) pending.shift();
+        while (pending.length && isBlankTextNode(pending[pending.length - 1])) pending.pop();
+        if (!pending.some(hasParagraphContent)) {
+          pending = [];
+          return;
+        }
+
+        const p = doc.createElement('p');
+        p.className = '__readany_br_paragraph';
+        for (const node of pending) p.appendChild(node);
+        fragment.appendChild(p);
+        pending = [];
+        paragraphCount += 1;
+      };
+
+      const commitBreak = () => {
+        if (!breakNodes.length) return;
+        if (breakCount >= 2) flushPending();
+        else pending.push(...breakNodes);
+        breakNodes = [];
+        breakCount = 0;
+      };
+
+      for (const node of Array.from(container.childNodes)) {
+        if (isBrNode(node)) {
+          breakNodes.push(node);
+          breakCount += 1;
+        } else if (isBlankTextNode(node) && breakCount > 0) {
+          breakNodes.push(node);
+        } else {
+          commitBreak();
+          pending.push(node);
+        }
+      }
+
+      commitBreak();
+      flushPending();
+
+      if (paragraphCount < 2) return false;
+      container.replaceChildren(fragment);
+      container.setAttribute('data-readany-br-paragraphs', '');
+      return true;
+    }
+
+    function isBrNode(node) {
+      return node && node.nodeType === 1 && node.localName && node.localName.toLowerCase() === 'br';
+    }
+
+    function isBlankTextNode(node) {
+      return node && node.nodeType === 3 && !node.nodeValue.trim();
+    }
+
+    function hasParagraphContent(node) {
+      if (!node) return false;
+      if (node.nodeType === 3) return !!node.nodeValue.trim();
+      if (node.nodeType === 1) return !isBrNode(node) && !!node.textContent.trim();
+      return false;
+    }
+
+    function isVerticalDoc(doc) {
+      const root = doc && doc.documentElement;
+      if (!root) return false;
+      if (root.classList.contains('vrtl') || root.classList.contains('vltr')) return true;
+      const body = doc.body;
+      if (!body || !doc.defaultView) return false;
+      const style = doc.defaultView.getComputedStyle(body);
+      if (style.writingMode === 'vertical-rl' || style.writingMode === 'vertical-lr') return true;
+      const firstChild = body.querySelector(':scope > :not([cfi-inert])');
+      if (!firstChild) return false;
+      const childStyle = doc.defaultView.getComputedStyle(firstChild);
+      return childStyle.writingMode === 'vertical-rl' || childStyle.writingMode === 'vertical-lr';
+    }
+
     function applyDocStyles(doc) {
       syncCustomFontStylesForDoc(doc, currentCustomFontFaceCSS);
-      for (const img of doc.querySelectorAll('img')) {
-        img.style.maxWidth = '100%';
-        img.style.height = 'auto';
+      const verticalDoc = isVerticalDoc(doc);
+      if (!verticalDoc) {
+        for (const img of doc.querySelectorAll('img')) {
+          img.style.maxWidth = '100%';
+          img.style.height = 'auto';
+          img.style.webkitUserDrag = 'none';
+          img.style.touchAction = 'manipulation';
+        }
       }
       const style = doc.createElement('style');
       const { bg, fg, primary } = currentThemeColors;
       style.textContent = `
         * { -webkit-touch-callout: none !important; -webkit-user-select: text !important; user-select: text !important; }
         html, body { background-color: ${bg} !important; color: ${fg} !important; }
+        img, picture, svg, image, canvas {
+          -webkit-user-drag: none !important;
+          touch-action: manipulation !important;
+        }
         p, div, span, blockquote, li, dd, dt, h1, h2, h3, h4, h5, h6, td, th, caption, figcaption, label { color: inherit !important; }
         a { color: ${primary} !important; }
         ::selection { background: rgba(250, 204, 21, 0.4) !important; }
+        ${verticalDoc ? getVerticalWritingCompatibilityStyles() : ''}
       `;
       doc.head.appendChild(style);
       doc.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); return false; }, true);
+    }
+
+    function isImageOnlyAnchor(anchor) {
+      if (!anchor || !anchor.matches || !anchor.matches('a[href]')) return false;
+      if ((anchor.textContent || '').trim().length > 0) return false;
+      return !!anchor.querySelector('img, picture, svg, image, canvas');
     }
 
     // ─── Tap detection ───
@@ -1458,6 +2206,7 @@ a { color: ${primary} !important; }
         }
         const touch = e.touches[0];
         const hitNote = isPointInNoteRange(doc, touch.clientX, touch.clientY);
+        const hitAnnotation = hitNote || isPointInAnnotationRange(doc, touch.clientX, touch.clientY);
         tapState = {
           startedAt: Date.now(),
           startX: touch.clientX,
@@ -1465,8 +2214,9 @@ a { color: ${primary} !important; }
           moved: false,
           target: e.target,
           noteRangeHit: !!hitNote,
+          annotationRangeHit: hitAnnotation,
         };
-        if (hitNote) armNoteTapGuard(doc);
+        if (hitAnnotation) armNoteTapGuard(doc);
       }, { passive: true });
 
       doc.addEventListener('touchmove', (e) => {
@@ -1506,15 +2256,31 @@ a { color: ${primary} !important; }
         tapState = null;
         if (!state || state.moved || e.changedTouches.length !== 1) return;
         if (Date.now() - state.startedAt > MAX_TAP_MS) return;
+        const touch = e.changedTouches[0];
+        const hitAnnotation = state.annotationRangeHit || isPointInAnnotationRange(doc, touch.clientX, touch.clientY);
+        if (hitAnnotation) {
+          e.preventDefault();
+          e.stopPropagation();
+          postShowAnnotation(hitAnnotation.cfi, hitAnnotation.range);
+          return;
+        }
+
         if (state.noteRangeHit || isNoteTapGuardActive(doc)) {
           e.preventDefault();
           e.stopPropagation();
           return;
         }
 
-        const touch = e.changedTouches[0];
         const target = e.target || state.target;
-        if (target && target.closest && target.closest('a[href], audio, video, button, input, select, textarea')) return;
+        const interactiveTarget = target && target.closest
+          ? target.closest('a[href], audio, video, button, input, select, textarea')
+          : null;
+        if (interactiveTarget && !isImageOnlyAnchor(interactiveTarget)) {
+          if (!interactiveTarget.closest('a[href]')) hideFootnoteTip();
+          return;
+        }
+
+        hideFootnoteTip();
 
         const sel = doc.getSelection();
         if (sel && !sel.isCollapsed && sel.toString().trim().length > 0) return;
@@ -1538,21 +2304,20 @@ a { color: ${primary} !important; }
           return;
         }
 
+        // In scroll mode, only toggle toolbar (center tap) — no page navigation
+        if (currentViewMode === 'scroll') {
+          postToRN('tap', {});
+          return;
+        }
+
         armTapNavigationLock();
         e.preventDefault();
         e.stopPropagation();
-        const dir = currentBook && currentBook.dir === 'rtl' ? 'rtl' : 'ltr';
 
         if (normalizedX < centerStart) {
-          if (view) {
-            if (dir === 'rtl') view.next();
-            else view.prev();
-          }
+          if (view) goPrevByMode();
         } else {
-          if (view) {
-            if (dir === 'rtl') view.prev();
-            else view.next();
-          }
+          if (view) goNextByMode();
         }
       }, { passive: false, capture: true });
     }
@@ -1625,6 +2390,13 @@ a { color: ${primary} !important; }
           if (absY < Math.max(INTENT_THRESHOLD, absX * VERTICAL_INTENT_RATIO)) return;
 
           pullState.active = true;
+          // Lock paginator's touch-driven page turns while we own the gesture,
+          // so a slightly diagonal pull-down can't drift the page horizontally.
+          try {
+            if (typeof window.setNavigationLocked === 'function') {
+              window.setNavigationLocked(true);
+            }
+          } catch (err) { /* renderer not ready yet — no-op */ }
         }
 
         if (deltaY <= 0) {
@@ -1642,6 +2414,11 @@ a { color: ${primary} !important; }
       doc.addEventListener('touchend', (e) => {
         const state = pullState;
         pullState = null;
+        try {
+          if (typeof window.setNavigationLocked === 'function') {
+            window.setNavigationLocked(false);
+          }
+        } catch (err) { /* no-op */ }
         if (!state) return;
 
         if (state.active) {
@@ -1666,6 +2443,11 @@ a { color: ${primary} !important; }
 
       doc.addEventListener('touchcancel', () => {
         pullState = null;
+        try {
+          if (typeof window.setNavigationLocked === 'function') {
+            window.setNavigationLocked(false);
+          }
+        } catch (err) { /* no-op */ }
         resetPullBookmarkUI(true);
       }, { passive: true, capture: true });
     }
@@ -1677,127 +2459,31 @@ a { color: ${primary} !important; }
 
       let selTimer = null;
       let iosHackPending = false;
-      let originalScrollLeft = 0;
-      let pageDebounceTimer = null;
-      let pendingAdvanceDirection = null;
-      let selectionMonitorTimer = null;
-      let preventScroll = null;
-      let pointerUpCleanup = null;
-      let selectionDragPoint = null;
-      let pageAdvanceLockUntil = 0;
-      let lockedContainer = null;
-      let lockedContainerStyles = null;
+      let selectionClearTimer = null;
+      const isIOSLike = (() => {
+        try {
+          return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        } catch {
+          return false;
+        }
+      })();
 
       function markSelectionInteraction(active) {
         doc.__readany_selection_interaction = !!active;
       }
 
-      function setSelectionDragPoint(x, y) {
-        selectionDragPoint = {
-          x,
-          y,
-          updatedAt: Date.now(),
-        };
-      }
-
-      function clearSelectionDragPoint() {
-        selectionDragPoint = null;
-      }
-
-      function cancelPendingPageAdvance() {
-        if (pageDebounceTimer) {
-          clearTimeout(pageDebounceTimer);
-          pageDebounceTimer = null;
-        }
-        pendingAdvanceDirection = null;
-      }
-
-      function startSelectionMonitor() {
-        if (selectionMonitorTimer || !supportsCrossPageSelection()) return;
-        selectionMonitorTimer = setInterval(() => {
-          try {
-            evaluateCrossPageSelection();
-          } catch {}
+      function scheduleClearSelectionInteraction() {
+        if (selectionClearTimer) clearTimeout(selectionClearTimer);
+        selectionClearTimer = setTimeout(() => {
+          if (!getSelectionRange(doc.getSelection())) {
+            markSelectionInteraction(false);
+          }
         }, 120);
       }
 
-      function stopSelectionMonitor() {
-        if (!selectionMonitorTimer) return;
-        clearInterval(selectionMonitorTimer);
-        selectionMonitorTimer = null;
-      }
-
-      function releasePreventScroll() {
-        const container = getPaginatedContainer();
-        if (container && preventScroll) {
-          container.removeEventListener('scroll', preventScroll);
-        }
-        preventScroll = null;
-
-        if (pointerUpCleanup) {
-          doc.removeEventListener('pointerup', pointerUpCleanup);
-        }
-        pointerUpCleanup = null;
-      }
-
-      function applySelectionContainerLock(container) {
-        if (!container || lockedContainer === container) return;
-
-        if (lockedContainer && lockedContainerStyles) {
-          lockedContainer.style.scrollSnapType = lockedContainerStyles.scrollSnapType;
-          lockedContainer.style.scrollBehavior = lockedContainerStyles.scrollBehavior;
-          lockedContainer.style.overscrollBehaviorX = lockedContainerStyles.overscrollBehaviorX;
-        }
-
-        lockedContainer = container;
-        lockedContainerStyles = {
-          scrollSnapType: container.style.scrollSnapType,
-          scrollBehavior: container.style.scrollBehavior,
-          overscrollBehaviorX: container.style.overscrollBehaviorX,
-          overflowX: container.style.overflowX,
-        };
-
-        container.style.scrollSnapType = 'none';
-        container.style.scrollBehavior = 'auto';
-        container.style.overscrollBehaviorX = 'contain';
-        container.style.overflowX = 'hidden';
-      }
-
-      function releaseSelectionContainerLock() {
-        if (!lockedContainer || !lockedContainerStyles) return;
-        lockedContainer.style.scrollSnapType = lockedContainerStyles.scrollSnapType;
-        lockedContainer.style.scrollBehavior = lockedContainerStyles.scrollBehavior;
-        lockedContainer.style.overscrollBehaviorX = lockedContainerStyles.overscrollBehaviorX;
-        lockedContainer.style.overflowX = lockedContainerStyles.overflowX;
-        lockedContainer = null;
-        lockedContainerStyles = null;
-      }
-
-      function clearCrossPageSelectionState(options) {
-        const opts = options || {};
-        cancelPendingPageAdvance();
-        stopSelectionMonitor();
-        releasePreventScroll();
-        if (!opts.keepContainerLock) {
-          releaseSelectionContainerLock();
-        }
-        clearSelectionDragPoint();
-        if (!opts.keepInteraction) {
-          markSelectionInteraction(false);
-        }
-      }
-
-      function supportsCrossPageSelection() {
-        return !!(
-          view &&
-          !view.isFixedLayout &&
-          view.renderer &&
-          view.renderer.getAttribute &&
-          view.renderer.getAttribute('flow') === 'paginated'
-        );
-      }
-
       doc.addEventListener('touchend', () => {
+        if (!isIOSLike) return;
         setTimeout(() => {
           if (iosHackPending) return;
           const sel = doc.getSelection();
@@ -1823,152 +2509,40 @@ a { color: ${primary} !important; }
         selTimer = setTimeout(() => {
           const sel = doc.getSelection();
           if (!sel || sel.isCollapsed || !sel.toString().trim()) {
-            if (!pendingAdvanceDirection && Date.now() >= pageAdvanceLockUntil) {
-              clearCrossPageSelectionState();
-            }
+            scheduleClearSelectionInteraction();
             postToRN('selectionCleared', {});
             return;
           }
           if (!sel.rangeCount) return;
           const range = sel.getRangeAt(0);
+          markSelectionInteraction(true);
           emitSelection(doc, sel, range);
         }, 300);
       });
 
       doc.addEventListener('selectstart', () => {
-        if (!supportsCrossPageSelection()) return;
-        const container = getPaginatedContainer();
-        if (!container) return;
-        originalScrollLeft = container.scrollLeft;
-        clearCrossPageSelectionState({ keepInteraction: true, keepContainerLock: true });
-        applySelectionContainerLock(container);
         markSelectionInteraction(true);
-        startSelectionMonitor();
       });
 
-      function scheduleSelectionPageAdvance(direction) {
-        if (!direction || !supportsCrossPageSelection()) return;
-        if (Date.now() < pageAdvanceLockUntil) return;
-        if (pendingAdvanceDirection === direction && pageDebounceTimer) return;
-
-        cancelPendingPageAdvance();
-        pendingAdvanceDirection = direction;
-        markSelectionInteraction(true);
-        pageDebounceTimer = setTimeout(async () => {
-          const advanceDirection = pendingAdvanceDirection;
-          cancelPendingPageAdvance();
-          pageAdvanceLockUntil = Date.now() + 420;
-          releasePreventScroll();
-          try {
-            if (advanceDirection === 'prev') await view.prev();
-            else await view.next();
-            await new Promise(resolve => setTimeout(resolve, 180));
-            const nextContainer = getPaginatedContainer();
-            if (nextContainer) {
-              originalScrollLeft = nextContainer.scrollLeft;
-            }
-          } catch {}
-          finally {
-            const activeSelectionRange = getSelectionRange(doc.getSelection());
-            if (!activeSelectionRange) {
-              clearCrossPageSelectionState();
-            } else {
-              clearSelectionDragPoint();
-              releaseSelectionContainerLock();
-              markSelectionInteraction(false);
-            }
-          }
-        }, 260);
-      }
-
-      function evaluateCrossPageSelection() {
-        const lastLocation = view && view.lastLocation;
-        const selectionRange = getSelectionRange(doc.getSelection());
-        const container = getPaginatedContainer();
-        if (!container) {
-          clearCrossPageSelectionState();
-          return false;
-        }
-        if (!lastLocation || !lastLocation.range) return false;
-        if (!selectionRange) {
-          if (!pendingAdvanceDirection && Date.now() >= pageAdvanceLockUntil) {
-            clearCrossPageSelectionState();
-          }
-          return false;
-        }
-
-        applySelectionContainerLock(container);
-        markSelectionInteraction(true);
-
-        if (Date.now() < pageAdvanceLockUntil) {
-          return false;
-        }
-
-        const advanceDirection = getSelectionAdvanceIntent(
-          selectionRange,
-          lastLocation.range,
-          selectionDragPoint,
-        );
-
-        if (advanceDirection) {
-          scheduleSelectionPageAdvance(advanceDirection);
-          return true;
-        }
-
-        cancelPendingPageAdvance();
-        releasePreventScroll();
-        preventScroll = () => {
-          const activeSelectionRange = getSelectionRange(doc.getSelection());
-          if (!activeSelectionRange) return;
-          container.scrollLeft = originalScrollLeft;
-        };
-
-        container.addEventListener('scroll', preventScroll);
-        pointerUpCleanup = () => {
-          clearCrossPageSelectionState();
-        };
-        doc.addEventListener('pointerup', pointerUpCleanup);
-        return false;
-      }
-
-      doc.addEventListener('pointermove', (e) => {
-        if (!supportsCrossPageSelection()) return;
-        if (!doc.__readany_selection_interaction && !getSelectionRange(doc.getSelection())) return;
-        setSelectionDragPoint(e.clientX, e.clientY);
-        evaluateCrossPageSelection();
+      doc.addEventListener('pointermove', () => {
+        if (getSelectionRange(doc.getSelection())) markSelectionInteraction(true);
       }, { passive: true });
 
-      doc.addEventListener('touchmove', (e) => {
-        if (!supportsCrossPageSelection() || !e.touches || !e.touches.length) return;
-        if (!doc.__readany_selection_interaction && !getSelectionRange(doc.getSelection())) return;
-        const touch = e.touches[0];
-        setSelectionDragPoint(touch.clientX, touch.clientY);
-        evaluateCrossPageSelection();
+      doc.addEventListener('touchmove', () => {
+        if (getSelectionRange(doc.getSelection())) markSelectionInteraction(true);
       }, { passive: true, capture: true });
 
-      doc.addEventListener('selectionchange', () => {
-        if (doc.__readany_isJiggling) return;
-        if (iosHackPending) return;
-        if (!supportsCrossPageSelection()) return;
-        evaluateCrossPageSelection();
-      });
-
       doc.addEventListener('touchend', () => {
-        setTimeout(() => {
-          if (!getSelectionRange(doc.getSelection())) {
-            markSelectionInteraction(false);
-            clearCrossPageSelectionState();
-          }
-        }, 80);
+        scheduleClearSelectionInteraction();
       }, { passive: true });
 
       doc.addEventListener('touchcancel', () => {
-        clearCrossPageSelectionState();
+        scheduleClearSelectionInteraction();
       }, { passive: true });
     }
 
     function emitSelection(doc, sel, range) {
-      const text = sel.toString().trim();
+      const text = getRangeTextWithoutRuby(range, sel.toString());
       if (!text) return;
 
       const rect = range.getBoundingClientRect();
@@ -1999,47 +2573,6 @@ a { color: ${primary} !important; }
       });
     }
 
-    // ─── Continuous scroll listener ───
-    function attachContinuousScrollListener(doc) {
-      if (doc.__readany_continuous_scroll) return;
-      doc.__readany_continuous_scroll = true;
-
-      let touchStartY = 0;
-      let touchStartX = 0;
-
-      doc.addEventListener('touchstart', (e) => {
-        if (e.touches.length === 1) {
-          touchStartY = e.touches[0].clientY;
-          touchStartX = e.touches[0].clientX;
-        }
-      }, { passive: true });
-
-      doc.addEventListener('touchend', (e) => {
-        if (!view || !view.renderer) return;
-        const renderer = view.renderer;
-        if (!renderer.scrolled) return;
-
-        if (e.changedTouches.length === 1) {
-          const touchEndY = e.changedTouches[0].clientY;
-          const touchEndX = e.changedTouches[0].clientX;
-          const deltaY = touchEndY - touchStartY;
-          const deltaX = touchEndX - touchStartX;
-
-          if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 30) {
-            postToRN('continuous-scroll', {
-              deltaY,
-              start: renderer.start,
-              end: renderer.end,
-              viewSize: renderer.viewSize,
-              size: renderer.size,
-              currentSectionIndex,
-              totalSections,
-            });
-          }
-        }
-      }, { passive: true });
-    }
-
     // ─── TOC conversion ───
     function convertTOC(toc, level) {
       if (!toc) return [];
@@ -2068,86 +2601,16 @@ a { color: ${primary} !important; }
       return range && !range.collapsed ? range : null;
     }
 
-    function getSelectionEndRect(range) {
-      if (!range) return null;
+    function getRangeTextWithoutRuby(range, fallback) {
       try {
-        const caretRange = range.cloneRange();
-        caretRange.collapse(false);
-        const caretRects = Array.from(caretRange.getClientRects()).filter(r => r.width >= 0 && r.height > 0);
-        if (caretRects.length) return caretRects[caretRects.length - 1];
+        const fragment = range.cloneContents();
+        fragment.querySelectorAll('rt, rp').forEach(function (node) {
+          node.remove();
+        });
+        const text = (fragment.textContent || '').trim();
+        if (text) return text;
       } catch {}
-
-      const rects = Array.from(range.getClientRects()).filter(r => r.width > 0 && r.height > 0);
-      return rects[rects.length - 1] || range.getBoundingClientRect();
-    }
-
-    function getSelectionAdvanceIntent(selectionRange, lastLocationRange, dragPoint) {
-      if (!selectionRange || !lastLocationRange) return null;
-
-      try {
-        if (selectionRange.compareBoundaryPoints(Range.END_TO_END, lastLocationRange) >= 0) {
-          return 'next';
-        }
-        if (selectionRange.compareBoundaryPoints(Range.START_TO_START, lastLocationRange) <= 0) {
-          return 'prev';
-        }
-      } catch {}
-
-      try {
-        const edgeRect = getSelectionEndRect(selectionRange);
-        const doc = selectionRange.endContainer && selectionRange.endContainer.ownerDocument
-          ? selectionRange.endContainer.ownerDocument
-          : null;
-        const win = doc ? doc.defaultView : null;
-        const viewportWidth = Math.max(
-          (win && win.innerWidth) || 0,
-          (doc && doc.documentElement && doc.documentElement.clientWidth) || 0
-        );
-        const viewportHeight = Math.max(
-          (win && win.innerHeight) || 0,
-          (doc && doc.documentElement && doc.documentElement.clientHeight) || 0
-        );
-        if (viewportWidth <= 0 || viewportHeight <= 0) return null;
-
-        const point = dragPoint && Date.now() - dragPoint.updatedAt < 1000
-          ? dragPoint
-          : edgeRect
-            ? { x: edgeRect.right, y: edgeRect.bottom }
-            : null;
-        if (!point) return null;
-
-        const isRtl = !!(view.book && view.book.dir === 'rtl');
-        const horizontalInset = Math.max(132, Math.min(420, viewportWidth * 0.30));
-        const verticalInset = Math.max(140, Math.min(360, viewportHeight * 0.28));
-        const inBottomBand = point.y >= viewportHeight - verticalInset;
-
-        if (isRtl) {
-          if (point.x <= horizontalInset) return 'next';
-          if (dragPoint && point.x >= viewportWidth - horizontalInset) return 'prev';
-          if (inBottomBand && point.x <= viewportWidth * 0.74) return 'next';
-          if (dragPoint && inBottomBand && point.x >= viewportWidth * 0.88) return 'prev';
-        } else {
-          if (point.x >= viewportWidth - horizontalInset) return 'next';
-          if (dragPoint && point.x <= horizontalInset) return 'prev';
-          if (inBottomBand && point.x >= viewportWidth * 0.26) return 'next';
-          if (dragPoint && inBottomBand && point.x <= viewportWidth * 0.12) return 'prev';
-        }
-
-        return null;
-      } catch {
-        return null;
-      }
-    }
-
-    function getPaginatedContainer() {
-      try {
-        if (!view || !view.shadowRoot) return null;
-        const paginator = view.shadowRoot.querySelector('foliate-paginator');
-        if (!paginator || !paginator.shadowRoot) return null;
-        return paginator.shadowRoot.querySelector('#container');
-      } catch {
-        return null;
-      }
+      return (fallback || '').trim();
     }
 
     function getVisibleTextSnippet(maxLen) {
@@ -2172,10 +2635,8 @@ a { color: ${primary} !important; }
         var walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
           acceptNode: function(node) {
             if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_SKIP;
-            var parent = node.parentElement;
-            var tag = parent && parent.tagName && parent.tagName.toLowerCase();
-            if (tag === 'script' || tag === 'style') return NodeFilter.FILTER_REJECT;
-            if (parent && parent.closest && parent.closest('.readany-translation')) return NodeFilter.FILTER_REJECT;
+            if (isTTSFootnoteMarker(node.nodeValue)) return NodeFilter.FILTER_REJECT;
+            if (shouldSkipTTSNode(node.parentElement)) return NodeFilter.FILTER_REJECT;
             return NodeFilter.FILTER_ACCEPT;
           }
         });
@@ -2203,12 +2664,12 @@ a { color: ${primary} !important; }
           }
           
           if (isVisible) {
-            var t = textNode.nodeValue.trim();
+            var t = normalizeTTSText(textNode.nodeValue);
             if (t) { texts.push(t); totalLen += t.length; }
           }
           textNode = walker.nextNode();
         }
-        var result = texts.join(' ').trim();
+        var result = normalizeTTSText(texts.join(' '));
         return result.length > maxLen ? result.slice(0, maxLen) : result;
       } catch (e) { return ''; }
     }
@@ -2240,10 +2701,8 @@ a { color: ${primary} !important; }
         var walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
           acceptNode: function(node) {
             if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_SKIP;
-            var parent = node.parentElement;
-            var tag = parent && parent.tagName && parent.tagName.toLowerCase();
-            if (tag === 'script' || tag === 'style') return NodeFilter.FILTER_REJECT;
-            if (parent && parent.closest && parent.closest('.readany-translation')) return NodeFilter.FILTER_REJECT;
+            if (isTTSFootnoteMarker(node.nodeValue)) return NodeFilter.FILTER_REJECT;
+            if (shouldSkipTTSNode(node.parentElement)) return NodeFilter.FILTER_REJECT;
             return NodeFilter.FILTER_ACCEPT;
           }
         });
@@ -2282,13 +2741,13 @@ a { color: ${primary} !important; }
           
           if (isVisible) {
             visibleCount++;
-            var t = textNode.nodeValue.trim();
+            var t = normalizeTTSText(textNode.nodeValue);
             if (t) { texts.push(t); }
           }
           textNode = walker.nextNode();
         }
         
-        var result = texts.join(' ').trim();
+        var result = normalizeTTSText(texts.join(' '));
         return { 
           text: result, 
           debug: {
@@ -2363,25 +2822,204 @@ a { color: ${primary} !important; }
       return null;
     }
 
-    function isRectVisibleInReader(rect, renderer, win) {
+    function getPaginatedVisibleRangeCandidates(renderer) {
+      const start = Number(renderer && renderer.start || 0);
+      const end = Number(renderer && renderer.end || 0);
+      const size = Number(renderer && renderer.size || 0);
+      const candidates = [];
+
+      if (Number.isFinite(start) && Number.isFinite(size) && size > 0) {
+        candidates.push({ left: start - size, right: start, source: 'legacy-offset' });
+        candidates.push({ left: start, right: start + size, source: 'size-fallback' });
+      }
+
+      if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+        candidates.push({ left: start, right: end, source: 'renderer' });
+      }
+
+      return candidates.filter((candidate, index, list) => {
+        return candidate.right > candidate.left &&
+          list.findIndex((item) => item.left === candidate.left && item.right === candidate.right) === index;
+      });
+    }
+
+    function rectIntersectsPaginatedRange(rect, range) {
+      return rect.right > range.left && rect.left < range.right;
+    }
+
+    function scorePaginatedVisibleRange(doc, range) {
+      if (!doc || !doc.body) return 0;
+      const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
+        acceptNode: function (node) {
+          if (isInsideRubyAnnotation(node)) return NodeFilter.FILTER_REJECT;
+          if (isTTSFootnoteMarker(node.nodeValue || '')) return NodeFilter.FILTER_REJECT;
+          if (shouldSkipTTSNode(node.parentElement)) return NodeFilter.FILTER_REJECT;
+          return node.nodeValue && normalizeTTSText(node.nodeValue)
+            ? NodeFilter.FILTER_ACCEPT
+            : NodeFilter.FILTER_SKIP;
+        },
+      });
+      let score = 0;
+      let visited = 0;
+      let textNode = walker.nextNode();
+      while (textNode && visited < 500) {
+        visited += 1;
+        const text = normalizeTTSText(textNode.nodeValue || '');
+        if (text) {
+          try {
+            const textRange = doc.createRange();
+            textRange.selectNodeContents(textNode);
+            const rects = Array.from(textRange.getClientRects ? textRange.getClientRects() : []);
+            if (rects.some((rect) => rect.width > 0 && rect.height > 0 && rectIntersectsPaginatedRange(rect, range))) {
+              score += Math.min(text.length, 120);
+            }
+          } catch {}
+        }
+        textNode = walker.nextNode();
+      }
+      return score;
+    }
+
+    function pickPaginatedVisibleRange(doc, renderer) {
+      const candidates = getPaginatedVisibleRangeCandidates(renderer);
+      if (candidates.length <= 1) return candidates[0] || null;
+
+      const legacyRange = candidates.find((range) => range.source === 'legacy-offset') || null;
+      if (legacyRange && scorePaginatedVisibleRange(doc, legacyRange) > 0) return legacyRange;
+
+      const rendererRange = candidates.find((range) => range.source === 'renderer') || null;
+      if (rendererRange && scorePaginatedVisibleRange(doc, rendererRange) > 0) return rendererRange;
+
+      const fallbackRange = candidates.find((range) => range.source === 'size-fallback') || null;
+      if (fallbackRange && scorePaginatedVisibleRange(doc, fallbackRange) > 0) return fallbackRange;
+
+      return legacyRange || rendererRange || fallbackRange || candidates[0] || null;
+    }
+
+    let ttsVisibleRangeByDoc = new WeakMap();
+
+    function getVisibleRangeForTTSDoc(doc, renderer) {
+      if (!doc) return null;
+      if (ttsVisibleRangeByDoc.has(doc)) return ttsVisibleRangeByDoc.get(doc) || null;
+      const range = pickPaginatedVisibleRange(doc, renderer);
+      ttsVisibleRangeByDoc.set(doc, range);
+      return range;
+    }
+
+    function getRangeDocument(range) {
+      const container = range && range.commonAncestorContainer;
+      if (!container) return null;
+      return container.nodeType === Node.DOCUMENT_NODE ? container : container.ownerDocument;
+    }
+
+    function getReaderViewportRect() {
+      const viewport = {
+        left: 0,
+        top: 0,
+        right: window.innerWidth || document.documentElement.clientWidth || 0,
+        bottom: window.innerHeight || document.documentElement.clientHeight || 0,
+      };
+      try {
+        const viewRect = view && view.getBoundingClientRect ? view.getBoundingClientRect() : null;
+        if (!viewRect || viewRect.width <= 0 || viewRect.height <= 0) return viewport;
+        return {
+          left: Math.max(viewRect.left, viewport.left),
+          top: Math.max(viewRect.top, viewport.top),
+          right: Math.min(viewRect.right, viewport.right),
+          bottom: Math.min(viewRect.bottom, viewport.bottom),
+        };
+      } catch (e) {
+        return viewport;
+      }
+    }
+
+    function mapIframeRectToHost(rect, doc) {
+      try {
+        const iframe = doc && doc.defaultView && doc.defaultView.frameElement;
+        if (!iframe || !iframe.getBoundingClientRect) return rect;
+        const iframeRect = iframe.getBoundingClientRect();
+        const scaleX = iframe.clientWidth > 0 ? iframeRect.width / iframe.clientWidth : 1;
+        const scaleY = iframe.clientHeight > 0 ? iframeRect.height / iframe.clientHeight : 1;
+        return {
+          left: iframeRect.left + rect.left * scaleX,
+          top: iframeRect.top + rect.top * scaleY,
+          right: iframeRect.left + rect.right * scaleX,
+          bottom: iframeRect.top + rect.bottom * scaleY,
+          width: rect.width * scaleX,
+          height: rect.height * scaleY,
+        };
+      } catch (e) {
+        return rect;
+      }
+    }
+
+    function isHostRectVisible(rect) {
+      if (!rect || rect.width <= 0 || rect.height <= 0) return false;
+      const viewport = getReaderViewportRect();
+      return rect.right > viewport.left &&
+        rect.left < viewport.right &&
+        rect.bottom > viewport.top &&
+        rect.top < viewport.bottom;
+    }
+
+    function getContentHostRect(content) {
+      const doc = content && content.doc;
+      const iframe = doc && doc.defaultView && doc.defaultView.frameElement;
+      if (iframe && iframe.getBoundingClientRect) {
+        const rect = iframe.getBoundingClientRect();
+        return {
+          left: rect.left,
+          top: rect.top,
+          right: rect.right,
+          bottom: rect.bottom,
+          width: rect.width,
+          height: rect.height,
+        };
+      }
+      if (doc && doc.body) {
+        return mapIframeRectToHost(doc.body.getBoundingClientRect(), doc);
+      }
+      return null;
+    }
+
+    function getVisibleContentsForTTS(contents, renderer) {
+      if (!renderer || !renderer.scrolled) return contents;
+      return (contents || [])
+        .filter(function(content) { return !!(content && content.doc); })
+        .map(function(content) {
+          return { content: content, rect: getContentHostRect(content) };
+        })
+        .filter(function(item) {
+          return item.rect && isHostRectVisible(item.rect);
+        })
+        .sort(function(a, b) {
+          const topDelta = (a.rect ? a.rect.top : 0) - (b.rect ? b.rect.top : 0);
+          return Math.abs(topDelta) > 1
+            ? topDelta
+            : (a.rect ? a.rect.left : 0) - (b.rect ? b.rect.left : 0);
+        })
+        .map(function(item) { return item.content; });
+    }
+
+    function isRectVisibleInReader(rect, renderer, win, doc) {
       if (!rect || rect.width <= 0 || rect.height <= 0) return false;
       const isPaginated = !renderer.scrolled;
       if (isPaginated && renderer.size > 0) {
-        const visibleLeft = renderer.start - renderer.size;
-        const visibleRight = renderer.start;
-        return rect.right > visibleLeft && rect.left < visibleRight;
+        const visibleRange = getVisibleRangeForTTSDoc(doc, renderer);
+        return visibleRange ? rectIntersectsPaginatedRange(rect, visibleRange) : false;
       }
-      return rect.right > 0 && rect.left < win.innerWidth && rect.bottom > 0 && rect.top < win.innerHeight;
+      return isHostRectVisible(mapIframeRectToHost(rect, doc));
     }
 
     function isRangeVisibleInReader(range, renderer, win) {
       if (!range || !renderer || !win) return false;
       try {
         const rects = Array.from(range.getClientRects ? range.getClientRects() : []);
+        const doc = getRangeDocument(range);
         if (!rects.length) {
-          return isRectVisibleInReader(range.getBoundingClientRect(), renderer, win);
+          return isRectVisibleInReader(range.getBoundingClientRect(), renderer, win, doc);
         }
-        return rects.some((rect) => isRectVisibleInReader(rect, renderer, win));
+        return rects.some((rect) => isRectVisibleInReader(rect, renderer, win, doc));
       } catch (e) {
         console.log('[visibleTTSSegments] failed to inspect range rects:', e);
         return false;
@@ -2392,10 +3030,11 @@ a { color: ${primary} !important; }
       if (!range || !renderer || !win) return false;
       try {
         const rects = Array.from(range.getClientRects ? range.getClientRects() : []);
+        const doc = getRangeDocument(range);
         if (!rects.length) {
-          return isRectVisibleInReader(range.getBoundingClientRect(), renderer, win);
+          return isRectVisibleInReader(range.getBoundingClientRect(), renderer, win, doc);
         }
-        return isRectVisibleInReader(rects[0], renderer, win);
+        return isRectVisibleInReader(rects[0], renderer, win, doc);
       } catch (e) {
         console.log('[visibleTTSSegments] failed to inspect range start rect:', e);
         return false;
@@ -2409,13 +3048,13 @@ a { color: ${primary} !important; }
       if (!win) return [];
       return Array.from(blocks).filter((block) => {
         if (!block || !block.textContent || !block.textContent.trim()) return false;
-        if (block.closest && block.closest('.readany-translation')) return false;
+        if (shouldSkipTTSNode(block)) return false;
         try {
           const range = doc.createRange();
           range.selectNodeContents(block);
           return isRangeVisibleInReader(range, renderer, win);
         } catch (e) {
-          return isRectVisibleInReader(block.getBoundingClientRect(), renderer, win);
+          return isRectVisibleInReader(block.getBoundingClientRect(), renderer, win, doc);
         }
       });
     }
@@ -2424,7 +3063,7 @@ a { color: ${primary} !important; }
       const blockSelector = "p, h1, h2, h3, h4, h5, h6, li, blockquote, dd, dt, figcaption, pre, td, th";
       return Array.from(doc.querySelectorAll(blockSelector)).filter((block) => {
         if (!block || !block.textContent || !block.textContent.trim()) return false;
-        if (block.closest && block.closest('.readany-translation')) return false;
+        if (shouldSkipTTSNode(block)) return false;
         return true;
       });
     }
@@ -2445,10 +3084,51 @@ a { color: ${primary} !important; }
     }
 
     function fallbackSentenceSegments(text) {
-      const normalized = (text || '').replace(/\s+/g, ' ').trim();
+      const normalized = normalizeTTSText(text);
       if (!normalized) return [];
       const matches = normalized.match(/[^。！？!?；;\n]+[。！？!?；;…]?/gu) || [];
       return (matches.length ? matches : [normalized]).map((segment) => segment.trim()).filter(Boolean);
+    }
+
+    const TTS_FOOTNOTE_MARKER_PATTERN = /(?:\s*(?:\[(?:\d{1,4}|[一二三四五六七八九十百千万零〇两]{1,8}|[ivxlcdmIVXLCDM]{1,10})\]|［(?:\d{1,4}|[一二三四五六七八九十百千万零〇两]{1,8}|[ivxlcdmIVXLCDM]{1,10})］|【(?:\d{1,4}|[一二三四五六七八九十百千万零〇两]{1,8}|[ivxlcdmIVXLCDM]{1,10})】|〔(?:\d{1,4}|[一二三四五六七八九十百千万零〇两]{1,8}|[ivxlcdmIVXLCDM]{1,10})〕|［?（(?:\d{1,4}|[一二三四五六七八九十百千万零〇两]{1,8}|[ivxlcdmIVXLCDM]{1,10})）］?|\((?:\d{1,4}|[一二三四五六七八九十百千万零〇两]{1,8}|[ivxlcdmIVXLCDM]{1,10})\)))+/gu;
+    const TTS_FOOTNOTE_MARKER_ONLY_PATTERN = /^(?:\s*(?:\[(?:\d{1,4}|[一二三四五六七八九十百千万零〇两]{1,8}|[ivxlcdmIVXLCDM]{1,10})\]|［(?:\d{1,4}|[一二三四五六七八九十百千万零〇两]{1,8}|[ivxlcdmIVXLCDM]{1,10})］|【(?:\d{1,4}|[一二三四五六七八九十百千万零〇两]{1,8}|[ivxlcdmIVXLCDM]{1,10})】|〔(?:\d{1,4}|[一二三四五六七八九十百千万零〇两]{1,8}|[ivxlcdmIVXLCDM]{1,10})〕|［?（(?:\d{1,4}|[一二三四五六七八九十百千万零〇两]{1,8}|[ivxlcdmIVXLCDM]{1,10})）］?|\((?:\d{1,4}|[一二三四五六七八九十百千万零〇两]{1,8}|[ivxlcdmIVXLCDM]{1,10})\)))+\s*$/u;
+    const TTS_SKIPPED_ELEMENT_SELECTOR = [
+      'script',
+      'style',
+      'rt',
+      'rp',
+      'sup',
+      '.readany-translation',
+      '[role="doc-noteref"]',
+      '[role="doc-footnote"]',
+      '[epub\\:type~="noteref"]',
+      '[epub\\:type~="footnote"]',
+      '[type~="noteref"]',
+      '[type~="footnote"]',
+      'a[href^="#fn"]',
+      'a[href^="#footnote"]',
+      'a[href*="footnote"]',
+      'a[href*="note"]',
+      'a.noteref',
+      'a.footnote',
+      '.noteref',
+      '.footnote',
+      '.footnote-ref',
+      '.endnote',
+      '.duokan-footnote',
+      '.calibre-footnote',
+    ].join(',');
+
+    function normalizeTTSText(text) {
+      return String(text || '').replace(TTS_FOOTNOTE_MARKER_PATTERN, '').replace(/\s+/g, ' ').trim();
+    }
+
+    function isTTSFootnoteMarker(text) {
+      return TTS_FOOTNOTE_MARKER_ONLY_PATTERN.test(String(text || ''));
+    }
+
+    function shouldSkipTTSNode(element) {
+      return !!(element && element.closest && element.closest(TTS_SKIPPED_ELEMENT_SELECTOR));
     }
 
     function stripCfiAssertions(value) {
@@ -2477,12 +3157,12 @@ a { color: ${primary} !important; }
     }
 
     function getTTSSegmentIdentity(cfi, text) {
-      return `${getTTSCfiStartIdentity(cfi)}::${String(text || '').replace(/\s+/g, ' ').trim()}`;
+      return `${getTTSCfiStartIdentity(cfi)}::${normalizeTTSText(text)}`;
     }
 
     function summarizeTTSSegmentsForLog(segments, limit) {
       return (segments || []).slice(0, limit || 8).map(function(segment, index) {
-        var text = String(segment && segment.text || '').replace(/\s+/g, ' ').trim();
+        var text = normalizeTTSText(segment && segment.text);
         return {
           index: index,
           cfi: segment && segment.cfi || null,
@@ -2543,7 +3223,7 @@ a { color: ${primary} !important; }
       const seen = new Set();
       for (const detail of [current, ...(following || [])]) {
         if (!detail || !detail.text || !detail.cfi) continue;
-        const text = String(detail.text).replace(/\s+/g, ' ').trim();
+        const text = normalizeTTSText(detail.text);
         const identity = getTTSSegmentIdentity(detail.cfi, text);
         if (!text || seen.has(identity)) continue;
         seen.add(identity);
@@ -2579,7 +3259,7 @@ a { color: ${primary} !important; }
             : null;
         const currentText =
           current && current.text
-            ? String(current.text).replace(/\s+/g, ' ').trim()
+            ? normalizeTTSText(current.text)
             : '';
         const currentIdentity = currentText ? getTTSSegmentIdentity(current && current.cfi, currentText) : null;
 
@@ -2588,7 +3268,7 @@ a { color: ${primary} !important; }
           const seen = new Set();
           for (const detail of details || []) {
             if (!detail || !detail.text || !detail.cfi) continue;
-            const text = String(detail.text).replace(/\s+/g, ' ').trim();
+            const text = normalizeTTSText(detail.text);
             const identity = getTTSSegmentIdentity(detail.cfi, text);
             if (!text || (currentIdentity && identity === currentIdentity) || seen.has(identity)) continue;
             seen.add(identity);
@@ -2661,7 +3341,7 @@ a { color: ${primary} !important; }
           }
           if (!started) continue;
 
-          const textNodes = getTextNodes(block).map((node) => {
+          const textNodes = getTTSTextNodes(block).map((node) => {
             const text = node.nodeValue || '';
             return { node, text };
           }).filter((item) => item.text.trim().length > 0);
@@ -2710,7 +3390,7 @@ a { color: ${primary} !important; }
             range.setStart(startPos.node, startPos.offset);
             range.setEnd(endPos.node, endPos.offset);
 
-            const text = absoluteText.slice(start, end).replace(/\s+/g, ' ').trim();
+            const text = normalizeTTSText(absoluteText.slice(start, end));
             if (!text) continue;
 
             try {
@@ -2800,9 +3480,12 @@ a { color: ${primary} !important; }
         const renderer = view && view.renderer;
         const contents = getRendererContents();
         if (!renderer || !contents.length) return [];
+        ttsVisibleRangeByDoc = new WeakMap();
+        const scanContents = getVisibleContentsForTTS(contents, renderer);
         const segments = [];
         const stats = {
           contentsCount: contents.length,
+          scannedContentsCount: scanContents.length,
           visibleBlockCount: 0,
           rawSentenceCount: 0,
           skippedTooShort: 0,
@@ -2819,8 +3502,8 @@ a { color: ${primary} !important; }
         // Must be declared here (outer scope) so it's accessible after both loops close.
         let firstVisibleRange = null;
 
-        for (var contentIndex = 0; contentIndex < contents.length; contentIndex++) {
-          const current = contents[contentIndex];
+        for (var contentIndex = 0; contentIndex < scanContents.length; contentIndex++) {
+          const current = scanContents[contentIndex];
           if (!current || !current.doc) continue;
           const doc = current.doc;
           const win = doc.defaultView;
@@ -2841,7 +3524,7 @@ a { color: ${primary} !important; }
 
           for (var blockIndex = 0; blockIndex < visibleBlocks.length; blockIndex++) {
             const block = visibleBlocks[blockIndex];
-            const textNodes = getTextNodes(block).map((node) => {
+            const textNodes = getTTSTextNodes(block).map((node) => {
               const text = node.nodeValue || '';
               return { node, text };
             }).filter((item) => item.text.trim().length > 0);
@@ -2898,13 +3581,13 @@ a { color: ${primary} !important; }
               const range = doc.createRange();
               range.setStart(startPos.node, startPos.offset);
               range.setEnd(endPos.node, endPos.offset);
-              if (!isRangeVisibleInReader(range, renderer, win)) {
+              if (!isRangeStartVisibleInReader(range, renderer, win)) {
                 stats.skippedNotVisible++;
                 stats.skippedNotStartVisible++;
                 continue;
               }
 
-              const text = absoluteText.slice(start, end).replace(/\s+/g, ' ').trim();
+              const text = normalizeTTSText(absoluteText.slice(start, end));
               if (!text) {
                 stats.skippedEmptyText++;
                 continue;
@@ -2940,15 +3623,17 @@ a { color: ${primary} !important; }
         // Fall back to CFI string alignment for older tts.js builds without tts.from()
         const firstVisibleCfi = segments[0]?.cfi || null;
         const resolvedAlignRange = resolveRangeForCfi(alignCfi);
-        const alignedSegments = collectTTSSegmentsFromEngine(
-          alignCfi ? 500 : (segments.length || 12),
-          alignCfi || firstVisibleCfi,
-          resolvedAlignRange?.range || firstVisibleRange
-        );
-        let returnSource = alignedSegments.length ? 'aligned' : 'direct';
+        const alignedSegments = segments.length
+          ? collectTTSSegmentsFromEngine(
+              alignCfi ? 500 : segments.length,
+              alignCfi || firstVisibleCfi,
+              resolvedAlignRange?.range || firstVisibleRange
+            )
+          : [];
+        let returnSource = segments.length ? 'direct-visible' : 'no-visible-segments';
         let filteredAlignedCount = 0;
         let filteredAlignedPreview = [];
-        let returnedSegments = alignedSegments.length ? alignedSegments : segments;
+        let returnedSegments = segments;
         if (alignedSegments.length && segments.length) {
           const visibleIdentities = new Set(
             segments.map((segment) => getTTSSegmentIdentity(segment.cfi, segment.text))
@@ -2983,7 +3668,7 @@ a { color: ${primary} !important; }
               returnedSegments = segments;
             }
           } else {
-            returnSource = 'direct-fallback';
+            returnSource = 'direct-visible';
             returnedSegments = segments;
           }
         }
@@ -3007,11 +3692,13 @@ a { color: ${primary} !important; }
         return returnedSegments;
       } catch (e) {
         console.log('[visibleTTSSegments] extraction error:', e);
-        const fallbackSegments = collectTTSSegmentsFromEngine(alignCfi ? 500 : 12, alignCfi || null, resolveRangeForCfi(alignCfi)?.range || null);
+        const fallbackSegments = alignCfi
+          ? collectTTSSegmentsFromEngine(500, alignCfi, resolveRangeForCfi(alignCfi)?.range || null)
+          : [];
         window.__lastVisibleTTSDiagnostics = {
           alignCfi: alignCfi || null,
           extractionError: String(e),
-          returnSource: 'engine-fallback',
+          returnSource: alignCfi ? 'engine-align-fallback' : 'no-visible-segments',
           directCount: 0,
           alignedCount: fallbackSegments.length,
           filteredAlignedCount: 0,
@@ -3030,8 +3717,8 @@ a { color: ${primary} !important; }
     }
 
     // ─── Expose global functions for injectJavaScript ───
-    window.goNext = function () { if (view) view.next(); };
-    window.goPrev = function () { if (view) view.prev(); };
+    window.goNext = function (distance) { goNextByMode(distance); };
+    window.goPrev = function (distance) { goPrevByMode(distance); };
     window.goLeft = function () { if (view) view.goLeft(); };
     window.goRight = function () { if (view) view.goRight(); };
     window.goToHref = function (href) { if (view) view.goTo(href); };
@@ -3180,8 +3867,8 @@ a { color: ${primary} !important; }
     window.doGetChapterParagraphs = function () {
       handleGetChapterParagraphs();
     };
-    window.doInjectChapterTranslations = function (results) {
-      handleInjectChapterTranslations(results);
+    window.doInjectChapterTranslations = function (results, visibility) {
+      return handleInjectChapterTranslations(results, visibility);
     };
     window.doRemoveChapterTranslations = function () {
       handleRemoveChapterTranslations();
@@ -3391,8 +4078,55 @@ a { color: ${primary} !important; }
       }
     }
 
-    function handleInjectChapterTranslations(results) {
+    function getReaderLayoutSignature(doc) {
+      var root = doc && doc.documentElement;
+      var body = doc && doc.body;
+      var renderer = view && view.renderer;
+      return [
+        root ? root.scrollWidth : 0,
+        root ? root.scrollHeight : 0,
+        body ? body.scrollWidth : 0,
+        body ? body.scrollHeight : 0,
+        renderer && typeof renderer.page !== 'undefined' ? renderer.page : '',
+        renderer && typeof renderer.pages !== 'undefined' ? renderer.pages : ''
+      ].join(':');
+    }
+
+    function waitForReaderLayoutStable(doc) {
+      return new Promise(function(resolve) {
+        var win = (doc && doc.defaultView) || window;
+        var requestFrame = win.requestAnimationFrame
+          ? win.requestAnimationFrame.bind(win)
+          : function(callback) { return setTimeout(function() { callback(Date.now()); }, 16); };
+        var previous = getReaderLayoutSignature(doc);
+        var stableFrames = 0;
+        var frames = 0;
+
+        function tick() {
+          frames += 1;
+          var next = getReaderLayoutSignature(doc);
+          if (next === previous) {
+            stableFrames += 1;
+          } else {
+            stableFrames = 0;
+            previous = next;
+          }
+
+          if (stableFrames >= 2 || frames >= 12) {
+            resolve();
+            return;
+          }
+
+          requestFrame(tick);
+        }
+
+        requestFrame(tick);
+      });
+    }
+
+    async function handleInjectChapterTranslations(results, visibility) {
       try {
+        visibility = visibility || { originalVisible: true, translationVisible: true };
         var doc = null;
         var renderer = view && view.renderer;
         if (renderer && renderer.getContents) {
@@ -3442,15 +4176,23 @@ a { color: ${primary} !important; }
           if (!r.translatedText) continue;
           var el = doc.querySelector('[data-translate-id="' + r.paragraphId + '"]');
           if (!el) continue;
+          el.setAttribute('data-original-hidden', String(!visibility.originalVisible));
           // Skip if already injected
-          if (el.nextElementSibling && el.nextElementSibling.classList.contains('readany-translation')) continue;
+          if (el.nextElementSibling && el.nextElementSibling.classList.contains('readany-translation')) {
+            el.nextElementSibling.setAttribute('data-hidden', String(!visibility.translationVisible));
+            el.nextElementSibling.setAttribute('data-solo', String(!visibility.originalVisible && visibility.translationVisible));
+            continue;
+          }
 
           var div = doc.createElement('div');
           div.className = 'readany-translation';
           div.setAttribute('data-para-id', r.paragraphId);
+          div.setAttribute('data-hidden', String(!visibility.translationVisible));
+          div.setAttribute('data-solo', String(!visibility.originalVisible && visibility.translationVisible));
           div.textContent = r.translatedText;
           el.parentNode.insertBefore(div, el.nextSibling);
         }
+        await waitForReaderLayoutStable(doc);
       } catch (err) {
         console.error('[WebView] Error injecting translations:', err);
       }
@@ -3488,11 +4230,49 @@ a { color: ${primary} !important; }
       }
     }
 
+    function isInsideRubyAnnotation(node) {
+      var p = node.parentNode;
+      while (p && p.nodeType === 1) {
+        var name = p.tagName && p.tagName.toLowerCase();
+        if (name === 'rt' || name === 'rp') return true;
+        p = p.parentNode;
+      }
+      return false;
+    }
+
     function getTextNodes(element) {
       const walker = element.ownerDocument.createTreeWalker(
         element,
         NodeFilter.SHOW_TEXT,
-        null
+        {
+          acceptNode: function (node) {
+            if (isInsideRubyAnnotation(node)) return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_ACCEPT;
+          },
+        }
+      );
+      const nodes = [];
+      let node;
+      while ((node = walker.nextNode())) {
+        if (node.textContent && node.textContent.trim()) {
+          nodes.push(node);
+        }
+      }
+      return nodes;
+    }
+
+    function getTTSTextNodes(element) {
+      const walker = element.ownerDocument.createTreeWalker(
+        element,
+        NodeFilter.SHOW_TEXT,
+        {
+          acceptNode: function (node) {
+            if (isInsideRubyAnnotation(node)) return NodeFilter.FILTER_REJECT;
+            if (isTTSFootnoteMarker(node.nodeValue || '')) return NodeFilter.FILTER_REJECT;
+            if (shouldSkipTTSNode(node.parentElement)) return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_ACCEPT;
+          },
+        }
       );
       const nodes = [];
       let node;
@@ -3508,7 +4288,12 @@ a { color: ${primary} !important; }
       const walker = block.ownerDocument.createTreeWalker(
         block,
         NodeFilter.SHOW_TEXT,
-        null
+        {
+          acceptNode: function (node) {
+            if (isInsideRubyAnnotation(node)) return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_ACCEPT;
+          },
+        }
       );
       const texts = [];
       let node;
@@ -3518,6 +4303,220 @@ a { color: ${primary} !important; }
       }
       return texts.join(" ");
     }
+
+    // ─── Ruby Annotation (Pinyin/Zhuyin) ───
+    var _rubyWordDict = null; // { "word": ["pinyin", freq] }
+    var _rubyCharDict = null; // { "char": "pinyin" }
+    var _rubyMode = null;     // "zh-pinyin" | "zh-zhuyin" | null
+
+    var CJK_RE = /[一-鿿㐀-䶿豈-﫿]/;
+    var RUBY_STYLE_ID = 'readany-ruby-style';
+    var RUBY_PROCESSED_ATTR = 'data-ruby-processed';
+
+    function rubyAnnotateChinese(text) {
+      if ((!_rubyWordDict && !_rubyCharDict) || !text) return [{ char: text, reading: '', needsRuby: false }];
+      var tokens = [];
+      var i = 0;
+      while (i < text.length) {
+        var ch = text[i];
+        if (!CJK_RE.test(ch)) {
+          var j = i + 1;
+          while (j < text.length && !CJK_RE.test(text[j])) j++;
+          tokens.push({ char: text.slice(i, j), reading: '', needsRuby: false });
+          i = j;
+          continue;
+        }
+        var matched = false;
+        if (_rubyWordDict) {
+          for (var len = Math.min(4, text.length - i); len >= 2; len--) {
+            var word = text.slice(i, i + len);
+            var entry = _rubyWordDict[word];
+            if (entry) {
+              var reading = entry[0];
+              var readings = reading.split(' ');
+              if (readings.length === word.length) {
+                for (var k = 0; k < word.length; k++) {
+                  tokens.push({ char: word[k], reading: readings[k], needsRuby: true });
+                }
+              } else {
+                tokens.push({ char: word, reading: reading, needsRuby: true });
+              }
+              i += len;
+              matched = true;
+              break;
+            }
+          }
+        }
+        if (matched) continue;
+        var singleReading = '';
+        if (_rubyWordDict && _rubyWordDict[ch]) {
+          singleReading = _rubyWordDict[ch][0];
+        } else if (_rubyCharDict && _rubyCharDict[ch]) {
+          singleReading = _rubyCharDict[ch];
+        }
+        tokens.push({ char: ch, reading: singleReading, needsRuby: true });
+        i++;
+      }
+      return tokens;
+    }
+
+    function rubyInjectStyles(doc) {
+      if (doc.getElementById(RUBY_STYLE_ID)) return;
+      var style = doc.createElement('style');
+      style.id = RUBY_STYLE_ID;
+      style.textContent = [
+        '.readany-ruby rt { font-size: 0.5em; line-height: 1; color: var(--readany-ruby-color, #888); font-weight: normal; user-select: none; -webkit-user-select: none; }',
+        '.readany-ruby { ruby-align: center; }',
+        '.readany-ruby-container { ruby-position: over; -webkit-ruby-position: before; }'
+      ].join('\n');
+      if (doc.head) doc.head.appendChild(style);
+    }
+
+    function rubyShouldSkip(el) {
+      if (el.closest && el.closest('.readany-translation')) return true;
+      if (el.closest && el.closest('ruby')) return true;
+      if (el.closest && el.closest('rt')) return true;
+      if (el.closest && el.closest('[' + RUBY_PROCESSED_ATTR + ']')) return true;
+      var tag = el.tagName && el.tagName.toLowerCase();
+      if (tag === 'script' || tag === 'style') return true;
+      return false;
+    }
+
+    function rubyExtractOriginalText(el) {
+      var result = '';
+      for (var ci = 0; ci < el.childNodes.length; ci++) {
+        var child = el.childNodes[ci];
+        if (child.nodeType === 3) { result += child.nodeValue || ''; }
+        else if (child.nodeType === 1) {
+          var tag = child.tagName && child.tagName.toLowerCase();
+          if (tag === 'rt' || tag === 'rp') continue;
+          result += rubyExtractOriginalText(child);
+        }
+      }
+      return result;
+    }
+
+    function doInjectRubyAnnotations(doc, mode) {
+      if (!mode || !doc) return 0;
+      if (!_rubyWordDict && !_rubyCharDict) return 0;
+      rubyInjectStyles(doc);
+      var blocks = doc.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote, dd, dt, figcaption, div');
+      var count = 0;
+      for (var bi = 0; bi < blocks.length; bi++) {
+        var block = blocks[bi];
+        if (!block.textContent || !block.textContent.trim()) continue;
+        if (rubyShouldSkip(block)) continue;
+        if (block.querySelector && block.querySelector('[' + RUBY_PROCESSED_ATTR + ']')) continue;
+        if (!CJK_RE.test(block.textContent)) continue;
+
+        var walker = doc.createTreeWalker(block, NodeFilter.SHOW_TEXT, {
+          acceptNode: function(node) {
+            if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_SKIP;
+            if (!CJK_RE.test(node.nodeValue)) return NodeFilter.FILTER_SKIP;
+            var parent = node.parentElement;
+            if (!parent) return NodeFilter.FILTER_ACCEPT;
+            if (rubyShouldSkip(parent)) return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_ACCEPT;
+          }
+        });
+        var textNodes = [];
+        var tn = walker.nextNode();
+        while (tn) { textNodes.push(tn); tn = walker.nextNode(); }
+
+        for (var ti = 0; ti < textNodes.length; ti++) {
+          var node = textNodes[ti];
+          var text = node.nodeValue || '';
+          if (!text.trim() || !CJK_RE.test(text)) continue;
+          var tokens = rubyAnnotateChinese(text);
+          var span = doc.createElement('span');
+          span.setAttribute(RUBY_PROCESSED_ATTR, 'true');
+          span.className = 'readany-ruby-container';
+          for (var tki = 0; tki < tokens.length; tki++) {
+            var token = tokens[tki];
+            if (token.needsRuby && token.reading) {
+              var ruby = doc.createElement('ruby');
+              ruby.className = 'readany-ruby';
+              ruby.textContent = token.char;
+              var rt = doc.createElement('rt');
+              rt.textContent = token.reading;
+              ruby.appendChild(rt);
+              span.appendChild(ruby);
+            } else {
+              span.appendChild(doc.createTextNode(token.char));
+            }
+          }
+          if (node.parentNode) node.parentNode.replaceChild(span, node);
+          count++;
+        }
+      }
+      return count;
+    }
+
+    function doRemoveRubyAnnotations(doc) {
+      if (!doc) return;
+      var style = doc.getElementById(RUBY_STYLE_ID);
+      if (style) style.remove();
+      var processed = doc.querySelectorAll('[' + RUBY_PROCESSED_ATTR + ']');
+      for (var i = 0; i < processed.length; i++) {
+        var el = processed[i];
+        var originalText = rubyExtractOriginalText(el);
+        var textNode = doc.createTextNode(originalText);
+        if (el.parentNode) el.parentNode.replaceChild(textNode, el);
+      }
+    }
+
+    // Called from RN to set dict data
+    window.setRubyDicts = function(wordDictJson, charDictJson) {
+      try {
+        _rubyWordDict = wordDictJson ? (typeof wordDictJson === 'string' ? JSON.parse(wordDictJson) : wordDictJson) : null;
+        _rubyCharDict = charDictJson ? (typeof charDictJson === 'string' ? JSON.parse(charDictJson) : charDictJson) : null;
+        return true;
+      } catch(e) {
+        console.error('[Ruby] Failed to parse dicts:', e);
+        return false;
+      }
+    };
+
+    // Called from RN to inject ruby on current page
+    window.injectRuby = function(mode) {
+      _rubyMode = mode || null;
+      if (!_rubyMode) { window.removeRuby(); return; }
+      var doc = null;
+      if (view && view.renderer && view.renderer.getContents) {
+        var contents = view.renderer.getContents();
+        if (contents && contents.length && contents[0] && contents[0].doc) doc = contents[0].doc;
+      }
+      if (!doc) {
+        var iframes = document.querySelectorAll('iframe');
+        for (var fi = 0; fi < iframes.length; fi++) {
+          try {
+            var iframeDoc = iframes[fi].contentDocument || (iframes[fi].contentWindow && iframes[fi].contentWindow.document);
+            if (iframeDoc && iframeDoc.body) { doc = iframeDoc; break; }
+          } catch(e) {}
+        }
+      }
+      if (doc) doInjectRubyAnnotations(doc, _rubyMode);
+    };
+
+    // Called from RN to remove ruby
+    window.removeRuby = function() {
+      _rubyMode = null;
+      var doc = null;
+      if (view && view.renderer && view.renderer.getContents) {
+        var contents = view.renderer.getContents();
+        if (contents && contents.length && contents[0] && contents[0].doc) doc = contents[0].doc;
+      }
+      if (!doc) {
+        var iframes = document.querySelectorAll('iframe');
+        for (var fi = 0; fi < iframes.length; fi++) {
+          try {
+            var iframeDoc = iframes[fi].contentDocument || (iframes[fi].contentWindow && iframes[fi].contentWindow.document);
+            if (iframeDoc && iframeDoc.body) { doc = iframeDoc; break; }
+          } catch(e) {}
+        }
+      }
+      if (doc) doRemoveRubyAnnotations(doc);
+    };
   </script>
 
   <!-- __READANY_FOLIATE_BUNDLE_INSERT_POINT_7f3a9b2e__ -->

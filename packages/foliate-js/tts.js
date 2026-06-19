@@ -84,6 +84,7 @@ const fragmentToSSML = (fragment, inherited) => {
 
     let el;
     const nodeName = node.nodeName.toLowerCase();
+    if (nodeName === "rt" || nodeName === "rp") return;
     if (nodeName === "foliate-mark") {
       el = ssml.createElementNS(NS.SSML, "mark");
       el.setAttribute("name", node.dataset.name);
@@ -143,8 +144,31 @@ const getFragmentWithMarks = (range, textWalker, granularity, filterFunc) => {
   return { entries, ssml };
 };
 
-const rangeIsEmpty = (range) => !range.toString().trim();
-const normalizeRangeText = (range) => range.toString().replace(/\s+/g, " ").trim();
+const getRangeTextWithoutRuby = (range) => {
+  const fragment = range.cloneContents();
+  const doc = fragment.ownerDocument || document;
+  const walker = doc.createTreeWalker(
+    fragment,
+    NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT | NodeFilter.SHOW_CDATA_SECTION,
+    {
+      acceptNode: (node) => {
+        if (node.nodeType === 1) {
+          const name = node.nodeName.toLowerCase();
+          if (name === "rt" || name === "rp" || name === "script" || name === "style")
+            return NodeFilter.FILTER_REJECT;
+          return NodeFilter.FILTER_SKIP;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    },
+  );
+  let text = "";
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) text += n.nodeValue || "";
+  return text;
+};
+
+const rangeIsEmpty = (range) => !getRangeTextWithoutRuby(range).trim();
+const normalizeRangeText = (range) => getRangeTextWithoutRuby(range).replace(/\s+/g, " ").trim();
 
 function* getDetailRanges(doc, textWalker, filterFunc) {
   for (const blockRange of getBlocks(doc)) {

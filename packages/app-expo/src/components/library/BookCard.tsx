@@ -1,4 +1,4 @@
-import { CheckIcon, ClockIcon, DatabaseIcon, Loader2Icon, MoreVerticalIcon } from "@/components/ui/Icon";
+import { CheckIcon, ClockIcon, Loader2Icon, MoreVerticalIcon } from "@/components/ui/Icon";
 import { useColors } from "@/styles/theme";
 import { getPlatformService } from "@readany/core/services";
 /**
@@ -6,6 +6,7 @@ import { getPlatformService } from "@readany/core/services";
  * Cover (28:41), progress bar, vectorization overlay, tag badges, long-press action sheet.
  */
 import type { Book } from "@readany/core/types";
+import { getBookProgressPercent } from "@readany/core/utils";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -50,11 +51,13 @@ interface BookCardProps {
   book: Book;
   onOpen: (book: Book) => void;
   onDelete: (bookId: string, options?: { preserveData?: boolean }) => void;
+  onShowDetails?: (book: Book) => void;
   onManageTags?: (book: Book) => void;
   onVectorize?: (book: Book) => void;
   isVectorizing?: boolean;
   isQueued?: boolean;
   vectorProgress?: { status: string; processedChunks: number; totalChunks: number } | null;
+  downloadProgress?: { downloaded: number; total: number } | null;
   cardWidth?: number;
   isSelectionMode?: boolean;
   isSelected?: boolean;
@@ -66,11 +69,13 @@ export const BookCard = memo(function BookCard({
   book,
   onOpen,
   onDelete,
+  onShowDetails,
   onManageTags,
   onVectorize,
   isVectorizing,
   isQueued,
   vectorProgress,
+  downloadProgress,
   cardWidth = 96,
   isSelectionMode = false,
   isSelected = false,
@@ -105,14 +110,14 @@ export const BookCard = memo(function BookCard({
         const appData = await platform.getAppDataDir();
         const absPath = await platform.joinPath(appData, raw);
         setResolvedCoverUrl(absPath);
-      } catch {
+      } catch (err) {
+        console.warn("[Library] Failed to resolve cover URL:", err);
         setResolvedCoverUrl(undefined);
       }
     })();
   }, [book.meta.coverUrl]);
 
-  const progressPct = Math.round(book.progress * 100);
-  const hasCover = resolvedCoverUrl && !imageError;
+  const progressPct = getBookProgressPercent(book.progress);
 
   const vecPct = vectorProgress
     ? vectorProgress.totalChunks > 0
@@ -147,7 +152,9 @@ export const BookCard = memo(function BookCard({
         });
       });
 
-    return (await measureNode(menuTriggerRef.current)) ?? (await measureNode(coverRef.current, true));
+    return (
+      (await measureNode(menuTriggerRef.current)) ?? (await measureNode(coverRef.current, true))
+    );
   }, []);
 
   const openActions = useCallback(async () => {
@@ -184,34 +191,38 @@ export const BookCard = memo(function BookCard({
         <View ref={coverRef} style={s.coverWrap}>
           {/* Selection checkbox overlay */}
           {isSelectionMode && (
-            <View style={{
-              position: "absolute",
-              top: 6,
-              left: 6,
-              zIndex: 20,
-              width: 24,
-              height: 24,
-              borderRadius: 12,
-              backgroundColor: isSelected ? colors.primary : "rgba(0,0,0,0.4)",
-              alignItems: "center",
-              justifyContent: "center",
-              borderWidth: isSelected ? 0 : 2,
-              borderColor: "#fff",
-            }}>
+            <View
+              style={{
+                position: "absolute",
+                top: 6,
+                left: 6,
+                zIndex: 20,
+                width: 24,
+                height: 24,
+                borderRadius: 12,
+                backgroundColor: isSelected ? colors.primary : "rgba(0,0,0,0.4)",
+                alignItems: "center",
+                justifyContent: "center",
+                borderWidth: isSelected ? 0 : 2,
+                borderColor: "#fff",
+              }}
+            >
               {isSelected && <CheckIcon size={16} color="#fff" />}
             </View>
           )}
           {isSelectionMode && isSelected && (
-            <View style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              zIndex: 10,
-              backgroundColor: "rgba(0,0,0,0.15)",
-              borderRadius: 8,
-            }} />
+            <View
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                zIndex: 10,
+                backgroundColor: "rgba(0,0,0,0.15)",
+                borderRadius: 8,
+              }}
+            />
           )}
           {resolvedCoverUrl && !imageError ? (
             <>
@@ -315,13 +326,17 @@ export const BookCard = memo(function BookCard({
             <View style={s.downloadingOverlay}>
               <AnimatedLoader />
               <Text style={s.downloadingOverlayText}>{t("home.downloading", "下载中")}</Text>
+              {downloadProgress && downloadProgress.total > 0 && (
+                <Text style={s.downloadingOverlayPct}>
+                  {Math.round((downloadProgress.downloaded / downloadProgress.total) * 100)}%
+                </Text>
+              )}
             </View>
           )}
 
           {/* Vectorized badge */}
           {book.isVectorized && !isVectorizing && (
             <View style={s.vecBadge}>
-              <DatabaseIcon size={8} color="#fff" />
               <Text style={s.vecBadgeText}>{t("home.vec_indexed", "已索引")}</Text>
             </View>
           )}
@@ -394,6 +409,7 @@ export const BookCard = memo(function BookCard({
           suppressOpenUntilRef.current = Date.now() + 300;
           setShowActions(false);
         }}
+        onShowDetails={onShowDetails}
         onManageTags={onManageTags}
         onVectorize={onVectorize}
         onDelete={onDelete}

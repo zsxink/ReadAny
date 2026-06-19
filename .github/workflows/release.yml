@@ -70,6 +70,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          VITE_FEEDBACK_WORKER_URL: ${{ secrets.FEEDBACK_WORKER_URL }}
         with:
           projectPath: "./packages/app"
           tagName: ${{ github.ref_name }}
@@ -110,10 +111,13 @@ jobs:
           token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Build Android APK (Local)
+        env:
+          EXPO_PUBLIC_FEEDBACK_WORKER_URL: ${{ secrets.FEEDBACK_WORKER_URL }}
+          APP_VARIANT: production
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           cd packages/app-expo
-          npx eas-cli build --platform android --profile preview --local --non-interactive --output=../../ReadAny-${VERSION}.apk
+          npx eas-cli build --platform android --profile production-apk --local --non-interactive --output=../../ReadAny-${VERSION}.apk
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v1

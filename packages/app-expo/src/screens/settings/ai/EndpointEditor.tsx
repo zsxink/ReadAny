@@ -11,6 +11,7 @@ import type { TFunction } from "i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  ScrollView,
   Switch,
   Text,
   TextInput,
@@ -38,6 +39,109 @@ const PROVIDERS: { id: AIProviderType; label: string }[] = [
 ];
 
 export { PROVIDERS };
+
+/** Searchable model list — shows a search input + scrollable filtered list */
+function ModelSearchableList({
+  models,
+  activeModel,
+  onSelect,
+  onRemove,
+  colors,
+  t,
+}: {
+  models: string[];
+  activeModel?: string;
+  onSelect: (model: string) => void;
+  onRemove: (model: string) => void;
+  colors: any;
+  t: any;
+}) {
+  const [search, setSearch] = useState("");
+  const filtered = search.trim()
+    ? models.filter((m) => m.toLowerCase().includes(search.toLowerCase()))
+    : models;
+
+  return (
+    <View style={{ gap: 6 }}>
+      {activeModel && models.includes(activeModel) && (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 2 }}>
+          <Text style={{ fontSize: 11, color: colors.mutedForeground }}>{t("settings.ai_activeModel", "当前模型")}:</Text>
+          <Text style={{ fontSize: 12, color: colors.primary, fontWeight: "600" }}>{activeModel}</Text>
+        </View>
+      )}
+      <TextInput
+        style={{
+          height: 32,
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 6,
+          paddingHorizontal: 10,
+          fontSize: 12,
+          color: colors.foreground,
+          backgroundColor: colors.background,
+        }}
+        placeholder={t("settings.ai_searchModelPlaceholder", "搜索模型...")}
+        placeholderTextColor={colors.mutedForeground}
+        value={search}
+        onChangeText={setSearch}
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+      <ScrollView
+        style={{ maxHeight: 160, borderWidth: 1, borderColor: colors.border, borderRadius: 6, backgroundColor: colors.background }}
+        nestedScrollEnabled
+        keyboardShouldPersistTaps="handled"
+      >
+        {filtered.length === 0 ? (
+          <Text style={{ padding: 12, fontSize: 12, color: colors.mutedForeground, textAlign: "center" }}>
+            {t("common.noResults", "无匹配结果")}
+          </Text>
+        ) : (
+          filtered.map((m) => {
+            const isActive = m === activeModel;
+            return (
+              <TouchableOpacity
+                key={m}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingVertical: 8,
+                  paddingHorizontal: 12,
+                  borderBottomWidth: 0.5,
+                  borderBottomColor: colors.border,
+                  backgroundColor: isActive ? `${colors.primary}10` : "transparent",
+                }}
+                onPress={() => onSelect(m)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={{
+                    flex: 1,
+                    fontSize: 12,
+                    color: isActive ? colors.primary : colors.foreground,
+                    fontWeight: isActive ? "600" : "400",
+                  }}
+                  numberOfLines={1}
+                >
+                  {m}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => onRemove(m)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <XIcon size={14} color={colors.mutedForeground} />
+                </TouchableOpacity>
+              </TouchableOpacity>
+            );
+          })
+        )}
+      </ScrollView>
+      <Text style={{ fontSize: 10, color: colors.mutedForeground }}>
+        {t("settings.ai_modelsCount", "共 {{count}} 个模型", { count: models.length })}
+      </Text>
+    </View>
+  );
+}
 
 export function EndpointEditor({
   ep,
@@ -266,29 +370,30 @@ export function EndpointEditor({
           </View>
           <Text style={styles.previewValue}>{requestPreview || "—"}</Text>
           <Text style={styles.previewLabel}>{t("settings.ai_testModel", "测试模型")}</Text>
-          <View style={styles.testModelChips}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <TouchableOpacity
               style={[styles.testModelChip, testModel === "__auto__" && styles.testModelChipActive]}
               onPress={() => setTestModel("__auto__")}
               activeOpacity={0.8}
             >
               <Text style={[styles.testModelChipText, testModel === "__auto__" && styles.testModelChipTextActive]}>
-                {t("settings.ai_testModelAuto", "自动选择首个可用模型")}
+                {t("settings.ai_testModelAuto", "自动")}
               </Text>
             </TouchableOpacity>
-            {ep.models.map((model) => (
-              <TouchableOpacity
-                key={model}
-                style={[styles.testModelChip, testModel === model && styles.testModelChipActive]}
-                onPress={() => setTestModel(model)}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.testModelChipText, testModel === model && styles.testModelChipTextActive]}>
-                  {model}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            {testModel !== "__auto__" && (
+              <Text style={{ fontSize: 12, color: colors.primary, fontWeight: "500" }}>{testModel}</Text>
+            )}
           </View>
+          {ep.models.length > 0 && (
+            <ModelSearchableList
+              models={ep.models}
+              activeModel={testModel === "__auto__" ? undefined : testModel}
+              onSelect={(m) => setTestModel(m)}
+              onRemove={(m) => onUpdate(ep.id, { models: ep.models.filter((x) => x !== m) }).catch(console.error)}
+              colors={colors}
+              t={t}
+            />
+          )}
         </View>
       </View>
 
@@ -321,24 +426,16 @@ export function EndpointEditor({
           </Text>
         )}
 
-        <View style={styles.modelTags}>
-          {ep.models.map((m) => {
-            const modelActive = aiConfig.activeModel === m && isActive;
-            return (
-              <View key={m} style={[styles.modelTag, modelActive && styles.modelTagActive]}>
-                <TouchableOpacity onPress={() => { setActiveEndpoint(ep.id); setActiveModel(m); }}>
-                  <Text style={[styles.modelTagText, modelActive && styles.modelTagTextActive]} numberOfLines={1}>{m}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => onUpdate(ep.id, { models: ep.models.filter((x) => x !== m) }).catch(console.error)}
-                  hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                >
-                  <XIcon size={12} color={colors.mutedForeground} />
-                </TouchableOpacity>
-              </View>
-            );
-          })}
-        </View>
+        {ep.models.length > 0 && (
+          <ModelSearchableList
+            models={ep.models}
+            activeModel={isActive ? aiConfig.activeModel : undefined}
+            onSelect={(m) => { setActiveEndpoint(ep.id); setActiveModel(m); }}
+            onRemove={(m) => onUpdate(ep.id, { models: ep.models.filter((x) => x !== m) }).catch(console.error)}
+            colors={colors}
+            t={t}
+          />
+        )}
 
         <View style={styles.addModelRow}>
           <TextInput

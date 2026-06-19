@@ -13,7 +13,7 @@ export function useAutoSync() {
     await loadBooks();
     repairMissingCovers().then((n) => {
       if (n > 0) loadBooks();
-    }).catch(() => {});
+    }).catch((err) => console.warn("[Sync] Failed to repair missing covers:", err));
   }, [loadBooks]);
 
   useAutoSyncCore(onSyncComplete);

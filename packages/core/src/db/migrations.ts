@@ -85,6 +85,42 @@ const migrations: Migration[] = [
       "CREATE INDEX IF NOT EXISTS idx_books_group ON books(group_id)",
     ],
   },
+  {
+    version: 10,
+    description: "Add feedback table",
+    up: `CREATE TABLE IF NOT EXISTS feedback (
+      id TEXT PRIMARY KEY,
+      issue_number INTEGER NOT NULL,
+      issue_url TEXT NOT NULL,
+      title TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'other',
+      status TEXT NOT NULL DEFAULT 'open',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER
+    )`,
+  },
+  {
+    version: 11,
+    description: "Track feedback replies",
+    up: [
+      "ALTER TABLE feedback ADD COLUMN has_new_reply INTEGER NOT NULL DEFAULT 0",
+      "ALTER TABLE feedback ADD COLUMN comment_count INTEGER NOT NULL DEFAULT 0",
+    ],
+  },
+  {
+    version: 12,
+    description: "Add user rating and reviews to books",
+    up: ["ALTER TABLE books ADD COLUMN rating REAL", "ALTER TABLE books ADD COLUMN reviews TEXT"],
+  },
+  {
+    version: 13,
+    description: "Add rolling memory summary to chat threads",
+    up: [
+      "ALTER TABLE threads ADD COLUMN memory_summary TEXT",
+      "ALTER TABLE threads ADD COLUMN memory_updated_at INTEGER",
+      "ALTER TABLE threads ADD COLUMN memory_message_count INTEGER DEFAULT 0",
+    ],
+  },
 ];
 
 /** Run pending migrations */

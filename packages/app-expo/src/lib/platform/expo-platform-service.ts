@@ -13,6 +13,7 @@ import i18n from "@readany/core/i18n";
 import type {
   FetchOptions,
   FilePickerOptions,
+  FileTransferOptions,
   IDatabase,
   IPlatformService,
   IWebSocket,
@@ -273,7 +274,8 @@ export class ExpoPlatformService implements IPlatformService {
   // ---- Network ----
 
   async fetch(url: string, options?: FetchOptions): Promise<Response> {
-    const { allowInsecure, timeoutMs, responseType, ...fetchOptions } = options ?? {};
+    const { allowInsecure, timeoutMs, responseType, onDownloadProgress, ...fetchOptions } =
+      options ?? {};
     const effectiveUrl = allowInsecure ? url.replace(/^https:\/\//i, "http://") : url;
     const method = fetchOptions?.method?.toUpperCase() || "GET";
 
@@ -281,7 +283,64 @@ export class ExpoPlatformService implements IPlatformService {
     // React Native's fetch has issues with large arrayBuffer responses
     const resolvedResponseType = responseType ?? (method === "GET" ? "arraybuffer" : "text");
     const effectiveTimeoutMs = timeoutMs ?? (method === "GET" ? 120000 : 15000);
-    return this._fetchWithXHR(effectiveUrl, fetchOptions, resolvedResponseType, effectiveTimeoutMs);
+    return this._fetchWithXHR(
+      effectiveUrl,
+      fetchOptions,
+      resolvedResponseType,
+      effectiveTimeoutMs,
+      onDownloadProgress,
+    );
+  }
+
+  async downloadFile(url: string, filePath: string, options?: FileTransferOptions): Promise<void> {
+    const effectiveUrl = options?.allowInsecure ? url.replace(/^https:\/\//i, "http://") : url;
+    const task = LegacyFS.createDownloadResumable(
+      effectiveUrl,
+      filePath,
+      {
+        headers: options?.headers,
+        sessionType: LegacyFS.FileSystemSessionType.FOREGROUND,
+      },
+      (progress) => {
+        options?.onProgress?.(
+          progress.totalBytesWritten,
+          progress.totalBytesExpectedToWrite > 0 ? progress.totalBytesExpectedToWrite : 0,
+        );
+      },
+    );
+
+    const result = await task.downloadAsync();
+    if (!result) {
+      throw new Error(`File download cancelled: ${effectiveUrl}`);
+    }
+    if (result.status < 200 || result.status >= 300) {
+      throw new Error(`File download failed: ${result.status}`);
+    }
+  }
+
+  async uploadFile(url: string, filePath: string, options?: FileTransferOptions): Promise<void> {
+    const effectiveUrl = options?.allowInsecure ? url.replace(/^https:\/\//i, "http://") : url;
+    const task = LegacyFS.createUploadTask(
+      effectiveUrl,
+      filePath,
+      {
+        headers: options?.headers,
+        httpMethod: "PUT",
+        uploadType: LegacyFS.FileSystemUploadType.BINARY_CONTENT,
+        sessionType: LegacyFS.FileSystemSessionType.FOREGROUND,
+      },
+      (progress) => {
+        options?.onProgress?.(progress.totalBytesSent, progress.totalBytesExpectedToSend);
+      },
+    );
+
+    const result = await task.uploadAsync();
+    if (!result) {
+      throw new Error(`File upload cancelled: ${effectiveUrl}`);
+    }
+    if (result.status < 200 || result.status >= 300) {
+      throw new Error(`File upload failed: ${result.status}`);
+    }
   }
 
   private _fetchWithXHR(
@@ -289,6 +348,7 @@ export class ExpoPlatformService implements IPlatformService {
     options?: RequestInit,
     responseType: XMLHttpRequestResponseType = "arraybuffer",
     timeoutMs = 120000,
+    onDownloadProgress?: (loaded: number, total: number) => void,
   ): Promise<Response> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
@@ -300,6 +360,13 @@ export class ExpoPlatformService implements IPlatformService {
       xhr.open(method, url, true);
       xhr.responseType = responseType;
       xhr.timeout = timeoutMs;
+
+      // Download progress tracking
+      if (onDownloadProgress) {
+        xhr.onprogress = (event) => {
+          onDownloadProgress(event.loaded, event.lengthComputable ? event.total : 0);
+        };
+      }
 
       // Set headers
       if (options?.headers) {
@@ -366,7 +433,15 @@ export class ExpoPlatformService implements IPlatformService {
             },
             arrayBuffer: async () => {
               if (responseType === "arraybuffer") {
-                return xhr.response as ArrayBuffer;
+                if (xhr.response instanceof ArrayBuffer) {
+                  return xhr.response;
+                }
+                if (xhr.response instanceof Blob) {
+                  return xhr.response.arrayBuffer();
+                }
+                throw new Error(
+                  `Expected arraybuffer response for ${method} ${url}, got ${Object.prototype.toString.call(xhr.response)}`,
+                );
               }
               return new TextEncoder().encode(textResponse).buffer;
             },
@@ -775,6 +850,7 @@ function extensionToMime(ext: string): string {
     fb2: "application/x-fictionbook+xml",
     fbz: "application/x-zip-compressed-fb2",
     txt: "text/plain",
+    umd: "application/octet-stream",
     zip: "application/zip",
   };
   return map[ext.toLowerCase()] || "application/octet-stream";

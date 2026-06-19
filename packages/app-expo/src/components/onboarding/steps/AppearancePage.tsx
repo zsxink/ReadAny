@@ -43,7 +43,8 @@ export function AppearancePage() {
     try {
       const { changeAndPersistLanguage } = await import("@readany/core/i18n");
       await changeAndPersistLanguage(code);
-    } catch {
+    } catch (err) {
+      console.warn("[Settings] Failed to change and persist language:", err);
       i18n.changeLanguage(code);
     }
   };

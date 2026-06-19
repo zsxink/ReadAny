@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---- Mocks ----
 vi.mock("../../db/database", () => ({
@@ -12,6 +12,10 @@ vi.mock("../../db/database", () => ({
   getSkills: vi.fn(),
   getReadingSessionsByDateRange: vi.fn(),
   updateBook: vi.fn(),
+  getGroups: vi.fn(),
+  insertGroup: vi.fn(),
+  updateGroup: vi.fn(),
+  deleteGroup: vi.fn(),
 }));
 
 vi.mock("../../rag/search", () => ({
@@ -40,25 +44,36 @@ vi.mock("../skills/builtin-skills", () => ({
 }));
 
 import {
-  getBooks,
-  getBook,
-  getChunks,
-  getHighlights,
-  getNotes,
+  deleteGroup,
   getAllHighlights,
   getAllNotes,
+  getBook,
+  getBooks,
+  getChunks,
   getSkills as getDbSkills,
+  getGroups,
+  getHighlights,
+  getNotes,
   getReadingSessionsByDateRange,
+  insertGroup,
   updateBook,
+  updateGroup,
 } from "../../db/database";
-import { search } from "../../rag/search";
 import { emitLibraryChanged } from "../../events/library-events";
+import { search } from "../../rag/search";
 import { loadFromFS } from "../../stores/persist";
+import { setFallbackContentProvider } from "../fallback-content-service";
 import { getAvailableTools } from "../tools";
+
+afterEach(() => {
+  setFallbackContentProvider(null);
+});
 
 // ---- Helpers ----
 function findTool(tools: ReturnType<typeof getAvailableTools>, name: string) {
-  return tools.find((t) => t.name === name)!;
+  const tool = tools.find((t) => t.name === name);
+  if (!tool) throw new Error(`Tool not found: ${name}`);
+  return tool;
 }
 
 function makeChunk(overrides: Record<string, unknown> = {}) {
@@ -99,7 +114,10 @@ function makeBook(overrides: Record<string, unknown> = {}) {
 // getAvailableTools — assembly logic
 // ============================================
 describe("getAvailableTools", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setFallbackContentProvider(null);
+  });
 
   it("should return general tools when no bookId", () => {
     const tools = getAvailableTools({ bookId: null, isVectorized: false, enabledSkills: [] });
@@ -113,12 +131,24 @@ describe("getAvailableTools", () => {
     expect(names).toContain("classifyBooks");
     expect(names).toContain("tagBooks");
     expect(names).toContain("manageBookTags");
+    expect(names).toContain("updateBookMetadata");
+    expect(names).toContain("manageBookGroups");
     // Should NOT have book-specific tools
     expect(names).not.toContain("ragSearch");
     expect(names).not.toContain("getAnnotations");
   });
 
-  it("should include annotation tools when bookId provided", () => {
+  it("should register fallback exploration tools for non-vectorized books", () => {
+    const tools = getAvailableTools({ bookId: "book-1", isVectorized: false, enabledSkills: [] });
+    const names = tools.map((t) => t.name);
+
+    expect(names).toContain("fallbackToc");
+    expect(names).toContain("fallbackSearch");
+    expect(names).toContain("fallbackChapterContext");
+    expect(names).not.toContain("ragSearch");
+  });
+
+  it("should include annotations and validated citations for non-vectorized books", () => {
     const tools = getAvailableTools({ bookId: "book-1", isVectorized: false, enabledSkills: [] });
     const names = tools.map((t) => t.name);
     expect(names).toContain("getAnnotations");
@@ -138,6 +168,8 @@ describe("getAvailableTools", () => {
     expect(names).toContain("analyzeArguments");
     expect(names).toContain("findQuotes");
     expect(names).toContain("compareSections");
+    expect(names).toContain("getAnnotations");
+    expect(names).toContain("addCitation");
   });
 
   it("should include custom skill tools", () => {
@@ -148,7 +180,9 @@ describe("getAvailableTools", () => {
       prompt: "Do the thing",
       enabled: true,
       builtIn: false,
-      parameters: [{ name: "input", type: "string" as const, description: "Input text", required: true }],
+      parameters: [
+        { name: "input", type: "string" as const, description: "Input text", required: true },
+      ],
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -168,7 +202,10 @@ describe("listBooks tool", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("should return all books", async () => {
-    vi.mocked(getBooks).mockResolvedValue([makeBook(), makeBook({ id: "book-2", meta: { title: "Book 2", author: "Author 2" } })] as any);
+    vi.mocked(getBooks).mockResolvedValue([
+      makeBook(),
+      makeBook({ id: "book-2", meta: { title: "Book 2", author: "Author 2" } }),
+    ] as any);
 
     const tools = getAvailableTools({ bookId: null, isVectorized: false, enabledSkills: [] });
     const tool = findTool(tools, "listBooks");
@@ -515,7 +552,11 @@ describe("compareSections tool", () => {
 
     const tools = getAvailableTools({ bookId: "book-1", isVectorized: true, enabledSkills: [] });
     const tool = findTool(tools, "compareSections");
-    const result = (await tool.execute({ chapterIndex1: 0, chapterIndex2: 1, compareType: "themes" })) as any;
+    const result = (await tool.execute({
+      chapterIndex1: 0,
+      chapterIndex2: 1,
+      compareType: "themes",
+    })) as any;
 
     expect(result.chapter1.title).toBe("Intro");
     expect(result.chapter2.title).toBe("Conclusion");
@@ -536,6 +577,85 @@ describe("compareSections tool", () => {
 });
 
 // ============================================
+// fallback content tools
+// ============================================
+describe("fallback content tools", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  function registerFallbackChapters() {
+    vi.mocked(getBook).mockResolvedValue(makeBook({ isVectorized: false }) as any);
+    setFallbackContentProvider({
+      async getChapters() {
+        return [
+          {
+            index: 0,
+            title: "Chapter 1",
+            content:
+              "Opening paragraph.\n\nThe target passage explains how fallback citations find their position.",
+            segments: [
+              { text: "Opening paragraph.", cfi: "epubcfi(/6/2!/4/2)" },
+              {
+                text: "The target passage explains how fallback citations find their position.",
+                cfi: "epubcfi(/6/2!/4/4)",
+              },
+            ],
+          },
+        ];
+      },
+    });
+  }
+
+  it("returns a segment CFI for fallback search matches", async () => {
+    registerFallbackChapters();
+
+    const tools = getAvailableTools({ bookId: "book-1", isVectorized: false, enabledSkills: [] });
+    const tool = findTool(tools, "fallbackSearch");
+    const result = (await tool.execute({ query: "target passage", topK: 1 })) as any;
+
+    expect(result.results[0].chapterTitle).toBe("Chapter 1");
+    expect(result.results[0].cfi).toBe("epubcfi(/6/2!/4/4)");
+    expect(result.results[0].cfiPrecision).toBe("segment");
+  });
+
+  it("registers fallback citations only when quoted text resolves to a segment CFI", async () => {
+    registerFallbackChapters();
+    vi.mocked(getChunks).mockResolvedValue([]);
+
+    const tools = getAvailableTools({ bookId: "book-1", isVectorized: false, enabledSkills: [] });
+    const tool = findTool(tools, "addCitation");
+    const result = (await tool.execute({
+      citationIndex: 1,
+      chapterTitle: "Chapter 1",
+      chapterIndex: 0,
+      cfi: "",
+      quotedText: "target passage explains",
+      reasoning: "fallback source",
+    })) as any;
+
+    expect(result.type).toBe("citation");
+    expect(result.cfi).toBe("epubcfi(/6/2!/4/4)");
+  });
+
+  it("rejects fallback citations that cannot be resolved", async () => {
+    registerFallbackChapters();
+    vi.mocked(getChunks).mockResolvedValue([]);
+
+    const tools = getAvailableTools({ bookId: "book-1", isVectorized: false, enabledSkills: [] });
+    const tool = findTool(tools, "addCitation");
+    const result = (await tool.execute({
+      citationIndex: 1,
+      chapterTitle: "Chapter 1",
+      chapterIndex: 0,
+      cfi: "epubcfi(/fake)",
+      quotedText: "not in this chapter",
+      reasoning: "fallback source",
+    })) as any;
+
+    expect(result.error).toContain("Could not resolve a precise CFI");
+  });
+});
+
+// ============================================
 // getAnnotations tool
 // ============================================
 describe("getAnnotations tool", () => {
@@ -549,7 +669,7 @@ describe("getAnnotations tool", () => {
       { title: "Note 1", content: "Note content", chapterTitle: "Ch 1" },
     ] as any);
 
-    const tools = getAvailableTools({ bookId: "book-1", isVectorized: false, enabledSkills: [] });
+    const tools = getAvailableTools({ bookId: "book-1", isVectorized: true, enabledSkills: [] });
     const tool = findTool(tools, "getAnnotations");
     const result = (await tool.execute({ type: "all" })) as any;
 
@@ -564,7 +684,7 @@ describe("getAnnotations tool", () => {
       { text: "Highlight", chapterTitle: "Ch 1", color: "blue" },
     ] as any);
 
-    const tools = getAvailableTools({ bookId: "book-1", isVectorized: false, enabledSkills: [] });
+    const tools = getAvailableTools({ bookId: "book-1", isVectorized: true, enabledSkills: [] });
     const tool = findTool(tools, "getAnnotations");
     const result = (await tool.execute({ type: "highlights" })) as any;
 
@@ -577,7 +697,7 @@ describe("getAnnotations tool", () => {
       { title: "My Note", content: "Content", chapterTitle: "Ch 1" },
     ] as any);
 
-    const tools = getAvailableTools({ bookId: "book-1", isVectorized: false, enabledSkills: [] });
+    const tools = getAvailableTools({ bookId: "book-1", isVectorized: true, enabledSkills: [] });
     const tool = findTool(tools, "getAnnotations");
     const result = (await tool.execute({ type: "notes" })) as any;
 
@@ -603,7 +723,7 @@ describe("addCitation tool", () => {
       }),
     ] as any);
 
-    const tools = getAvailableTools({ bookId: "book-1", isVectorized: false, enabledSkills: [] });
+    const tools = getAvailableTools({ bookId: "book-1", isVectorized: true, enabledSkills: [] });
     const tool = findTool(tools, "addCitation");
     const result = (await tool.execute({
       citationIndex: 1,
@@ -623,7 +743,7 @@ describe("addCitation tool", () => {
   it("should fallback to AI-provided CFI when refinement fails", async () => {
     vi.mocked(getChunks).mockRejectedValue(new Error("DB error"));
 
-    const tools = getAvailableTools({ bookId: "book-1", isVectorized: false, enabledSkills: [] });
+    const tools = getAvailableTools({ bookId: "book-1", isVectorized: true, enabledSkills: [] });
     const tool = findTool(tools, "addCitation");
     const result = (await tool.execute({
       citationIndex: 1,
@@ -649,7 +769,7 @@ describe("addCitation tool", () => {
       }),
     ] as any);
 
-    const tools = getAvailableTools({ bookId: "book-1", isVectorized: false, enabledSkills: [] });
+    const tools = getAvailableTools({ bookId: "book-1", isVectorized: true, enabledSkills: [] });
     const tool = findTool(tools, "addCitation");
     const result = (await tool.execute({
       citationIndex: 1,
@@ -672,7 +792,13 @@ describe("searchAllHighlights tool", () => {
 
   it("should return highlights with book titles", async () => {
     vi.mocked(getAllHighlights).mockResolvedValue([
-      { text: "Important", bookId: "b1", chapterTitle: "Ch 1", color: "yellow", createdAt: Date.now() },
+      {
+        text: "Important",
+        bookId: "b1",
+        chapterTitle: "Ch 1",
+        color: "yellow",
+        createdAt: Date.now(),
+      },
     ] as any);
     vi.mocked(getBooks).mockResolvedValue([
       makeBook({ id: "b1", meta: { title: "My Book" } }),
@@ -760,9 +886,7 @@ describe("classifyBooks tool", () => {
   it("should return specific book when bookId provided", async () => {
     vi.mocked(getBooks).mockResolvedValue([makeBook({ id: "b1" })] as any);
     vi.mocked(getBook).mockResolvedValue(makeBook({ id: "b1" }) as any);
-    vi.mocked(getChunks).mockResolvedValue([
-      makeChunk({ content: "Content" }),
-    ] as any);
+    vi.mocked(getChunks).mockResolvedValue([makeChunk({ content: "Content" })] as any);
 
     const tools = getAvailableTools({ bookId: null, isVectorized: false, enabledSkills: [] });
     const tool = findTool(tools, "classifyBooks");
@@ -821,6 +945,175 @@ describe("tagBooks tool", () => {
 
     expect(result.taggedCount).toBe(0);
     expect(result.results[0].success).toBe(false);
+  });
+});
+
+// ============================================
+// updateBookMetadata tool
+// ============================================
+describe("updateBookMetadata tool", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("should update editable book metadata", async () => {
+    vi.mocked(getBook).mockResolvedValue(makeBook({ id: "b1", tags: ["old"] }) as any);
+    vi.mocked(updateBook).mockResolvedValue(undefined);
+
+    const tools = getAvailableTools({ bookId: null, isVectorized: false, enabledSkills: [] });
+    const tool = findTool(tools, "updateBookMetadata");
+    const result = (await tool.execute({
+      reasoning: "test",
+      bookId: "b1",
+      updates: JSON.stringify({
+        title: "New Title",
+        author: "New Author",
+        publisher: "ReadAny Press",
+        tags: ["literature", "classic"],
+        rating: 4.5,
+      }),
+    })) as any;
+
+    expect(result.success).toBe(true);
+    expect(result.changedFields).toEqual(["title", "author", "publisher", "rating", "tags"]);
+    expect(updateBook).toHaveBeenCalledWith(
+      "b1",
+      expect.objectContaining({
+        tags: ["literature", "classic"],
+        meta: expect.objectContaining({
+          title: "New Title",
+          author: "New Author",
+          publisher: "ReadAny Press",
+          rating: 4.5,
+        }),
+      }),
+    );
+    expect(emitLibraryChanged).toHaveBeenCalled();
+  });
+
+  it("should validate group when updating groupId", async () => {
+    vi.mocked(getBook).mockResolvedValue(makeBook({ id: "b1" }) as any);
+    vi.mocked(getGroups).mockResolvedValue([
+      { id: "g1", name: "Fiction", sortOrder: 1, createdAt: 1, updatedAt: 1 },
+    ] as any);
+    vi.mocked(updateBook).mockResolvedValue(undefined);
+
+    const tools = getAvailableTools({ bookId: null, isVectorized: false, enabledSkills: [] });
+    const tool = findTool(tools, "updateBookMetadata");
+    const result = (await tool.execute({
+      reasoning: "test",
+      bookId: "b1",
+      updates: JSON.stringify({ groupId: "g1" }),
+    })) as any;
+
+    expect(result.success).toBe(true);
+    expect(updateBook).toHaveBeenCalledWith("b1", { groupId: "g1" });
+  });
+
+  it("should reject unknown groupId", async () => {
+    vi.mocked(getBook).mockResolvedValue(makeBook({ id: "b1" }) as any);
+    vi.mocked(getGroups).mockResolvedValue([] as any);
+
+    const tools = getAvailableTools({ bookId: null, isVectorized: false, enabledSkills: [] });
+    const tool = findTool(tools, "updateBookMetadata");
+    const result = (await tool.execute({
+      reasoning: "test",
+      bookId: "b1",
+      updates: JSON.stringify({ groupId: "missing" }),
+    })) as any;
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Group not found");
+    expect(updateBook).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================
+// manageBookGroups tool
+// ============================================
+describe("manageBookGroups tool", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("list: should return groups with book counts", async () => {
+    vi.mocked(getGroups).mockResolvedValue([
+      { id: "g1", name: "Fiction", sortOrder: 1, createdAt: 1, updatedAt: 1 },
+    ] as any);
+    vi.mocked(getBooks).mockResolvedValue([
+      makeBook({ id: "b1", groupId: "g1" }),
+      makeBook({ id: "b2", groupId: undefined }),
+    ] as any);
+
+    const tools = getAvailableTools({ bookId: null, isVectorized: false, enabledSkills: [] });
+    const tool = findTool(tools, "manageBookGroups");
+    const result = (await tool.execute({ reasoning: "test", action: "list" })) as any;
+
+    expect(result.success).toBe(true);
+    expect(result.groups[0]).toMatchObject({ id: "g1", name: "Fiction", bookCount: 1 });
+    expect(result.uncategorizedCount).toBe(1);
+  });
+
+  it("create: should create a group", async () => {
+    const group = { id: "g1", name: "Fiction", sortOrder: 1, createdAt: 1, updatedAt: 1 };
+    vi.mocked(getGroups).mockResolvedValue([] as any);
+    vi.mocked(insertGroup).mockResolvedValue(group as any);
+
+    const tools = getAvailableTools({ bookId: null, isVectorized: false, enabledSkills: [] });
+    const tool = findTool(tools, "manageBookGroups");
+    const result = (await tool.execute({
+      reasoning: "test",
+      action: "create",
+      name: "Fiction",
+    })) as any;
+
+    expect(result.success).toBe(true);
+    expect(insertGroup).toHaveBeenCalledWith({ name: "Fiction" });
+    expect(emitLibraryChanged).toHaveBeenCalled();
+  });
+
+  it("moveBooks: should move books into a group", async () => {
+    vi.mocked(getGroups).mockResolvedValue([
+      { id: "g1", name: "Fiction", sortOrder: 1, createdAt: 1, updatedAt: 1 },
+    ] as any);
+    vi.mocked(getBook).mockResolvedValue(makeBook({ id: "b1" }) as any);
+    vi.mocked(updateBook).mockResolvedValue(undefined);
+
+    const tools = getAvailableTools({ bookId: null, isVectorized: false, enabledSkills: [] });
+    const tool = findTool(tools, "manageBookGroups");
+    const result = (await tool.execute({
+      reasoning: "test",
+      action: "moveBooks",
+      groupId: "g1",
+      bookIds: JSON.stringify(["b1"]),
+    })) as any;
+
+    expect(result.success).toBe(true);
+    expect(result.movedCount).toBe(1);
+    expect(updateBook).toHaveBeenCalledWith("b1", { groupId: "g1" });
+  });
+
+  it("rename/delete: should update group records", async () => {
+    vi.mocked(getGroups).mockResolvedValue([
+      { id: "g1", name: "Old", sortOrder: 1, createdAt: 1, updatedAt: 1 },
+    ] as any);
+    vi.mocked(updateGroup).mockResolvedValue(undefined);
+    vi.mocked(deleteGroup).mockResolvedValue(undefined);
+
+    const tools = getAvailableTools({ bookId: null, isVectorized: false, enabledSkills: [] });
+    const tool = findTool(tools, "manageBookGroups");
+    const renamed = (await tool.execute({
+      reasoning: "test",
+      action: "rename",
+      groupId: "g1",
+      name: "New",
+    })) as any;
+    const deleted = (await tool.execute({
+      reasoning: "test",
+      action: "delete",
+      groupId: "g1",
+    })) as any;
+
+    expect(renamed.success).toBe(true);
+    expect(deleted.success).toBe(true);
+    expect(updateGroup).toHaveBeenCalledWith("g1", { name: "New" });
+    expect(deleteGroup).toHaveBeenCalledWith("g1");
   });
 });
 
@@ -887,7 +1180,9 @@ describe("manageBookTags tool", () => {
   });
 
   it("removeFromBook: should remove tags from specific book", async () => {
-    vi.mocked(getBook).mockResolvedValue(makeBook({ id: "b1", tags: ["tag1", "tag2", "tag3"] }) as any);
+    vi.mocked(getBook).mockResolvedValue(
+      makeBook({ id: "b1", tags: ["tag1", "tag2", "tag3"] }) as any,
+    );
     vi.mocked(updateBook).mockResolvedValue(undefined);
 
     const tools = getAvailableTools({ bookId: null, isVectorized: false, enabledSkills: [] });
@@ -954,7 +1249,11 @@ describe("mindmap tool", () => {
     const tool = findTool(tools, "mindmap");
 
     const mermaidInput = "mindmap\n  Root\n    Branch 1\n      Leaf A\n    Branch 2";
-    const result = (await tool.execute({ reasoning: "test", title: "Test", markdown: mermaidInput })) as any;
+    const result = (await tool.execute({
+      reasoning: "test",
+      title: "Test",
+      markdown: mermaidInput,
+    })) as any;
 
     expect(result.type).toBe("mindmap");
     // Should have been converted — no longer starts with "mindmap"
@@ -967,7 +1266,11 @@ describe("mindmap tool", () => {
     const tool = findTool(tools, "mindmap");
 
     const mermaidFenced = "```mermaid\nmindmap\n  Root\n    A\n    B\n```";
-    const result = (await tool.execute({ reasoning: "test", title: "Test", markdown: mermaidFenced })) as any;
+    const result = (await tool.execute({
+      reasoning: "test",
+      title: "Test",
+      markdown: mermaidFenced,
+    })) as any;
 
     expect(result.markdown).not.toContain("```mermaid");
     expect(result.markdown).toContain("#");
@@ -983,8 +1286,24 @@ describe("getSkills tool", () => {
   it("should return matching skills", async () => {
     const { getBuiltinSkills } = await import("../skills/builtin-skills");
     vi.mocked(getBuiltinSkills).mockReturnValue([
-      { id: "mindmap", name: "思维导图", description: "Generate mindmap", prompt: "...", parameters: [], enabled: true, builtIn: true },
-      { id: "summary", name: "摘要", description: "Generate summary", prompt: "...", parameters: [], enabled: true, builtIn: true },
+      {
+        id: "mindmap",
+        name: "思维导图",
+        description: "Generate mindmap",
+        prompt: "...",
+        parameters: [],
+        enabled: true,
+        builtIn: true,
+      },
+      {
+        id: "summary",
+        name: "摘要",
+        description: "Generate summary",
+        prompt: "...",
+        parameters: [],
+        enabled: true,
+        builtIn: true,
+      },
     ] as any);
     vi.mocked(getDbSkills).mockResolvedValue([]);
 
@@ -999,7 +1318,15 @@ describe("getSkills tool", () => {
   it("should return all available skills when no match", async () => {
     const { getBuiltinSkills } = await import("../skills/builtin-skills");
     vi.mocked(getBuiltinSkills).mockReturnValue([
-      { id: "skill1", name: "Skill 1", description: "Desc", prompt: "...", parameters: [], enabled: true, builtIn: true },
+      {
+        id: "skill1",
+        name: "Skill 1",
+        description: "Desc",
+        prompt: "...",
+        parameters: [],
+        enabled: true,
+        builtIn: true,
+      },
     ] as any);
     vi.mocked(getDbSkills).mockResolvedValue([]);
 
@@ -1020,10 +1347,23 @@ describe("searchAllNotes tool", () => {
 
   it("should combine notes and highlight notes", async () => {
     vi.mocked(getAllNotes).mockResolvedValue([
-      { title: "Note 1", content: "Content 1", bookId: "b1", chapterTitle: "Ch 1", tags: ["tag1"], createdAt: Date.now() },
+      {
+        title: "Note 1",
+        content: "Content 1",
+        bookId: "b1",
+        chapterTitle: "Ch 1",
+        tags: ["tag1"],
+        createdAt: Date.now(),
+      },
     ] as any);
     vi.mocked(getAllHighlights).mockResolvedValue([
-      { text: "Highlighted text with a note", note: "My annotation", bookId: "b1", chapterTitle: "Ch 1", createdAt: Date.now() },
+      {
+        text: "Highlighted text with a note",
+        note: "My annotation",
+        bookId: "b1",
+        chapterTitle: "Ch 1",
+        createdAt: Date.now(),
+      },
     ] as any);
     vi.mocked(getBooks).mockResolvedValue([makeBook({ id: "b1" })] as any);
 

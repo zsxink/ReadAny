@@ -188,8 +188,8 @@ async function hybridSearch(query: SearchQuery): Promise<SearchResult[]> {
   // Vector search may fail if no embeddings are configured
   try {
     vectorResults = await vectorSearch(expandedQuery);
-  } catch {
-    // Fall back to BM25 only
+  } catch (err) {
+    console.warn("[Search] Vector search failed, falling back to BM25 only:", err);
   }
 
   bm25Results = await bm25Search(expandedQuery);

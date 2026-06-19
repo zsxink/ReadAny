@@ -91,9 +91,9 @@ export const makeStyles = (colors: ThemeColors, cardWidth: number) => {
       alignItems: "center", justifyContent: "center",
     },
     downloadingOverlayText: { marginTop: 6, fontSize: 14, fontWeight: fontWeight.medium, color: "#fff" },
+    downloadingOverlayPct: { marginTop: 2, fontSize: 12, color: "#fff", opacity: 0.85 },
     vecBadge: {
       position: "absolute", top: 2, left: 2,
-      flexDirection: "row", alignItems: "center", gap: 2,
       backgroundColor: "rgba(22,163,74,0.8)",
       borderRadius: radius.sm, paddingHorizontal: 4, paddingVertical: 2,
     },

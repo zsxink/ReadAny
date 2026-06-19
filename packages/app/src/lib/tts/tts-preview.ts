@@ -8,7 +8,9 @@ const dashscopePreviewPlayer = new DashScopeTTSPlayer();
 function stopPlayer(player: { stop: () => void }) {
   try {
     player.stop();
-  } catch {}
+  } catch (err) {
+    console.warn("[TTS] Failed to stop preview player:", err);
+  }
 }
 
 export function stopTTSPreview() {

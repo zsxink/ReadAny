@@ -1,4 +1,5 @@
 import type { RootStackParamList } from "@/navigation/RootNavigator";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 /**
@@ -11,14 +12,13 @@ import {
   Animated,
   Image,
   Keyboard,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -78,6 +78,7 @@ export function ChatScreen() {
   const { t } = useTranslation();
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const layout = useResponsiveLayout();
   const isTabletLandscape = layout.isTabletLandscape;
@@ -98,6 +99,10 @@ export function ChatScreen() {
   const [showSidebar, setShowSidebar] = useState(false);
   const sidebarAnim = useRef(new Animated.Value(-sidebarWidth)).current;
   const backdropAnim = useRef(new Animated.Value(0)).current;
+  const showSidebarRef = useRef(showSidebar);
+  useEffect(() => {
+    showSidebarRef.current = showSidebar;
+  }, [showSidebar]);
 
   useEffect(() => {
     if (isTabletLandscape) {
@@ -106,9 +111,10 @@ export function ChatScreen() {
       backdropAnim.setValue(0);
       return;
     }
-
-    sidebarAnim.setValue(showSidebar ? 0 : -sidebarWidth);
-  }, [backdropAnim, isTabletLandscape, showSidebar, sidebarAnim, sidebarWidth]);
+    if (!showSidebarRef.current) {
+      sidebarAnim.setValue(-sidebarWidth);
+    }
+  }, [backdropAnim, isTabletLandscape, sidebarAnim, sidebarWidth]);
 
   const openSidebar = useCallback(() => {
     if (isTabletLandscape) return;
@@ -142,7 +148,9 @@ export function ChatScreen() {
         duration: 200,
         useNativeDriver: true,
       }),
-    ]).start(() => setShowSidebar(false));
+    ]).start(({ finished }) => {
+      if (finished) setShowSidebar(false);
+    });
   }, [backdropAnim, isTabletLandscape, sidebarAnim, sidebarWidth]);
 
   // Chat store
@@ -160,34 +168,7 @@ export function ChatScreen() {
     if (!initialized) loadAllThreads();
   }, [initialized, loadAllThreads]);
 
-  const generalThreads = useMemo(() => getThreadsForContext(), [threads, getThreadsForContext]);
-
-  // Listen for keyboard events to fix scroll issues
-  useEffect(() => {
-    const keyboardDidShow = Keyboard.addListener(
-      Platform.OS === "ios" ? "keyboardDidShow" : "keyboardDidShow",
-      () => {
-        // Scroll to bottom when keyboard shows
-        setTimeout(() => {
-          // This will be handled by MessageList component
-        }, 100);
-      },
-    );
-    const keyboardDidHide = Keyboard.addListener(
-      Platform.OS === "ios" ? "keyboardDidHide" : "keyboardDidHide",
-      () => {
-        // Ensure proper layout after keyboard hides
-        setTimeout(() => {
-          // This will be handled by MessageList component
-        }, 100);
-      },
-    );
-
-    return () => {
-      keyboardDidShow.remove();
-      keyboardDidHide.remove();
-    };
-  }, []);
+  const generalThreads = getThreadsForContext();
 
   // Streaming chat
   const { isStreaming, currentMessage, currentStep, error, sendMessage, stopStream } =
@@ -291,14 +272,19 @@ export function ChatScreen() {
     const olderByMonth = new Map<string, typeof generalThreads>();
     for (const thread of grouped.older) {
       const monthLabel = getMonthLabel(thread.updatedAt);
-      if (!olderByMonth.has(monthLabel)) {
-        olderByMonth.set(monthLabel, []);
+      let monthThreads = olderByMonth.get(monthLabel);
+      if (!monthThreads) {
+        monthThreads = [];
+        olderByMonth.set(monthLabel, monthThreads);
       }
-      olderByMonth.get(monthLabel)!.push(thread);
+      monthThreads.push(thread);
     }
     const sortedMonths = [...olderByMonth.keys()].sort((a, b) => b.localeCompare(a));
     for (const month of sortedMonths) {
-      sections.push({ key: month, label: month, threads: olderByMonth.get(month)! });
+      const monthThreads = olderByMonth.get(month);
+      if (monthThreads) {
+        sections.push({ key: month, label: month, threads: monthThreads });
+      }
     }
 
     return sections;
@@ -474,11 +460,7 @@ export function ChatScreen() {
           </View>
 
           {/* Content */}
-          <KeyboardAvoidingView
-            style={s.content}
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            keyboardVerticalOffset={0}
-          >
+          <View style={s.content}>
             <View style={s.content}>
               {allMessages.length > 0 ? (
                 <MessageList
@@ -487,15 +469,24 @@ export function ChatScreen() {
                   currentStep={currentStep}
                 />
               ) : (
-                <EmptyState
-                  colors={colors}
-                  onSuggestionPress={handleSend}
-                  compact={isTabletLandscape}
-                />
+                <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+                  <View style={s.content}>
+                    <EmptyState
+                      colors={colors}
+                      onSuggestionPress={handleSend}
+                      compact={isTabletLandscape}
+                    />
+                  </View>
+                </TouchableWithoutFeedback>
               )}
             </View>
-            <ChatInput onSend={handleSend} onStop={stopStream} isStreaming={isStreaming} />
-          </KeyboardAvoidingView>
+            <ChatInput
+              onSend={handleSend}
+              onStop={stopStream}
+              isStreaming={isStreaming}
+              keyboardBottomOffset={tabBarHeight}
+            />
+          </View>
         </View>
       </View>
 
@@ -509,9 +500,15 @@ export function ChatScreen() {
       )}
 
       {/* Thread sidebar overlay */}
-      {showSidebar && !isTabletLandscape && (
-        <View style={[StyleSheet.absoluteFill, { zIndex: 20 }]} pointerEvents="box-none">
-          <Animated.View style={[s.sidebarBackdrop, { opacity: backdropAnim }]}>
+      {!isTabletLandscape && (
+        <View
+          style={[StyleSheet.absoluteFill, { zIndex: 20 }]}
+          pointerEvents={showSidebar ? "box-none" : "none"}
+        >
+          <Animated.View
+            style={[s.sidebarBackdrop, { opacity: backdropAnim }]}
+            pointerEvents={showSidebar ? "auto" : "none"}
+          >
             <Pressable style={StyleSheet.absoluteFill} onPress={closeSidebar} />
           </Animated.View>
           <Animated.View

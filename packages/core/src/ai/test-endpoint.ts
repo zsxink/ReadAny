@@ -109,7 +109,31 @@ async function fetchJson(
       contentType: response.headers.get("content-type"),
     });
   }
-  return response.json();
+  const rawBody = await response.text();
+  try {
+    return JSON.parse(rawBody);
+  } catch {
+    const contentType = response.headers.get("content-type") || "";
+    if (debug) {
+      logAIEndpointDebug("error", debug.endpoint, {
+        action: debug.action,
+        method: init?.method || "GET",
+        requestUrl: url,
+        model: debug.model,
+        status: response.status,
+        statusText: response.statusText,
+        contentType,
+        responseLength: rawBody.length,
+        responseBodyPreview: summarizeDebugText(rawBody),
+      });
+    }
+    const lookedLikeHtml = /^\s*<(!doctype|html)/i.test(rawBody) || contentType.includes("html");
+    throw new Error(
+      lookedLikeHtml
+        ? `Endpoint returned an HTML page instead of JSON (${url}). Make sure the base URL starts with http:// or https:// and points to the API root.`
+        : `Endpoint did not return JSON (${url}). Make sure the base URL starts with http:// or https:// and points to the API root.`,
+    );
+  }
 }
 
 async function listOpenAICompatibleModels(endpoint: AIEndpoint): Promise<string[]> {
@@ -173,25 +197,35 @@ async function listAnthropicModels(endpoint: AIEndpoint): Promise<string[]> {
 }
 
 async function listGoogleModels(endpoint: AIEndpoint): Promise<string[]> {
-  const requestUrl = buildProviderModelsUrl(
-    "google",
-    endpoint.baseUrl,
-    endpoint.apiKey,
-    endpoint.useExactRequestUrl,
-  );
+  // Use OpenAI-compatible endpoint to list models — ensures returned models
+  // actually work with the OpenAI-compatible chat endpoint we use for streaming.
+  const baseUrl = endpoint.baseUrl?.trim() || "https://generativelanguage.googleapis.com/v1beta/openai";
+  const modelsUrl = `${baseUrl.replace(/\/+$/, "")}/models`;
 
   try {
-    const data = await fetchJson(requestUrl, undefined, {
+    const headers: Record<string, string> = {};
+    if (endpoint.apiKey) {
+      headers.Authorization = `Bearer ${endpoint.apiKey}`;
+    }
+    const data = await fetchJson(modelsUrl, { headers }, {
       endpoint,
       action: "list-models",
     });
-    return (data.models || [])
-      .filter((model: { supportedGenerationMethods?: string[] }) =>
-        model.supportedGenerationMethods?.includes("generateContent"),
-      )
-      .map((model: { name: string }) => normalizeGoogleModel(model.name))
-      .filter(Boolean)
+    const models = (data.data || [])
+      .map((model: { id: string }) => model.id)
+      .filter((id: string) => {
+        if (!id) return false;
+        // Filter out non-chat models (robotics, embedding, clip, image-gen, etc.)
+        const lower = id.toLowerCase();
+        if (lower.includes("robotics")) return false;
+        if (lower.includes("embedding") || lower.includes("embed")) return false;
+        if (lower.includes("clip") || lower.includes("lyria")) return false;
+        if (lower.includes("imagen") || lower.includes("veo")) return false;
+        if (lower.includes("gemma") && lower.includes("b-")) return false; // gemma weight variants
+        return true;
+      })
       .sort((a: string, b: string) => a.localeCompare(b));
+    return models.length > 0 ? models : [...GOOGLE_FALLBACK_MODELS];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes("403") || message.includes("404")) {

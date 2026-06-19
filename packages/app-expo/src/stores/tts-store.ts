@@ -66,7 +66,9 @@ function detachAndStopPlayer(player: ITTSPlayer | null): void {
   player.onEnd = undefined;
   try {
     player.stop();
-  } catch {}
+  } catch (err) {
+    console.warn("[TTS] Failed to stop player:", err);
+  }
 }
 
 function detachAndStopAllPlayers(): void {
@@ -430,10 +432,10 @@ export const useTTSStore = create<TTSState>()(
                 title: chapter || title,
                 artist: title,
                 ...(artwork ? { artwork } : {}),
-              }).catch(() => {});
+              }).catch((err) => console.warn("[TTS] Failed to update track metadata:", err));
             }
           })
-          .catch(() => {});
+          .catch((err) => console.warn("[TTS] Failed to get active track index:", err));
       },
 
       setCurrentLocation: (cfi) => set({ currentLocationCfi: cfi ?? "" }),

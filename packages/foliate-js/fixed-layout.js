@@ -270,6 +270,7 @@ export class FixedLayout extends HTMLElement {
   }
   get index() {
     const spread = this.#spreads[this.#index];
+    if (!spread) return -1;
     const section =
       spread?.center ??
       (this.#side === "left" ? (spread.left ?? spread.right) : (spread.right ?? spread.left));
@@ -321,9 +322,12 @@ export class FixedLayout extends HTMLElement {
   async goTo(target) {
     const { book } = this;
     const resolved = await target;
+    if (!resolved || typeof resolved.index !== "number") return;
     const section = book.sections[resolved.index];
     if (!section) return;
-    const { index, side } = this.getSpreadOf(section);
+    const spread = this.getSpreadOf(section);
+    if (!spread) return;
+    const { index, side } = spread;
     await this.goToSpread(index, side);
   }
   async next() {

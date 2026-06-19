@@ -17,8 +17,8 @@ export function emitLibraryChanged(deletedTags?: string[]): void {
   for (const fn of listeners) {
     try {
       fn(deletedTags);
-    } catch {
-      /* listener errors should not break tools */
+    } catch (err) {
+      console.warn("[Library] Listener error in emitLibraryChanged:", err);
     }
   }
 }

@@ -277,7 +277,7 @@ export default function StatsScreen() {
 
   useEffect(() => {
     if (report) {
-      readingReportsService.getAllDailyFacts(currentSession).then(setAllFacts).catch(() => {});
+      readingReportsService.getAllDailyFacts(currentSession).then(setAllFacts).catch((err) => console.warn("[Stats] Failed to load daily facts:", err));
     }
   }, [currentSession, report]);
 

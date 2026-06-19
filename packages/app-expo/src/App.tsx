@@ -26,7 +26,7 @@ import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Text, View } from "react-native";
+import { LogBox, Platform, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -34,13 +34,14 @@ import { AnimatedSplash } from "@/components/splash/AnimatedSplash";
 import { rnSessionEventSource } from "@/hooks";
 import { setStreamingFetch } from "@readany/core/ai/llm-provider";
 import { initDatabase } from "@readany/core/db/database";
+import { installFeedbackLogCapture, setFeedbackWorkerUrl } from "@readany/core/feedback";
 import { setSessionEventSource } from "@readany/core/hooks/use-reading-session";
 import { i18nReady, initI18nLanguage } from "@readany/core/i18n";
 import i18n from "@readany/core/i18n";
 import { setPlatformService } from "@readany/core/services";
 import { setSyncAdapter } from "@readany/core/sync";
-import { I18nextProvider } from "react-i18next";
 import { Audio } from "expo-av";
+import { I18nextProvider } from "react-i18next";
 import TrackPlayer, { Event as TrackEvent, Capability } from "react-native-track-player";
 
 import { FloatingTTSBubble } from "@/components/tts/FloatingTTSBubble";
@@ -53,6 +54,23 @@ import { RootNavigator } from "@/navigation/RootNavigator";
 import { useLibraryStore } from "@/stores/library-store";
 import { ThemeProvider, useTheme } from "@/styles/ThemeContext";
 import { useAutoSync } from "@readany/core/hooks/use-auto-sync";
+
+installFeedbackLogCapture();
+
+// iOS New-Arch + expo-dev-client cold-start: when dev-client swaps its boot
+// RCTInstance for the app's instance, RCTTurboModuleManager waits up to 10s for
+// every TurboModule's invalidate to return. If any module's method queue is slow
+// (e.g. react-native-track-player v4, whose v4 branch is frozen and does not
+// fully support RN 0.81 New Arch), the wait times out and prints RCTLogError —
+// triggering a red-box. State clears correctly afterwards (see
+// RCTTurboModuleManager.mm:1105), so the warning is purely cosmetic dev noise.
+if (Platform.OS === "ios") {
+  LogBox.ignoreLogs([/TurboModuleManager: Timed out waiting for modules to be invalidated/]);
+}
+
+const FEEDBACK_WORKER_FALLBACK = "https://feedback.readany.top";
+const feedbackWorkerUrl = process.env.EXPO_PUBLIC_FEEDBACK_WORKER_URL?.trim() || FEEDBACK_WORKER_FALLBACK;
+setFeedbackWorkerUrl(feedbackWorkerUrl);
 
 // Keep the native splash screen visible while we bootstrap
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -97,7 +115,19 @@ export default function App() {
         });
 
         console.log("[App] bootstrap: init react-native-track-player");
-        await TrackPlayer.setupPlayer();
+        // setupPlayer can only be called once per native process. On Android,
+        // a Configuration Change (e.g. Huawei tablet small-screen → fullscreen)
+        // restarts the Activity and re-runs this bootstrap, but the native
+        // singleton is still alive — so setupPlayer() throws
+        // "The player has already been initialized via setupPlayer".
+        // Treat that specific error as success so bootstrap can continue.
+        try {
+          await TrackPlayer.setupPlayer();
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          if (!/already been initialized/i.test(msg)) throw e;
+          console.log("[App] TrackPlayer already initialized — reusing existing native instance");
+        }
         await TrackPlayer.updateOptions({
           capabilities: [
             Capability.Play,

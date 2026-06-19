@@ -71,7 +71,8 @@ async function readConfiguredRoot(): Promise<string | null> {
     const parsed = JSON.parse(raw) as { dataRoot?: string };
     const normalized = normalizeDir(parsed.dataRoot || "");
     return normalized || null;
-  } catch {
+  } catch (err) {
+    console.warn("[Storage] Failed to read desktop library root config:", err);
     return null;
   }
 }
@@ -210,8 +211,8 @@ export async function migrateDesktopLibraryRoot(nextRoot: string): Promise<Migra
   await closeDB();
   try {
     await invoke("vector_shutdown");
-  } catch {
-    // Ignore shutdown failures and fall back to best-effort file copy.
+  } catch (err) {
+    console.warn("[Storage] Vector shutdown failed during library root migration:", err);
   }
 
   await ensureTargetDirs(targetRoot);
@@ -246,8 +247,8 @@ export async function migrateDesktopLibraryRoot(nextRoot: string): Promise<Migra
   for (const sourcePath of copiedSources) {
     try {
       await remove(sourcePath);
-    } catch {
-      // Keep copied targets even if source cleanup fails.
+    } catch (err) {
+      console.warn("[Storage] Failed to remove source file after migration:", err);
     }
   }
 
@@ -270,8 +271,8 @@ export async function migrateDesktopLibraryRoot(nextRoot: string): Promise<Migra
     const { writeFile } = await import("@tauri-apps/plugin-fs");
     const indexPath = await join(targetRoot, FONTS_DIR, "custom-fonts.json");
     await writeFile(indexPath, new TextEncoder().encode(JSON.stringify({ fonts: updatedFonts, selectedFontId }, null, 2)));
-  } catch {
-    // Non-fatal: font paths may need manual fix, but books are safe
+  } catch (err) {
+    console.warn("[Storage] Failed to update font paths after migration:", err);
   }
 
   return {

@@ -6,7 +6,7 @@ import { GroupPickerPopover } from "@/components/home/GroupPickerPopover";
 import { SyncButton } from "@/components/ui/SyncButton";
 import { triggerVectorizeBook } from "@/lib/rag/vectorize-trigger";
 import { useLibraryStore } from "@/stores/library-store";
-import type { BookGroup, SortField } from "@readany/core/types";
+import type { Book, BookGroup, SortField } from "@readany/core/types";
 import {
   ArrowDownAZ,
   ArrowLeft,
@@ -24,9 +24,11 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { BookCard } from "./BookCard";
+import { BookDetailsDialog } from "./BookDetailsDialog";
 import { BookGrid } from "./BookGrid";
 import { GroupCard } from "./GroupCard";
 import { ImportDropZone } from "./ImportDropZone";
@@ -38,6 +40,19 @@ const SORT_OPTIONS: { field: SortField; labelKey: string }[] = [
   { field: "author", labelKey: "library.sortAuthor" },
   { field: "progress", labelKey: "library.sortProgress" },
 ];
+
+const SUPPORTED_EXTS = new Set([
+  "epub",
+  "pdf",
+  "mobi",
+  "azw",
+  "azw3",
+  "fb2",
+  "fbz",
+  "txt",
+  "umd",
+  "cbz",
+]);
 
 export function HomePage() {
   const { t } = useTranslation();
@@ -68,8 +83,94 @@ export function HomePage() {
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [showBatchGroupPicker, setShowBatchGroupPicker] = useState(false);
   const [showGroupMenu, setShowGroupMenu] = useState(false);
+  const [detailsBookId, setDetailsBookId] = useState<string | null>(null);
   const sortBtnRef = useRef<HTMLButtonElement>(null);
   const groupBtnRef = useRef<HTMLButtonElement>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const importBooks = useLibraryStore((s) => s.importBooks);
+  const lastDropTime = useRef(0);
+  const importBooksRef = useRef(importBooks);
+  importBooksRef.current = importBooks;
+  const tRef = useRef(t);
+  tRef.current = t;
+
+  // Use Tauri's native drag-drop event (HTML5 dataTransfer.files doesn't have paths in Tauri v2)
+  // Register ONCE — use refs to avoid re-subscribing on every render
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    (async () => {
+      try {
+        const { getCurrentWebview } = await import("@tauri-apps/api/webview");
+        const webview = getCurrentWebview();
+        unlisten = await webview.onDragDropEvent((event) => {
+          if (event.payload.type === "over") {
+            setIsDragOver(true);
+          } else if (event.payload.type === "leave") {
+            setIsDragOver(false);
+          } else if (event.payload.type === "drop") {
+            setIsDragOver(false);
+            // Guard against duplicate drop events firing within 2s
+            const now = Date.now();
+            if (now - lastDropTime.current < 2000) return;
+            lastDropTime.current = now;
+
+            const paths = (event.payload.paths || []).filter((p: string) => {
+              const ext = p.split(".").pop()?.toLowerCase() || "";
+              return SUPPORTED_EXTS.has(ext);
+            });
+            if (paths.length > 0) {
+              importBooksRef.current(paths).then((result) => {
+                toast.success(
+                  tRef.current("library.importResultSummary", {
+                    imported: result.imported.length,
+                    skipped: result.skippedDuplicates.length,
+                    failed: result.failures.length,
+                  }),
+                );
+              });
+            }
+          }
+        });
+      } catch {
+        // Not in Tauri environment (browser dev mode) — HTML5 fallback handled below
+      }
+    })();
+
+    return () => {
+      unlisten?.();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps — refs keep values fresh
+
+  // HTML5 fallback for browser dev mode (Tauri provides paths via its own event)
+  const handleFileDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragOver(false);
+      const files = e.dataTransfer.files;
+      const paths: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i] as File & { path?: string };
+        if (f.path) {
+          const ext = f.name.split(".").pop()?.toLowerCase() || "";
+          if (SUPPORTED_EXTS.has(ext)) {
+            paths.push(f.path);
+          }
+        }
+      }
+      if (paths.length > 0) {
+        const result = await importBooks(paths);
+        toast.success(
+          t("library.importResultSummary", {
+            imported: result.imported.length,
+            skipped: result.skippedDuplicates.length,
+            failed: result.failures.length,
+          }),
+        );
+      }
+    },
+    [importBooks, t],
+  );
 
   const filtered = useMemo(() => {
     let result = books.filter((b) => {
@@ -116,6 +217,14 @@ export function HomePage() {
     () => groups.find((group) => group.id === activeGroupId) ?? null,
     [groups, activeGroupId],
   );
+  const detailsBook = useMemo(
+    () => books.find((book) => book.id === detailsBookId) ?? null,
+    [books, detailsBookId],
+  );
+
+  const handleShowDetails = useCallback((book: Book) => {
+    setDetailsBookId(book.id);
+  }, []);
 
   const hasSearch = filter.search.trim().length > 0;
 
@@ -171,7 +280,6 @@ export function HomePage() {
     },
     [filter, setFilter],
   );
-
 
   const handleDeleteGroup = useCallback(
     async (group: BookGroup) => {
@@ -272,7 +380,20 @@ export function HomePage() {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div
+      className="relative flex h-full flex-col"
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={handleFileDrop}
+    >
+      {/* Drop overlay */}
+      {isDragOver && (
+        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center rounded-xl border-2 border-dashed border-primary bg-primary/5 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-2">
+            <Plus className="size-10 text-primary" />
+            <p className="text-sm font-medium text-primary">{t("home.dropToUpload")}</p>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between px-6 pt-5 pb-2">
         {selectionMode ? (
@@ -426,6 +547,9 @@ export function HomePage() {
                       <div
                         className="fixed inset-0 z-40"
                         onClick={() => setShowGroupMenu(false)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Escape") setShowGroupMenu(false);
+                        }}
                       />
                       <div className="absolute left-0 top-full z-50 mt-1 min-w-32 rounded-lg border bg-popover p-1 shadow-lg">
                         <button
@@ -525,7 +649,7 @@ export function HomePage() {
                   id="tour-add-book"
                   type="button"
                   disabled={isImporting}
-                  className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                  className="flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
                 >
                   {isImporting ? (
                     <Loader2 className="size-4 animate-spin" />
@@ -579,6 +703,7 @@ export function HomePage() {
                   isSelectionMode={selectionMode}
                   isSelected={selectedBookIds.has(item.book.id)}
                   onSelect={toggleBookSelection}
+                  onShowDetails={handleShowDetails}
                 />
               ),
             )}
@@ -589,6 +714,7 @@ export function HomePage() {
             selectionMode={selectionMode}
             selectedBookIds={selectedBookIds}
             onToggleSelect={toggleBookSelection}
+            onShowDetails={handleShowDetails}
           />
         )}
       </div>
@@ -602,6 +728,13 @@ export function HomePage() {
           anchorRef={groupBtnRef}
         />
       )}
+      <BookDetailsDialog
+        book={detailsBook}
+        open={detailsBook !== null}
+        onOpenChange={(open) => {
+          if (!open) setDetailsBookId(null);
+        }}
+      />
     </div>
   );
 }

@@ -70,7 +70,8 @@ export default function SkillsScreen() {
       });
       const customSkills = dbSkills.filter((s) => !s.builtIn);
       setSkills([...mergedSkills, ...customSkills]);
-    } catch {
+    } catch (err) {
+      console.warn("[AI] Failed to load skills from DB:", err);
       setSkills(builtinSkills);
     } finally {
       setLoading(false);
@@ -277,7 +278,7 @@ export default function SkillsScreen() {
             <Text style={s.headerTitle}>{t("skills.title", "技能")}</Text>
           </View>
           <TouchableOpacity style={s.addBtn} onPress={handleCreateSkill}>
-            <PlusIcon size={14} color={colors.foreground} />
+            <PlusIcon size={14} color={colors.primaryForeground} />
             <Text style={s.addBtnText}>{t("settings.addSkill", "添加技能")}</Text>
           </TouchableOpacity>
         </View>
@@ -396,13 +397,12 @@ const makeStyles = (colors: ThemeColors) =>
       flexDirection: "row",
       alignItems: "center",
       gap: 4,
-      borderWidth: 0.5,
-      borderColor: colors.border,
+      backgroundColor: colors.primary,
       borderRadius: radius.lg,
       paddingHorizontal: 10,
       paddingVertical: 6,
     },
-    addBtnText: { fontSize: fontSize.xs, color: colors.foreground },
+    addBtnText: { fontSize: fontSize.xs, color: colors.primaryForeground },
     scrollView: { flex: 1 },
     scrollContent: { paddingBottom: 8, alignItems: "center" },
     contentInner: { width: "100%" },

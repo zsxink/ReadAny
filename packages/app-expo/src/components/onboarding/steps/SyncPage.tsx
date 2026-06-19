@@ -1,4 +1,5 @@
 import { DarkModeSvg } from "@/components/DarkModeSvg";
+import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
 import { useTheme } from "@/styles/theme";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -11,7 +12,6 @@ import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -87,7 +87,7 @@ export function SyncPage() {
   return (
     <View style={[styles.safeArea, { backgroundColor: colors.background }]}>
       <Animated.View entering={SlideInRight.duration(500)} style={styles.container}>
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        <KeyboardAwareScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
             <View
               style={[
@@ -252,7 +252,7 @@ export function SyncPage() {
               {t("settings.testConnection", "Test Connection")}
             </Text>
           </Pressable>
-        </ScrollView>
+        </KeyboardAwareScrollView>
 
         <View
           style={[

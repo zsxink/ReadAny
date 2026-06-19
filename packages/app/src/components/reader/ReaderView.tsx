@@ -17,6 +17,7 @@ import { ReadSettingsPanel } from "@/components/settings/ReadSettings";
 import { useReadingSession } from "@/hooks/use-reading-session";
 import { useResizablePanel } from "@/hooks/use-resizable-panel";
 import { useResolvedSrc } from "@/hooks/use-resolved-src";
+import { hasSeenReaderTour, startReaderTour } from "@/lib/reader-tour";
 import { DocumentLoader } from "@/lib/reader/document-loader";
 import type { BookDoc, BookFormat } from "@/lib/reader/document-loader";
 import { isFixedLayoutBook } from "@/lib/reader/document-loader";
@@ -32,6 +33,7 @@ import { useTTSStore } from "@/stores/tts-store";
 import { useChapterTranslation } from "@readany/core/hooks";
 import { getPlatformService } from "@readany/core/services";
 import { getCSSFontFace, useFontStore, useReadingSessionStore } from "@readany/core/stores";
+import { useRubyStore } from "@readany/core/stores/ruby-store";
 import { splitNarrationText } from "@readany/core/tts";
 import type { CitationPart, HighlightColor } from "@readany/core/types";
 import { eventBus } from "@readany/core/utils/event-bus";
@@ -39,6 +41,7 @@ import { throttle } from "@readany/core/utils/throttle";
 import { X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { BookmarkRibbon } from "./BookmarkRibbon";
 import type { BookSelection, FoliateViewerHandle, RelocateDetail, TOCItem } from "./FoliateViewer";
 import { FoliateViewer } from "./FoliateViewer";
@@ -61,7 +64,7 @@ const PROGRAMMATIC_NAV_GUARD_MS = 1200;
 const BOOK_IMPORT_FILTERS = [
   {
     name: "Books",
-    extensions: ["epub", "pdf", "mobi", "azw", "azw3", "cbz", "fb2", "fbz", "txt"],
+    extensions: ["epub", "pdf", "mobi", "azw", "azw3", "cbz", "fb2", "fbz", "txt", "umd"],
   },
 ];
 
@@ -189,6 +192,7 @@ function useAutoHideControls(
   delay = 2000,
   keepVisible = false,
   isDoublePage = false,
+  isScrollMode = false,
 ) {
   const [isVisible, setIsVisible] = useState(true);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -221,33 +225,34 @@ function useAutoHideControls(
         if (data?.type !== "iframe-single-click" && data?.type !== "viewer-single-click") return;
         if (data.bookKey !== bookKey) return;
 
-        const viewRect = containerRef.current.getBoundingClientRect();
-        const viewWidth = viewRect.width;
+        const viewWidth = containerRef.current.getBoundingClientRect().width;
 
-        let windowStartX = window.screenX;
-        if ("__TAURI_INTERNALS__" in window) {
-          try {
-            const { getCurrentWindow } = await import("@tauri-apps/api/window");
-            const position = await getCurrentWindow().outerPosition();
-            windowStartX = position.x;
-          } catch {
-            windowStartX = window.screenX;
-          }
+        // Use xFraction from iframe (accounts for CSS columns scroll offset).
+        // For viewer-single-click (outside iframe), compute from clientX / viewWidth.
+        let fraction: number;
+        if (typeof data.xFraction === "number" && data.xFraction >= 0 && data.xFraction <= 1) {
+          fraction = data.xFraction;
+        } else {
+          fraction = Number(data.clientX ?? 0) / viewWidth;
         }
 
-        const clickScreenX =
-          typeof data.screenX === "number"
-            ? data.screenX
-            : windowStartX + Number(data.clientX ?? 0);
-        const viewStartX = windowStartX + viewRect.left;
+        // Double-page: left 33% = prev, right 33% = next, middle 34% = toggle
+        // Single-page: left/right 40% = nav, middle 20% = toggle
+        const leftNavEnd = isDoublePage ? 0.33 : 0.4;
+        const rightNavStart = isDoublePage ? 0.67 : 0.6;
+        const source = data.type === "iframe-single-click" ? "iframe" : "shell";
 
-        // Double-page: left 25% = prev, right 25% = next, middle 50% = toggle
-        // Single-page: left/right 37.5% = nav, middle 25% = toggle
-        const leftNavEnd = viewStartX + viewWidth * (isDoublePage ? 0.25 : 0.375);
-        const rightNavStart = viewStartX + viewWidth * (isDoublePage ? 0.75 : 0.625);
-
-        if (clickScreenX > leftNavEnd && clickScreenX < rightNavStart) {
-          // Middle zone: toggle toolbar
+        const toggleControls = () => {
+          console.log("[ReaderTap][reader:action]", {
+            bookKey,
+            source,
+            action: "toggle-controls",
+            fraction,
+            isDoublePage,
+            isScrollMode,
+            leftNavEnd,
+            rightNavStart,
+          });
           setIsVisible((prev) => {
             if (prev) {
               clearTimer();
@@ -256,15 +261,57 @@ function useAutoHideControls(
             showAndScheduleHide();
             return true;
           });
+        };
+
+        console.log("[ReaderTap][reader:message]", {
+          bookKey,
+          source,
+          rawType: data.type,
+          clientX: data.clientX,
+          xFraction: data.xFraction,
+          computedFraction: fraction,
+          viewWidth,
+          isDoublePage,
+          isScrollMode,
+          leftNavEnd,
+          rightNavStart,
+        });
+
+        if (isScrollMode) {
+          toggleControls();
+          return;
+        }
+
+        if (fraction > leftNavEnd && fraction < rightNavStart) {
+          // Middle zone: toggle toolbar
+          toggleControls();
           return;
         }
 
         clearTimer();
         setIsVisible(false);
 
-        if (clickScreenX <= leftNavEnd) {
+        if (fraction <= leftNavEnd) {
+          console.log("[ReaderTap][reader:action]", {
+            bookKey,
+            source,
+            action: "prev",
+            fraction,
+            isDoublePage,
+            leftNavEnd,
+            rightNavStart,
+          });
           onPrev?.();
         } else {
+          console.log("[ReaderTap][reader:action]", {
+            bookKey,
+            source,
+            action: "next",
+            fraction,
+            isDoublePage,
+            leftNavEnd,
+            rightNavStart,
+          });
           onNext?.();
         }
       })();
@@ -272,7 +319,16 @@ function useAutoHideControls(
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [bookKey, clearTimer, containerRef, onNext, onPrev, showAndScheduleHide, isDoublePage]);
+  }, [
+    bookKey,
+    clearTimer,
+    containerRef,
+    onNext,
+    onPrev,
+    showAndScheduleHide,
+    isDoublePage,
+    isScrollMode,
+  ]);
 
   // Mouse enter/leave handlers for toolbar area
   const handleMouseEnter = useCallback(() => {
@@ -477,14 +533,19 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     sectionIndex: currentSectionIndex,
     ready: translationReady,
     getParagraphs: () => foliateRef.current?.getChapterParagraphs() ?? [],
-    injectTranslations: (results) => foliateRef.current?.injectChapterTranslations(results),
+    injectTranslations: (results, visibility) =>
+      foliateRef.current?.injectChapterTranslations(results, visibility),
     removeTranslations: () => foliateRef.current?.removeChapterTranslations(),
     applyVisibility: (originalVisible, translationVisible) =>
       foliateRef.current?.applyChapterTranslationVisibility(originalVisible, translationVisible),
+    getCurrentCfi: () => readerTab?.currentCfi,
+    goToCfi: (cfi) => foliateRef.current?.goToCFI(cfi),
   });
 
-  // Track which highlights have been rendered (id -> {cfi, note}) to detect changes
-  const renderedHighlightsRef = useRef<Map<string, { cfi: string; hasNote: boolean }>>(new Map());
+  // Track which highlights have been rendered (id -> {cfi, note, color}) to detect changes
+  const renderedHighlightsRef = useRef<
+    Map<string, { cfi: string; hasNote: boolean; color?: HighlightColor }>
+  >(new Map());
 
   // Reset rendered highlights tracking when book changes
   useEffect(() => {
@@ -602,15 +663,16 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
         }
       }
 
-      // Add new highlights or update existing ones if note status changed
+      // Add new highlights or update existing ones if note status or color changed
       for (const h of bookHighlights) {
         if (!h.cfi) continue;
 
         const existing = renderedHighlightsRef.current.get(h.id);
         const hasNote = !!h.note;
+        const color = h.color || "yellow";
 
-        // Check if we need to re-render (new highlight or note status changed)
-        const needsRender = !existing || existing.hasNote !== hasNote;
+        // Check if we need to re-render (new highlight, note status changed, or color changed)
+        const needsRender = !existing || existing.hasNote !== hasNote || existing.color !== color;
 
         if (needsRender) {
           // Remove old annotation if exists
@@ -622,10 +684,10 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
           foliateRef.current.addAnnotation({
             value: h.cfi,
             type: "highlight",
-            color: h.color || "yellow",
+            color,
             note: h.note, // Pass note for wavy underline + tooltip
           });
-          renderedHighlightsRef.current.set(h.id, { cfi: h.cfi, hasNote });
+          renderedHighlightsRef.current.set(h.id, { cfi: h.cfi, hasNote, color });
         }
       }
     }, 100);
@@ -804,7 +866,9 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     2000,
     keepControlsVisible,
     (viewSettings.paginatedLayout ?? "double") === "double",
+    viewSettings.viewMode === "scroll",
   );
+  const isDoublePage = (viewSettings.paginatedLayout ?? "double") === "double";
   const toolbarVisible = controlsVisible || isToolbarPinned;
   const readingHeaderTitle = (readerTab?.chapterTitle || book?.meta.title || "").trim();
   const contentTopPadding = isToolbarPinned ? 78 : 56;
@@ -859,12 +923,6 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       });
     }, 5000),
   ).current;
-
-  useEffect(() => {
-    if (viewSettings.viewMode === "scroll") {
-      updateReadSettings({ viewMode: "paginated" });
-    }
-  }, [viewSettings.viewMode, updateReadSettings]);
 
   // --- Load book on mount ---
   useEffect(() => {
@@ -928,6 +986,17 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   useEffect(() => {
     loadAnnotations(bookId);
   }, [bookId, loadAnnotations]);
+
+  // Watch ruby mode changes and inject/remove annotations
+  const rubyMode = useRubyStore((s) => s.bookRubySettings[bookId] ?? null);
+  useEffect(() => {
+    if (!foliateRef.current) return;
+    if (rubyMode) {
+      foliateRef.current.injectRuby(rubyMode);
+    } else {
+      foliateRef.current.removeRuby();
+    }
+  }, [rubyMode]);
 
   // Handle book not found
   useEffect(() => {
@@ -1163,6 +1232,16 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     setFoliateReady(true);
   }, []);
 
+  // Show reader tour on first visit (after book loads)
+  const tourTriggered = useRef(false);
+  useEffect(() => {
+    if (!isLoading && !tourTriggered.current && !hasSeenReaderTour()) {
+      tourTriggered.current = true;
+      // Delay slightly so the reader UI is fully rendered
+      setTimeout(() => startReaderTour(), 600);
+    }
+  }, [isLoading]);
+
   // Handle section load (chapter change) - re-render all highlights
   // This is critical: when foliate-js loads a new section (chapter),
   // it replaces the iframe content and all previously added annotations are lost.
@@ -1193,7 +1272,11 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
               color: h.color || "yellow",
               note: h.note, // Pass note for wavy underline + tooltip
             });
-            renderedHighlightsRef.current.set(h.id, { cfi: h.cfi, hasNote: !!h.note });
+            renderedHighlightsRef.current.set(h.id, {
+              cfi: h.cfi,
+              hasNote: !!h.note,
+              color: h.color || "yellow",
+            });
           }
         }
 
@@ -1348,8 +1431,29 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
 
   // --- Selection actions ---
   const handleHighlight = useCallback(
-    (color: HighlightColor = "yellow") => {
+    (color: HighlightColor = viewSettings.defaultHighlightColor ?? "yellow") => {
       if (selection && selection.cfi) {
+        updateReadSettings({ defaultHighlightColor: color });
+        const existingHighlight = selection.highlightId
+          ? highlights.find((h) => h.id === selection.highlightId)
+          : highlights.find((h) => h.bookId === bookId && h.cfi === selection.cfi);
+
+        if (existingHighlight) {
+          useAnnotationStore.getState().updateHighlight(existingHighlight.id, {
+            color,
+            updatedAt: Date.now(),
+          });
+          foliateRef.current?.deleteAnnotation({ value: existingHighlight.cfi });
+          foliateRef.current?.addAnnotation({
+            value: existingHighlight.cfi,
+            type: "highlight",
+            color,
+            note: existingHighlight.note,
+          });
+          setSelection(null);
+          return;
+        }
+
         const highlightId = crypto.randomUUID();
 
         // Add to store (for persistence)
@@ -1372,11 +1476,22 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
         });
 
         // Track as rendered
-        renderedHighlightsRef.current.set(highlightId, { cfi: selection.cfi, hasNote: false });
+        renderedHighlightsRef.current.set(highlightId, {
+          cfi: selection.cfi,
+          hasNote: false,
+          color,
+        });
       }
       setSelection(null);
     },
-    [selection, bookId, readerTab?.chapterTitle],
+    [
+      selection,
+      bookId,
+      readerTab?.chapterTitle,
+      highlights,
+      updateReadSettings,
+      viewSettings.defaultHighlightColor,
+    ],
   );
 
   // Handle note button - open notebook panel with pending note
@@ -1434,12 +1549,11 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
 
       // Get container and iframe for coordinate transformation
       const containerRect = containerRef.current?.getBoundingClientRect();
-      const view = foliateRef.current?.getView();
-      const contents = view?.renderer?.getContents?.();
+      const rangeDoc = range.startContainer.ownerDocument;
+      const iframe = rangeDoc?.defaultView?.frameElement as HTMLIFrameElement | null | undefined;
 
       let offsetRects: DOMRect[] = rects;
-      if (contents?.[0]?.element) {
-        const iframe = contents[0].element as HTMLIFrameElement;
+      if (iframe) {
         const iframeRect = iframe.getBoundingClientRect();
         const scaleX = iframe.clientWidth > 0 ? iframeRect.width / iframe.clientWidth : 1;
         const scaleY = iframe.clientHeight > 0 ? iframeRect.height / iframe.clientHeight : 1;
@@ -1469,42 +1583,65 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       setSelection(sel);
 
       // Position the popover
-      if (offsetRects.length > 0) {
-        const firstRect = offsetRects[0];
-        const offsetX = containerRect?.left ?? 0;
-        const offsetY = containerRect?.top ?? 0;
-        const containerW = containerRect?.width ?? 800;
-        const containerH = containerRect?.height ?? 600;
+      if (containerRect && offsetRects.length > 0) {
+        const visibleRects = offsetRects.filter(
+          (r) =>
+            r.width > 0 &&
+            r.height > 0 &&
+            r.right >= containerRect.left &&
+            r.left <= containerRect.right &&
+            r.bottom >= containerRect.top &&
+            r.top <= containerRect.bottom,
+        );
+        const rectsForPosition = visibleRects.length > 0 ? visibleRects : offsetRects;
+        const containerRelativeRects = rectsForPosition.map((r) => ({
+          top: r.top - containerRect.top,
+          bottom: r.bottom - containerRect.top,
+          left: r.left - containerRect.left,
+          right: r.right - containerRect.left,
+        }));
 
-        const popoverHalfW = 100;
+        const topmostRect = containerRelativeRects.reduce((min, r) =>
+          r.top < min.top ? r : min,
+        );
+        const bottommostRect = containerRelativeRects.reduce((max, r) =>
+          r.bottom > max.bottom ? r : max,
+        );
+        const centerX = (topmostRect.left + topmostRect.right) / 2;
+
+        const containerW = containerRect.width;
+        const containerH = containerRect.height;
+        const popoverW = 200;
         const popoverH = 44;
+        const gap = 8;
+        const padding = 8;
+        const toolbarHeight = toolbarVisible ? 44 : 0;
 
-        let x = firstRect.left + firstRect.width / 2 - offsetX;
-        x = Math.max(popoverHalfW + 4, Math.min(x, containerW - popoverHalfW - 4));
+        let x = centerX - popoverW / 2;
+        x = Math.max(padding, Math.min(x, containerW - popoverW - padding));
 
-        let y = firstRect.top - popoverH - 4 - offsetY;
-        if (y < 4) {
-          y = firstRect.bottom + 8 - offsetY;
+        const yAbove = topmostRect.top - popoverH - gap;
+        const yBelow = bottommostRect.bottom + gap;
+        const aboveValid = yAbove >= toolbarHeight + padding;
+        const belowValid = yBelow + popoverH + padding <= containerH;
+
+        let y: number;
+        if (aboveValid && belowValid) {
+          const spaceAbove = topmostRect.top - toolbarHeight;
+          const spaceBelow = containerH - bottommostRect.bottom;
+          y = spaceAbove > spaceBelow ? yAbove : yBelow;
+        } else if (aboveValid) {
+          y = yAbove;
+        } else if (belowValid) {
+          y = yBelow;
+        } else {
+          y = Math.max(toolbarHeight + padding, Math.min(yAbove, yBelow));
         }
-        y = Math.max(4, Math.min(y, containerH - popoverH - 4));
 
         setSelectionPos({ x, y });
       }
     },
-    [highlights, bookId],
-  );
-
-  // Handle show-note-panel event (user clicked on wavy underline with note)
-  const handleShowNotePanel = useCallback(
-    (cfi: string) => {
-      // Find the highlight with this CFI
-      const highlight = highlights.find((h) => h.bookId === bookId && h.cfi === cfi);
-      if (!highlight) return;
-
-      // Start editing this highlight's note (this also opens the notebook panel)
-      useNotebookStore.getState().startEditNote(highlight);
-    },
-    [highlights, bookId],
+    [highlights, bookId, toolbarVisible],
   );
 
   const handleTranslate = useCallback(() => {
@@ -1881,7 +2018,6 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       ttsSetOnEnd(null);
       ttsSetCurrentBook(book?.meta.title ?? "", readerTab?.chapterTitle ?? "", bookId);
       ttsSetCurrentLocation(readerTab?.selectionCfi || readerTab?.currentCfi || "");
-      setShowTTS(true);
       ttsPlay(segments.length > 0 ? segments.map((segment) => segment.text) : normalized);
     },
     [
@@ -1909,7 +2045,10 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
         .map((segment) => segment.text)
         .join(" ")
         .trim();
-      if (!normalized) return;
+      if (!normalized) {
+        toast.error(t("tts.noTextFound", "No readable text found on this page"));
+        return;
+      }
       ttsStartChapterRef.current = readerTab?.chapterTitle ?? "";
       setTtsSourceKind("page");
       setTtsContinuousEnabled(continuous);
@@ -2024,10 +2163,14 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     const isPlaying = ttsPlayState === "playing" || ttsPlayState === "loading";
     const chapterChanged =
       ttsStartChapterRef.current !== "" && ttsStartChapterRef.current !== readerTab?.chapterTitle;
+    // Selection sessions only cover the snippet the user picked. When they
+    // open the full listen page, promote to a page-level session so the
+    // queue isn't just a single sentence.
+    const isSelectionSession = ttsSourceKind === "selection";
 
     // If playing, always just re-show (don't interrupt playback)
     // If stopped/paused with active session and same chapter, also just re-show
-    if (hasActiveSession && (isPlaying || !chapterChanged)) {
+    if (hasActiveSession && (isPlaying || !chapterChanged) && !isSelectionSession) {
       setShowTTS(true);
       return;
     }
@@ -2044,6 +2187,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     ttsCurrentText,
     ttsLastText,
     ttsPlayState,
+    ttsSourceKind,
     readerTab?.chapterTitle,
   ]);
 
@@ -2604,6 +2748,22 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
 
           {/* Reading area — FoliateViewer */}
           <div className="relative flex-1 overflow-hidden" ref={containerRef}>
+            {/* Click zone indicators — visible only during reader tour (driver.js highlights them) */}
+            <div
+              id="reader-zone-prev"
+              className="pointer-events-none absolute left-0 top-0 bottom-0 z-[100]"
+              style={{ width: isDoublePage ? "33%" : "40%" }}
+            />
+            <div
+              id="reader-zone-toolbar"
+              className="pointer-events-none absolute top-0 bottom-0 z-[100]"
+              style={{ left: isDoublePage ? "33%" : "40%", width: isDoublePage ? "34%" : "20%" }}
+            />
+            <div
+              id="reader-zone-next"
+              className="pointer-events-none absolute right-0 top-0 bottom-0 z-[100]"
+              style={{ width: isDoublePage ? "33%" : "40%" }}
+            />
             {bookDoc ? (
               <FoliateViewer
                 ref={foliateRef}
@@ -2619,7 +2779,6 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
                 onError={handleError}
                 onSelection={handleSelection}
                 onShowAnnotation={handleShowAnnotation}
-                onShowNotePanel={handleShowNotePanel}
                 onToggleSearch={handleToggleSearch}
                 onToggleToc={handleToggleToc}
                 onToggleChat={handleToggleChat}
@@ -2698,6 +2857,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
                 selectedText={selection.text}
                 annotated={selection.annotated}
                 currentColor={selection.color as HighlightColor | undefined}
+                defaultColor={viewSettings.defaultHighlightColor ?? "yellow"}
                 isPdf={bookFormat === "PDF"}
                 onHighlight={handleHighlight}
                 onRemoveHighlight={handleRemoveHighlight}

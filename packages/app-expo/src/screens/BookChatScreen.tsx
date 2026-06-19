@@ -12,9 +12,7 @@ import {
   Animated,
   Image,
   Keyboard,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -133,10 +131,7 @@ export function BookChatScreen({ route, navigation }: Props) {
     () => (activeThreadId ? threads.find((t) => t.id === activeThreadId) : null),
     [threads, activeThreadId],
   );
-  const bookThreads = useMemo(
-    () => getThreadsForContext(bookId),
-    [bookId, getThreadsForContext, threads],
-  );
+  const bookThreads = getThreadsForContext(bookId);
   const groupedThreads = useMemo(() => {
     const grouped = groupThreadsByTime(bookThreads);
     const sections: { key: string; label: string; threads: typeof bookThreads }[] = [
@@ -149,13 +144,20 @@ export function BookChatScreen({ route, navigation }: Props) {
     const olderByMonth = new Map<string, typeof bookThreads>();
     for (const thread of grouped.older) {
       const monthLabel = getMonthLabel(thread.updatedAt);
-      if (!olderByMonth.has(monthLabel)) olderByMonth.set(monthLabel, []);
-      olderByMonth.get(monthLabel)!.push(thread);
+      let monthThreads = olderByMonth.get(monthLabel);
+      if (!monthThreads) {
+        monthThreads = [];
+        olderByMonth.set(monthLabel, monthThreads);
+      }
+      monthThreads.push(thread);
     }
 
     const sortedMonths = [...olderByMonth.keys()].sort((a, b) => b.localeCompare(a));
     for (const month of sortedMonths) {
-      sections.push({ key: month, label: month, threads: olderByMonth.get(month)! });
+      const monthThreads = olderByMonth.get(month);
+      if (monthThreads) {
+        sections.push({ key: month, label: month, threads: monthThreads });
+      }
     }
     return sections;
   }, [bookThreads, t]);
@@ -165,6 +167,10 @@ export function BookChatScreen({ route, navigation }: Props) {
   const [showSidebar, setShowSidebar] = useState(false);
   const sidebarAnim = useRef(new Animated.Value(-sidebarWidth)).current;
   const backdropAnim = useRef(new Animated.Value(0)).current;
+  const showSidebarRef = useRef(showSidebar);
+  useEffect(() => {
+    showSidebarRef.current = showSidebar;
+  }, [showSidebar]);
 
   useEffect(() => {
     if (isTabletLandscape) {
@@ -173,9 +179,10 @@ export function BookChatScreen({ route, navigation }: Props) {
       backdropAnim.setValue(0);
       return;
     }
-
-    sidebarAnim.setValue(showSidebar ? 0 : -sidebarWidth);
-  }, [backdropAnim, isTabletLandscape, showSidebar, sidebarAnim, sidebarWidth]);
+    if (!showSidebarRef.current) {
+      sidebarAnim.setValue(-sidebarWidth);
+    }
+  }, [backdropAnim, isTabletLandscape, sidebarAnim, sidebarWidth]);
 
   const openSidebar = useCallback(() => {
     if (isTabletLandscape) return;
@@ -209,38 +216,19 @@ export function BookChatScreen({ route, navigation }: Props) {
         duration: 200,
         useNativeDriver: true,
       }),
-    ]).start(() => setShowSidebar(false));
+    ]).start(({ finished }) => {
+      if (finished) setShowSidebar(false);
+    });
   }, [backdropAnim, isTabletLandscape, sidebarAnim, sidebarWidth]);
 
   // Streaming chat
   const { isStreaming, currentMessage, currentStep, error, sendMessage, stopStream } =
     useStreamingChat({ book, bookId });
 
-  // Listen for keyboard events to fix scroll issues
-  useEffect(() => {
-    const keyboardDidShow = Keyboard.addListener(
-      Platform.OS === "ios" ? "keyboardDidShow" : "keyboardDidShow",
-      () => {
-        setTimeout(() => {}, 100);
-      },
-    );
-    const keyboardDidHide = Keyboard.addListener(
-      Platform.OS === "ios" ? "keyboardDidHide" : "keyboardDidHide",
-      () => {
-        setTimeout(() => {}, 100);
-      },
-    );
-
-    return () => {
-      keyboardDidShow.remove();
-      keyboardDidHide.remove();
-    };
-  }, []);
-
   const messagesV2: MessageV2[] = useMemo(() => {
     if (!activeThread) return [];
     return convertToMessageV2(activeThread.messages);
-  }, [activeThread?.messages]);
+  }, [activeThread]);
 
   const allMessages = useMemo(
     () => mergeMessagesWithStreaming(messagesV2, currentMessage, isStreaming),
@@ -531,11 +519,7 @@ export function BookChatScreen({ route, navigation }: Props) {
             </View>
           </View>
 
-          <KeyboardAvoidingView
-            style={s.content}
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            keyboardVerticalOffset={0}
-          >
+          <View style={s.content}>
             <View style={s.content}>
               {allMessages.length > 0 ? (
                 <MessageList
@@ -545,7 +529,7 @@ export function BookChatScreen({ route, navigation }: Props) {
                   onCitationClick={handleCitationClick}
                 />
               ) : (
-                <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
                   <View style={[s.emptyContainer, isTabletLandscape && s.emptyContainerCompact]}>
                     <View style={s.emptyInner}>
                       <Image
@@ -580,14 +564,29 @@ export function BookChatScreen({ route, navigation }: Props) {
               placeholder={t("chat.askAboutBook", "询问关于这本书的问题...")}
               quotes={quotes}
               onRemoveQuote={handleRemoveQuote}
+              keyboardBottomOffset={insets.bottom}
             />
-          </KeyboardAvoidingView>
+          </View>
         </View>
       </View>
 
-      {showSidebar && !isTabletLandscape && (
-        <View style={[StyleSheet.absoluteFill, { zIndex: 20 }]} pointerEvents="box-none">
-          <Animated.View style={[s.sidebarBackdrop, { opacity: backdropAnim }]}>
+      {error && (
+        <View style={s.errorBanner}>
+          <Text style={s.errorText} numberOfLines={2}>
+            {error.message}
+          </Text>
+        </View>
+      )}
+
+      {!isTabletLandscape && (
+        <View
+          style={[StyleSheet.absoluteFill, { zIndex: 20 }]}
+          pointerEvents={showSidebar ? "box-none" : "none"}
+        >
+          <Animated.View
+            style={[s.sidebarBackdrop, { opacity: backdropAnim }]}
+            pointerEvents={showSidebar ? "auto" : "none"}
+          >
             <Pressable style={StyleSheet.absoluteFill} onPress={closeSidebar} />
           </Animated.View>
           <Animated.View
@@ -696,6 +695,19 @@ const makeStyles = (
     suggestionText: {
       fontSize: fs.sm,
       color: colors.foreground,
+    },
+    errorBanner: {
+      position: "absolute",
+      bottom: 80,
+      left: 16,
+      right: 16,
+      backgroundColor: withOpacity(colors.destructive, 0.9),
+      borderRadius: radius.lg,
+      padding: 12,
+    },
+    errorText: {
+      fontSize: fs.sm,
+      color: colors.primaryForeground,
     },
     sidebarBackdrop: {
       ...StyleSheet.absoluteFillObject,

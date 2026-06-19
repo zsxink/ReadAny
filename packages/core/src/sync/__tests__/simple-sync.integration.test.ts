@@ -36,6 +36,7 @@ vi.mock("../sync-files", () => syncFileMocks);
 const { applyChanges, collectChanges, runSimpleSync } = await import("../simple-sync");
 
 const TABLE_COLUMNS: Record<string, string[]> = {
+  book_groups: ["id", "name", "sort_order", "created_at", "updated_at"],
   books: [
     "id",
     "file_path",
@@ -74,7 +75,16 @@ const TABLE_COLUMNS: Record<string, string[]> = {
     "updated_at",
   ],
   bookmarks: ["id", "book_id", "cfi", "label", "chapter_title", "created_at", "updated_at"],
-  threads: ["id", "book_id", "title", "created_at", "updated_at"],
+  threads: [
+    "id",
+    "book_id",
+    "title",
+    "memory_summary",
+    "memory_updated_at",
+    "memory_message_count",
+    "created_at",
+    "updated_at",
+  ],
   messages: ["id", "thread_id", "role", "content", "created_at"],
   skills: ["id", "name", "description", "created_at", "updated_at"],
   tags: ["id", "name", "updated_at"],
@@ -175,6 +185,18 @@ class FakeSyncDb {
         .map(({ id, deleted_at }) => ({ id, deleted_at })) as T[];
     }
 
+    if (
+      normalized.startsWith(
+        "SELECT id, deleted_at FROM sync_tombstones WHERE table_name = ? AND id IN",
+      )
+    ) {
+      const [tableName, ...ids] = params.map(String);
+      const idSet = new Set(ids);
+      return [...this.tombstones.values()]
+        .filter((row) => row.table_name === tableName && idSet.has(row.id))
+        .map(({ id, deleted_at }) => ({ id, deleted_at })) as T[];
+    }
+
     const stateMatch = normalized.match(
       /^SELECT (\w+) AS id, (\w+) AS timestamp(, deleted_at AS deleted_at)? FROM (\w+) WHERE (\w+) IN \(/,
     );
@@ -202,6 +224,16 @@ class FakeSyncDb {
       normalized === "INSERT OR REPLACE INTO sync_metadata (key, value) VALUES ('last_sync_at', ?)"
     ) {
       this.syncMetadata.set("last_sync_at", String(params[0]));
+      return;
+    }
+
+    if (normalized.startsWith("INSERT INTO sync_tombstones")) {
+      const [id, tableName, deletedAt] = params;
+      this.tombstones.set(`${String(tableName)}:${String(id)}`, {
+        id: String(id),
+        table_name: String(tableName),
+        deleted_at: Number(deletedAt),
+      });
       return;
     }
 
@@ -281,6 +313,7 @@ class FakeSyncDb {
 class MemoryBackend implements ISyncBackend {
   readonly type = "webdav";
   readonly jsonFiles = new Map<string, unknown>();
+  readonly unreadableJsonPaths = new Set<string>();
 
   async testConnection(): Promise<boolean> {
     return true;
@@ -295,6 +328,9 @@ class MemoryBackend implements ISyncBackend {
   }
 
   async getJSON<T>(path: string): Promise<T | null> {
+    if (this.unreadableJsonPaths.has(path)) {
+      throw new Error(`WebDAV GET failed for ${path}: 403 Forbidden`);
+    }
     return this.jsonFiles.has(path) ? clone(this.jsonFiles.get(path) as T) : null;
   }
 
@@ -325,6 +361,16 @@ class MemoryBackend implements ISyncBackend {
     return this.jsonFiles.has(path);
   }
 
+  async move(fromPath: string, toPath: string): Promise<void> {
+    const data = this.jsonFiles.get(fromPath);
+    if (data === undefined) throw new Error(`MemoryBackend MOVE: source not found ${fromPath}`);
+    if (this.jsonFiles.has(toPath)) {
+      throw new Error(`MemoryBackend MOVE: destination exists ${toPath}`);
+    }
+    this.jsonFiles.set(toPath, data);
+    this.jsonFiles.delete(fromPath);
+  }
+
   async getDisplayName(): Promise<string> {
     return "Memory";
   }
@@ -353,6 +399,17 @@ function bookRow(overrides: Row = {}): Row {
     is_vectorized: 1,
     vectorize_progress: 0.5,
     sync_status: "local",
+    ...overrides,
+  };
+}
+
+function groupRow(overrides: Row = {}): Row {
+  return {
+    id: "group-test",
+    name: "测试分组",
+    sort_order: 0,
+    created_at: 1000,
+    updated_at: 1000,
     ...overrides,
   };
 }
@@ -524,6 +581,42 @@ describe("simple sync convergence", () => {
     expect(payload.tables.books?.deletedIds).toEqual([]);
   });
 
+  it("keeps a remote group tombstone from being resurrected by an older device snapshot", async () => {
+    const target = new FakeSyncDb();
+    dbMocks.currentDb = target;
+    dbMocks.currentDeviceId = "device-local";
+
+    const deleted = await applyChanges({
+      deviceId: "device-a",
+      timestamp: 3000,
+      since: 0,
+      tables: {
+        book_groups: {
+          records: [],
+          deletedIds: ["group-test"],
+          deletedTimestamps: { "group-test": 3000 },
+        },
+      },
+    });
+
+    const staleRecord = await applyChanges({
+      deviceId: "device-b",
+      timestamp: 2000,
+      since: 0,
+      tables: {
+        book_groups: {
+          records: [groupRow({ updated_at: 2000 })],
+          deletedIds: [],
+        },
+      },
+    });
+
+    expect(deleted).toEqual({ applied: 1, skipped: 0 });
+    expect(staleRecord).toEqual({ applied: 0, skipped: 1 });
+    expect(target.get("book_groups", "group-test")).toBeUndefined();
+    expect(target.tombstones.get("book_groups:group-test")?.deleted_at).toBe(3000);
+  });
+
   it("uploads a refreshed snapshot after receiving remote-only changes", async () => {
     const backend = new MemoryBackend();
     const deviceB = new FakeSyncDb();
@@ -554,5 +647,122 @@ describe("simple sync convergence", () => {
         }
       ).tables,
     ).toHaveProperty("books");
+  });
+
+  it("downloads remote snapshots using the listed path", async () => {
+    class AliasPathBackend extends MemoryBackend {
+      async listDir(path: string): Promise<RemoteFile[]> {
+        const files = await super.listDir(path);
+        return files.map((file) =>
+          file.name === "device-a.json" ? { ...file, path: "/logical/device-a.json" } : file,
+        );
+      }
+
+      async getJSON<T>(path: string): Promise<T | null> {
+        if (path === "/logical/device-a.json") {
+          return super.getJSON<T>("/readany/sync/device-a.json");
+        }
+        if (path === "/readany/sync/device-a.json") {
+          throw new Error("should use listed path");
+        }
+        return super.getJSON<T>(path);
+      }
+    }
+
+    const backend = new AliasPathBackend();
+    const deviceB = new FakeSyncDb();
+
+    backend.jsonFiles.set("/readany/sync/device-a.json", {
+      deviceId: "device-a",
+      timestamp: 1000,
+      since: 0,
+      tables: {
+        books: {
+          records: [bookRow({ updated_at: 1000 })],
+          deletedIds: [],
+        },
+      },
+    });
+
+    now = 3000;
+    const result = await syncDevice("device-b", deviceB, backend);
+
+    expect(result.success).toBe(true);
+    expect(deviceB.get("books", "book-1")).toBeTruthy();
+  });
+
+  it("downloads remote snapshots from the device index when directory listing is empty", async () => {
+    class EmptyListBackend extends MemoryBackend {
+      async listDir(): Promise<RemoteFile[]> {
+        return [];
+      }
+    }
+
+    const backend = new EmptyListBackend();
+    const deviceB = new FakeSyncDb();
+
+    backend.jsonFiles.set("/readany/sync/index.json", {
+      version: 1,
+      updatedAt: 1000,
+      devices: {
+        "device-a": {
+          path: "/readany/sync/device-a.json",
+          timestamp: 1000,
+        },
+      },
+    });
+    backend.jsonFiles.set("/readany/sync/device-a.json", {
+      deviceId: "device-a",
+      timestamp: 1000,
+      since: 0,
+      tables: {
+        books: {
+          records: [bookRow({ updated_at: 1000 })],
+          deletedIds: [],
+        },
+      },
+    });
+
+    now = 3000;
+    const result = await syncDevice("device-b", deviceB, backend);
+
+    expect(result.success).toBe(true);
+    expect(deviceB.get("books", "book-1")).toBeTruthy();
+    expect(backend.jsonFiles.get("/readany/sync/index.json")).toMatchObject({
+      devices: {
+        "device-a": {
+          path: "/readany/sync/device-a.json",
+        },
+        "device-b": {
+          path: "/readany/sync/device-device-b.json",
+        },
+      },
+    });
+  });
+
+  it("skips unreadable remote device snapshots and continues syncing", async () => {
+    const backend = new MemoryBackend();
+    const local = new FakeSyncDb();
+    local.insert("books", bookRow({ title: "Local", updated_at: 3000 }));
+
+    backend.jsonFiles.set("/readany/sync/device-locked.json", {
+      deviceId: "locked",
+      timestamp: 1000,
+      since: 0,
+      tables: {
+        books: {
+          records: [bookRow({ id: "remote-book", title: "Locked remote", updated_at: 1000 })],
+          deletedIds: [],
+        },
+      },
+    });
+    backend.unreadableJsonPaths.add("/readany/sync/device-locked.json");
+
+    now = 4000;
+    const result = await syncDevice("device-local", local, backend);
+
+    expect(result.success).toBe(true);
+    expect(local.get("books", "remote-book")).toBeUndefined();
+    expect(backend.jsonFiles.has("/readany/sync/device-device-local.json")).toBe(true);
   });
 });

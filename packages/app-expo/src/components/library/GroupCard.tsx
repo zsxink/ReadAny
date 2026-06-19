@@ -47,7 +47,8 @@ function GroupCoverLayer({
         const platform = getPlatformService();
         const appData = await platform.getAppDataDir();
         setUri(await platform.joinPath(appData, raw));
-      } catch {
+      } catch (err) {
+        console.warn("[Library] Failed to resolve group cover URL:", err);
         setUri(undefined);
       }
     })();

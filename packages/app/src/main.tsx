@@ -10,20 +10,29 @@ import "./styles/globals.css";
 import { setEmbeddingWorkerFactory, setStreamingFetch } from "@readany/core/ai";
 import { BUILTIN_EMBEDDING_MODELS } from "@readany/core/ai/builtin-embedding-models";
 import { onLibraryChanged } from "@readany/core/events/library-events";
+import { installFeedbackLogCapture, setFeedbackWorkerUrl } from "@readany/core/feedback";
 import { setVectorDB } from "@readany/core/rag";
 import { setPlatformService } from "@readany/core/services";
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { TauriPlatformService } from "./lib/platform/tauri-platform-service";
 import { syncLegacyDesktopLibraryRootConfig } from "./lib/storage/desktop-library-root";
 import { TauriVectorDB } from "./lib/tauri-vector-db";
+import { registerDesktopFallbackContentProvider } from "./lib/rag/fallback-content-provider";
 import { useLibraryStore } from "./stores/library-store";
 import { flushAllWrites } from "./stores/persist";
 import { useVectorModelStore } from "./stores/vector-model-store";
-import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+
+installFeedbackLogCapture();
+
+const FEEDBACK_WORKER_FALLBACK = "https://feedback.readany.top";
+const feedbackWorkerUrl = import.meta.env.VITE_FEEDBACK_WORKER_URL?.trim() || FEEDBACK_WORKER_FALLBACK;
+setFeedbackWorkerUrl(feedbackWorkerUrl);
 
 // Register platform service before any database/core operations
 const tauriPlatform = new TauriPlatformService();
 tauriPlatform.initSync().catch(console.error);
 setPlatformService(tauriPlatform);
+registerDesktopFallbackContentProvider();
 
 // Set Tauri fetch for streaming AI requests (avoids CORS issues)
 setStreamingFetch(tauriFetch as typeof globalThis.fetch);
@@ -74,7 +83,10 @@ i18nReady.then(() => {
 
   // Restore saved theme from localStorage
   const savedTheme = localStorage.getItem("readany-theme");
-  if (savedTheme && ["light", "dark", "sepia"].includes(savedTheme)) {
+  if (savedTheme === "system") {
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.setAttribute("data-theme", prefersDark ? "dark" : "light");
+  } else if (savedTheme && ["light", "dark", "sepia"].includes(savedTheme)) {
     document.documentElement.setAttribute("data-theme", savedTheme);
   } else {
     // Default to sepia theme
@@ -101,7 +113,12 @@ i18nReady.then(() => {
   import("foliate-js/view.js").catch(() => {});
   import("foliate-js/paginator.js").catch(() => {});
 
-  createRoot(document.getElementById("root")!).render(
+  const rootElement = document.getElementById("root");
+  if (!rootElement) {
+    throw new Error("Root element not found");
+  }
+
+  createRoot(rootElement).render(
     <StrictMode>
       <App />
     </StrictMode>,

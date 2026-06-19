@@ -175,7 +175,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
           console.warn(
             `[TrackPlayerEdgeTTSPlayer] playback error, retry ${this._retryCount}/${TrackPlayerEdgeTTSPlayer.MAX_RETRIES}`,
           );
-          TrackPlayer.retry().catch(() => {});
+          TrackPlayer.retry().catch((err) => console.warn("[TTS] TrackPlayer retry failed:", err));
         } else {
           console.error("[TrackPlayerEdgeTTSPlayer] playback error, max retries reached");
           this._stopped = true;
@@ -308,7 +308,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
     // Resolve current playback position by track ID, not queue index — when
     // silence keep-alive tracks were inserted at the head of the queue
     // before playback started, the queue index would be off by N.
-    const activeTrack = await TrackPlayer.getActiveTrack().catch(() => null);
+    const activeTrack = await TrackPlayer.getActiveTrack().catch((err) => { console.warn("[TTS] TrackPlayer getActiveTrack failed:", err); return null; });
     const chunkIndex = chunkIndexFromTrackId(activeTrack?.id);
     if (chunkIndex != null) {
       this._notifyChunkChange(chunkIndex);
@@ -378,9 +378,9 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
       }
 
       this._queueStarved = false;
-      await TrackPlayer.skip(targetQueuePos).catch(() => {});
+      await TrackPlayer.skip(targetQueuePos).catch((err) => console.warn("[TTS] TrackPlayer skip failed:", err));
       await TrackPlayer.play();
-      const resolvedTrack = await TrackPlayer.getActiveTrack().catch(() => null);
+      const resolvedTrack = await TrackPlayer.getActiveTrack().catch((err) => { console.warn("[TTS] TrackPlayer getActiveTrack failed:", err); return null; });
       const resolvedChunkIndex =
         chunkIndexFromTrackId(resolvedTrack?.id) ?? targetChunkIndex;
       this._notifyChunkChange(resolvedChunkIndex);
@@ -406,8 +406,10 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
         .map((track, index) => (ids.has(String(track.id)) ? index : -1))
         .filter((index) => index >= 0)
         .sort((a, b) => b - a);
-      if (indexes.length > 0) await TrackPlayer.remove(indexes).catch(() => {});
-    } catch {}
+      if (indexes.length > 0) await TrackPlayer.remove(indexes).catch((err) => console.warn("[TTS] TrackPlayer remove failed:", err));
+    } catch (err) {
+      console.warn("[TTS] Failed to clear silence tracks:", err);
+    }
   }
 
   private async _fetchChunkFileWithRetry(index: number, gen: number): Promise<string> {

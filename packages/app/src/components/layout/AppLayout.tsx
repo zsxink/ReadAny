@@ -106,7 +106,7 @@ export function AppLayout() {
         })
         .filter(Boolean)
         .join("\n");
-    }).catch(() => {});
+    }).catch((err) => console.warn("[Layout] Failed to load custom font faces:", err));
   }, [customFonts]);
 
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -143,7 +143,7 @@ export function AppLayout() {
         import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
           const win = getCurrentWindow();
           win.isFullscreen().then((fs) => win.setFullscreen(!fs));
-        }).catch(() => {});
+        }).catch((err) => console.warn("[Layout] Failed to toggle fullscreen:", err));
       }
     };
     window.addEventListener("keydown", handleKeyDown, { capture: true });

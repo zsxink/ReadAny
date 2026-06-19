@@ -27,6 +27,7 @@ export type SettingsTab =
   | "tts"
   | "translation"
   | "sync"
+  | "feedback"
   | "about";
 
 export interface AppState {

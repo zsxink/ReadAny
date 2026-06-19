@@ -36,7 +36,8 @@ export async function isChapterFullyCached(
     const key = getChapterKey(bookId, sectionIndex, targetLang);
     const value = await platform.kvGetItem(key);
     return value === "1";
-  } catch {
+  } catch (err) {
+    console.warn("[Translation] Failed to check chapter cache status:", err);
     return false;
   }
 }
@@ -54,7 +55,8 @@ export async function getChapterTranslationSettings(
       return JSON.parse(value) as ChapterTranslationSettings;
     }
     return null;
-  } catch {
+  } catch (err) {
+    console.warn("[Translation] Failed to get chapter translation settings:", err);
     return null;
   }
 }
@@ -78,8 +80,8 @@ export async function markChapterFullyCached(
       targetLang,
     };
     await platform.kvSetItem(settingsKey, JSON.stringify(settings));
-  } catch {
-    // Ignore storage errors
+  } catch (err) {
+    console.warn("[Translation] Failed to mark chapter as cached:", err);
   }
 }
 
@@ -100,8 +102,8 @@ export async function updateChapterTranslationSettings(
       targetLang: settings.targetLang ?? existing?.targetLang ?? "",
     };
     await platform.kvSetItem(key, JSON.stringify(updated));
-  } catch {
-    // Ignore storage errors
+  } catch (err) {
+    console.warn("[Translation] Failed to update chapter translation settings:", err);
   }
 }
 
@@ -118,7 +120,7 @@ export async function clearChapterCache(
     for (const key of keysToRemove) {
       await platform.kvRemoveItem(key);
     }
-  } catch {
-    // Ignore storage errors
+  } catch (err) {
+    console.warn("[Translation] Failed to clear chapter cache:", err);
   }
 }

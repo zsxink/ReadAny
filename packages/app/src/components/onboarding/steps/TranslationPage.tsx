@@ -19,7 +19,7 @@ export function TranslationPage({ onNext, onPrev, step, totalSteps }: any) {
   const { t } = useTranslation();
   const { translationConfig, updateTranslationConfig } = useSettingsStore();
 
-  const [provider, setProvider] = useState<"ai" | "deepl">(translationConfig.provider.id);
+  const [provider, setProvider] = useState<"ai" | "deepl" | "microsoft">(translationConfig.provider.id);
   const [apiKey, setApiKey] = useState(translationConfig.provider.apiKey || "");
   const [baseUrl, setBaseUrl] = useState(translationConfig.provider.baseUrl || "");
   const [status, setStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
@@ -29,7 +29,8 @@ export function TranslationPage({ onNext, onPrev, step, totalSteps }: any) {
     try {
       await testDeepLConnection(apiKey, baseUrl);
       setStatus("success");
-    } catch {
+    } catch (err) {
+      console.warn("[Onboarding] Translation connection test failed:", err);
       setStatus("error");
     }
   };

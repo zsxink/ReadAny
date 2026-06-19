@@ -573,7 +573,7 @@ export function useReaderTTS({
           : splitNarrationText((await bridgeRef.current?.getVisibleText()) || "").map(
               (segmentText) => ({
                 text: segmentText,
-                cfi: alignCfi || currentCfi,
+                cfi: alignCfi || "",
               }),
             );
 
@@ -584,7 +584,7 @@ export function useReaderTTS({
         }))
         .filter((segment) => segment.text.length > 0);
     },
-    [bridgeRef, currentCfi],
+    [bridgeRef],
   );
 
   // ─── logTTSExtractionDiagnostics ──────────────────────────────────────────
@@ -1515,7 +1515,6 @@ export function useReaderTTS({
       ttsSetCurrentLocation(selectionCfi || currentCfi);
       ttsSetCurrentBook(bookTitle, currentChapter, bookId, ttsCoverUri);
       setShowControls(false);
-      setShowTTS(true);
       ttsPlay(segments.length > 0 ? segments.map((segment) => segment.text) : normalized);
     },
     [
@@ -1547,8 +1546,12 @@ export function useReaderTTS({
     const isPlaying = ttsPlayState === "playing" || ttsPlayState === "loading";
     const chapterChanged =
       ttsStartChapterRef.current !== "" && ttsStartChapterRef.current !== currentChapter;
+    // Selection sessions only hold the snippet the user picked; opening the
+    // full listen page should promote to a page-level session instead of
+    // surfacing a one-sentence queue.
+    const isSelectionSession = ttsSourceKind === "selection";
 
-    if (hasActiveSession && isPlaying && !chapterChanged) {
+    if (hasActiveSession && isPlaying && !chapterChanged && !isSelectionSession) {
       setShowControls(false);
       setShowTTS(true);
       return;
@@ -1568,6 +1571,7 @@ export function useReaderTTS({
     ttsCurrentText,
     ttsLastText,
     ttsPlayState,
+    ttsSourceKind,
   ]);
 
   const handleTTSReplay = useCallback(async () => {

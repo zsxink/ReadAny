@@ -32,8 +32,8 @@ export function createGetSkillsTool(): ToolDefinition {
       let dbSkills: Skill[] = [];
       try {
         dbSkills = await getDbSkills();
-      } catch {
-        /* ignore */
+      } catch (err) {
+        console.warn("[AI] Failed to load skills from DB:", err);
       }
 
       const mergedBuiltins = builtins

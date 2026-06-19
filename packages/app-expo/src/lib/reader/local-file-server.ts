@@ -63,20 +63,43 @@ export async function startFileServer(docRoot: string): Promise<string> {
 
 // --- Native Lighttpd server ---
 async function _startNativeServer(cleanRoot: string): Promise<string> {
-  const StaticServerModule = await import("@dr.pogodin/react-native-static-server");
-  const StaticServer = StaticServerModule.default;
+  let server: any = null;
+  try {
+    const StaticServerModule = await import("@dr.pogodin/react-native-static-server");
+    const StaticServer = StaticServerModule.default;
 
-  _nativeServer = new StaticServer({
-    fileDir: cleanRoot,
-    port: 0,
-    stopInBackground: false,
-  });
-
-  _serverDocRoot = cleanRoot;
-  const origin = await _nativeServer.start();
-  _serverUrl = origin;
-  console.log(`[FileServer] Native Lighttpd started: ${origin} (root: ${cleanRoot})`);
-  return origin;
+    server = new StaticServer({
+      fileDir: cleanRoot,
+      port: 0,
+      stopInBackground: false,
+    });
+    // Cap server.start() so a hung Lighttpd init can't pin the reader on a spinner.
+    // On timeout we treat it the same as a throw: stop and fall back to TCP below.
+    const origin = await Promise.race([
+      server.start(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Lighttpd startup timeout (3s)")), 3000),
+      ),
+    ]);
+    _nativeServer = server;
+    _serverDocRoot = cleanRoot;
+    _serverUrl = origin;
+    console.log(`[FileServer] Native Lighttpd started: ${origin} (root: ${cleanRoot})`);
+    return origin;
+  } catch (e) {
+    // Native module unavailable at runtime (e.g. peer dep @dr.pogodin/react-native-fs
+    // not linked into the native binary). Drop down to the JS TCP fallback so reading
+    // still works without rebuilding the dev client.
+    console.warn(
+      `[FileServer] Native Lighttpd unavailable (${e instanceof Error ? e.message : e}), falling back to TCP`,
+    );
+    if (server) {
+      try { await server.stop?.(); } catch {}
+    }
+    _nativeServer = null;
+    _useNative = false;
+    return _startTcpFallback(cleanRoot);
+  }
 }
 
 // --- Fallback: JS TCP server (original implementation) ---
@@ -90,11 +113,17 @@ async function _startTcpFallback(cleanRoot: string): Promise<string> {
   let TcpSocket: any;
   try {
     TcpSocket = (await import("react-native-tcp-socket")).default;
+    console.log("[FileServer] TCP socket module loaded, starting server...");
   } catch (e) {
     throw new Error(`No file server available: ${e instanceof Error ? e.message : e}`);
   }
 
   return new Promise<string>((resolve, reject) => {
+    // Safety timeout: if the TCP server can't bind within 5s, bail out
+    const tcpTimeout = setTimeout(() => {
+      reject(new Error("TCP server startup timeout (5s)"));
+    }, 5000);
+
     const server = TcpSocket.createServer((socket: any) => {
       let headerBuf = "";
 
@@ -176,9 +205,13 @@ async function _startTcpFallback(cleanRoot: string): Promise<string> {
       socket.on("error", () => socket.destroy());
     });
 
-    server.on("error", (err: Error) => reject(err));
+    server.on("error", (err: Error) => {
+      clearTimeout(tcpTimeout);
+      reject(err);
+    });
 
     server.listen({ port: 0, host: "127.0.0.1" }, () => {
+      clearTimeout(tcpTimeout);
       const addr = server.address();
       const port = addr && typeof addr === "object" && "port" in addr ? addr.port : null;
       if (!port) {
@@ -221,6 +254,10 @@ const EXT_MIME: Record<string, string> = {
   ".cbz": "application/vnd.comicbook+zip",
   ".fb2": "application/x-fictionbook+xml",
   ".txt": "text/plain",
+  ".ttf": "font/ttf",
+  ".otf": "font/otf",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
 };
 
 function _guessMime(filePath: string): string {

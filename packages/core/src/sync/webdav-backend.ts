@@ -9,8 +9,8 @@ import {
   type RemoteFile,
   type WebDavConfig,
 } from "./sync-backend";
-import { REMOTE_COVERS, REMOTE_DATA, REMOTE_FILES } from "./sync-types";
-import { sanitizeWebDavRemoteRoot, WebDavClient } from "./webdav-client";
+import { REMOTE_BOOKS_ROOT, REMOTE_COVERS, REMOTE_DATA, REMOTE_FILES } from "./sync-types";
+import { WebDavClient, sanitizeWebDavRemoteRoot } from "./webdav-client";
 
 /**
  * WebDAV backend implementation.
@@ -20,6 +20,7 @@ export class WebDavBackend implements ISyncBackend {
   readonly type = "webdav" as const;
   private client: WebDavClient;
   private config: WebDavConfig;
+  private directoriesEnsured = false;
 
   constructor(config: WebDavConfig, password: string) {
     this.config = config;
@@ -27,8 +28,10 @@ export class WebDavBackend implements ISyncBackend {
   }
 
   private getRemoteRoot(): string {
-    return sanitizeWebDavRemoteRoot(this.config.remoteRoot ?? DEFAULT_WEBDAV_REMOTE_ROOT)
-      || DEFAULT_WEBDAV_REMOTE_ROOT;
+    return (
+      sanitizeWebDavRemoteRoot(this.config.remoteRoot ?? DEFAULT_WEBDAV_REMOTE_ROOT) ||
+      DEFAULT_WEBDAV_REMOTE_ROOT
+    );
   }
 
   private baseUrlAlreadyIncludesRemoteRoot(): boolean {
@@ -45,13 +48,19 @@ export class WebDavBackend implements ISyncBackend {
     const remoteRoot = this.getRemoteRoot();
     const resolved = path.replace(/^\/readany(?=\/|$)/, `/${remoteRoot}`);
     if (
-      this.baseUrlAlreadyIncludesRemoteRoot()
-      && (resolved === `/${remoteRoot}` || resolved.startsWith(`/${remoteRoot}/`))
+      this.baseUrlAlreadyIncludesRemoteRoot() &&
+      (resolved === `/${remoteRoot}` || resolved.startsWith(`/${remoteRoot}/`))
     ) {
       const deduped = resolved.slice(remoteRoot.length + 1);
       return deduped ? (deduped.startsWith("/") ? deduped : `/${deduped}`) : "/";
     }
     return resolved;
+  }
+
+  private joinLogicalPath(parentPath: string, name: string): string {
+    const parent = parentPath.replace(/\/+$/, "") || "/";
+    const encodedName = name.replace(/^\/+|\/+$/g, "");
+    return parent === "/" ? `/${encodedName}` : `${parent}/${encodedName}`;
   }
 
   async testConnection(): Promise<boolean> {
@@ -61,20 +70,72 @@ export class WebDavBackend implements ISyncBackend {
   }
 
   async ensureDirectories(): Promise<void> {
+    if (this.directoriesEnsured) return;
+
     // Create directories for the new simple sync (JSON-based)
     await this.client.ensureDirectory(this.resolvePath("/readany/sync"));
-    // Legacy directories for file sync (if needed)
     await this.client.ensureDirectory(this.resolvePath(REMOTE_DATA));
+    // New per-book layout root
+    await this.client.ensureDirectory(this.resolvePath(REMOTE_BOOKS_ROOT));
+    // Legacy directories kept ensured during the transition window (cheap & safe)
     await this.client.mkcol(this.resolvePath(REMOTE_FILES));
     await this.client.mkcol(this.resolvePath(REMOTE_COVERS));
+    this.directoriesEnsured = true;
   }
 
   async put(path: string, data: Uint8Array): Promise<void> {
-    await this.client.put(this.resolvePath(path), data);
+    const resolved = this.resolvePath(path);
+    try {
+      await this.client.put(resolved, data);
+    } catch (e) {
+      // Some WebDAV servers (Synology, QNAP, 飞牛, etc.) return 403/404/409 when
+      // PUT-ing into a directory that doesn't exist yet. Ensure the parent and
+      // retry once — most uploads land on an existing dir, so this catch path
+      // only fires for first-time uploads into a brand-new per-book folder.
+      const message = e instanceof Error ? e.message : String(e);
+      if (!/\b(403|404|409)\b/.test(message)) throw e;
+      const parent = resolved.substring(0, resolved.lastIndexOf("/"));
+      if (!parent || parent === "/") throw e;
+      await this.client.ensureDirectory(parent);
+      await this.client.put(resolved, data);
+    }
+  }
+
+  async putFile(
+    path: string,
+    localFilePath: string,
+    onProgress?: (loaded: number, total: number) => void,
+  ): Promise<void> {
+    const resolved = this.resolvePath(path);
+    try {
+      await this.client.putFile(resolved, localFilePath, onProgress);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      if (!/\b(403|404|409)\b/.test(message)) throw e;
+      const parent = resolved.substring(0, resolved.lastIndexOf("/"));
+      if (!parent || parent === "/") throw e;
+      await this.client.ensureDirectory(parent);
+      await this.client.putFile(resolved, localFilePath, onProgress);
+    }
   }
 
   async get(path: string): Promise<Uint8Array> {
     return this.client.get(this.resolvePath(path));
+  }
+
+  async getWithProgress(
+    path: string,
+    onProgress?: (loaded: number, total: number) => void,
+  ): Promise<Uint8Array> {
+    return this.client.getWithProgress(this.resolvePath(path), onProgress);
+  }
+
+  async getFileToPath(
+    path: string,
+    localFilePath: string,
+    onProgress?: (loaded: number, total: number) => void,
+  ): Promise<void> {
+    return this.client.getFileToPath(this.resolvePath(path), localFilePath, onProgress);
   }
 
   async getJSON<T>(path: string): Promise<T | null> {
@@ -89,7 +150,7 @@ export class WebDavBackend implements ISyncBackend {
     const resources = await this.client.safeReadDir(this.resolvePath(path));
     return resources.map((r) => ({
       name: r.name,
-      path: r.href,
+      path: this.joinLogicalPath(path, r.name),
       size: r.contentLength ?? 0,
       lastModified: r.lastModified ? new Date(r.lastModified).getTime() : 0,
       isDirectory: r.isCollection,
@@ -102,6 +163,15 @@ export class WebDavBackend implements ISyncBackend {
 
   async exists(path: string): Promise<boolean> {
     return this.client.exists(this.resolvePath(path));
+  }
+
+  async move(fromPath: string, toPath: string): Promise<void> {
+    // Ensure the parent of the destination exists so MOVE can succeed.
+    const destParent = toPath.substring(0, toPath.lastIndexOf("/"));
+    if (destParent && destParent !== "/") {
+      await this.client.ensureDirectory(this.resolvePath(destParent));
+    }
+    await this.client.move(this.resolvePath(fromPath), this.resolvePath(toPath));
   }
 
   async getDisplayName(): Promise<string> {
