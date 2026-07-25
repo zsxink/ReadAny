@@ -7,6 +7,7 @@
     "fonts": "Fonts",
     "ai": "AI",
     "translationTab": "Translation",
+    "externalAi": "External AI Access",
     "tts": "TTS",
     "about": "About",
     "other": "More",
@@ -245,7 +246,7 @@
     "syncPassword": "Password",
     "syncRemoteRoot": "Remote Folder",
     "syncRemoteRootPlaceholder": "readany",
-    "syncRemoteRootDesc": "Choose the remote folder used for sync. Nested paths are supported and will be created automatically during test or first sync.",
+    "syncRemoteRootDesc": "Choose the remote folder used only for ReadAny sync. Nested paths are supported and will be created automatically during test or first sync. ReadAny does not scan books you already placed there; import an existing WebDAV library with \"Connect another WebDAV\".",
     "syncTestConnection": "Test Connection",
     "syncTesting": "Testing...",
     "syncTestSuccess": "Connection successful",
@@ -423,6 +424,170 @@
     "syncConfig": "Sync configuration",
     "transferConfig": "Transfer configuration",
     "vectorConfig": "Vector configuration",
-    "webdavAllowInsecure": "Allow insecure connections"
+    "webdavAllowInsecure": "Allow insecure connections",
+    "externalAiSettings": {
+      "overview": {
+        "title": "External AI Access Beta",
+        "description": "Checks the CLI, Skill, client discovery folders, and MCP configuration. Repair uses the currently selected profile.",
+        "mcpConfigHint": "MCP config means ReadAny appears in common client config files. Restart or open a new session to confirm the tools are actually loaded."
+      },
+      "cli": {
+        "title": "ReadAny CLI",
+        "description": "The desktop app only runs approved CLI checks, not arbitrary shell commands.",
+        "notInstalledOrPath": "Not installed or unavailable in PATH",
+        "runtimeEvidence": "Runtime / packaging evidence"
+      },
+      "agent": {
+        "title": "Agent bootstrap",
+        "description": "Copy this command to an external AI. It installs the ReadAny CLI and Skill, then returns an MCP config snippet.",
+        "clientDiscoveryStatus": "Client discovery status",
+        "clientDiscoveryEmpty": "Run diagnostics to show client Skill discovery status.",
+        "mcpConfigStatus": "MCP config status",
+        "mcpConfigEmpty": "Run diagnostics to show MCP config results.",
+        "profileRiskWarning": "This profile allows draft writes or exports. Confirm the risk switch above before copying or running bootstrap.",
+        "latestInstallResult": "Latest one-click install result"
+      },
+      "skill": {
+        "title": "AI assistant install",
+        "description": "Copy one instruction to an AI assistant and let it install Skill and MCP itself.",
+        "copyToCurrentAssistant": "Copy to current AI assistant",
+        "copyHint": "It will install directly using the selected profile.",
+        "allClients": "All clients",
+        "skillInstalled": "Skill installed",
+        "pending": "Pending"
+      },
+      "mcp": {
+        "title": "MCP access profile",
+        "description": "Choose the access level for MCP. editor / publisher require explicit confirmation; installing CLI or Skill does not grant write access by itself.",
+        "currentTemplate": "{{description}} Currently copying the {{client}} template.",
+        "riskConfirmation": "Allow external AI to use write/export tools",
+        "currentTools": "Current MCP tools"
+      },
+      "profileDescriptions": {
+        "readonly": "Read-only access: library, chapters, notes, highlights, RAG, and diagnostic reads.",
+        "editor": "Editor access: includes readonly and allows creating EPUB drafts and editing draft content.",
+        "publisher": "Publisher access: includes editor and allows validate / export / notes export / knowledge export."
+      },
+      "clients": {
+        "generic": "Generic JSON",
+        "genericShort": "Generic",
+        "codex": "Codex TOML",
+        "agents": "Agents generic"
+      },
+      "output": {
+        "notRun": "Not run yet.",
+        "success": "Command completed successfully.",
+        "exitStatus": "Command exited with status {{status}}",
+        "accessUninstalled": "External AI access and CLI have been uninstalled.",
+        "cliUninstalled": "ReadAny CLI has been uninstalled."
+      },
+      "skillPrompt": {
+        "intro": "Please directly install and enable the ReadAny external AI Skill for me.",
+        "execute": "Do not only explain the steps, and do not output an installation path table. Please run:",
+        "mergeConfig": "If you can modify the current AI client configuration, merge the MCP config directly; otherwise give me only the shortest necessary config snippet.",
+        "done": "When finished, reply only: ReadAny Skill is installed. Please restart or open a new session in the current AI client.",
+        "protectBooks": "Do not modify, export, or delete my book content."
+      },
+      "status": {
+        "betaReady": "Beta ready",
+        "needsRepair": "Needs repair",
+        "notReady": "Not ready",
+        "available": "Available",
+        "missing": "Missing",
+        "passed": "Passed",
+        "failed": "Failed",
+        "healthy": "Healthy",
+        "abnormal": "Abnormal",
+        "installed": "Installed",
+        "notInstalled": "Not installed",
+        "complete": "Complete",
+        "configured": "Configured",
+        "needsPasteRestart": "Paste / restart needed",
+        "notDetected": "Not detected",
+        "notDetectedYet": "Not detected yet",
+        "canCopy": "Can copy",
+        "canConfigure": "Can configure",
+        "waitingConfirmation": "Waiting confirmation",
+        "exists": "Exists",
+        "managed": "Managed",
+        "unmanaged": "Unmanaged",
+        "checked": "Checked",
+        "notFound": "Not found",
+        "containsReadAny": "Has readany",
+        "needsConfig": "Needs config"
+      },
+      "actions": {
+        "verify": "Verify",
+        "repairExternalAI": "Repair external AI",
+        "diagnose": "Diagnose",
+        "install": "Install",
+        "repair": "Repair",
+        "uninstall": "Uninstall",
+        "update": "Update",
+        "copied": "Copied",
+        "copyEvidence": "Copy evidence",
+        "copyCommand": "Copy command",
+        "copyAllCommand": "Copy all-client command",
+        "oneClickInstall": "One-click install",
+        "oneClickInstallAll": "One-click install all",
+        "uninstallAccess": "Uninstall access",
+        "copyInstructions": "Copy instructions",
+        "copyConfig": "Copy config",
+        "expandDetails": "Expand"
+      },
+      "labels": {
+        "cli": "CLI",
+        "doctor": "Doctor",
+        "runtime": "Runtime",
+        "skill": "Skill",
+        "clientLinks": "Client links",
+        "mcpConfig": "MCP config",
+        "version": "Version",
+        "profile": "Profile",
+        "tools": "Tools",
+        "commandSource": "Command source",
+        "client": "Client",
+        "skillTarget": "Skill target",
+        "returnedCommand": "Returned command",
+        "removedCliShim": "Removed CLI shim",
+        "removedSkill": "Removed Skill",
+        "distribution": "Distribution",
+        "builtBundle": "Built bundle",
+        "desktopResource": "Desktop resource",
+        "nativeBinary": "Native binary",
+        "usesNodeRuntime": "Uses Node runtime",
+        "node": "Node",
+        "nativeSqlite": "Native SQLite",
+        "bundleRoot": "Bundle root",
+        "entrypoint": "Entrypoint",
+        "nodeExecutable": "Node executable",
+        "cliShim": "CLI shim",
+        "mcpFormat": "MCP format"
+      },
+      "empty": {
+        "runDiagnostics": "Run diagnostics to show results."
+      },
+      "doctorChecks": {
+        "nodeRuntime": {
+          "name": "Node runtime",
+          "message": "Node runtime is available at {{executable}} ({{version}})."
+        },
+        "nativeSqlite": {
+          "name": "Native SQLite",
+          "ok": "better-sqlite3 is available for library and MCP data commands.",
+          "fail": "better-sqlite3 is unavailable; library and MCP data commands may fail."
+        },
+        "readanyHome": {
+          "name": "ReadAny home",
+          "ok": "ReadAny home is writable.",
+          "fail": "ReadAny home is not writable."
+        },
+        "skill": {
+          "name": "Skill",
+          "ok": "ReadAny Skill is installed at {{path}}.",
+          "fail": "ReadAny Skill is not installed at {{path}}."
+        }
+      }
+    }
   }
 }

@@ -2,7 +2,6 @@ import { BUILTIN_EMBEDDING_MODELS } from "../ai/builtin-embedding-models";
 import { generateLocalEmbeddings, loadEmbeddingPipeline } from "../ai/local-embedding-service";
 import { deleteChunks, insertChunks } from "../db/database";
 import type { VectorizeProgress } from "../types";
-import { isOllamaEmbeddingEndpointUrl, normalizeEmbeddingEndpointUrl } from "../utils/api";
 /**
  * Vectorize Trigger — high-level service that orchestrates book vectorization.
  * Connects: chapter data → chunking → embedding → database indexing → state update.
@@ -15,6 +14,7 @@ import { isOllamaEmbeddingEndpointUrl, normalizeEmbeddingEndpointUrl } from "../
 import { eventBus } from "../utils/event-bus";
 import { chunkContent } from "./chunker";
 import type { ChapterData } from "./rag-types";
+import { requestRemoteEmbeddingBatch } from "./remote-embedding";
 import { invalidateChunkCache } from "./search";
 import { getVectorDB, hasVectorDB } from "./vector-db";
 import type { VectorRecord } from "./vector-db";
@@ -288,15 +288,6 @@ async function generateRemoteEmbeddings(
     );
   }
 
-  const requestUrl = normalizeEmbeddingEndpointUrl(selectedModel.url);
-  const isOllama = isOllamaEmbeddingEndpointUrl(requestUrl);
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (selectedModel.apiKey.trim()) {
-    headers.Authorization = `Bearer ${selectedModel.apiKey}`;
-  }
-
   // Conservative defaults: many Chinese embedding APIs (Baidu/MiniMax/etc.)
   // cap single-input tokens at 384–1024 and batch size at 16. Send 8 per
   // request and keep single chunks ≤ 1800 chars (~ ≤ 1800 tokens for CJK)
@@ -309,37 +300,9 @@ async function generateRemoteEmbeddings(
   ): Promise<
     { ok: true; embeddings: number[][] } | { ok: false; status: number; errorText: string }
   > => {
-    const safeTexts = inputTexts.map((t) =>
-      t.length > MAX_CHARS_PER_CHUNK ? t.slice(0, MAX_CHARS_PER_CHUNK) : t,
-    );
-    const requestBody = isOllama
-      ? { model: selectedModel.modelId, input: safeTexts }
-      : {
-          input: safeTexts,
-          model: selectedModel.modelId,
-          encoding_format: "float",
-        };
-
-    const res = await fetch(requestUrl, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(requestBody),
+    return requestRemoteEmbeddingBatch(selectedModel, inputTexts, {
+      maxCharsPerInput: MAX_CHARS_PER_CHUNK,
     });
-
-    if (!res.ok) {
-      const errorText = await res.text().catch(() => "");
-      return { ok: false, status: res.status, errorText };
-    }
-
-    const json = await res.json();
-    const embeddingData = (json?.data ?? []) as Array<{
-      embedding: number[];
-      index: number;
-    }>;
-    const embeddings: number[][] = isOllama
-      ? (json?.embeddings ?? [])
-      : embeddingData.sort((a, b) => a.index - b.index).map((d) => d.embedding);
-    return { ok: true, embeddings };
   };
 
   for (let i = 0; i < chunks.length; i += batchSize) {

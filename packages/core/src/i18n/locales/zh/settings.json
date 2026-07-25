@@ -7,6 +7,7 @@
     "fonts": "字体",
     "ai": "AI",
     "translationTab": "翻译",
+    "externalAi": "外部 AI 访问",
     "tts": "语音朗读",
     "about": "关于",
     "other": "更多",
@@ -241,7 +242,7 @@
     "syncPassword": "密码",
     "syncRemoteRoot": "远端文件夹",
     "syncRemoteRootPlaceholder": "readany",
-    "syncRemoteRootDesc": "可自定义同步写入的远端目录，支持多级路径；测试连接和首次同步时会自动创建。",
+    "syncRemoteRootDesc": "可自定义同步写入的远端目录，支持多级路径；测试连接和首次同步时会自动创建。该目录由 ReadAny 独占用于双向同步，不会读取你已存放在远端的书；如需导入已有 WebDAV 书库，请使用“连接其他 WebDAV”。",
     "syncTestConnection": "测试连接",
     "syncTesting": "测试中...",
     "syncTestSuccess": "连接成功",
@@ -423,6 +424,170 @@
     "webdavUsername": "用户名",
     "webdavPassword": "应用密码",
     "autoSync": "自动同步",
-    "autoSyncDesc": "在后台自动同步数据"
+    "autoSyncDesc": "在后台自动同步数据",
+    "externalAiSettings": {
+      "overview": {
+        "title": "外部 AI 访问 Beta",
+        "description": "集中检查 CLI、Skill、多客户端发现目录和 MCP 配置。修复会使用当前选中的 profile。",
+        "mcpConfigHint": "MCP config 表示常见配置文件里已经出现 ReadAny；真实客户端是否已热加载，需要重启或新建会话后验证工具是否出现。"
+      },
+      "cli": {
+        "title": "ReadAny CLI",
+        "description": "桌面端通过受限命令检测 CLI，不开放任意 shell。",
+        "notInstalledOrPath": "未安装或 PATH 不可用",
+        "runtimeEvidence": "运行时 / 打包证据"
+      },
+      "agent": {
+        "title": "Agent 初始化",
+        "description": "把这条命令复制给外部 AI，它会安装 ReadAny CLI、安装 Skill，并返回 MCP 配置片段。",
+        "clientDiscoveryStatus": "客户端发现状态",
+        "clientDiscoveryEmpty": "运行诊断后显示客户端 Skill 发现状态。",
+        "mcpConfigStatus": "MCP 配置状态",
+        "mcpConfigEmpty": "运行诊断后显示 MCP 配置检测结果。",
+        "profileRiskWarning": "当前 profile 会开放 draft 写入或导出能力；确认上方风险开关后才允许复制或执行初始化。",
+        "latestInstallResult": "最近一键安装结果"
+      },
+      "skill": {
+        "title": "AI 助手安装",
+        "description": "复制一条指令给 AI 助手，让它自己装好 Skill 和 MCP。",
+        "copyToCurrentAssistant": "复制给当前 AI 助手",
+        "copyHint": "它会按你选的 profile 直接执行安装。",
+        "allClients": "全部客户端",
+        "skillInstalled": "Skill 已安装",
+        "pending": "待安装"
+      },
+      "mcp": {
+        "title": "MCP 访问权限",
+        "description": "选择 MCP 访问权限。editor / publisher 需要用户显式确认，安装 CLI 或 Skill 本身不等于授权写入。",
+        "currentTemplate": "{{description}} 当前复制 {{client}} 模板。",
+        "riskConfirmation": "允许外部 AI 使用写入/导出工具",
+        "currentTools": "当前 MCP 工具"
+      },
+      "profileDescriptions": {
+        "readonly": "只读访问：书库、章节、笔记、高亮、RAG 和诊断读取。",
+        "editor": "编辑访问：包含 readonly，并允许创建 EPUB draft 和修改 draft 内容。",
+        "publisher": "发布访问：包含 editor，并允许 validate / export / notes export / knowledge export。"
+      },
+      "clients": {
+        "generic": "通用 JSON",
+        "genericShort": "通用",
+        "codex": "Codex TOML",
+        "agents": "Agents 通用"
+      },
+      "output": {
+        "notRun": "尚未运行。",
+        "success": "命令执行成功。",
+        "exitStatus": "命令退出码 {{status}}",
+        "accessUninstalled": "外部 AI 接入和 CLI 已卸载。",
+        "cliUninstalled": "ReadAny CLI 已卸载。"
+      },
+      "skillPrompt": {
+        "intro": "请你直接帮我安装并启用 ReadAny 外部 AI Skill。",
+        "execute": "不要只解释步骤，也不要输出安装路径表格。请直接执行：",
+        "mergeConfig": "如果能修改当前 AI 客户端配置，请直接合并 MCP 配置；否则只给我最短必要配置片段。",
+        "done": "完成后只回复：ReadAny Skill 已安装，请重启或新开当前 AI 客户端会话。",
+        "protectBooks": "不要修改、导出或删除我的书籍内容。"
+      },
+      "status": {
+        "betaReady": "Beta 可用",
+        "needsRepair": "需要修复",
+        "notReady": "未就绪",
+        "available": "可用",
+        "missing": "缺失",
+        "passed": "通过",
+        "failed": "失败",
+        "healthy": "健康",
+        "abnormal": "异常",
+        "installed": "已安装",
+        "notInstalled": "未安装",
+        "complete": "完整",
+        "configured": "已配置",
+        "needsPasteRestart": "需粘贴/重启",
+        "notDetected": "未检测到",
+        "notDetectedYet": "尚未检测",
+        "canCopy": "可复制",
+        "canConfigure": "可配置",
+        "waitingConfirmation": "等待确认",
+        "exists": "存在",
+        "managed": "托管",
+        "unmanaged": "非托管",
+        "checked": "已检查",
+        "notFound": "未找到",
+        "containsReadAny": "含 readany",
+        "needsConfig": "需配置"
+      },
+      "actions": {
+        "verify": "验证",
+        "repairExternalAI": "修复外部 AI",
+        "diagnose": "诊断",
+        "install": "安装",
+        "repair": "修复",
+        "uninstall": "卸载",
+        "update": "更新",
+        "copied": "已复制",
+        "copyEvidence": "复制证据",
+        "copyCommand": "复制命令",
+        "copyAllCommand": "复制全量命令",
+        "oneClickInstall": "一键安装",
+        "oneClickInstallAll": "一键全量安装",
+        "uninstallAccess": "卸载接入",
+        "copyInstructions": "复制指令",
+        "copyConfig": "复制配置",
+        "expandDetails": "展开详情"
+      },
+      "labels": {
+        "cli": "CLI",
+        "doctor": "诊断",
+        "runtime": "运行时",
+        "skill": "技能",
+        "clientLinks": "客户端链接",
+        "mcpConfig": "MCP 配置",
+        "version": "版本",
+        "profile": "权限",
+        "tools": "工具",
+        "commandSource": "执行来源",
+        "client": "客户端",
+        "skillTarget": "技能目标",
+        "returnedCommand": "返回命令",
+        "removedCliShim": "已移除 CLI shim",
+        "removedSkill": "已移除技能",
+        "distribution": "分发方式",
+        "builtBundle": "已构建包",
+        "desktopResource": "桌面资源包",
+        "nativeBinary": "原生二进制",
+        "usesNodeRuntime": "使用 Node 运行时",
+        "node": "Node",
+        "nativeSqlite": "原生 SQLite",
+        "bundleRoot": "包根目录",
+        "entrypoint": "入口文件",
+        "nodeExecutable": "Node 可执行文件",
+        "cliShim": "CLI shim",
+        "mcpFormat": "MCP 格式"
+      },
+      "empty": {
+        "runDiagnostics": "运行诊断后显示。"
+      },
+      "doctorChecks": {
+        "nodeRuntime": {
+          "name": "Node 运行时",
+          "message": "Node 运行时可用：{{executable}}（{{version}}）。"
+        },
+        "nativeSqlite": {
+          "name": "原生 SQLite",
+          "ok": "better-sqlite3 可用于书库和 MCP 数据命令。",
+          "fail": "better-sqlite3 不可用；书库和 MCP 数据命令可能失败。"
+        },
+        "readanyHome": {
+          "name": "ReadAny 主目录",
+          "ok": "ReadAny 主目录可写。",
+          "fail": "ReadAny 主目录不可写。"
+        },
+        "skill": {
+          "name": "技能",
+          "ok": "ReadAny Skill 已安装：{{path}}。",
+          "fail": "ReadAny Skill 未安装：{{path}}。"
+        }
+      }
+    }
   }
 }

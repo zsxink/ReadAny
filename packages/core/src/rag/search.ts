@@ -22,6 +22,11 @@ export function configureSearch(service: EmbeddingService): void {
   embeddingService = service;
 }
 
+/** Clear configured embedding service for vector search */
+export function clearSearchConfiguration(): void {
+  embeddingService = null;
+}
+
 // ---- In-memory chunk cache per book ----
 interface CachedBookChunks {
   chunks: Chunk[];

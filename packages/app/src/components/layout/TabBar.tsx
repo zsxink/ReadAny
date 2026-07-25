@@ -9,7 +9,7 @@ import { type Tab, useAppStore } from "@/stores/app-store";
 import { useLibraryStore } from "@/stores/library-store";
 import { useReaderStore } from "@/stores/reader-store";
 import { useSyncStore } from "@/stores/sync-store";
-import { BookOpen, Home, MessageSquare, NotebookPen, X } from "lucide-react";
+import { BookOpen, FilePenLine, Home, MessageSquare, NotebookPen, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 const TAB_ICONS: Record<string, React.ElementType> = {
@@ -17,6 +17,7 @@ const TAB_ICONS: Record<string, React.ElementType> = {
   reader: BookOpen,
   chat: MessageSquare,
   notes: NotebookPen,
+  epubDraft: FilePenLine,
 };
 
 const NO_DRAG_STYLE = { WebkitAppRegion: "no-drag" } as Record<string, string>;

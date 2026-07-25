@@ -15,7 +15,25 @@ import {
  * - Each book has its own active thread; general chat has its own.
  * - All threads are persisted to SQLite via core db module
  */
-import type { Message, ReasoningStep, SemanticContext, Thread, ToolCall } from "../types";
+import type { Message, MessageV2, ReasoningStep, SemanticContext, Thread, ToolCall } from "../types";
+
+export type ChatStreamingStep = "thinking" | "tool_calling" | "responding" | "idle";
+
+export interface ChatStreamingSession {
+  key: string;
+  threadId: string;
+  bookId?: string;
+  isStreaming: boolean;
+  currentMessage: MessageV2 | null;
+  currentStep: ChatStreamingStep;
+  errorMessage?: string | null;
+  startedAt: number;
+  updatedAt: number;
+}
+
+export function getChatStreamingKey(bookId?: string | null): string {
+  return bookId ? `book:${bookId}` : "general";
+}
 
 export interface ChatState {
   threads: Thread[];
@@ -23,9 +41,10 @@ export interface ChatState {
   bookActiveThreadIds: Record<string, string>;
   isStreaming: boolean;
   streamingContent: string;
+  streamingSessions: Record<string, ChatStreamingSession>;
   toolCalls: ToolCall[];
   reasoning: ReasoningStep[];
-  currentStep: "thinking" | "tool_calling" | "responding" | "idle";
+  currentStep: ChatStreamingStep;
   semanticContext: SemanticContext | null;
   initialized: boolean;
 
@@ -41,6 +60,17 @@ export interface ChatState {
   updateMessage: (threadId: string, messageId: string, content: string) => void;
   updateThreadTitle: (threadId: string, title: string) => Promise<void>;
   setStreaming: (streaming: boolean) => void;
+  startStreamingSession: (session: ChatStreamingSession) => void;
+  updateStreamingSession: (
+    key: string,
+    update: Partial<
+      Pick<
+        ChatStreamingSession,
+        "isStreaming" | "currentMessage" | "currentStep" | "errorMessage" | "updatedAt"
+      >
+    >,
+  ) => void;
+  finishStreamingSession: (key: string) => void;
   setStreamingContent: (content: string) => void;
   appendStreamingContent: (chunk: string) => void;
   setToolCalls: (toolCalls: ToolCall[]) => void;
@@ -48,7 +78,7 @@ export interface ChatState {
   updateToolCall: (id: string, update: Partial<ToolCall>) => void;
   setReasoning: (reasoning: ReasoningStep[]) => void;
   addReasoningStep: (step: ReasoningStep) => void;
-  setCurrentStep: (step: "thinking" | "tool_calling" | "responding" | "idle") => void;
+  setCurrentStep: (step: ChatStreamingStep) => void;
   setSemanticContext: (ctx: SemanticContext | null) => void;
   resetStreamingState: () => void;
 }
@@ -59,6 +89,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   bookActiveThreadIds: {},
   isStreaming: false,
   streamingContent: "",
+  streamingSessions: {},
   toolCalls: [],
   reasoning: [],
   currentStep: "idle",
@@ -224,6 +255,47 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   setStreaming: (streaming) => set({ isStreaming: streaming }),
+  startStreamingSession: (session) =>
+    set((state) => ({
+      isStreaming: true,
+      currentStep: session.currentStep,
+      streamingSessions: {
+        ...state.streamingSessions,
+        [session.key]: session,
+      },
+    })),
+  updateStreamingSession: (key, update) =>
+    set((state) => {
+      const existing = state.streamingSessions[key];
+      if (!existing) return {};
+
+      const nextSession = {
+        ...existing,
+        ...update,
+        updatedAt: update.updatedAt ?? Date.now(),
+      };
+      const sessions = {
+        ...state.streamingSessions,
+        [key]: nextSession,
+      };
+      const anyStreaming = Object.values(sessions).some((session) => session.isStreaming);
+
+      return {
+        isStreaming: anyStreaming,
+        currentStep: nextSession.currentStep,
+        streamingSessions: sessions,
+      };
+    }),
+  finishStreamingSession: (key) =>
+    set((state) => {
+      const { [key]: _finished, ...sessions } = state.streamingSessions;
+      const activeSessions = Object.values(sessions).filter((session) => session.isStreaming);
+      return {
+        isStreaming: activeSessions.length > 0,
+        currentStep: activeSessions[0]?.currentStep ?? "idle",
+        streamingSessions: sessions,
+      };
+    }),
   setStreamingContent: (content) => set({ streamingContent: content }),
   appendStreamingContent: (chunk) =>
     set((state) => ({ streamingContent: state.streamingContent + chunk })),
@@ -246,6 +318,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({
       isStreaming: false,
       streamingContent: "",
+      streamingSessions: {},
       toolCalls: [],
       reasoning: [],
       currentStep: "idle",

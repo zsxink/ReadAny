@@ -25,6 +25,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useResolvedSrc } from "@/hooks/use-resolved-src";
 import { extractLocalBookMetadata } from "@/lib/book/auto-metadata";
+import { invoke } from "@tauri-apps/api/core";
+import { useAppStore } from "@/stores/app-store";
 import { useLibraryStore } from "@/stores/library-store";
 import type { Book, BookReview } from "@readany/core/types";
 import {
@@ -50,8 +52,10 @@ import {
   HardDrive,
   ImagePlus,
   Plus,
+  Sparkles,
   Star,
   Trash2,
+  Wand2,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -89,7 +93,46 @@ const YEAR_OPTIONS = Array.from({ length: 220 }, (_, index) =>
   String(new Date().getFullYear() + 5 - index),
 );
 const MONTH_OPTIONS = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, "0"));
-type DetailsTab = "basic" | "reviews";
+type DetailsTab = "basic" | "reviews" | "draft";
+type DraftCreateResult = {
+  ok: boolean;
+  action: string;
+  command: string;
+  command_source?: string;
+  args: string[];
+  status?: number | null;
+  stdout: string;
+  stderr: string;
+};
+type DraftCreateCommandResult =
+  | {
+      ok: true;
+      data: {
+        draft: {
+          draftId: string;
+          bookId: string;
+          manifestPath: string;
+          historyPath: string;
+        };
+      };
+    }
+  | {
+      ok: false;
+      error: {
+        code: string;
+        message: string;
+      };
+    };
+
+function parseDraftCreateResult(result: DraftCreateResult): DraftCreateCommandResult | null {
+  const output = result.stdout.trim();
+  if (!output) return null;
+  try {
+    return JSON.parse(output) as DraftCreateCommandResult;
+  } catch {
+    return null;
+  }
+}
 
 function statusLabel(status: Book["syncStatus"], t: TFunction) {
   if (status === "remote") return t("library.detailsSyncRemote", "Remote only");
@@ -227,12 +270,15 @@ export function BookDetailsDialog({ book, open, onOpenChange }: BookDetailsDialo
   const allTags = useLibraryStore((state) => state.allTags);
   const addTag = useLibraryStore((state) => state.addTag);
   const updateBook = useLibraryStore((state) => state.updateBook);
+  const addTab = useAppStore((state) => state.addTab);
   const [values, setValues] = useState<BookMetadataFormValues | null>(null);
   const [newTag, setNewTag] = useState("");
   const [editingBasics, setEditingBasics] = useState(false);
   const [editingTitleField, setEditingTitleField] = useState<"title" | "author" | null>(null);
   const [editingReviewId, setEditingReviewId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<DetailsTab>("basic");
+  const [draftActionBusy, setDraftActionBusy] = useState(false);
+  const [draftActionResult, setDraftActionResult] = useState<DraftCreateResult | null>(null);
   const coverSrc = useResolvedSrc(values?.coverUrl);
   const hydratedBookIdRef = useRef<string | null>(null);
   const autoFilledBookIdRef = useRef<string | null>(null);
@@ -246,6 +292,8 @@ export function BookDetailsDialog({ book, open, onOpenChange }: BookDetailsDialo
       setEditingTitleField(null);
       setEditingReviewId(null);
       setActiveTab("basic");
+      setDraftActionBusy(false);
+      setDraftActionResult(null);
       return;
     }
     if (!book) return;
@@ -256,6 +304,8 @@ export function BookDetailsDialog({ book, open, onOpenChange }: BookDetailsDialo
     setEditingTitleField(null);
     setEditingReviewId(null);
     setActiveTab("basic");
+    setDraftActionBusy(false);
+    setDraftActionResult(null);
   }, [book, open]);
 
   useEffect(() => {
@@ -320,9 +370,9 @@ export function BookDetailsDialog({ book, open, onOpenChange }: BookDetailsDialo
     setValues((current) => (current ? { ...current, [field]: value } : current));
   };
 
-  const persistCoverUrl = (coverUrl: string) => {
+  const persistCoverUrl = async (coverUrl: string) => {
     setField("coverUrl", coverUrl);
-    updateBook(book.id, {
+    await updateBook(book.id, {
       meta: {
         ...book.meta,
         coverUrl,
@@ -344,6 +394,55 @@ export function BookDetailsDialog({ book, open, onOpenChange }: BookDetailsDialo
     const reviewId = addReview();
     setActiveTab("reviews");
     setEditingReviewId(reviewId);
+  };
+
+  const handleCreateDraft = async () => {
+    if (!book || draftActionBusy) return;
+    setDraftActionBusy(true);
+    try {
+      const result = await invoke<DraftCreateResult>("readany_cli_run", {
+        action: "epub_draft_create",
+        options: { bookId: book.id },
+      });
+      setDraftActionResult(result);
+      const parsed = parseDraftCreateResult(result);
+      if (result.ok && parsed?.ok) {
+        const draftId = parsed.data.draft.draftId;
+        addTab({
+          id: `epub-draft-${draftId}`,
+          type: "epubDraft",
+          title: t("library.detailsDraftTabTitle", "精排草稿"),
+          bookId: book.id,
+          draftId,
+        });
+      }
+    } catch (error) {
+      setDraftActionResult({
+        ok: false,
+        action: "epub_draft_create",
+        command: "readany",
+        args: [],
+        stdout: "",
+        stderr: error instanceof Error ? error.message : String(error),
+        command_source: "unknown",
+      });
+    } finally {
+      setDraftActionBusy(false);
+    }
+  };
+
+  const handleOpenDraftWorkspace = () => {
+    if (!book || !draftActionResult) return;
+    const parsed = parseDraftCreateResult(draftActionResult);
+    if (!parsed?.ok) return;
+    const draftId = parsed.data.draft.draftId;
+    addTab({
+      id: `epub-draft-${draftId}`,
+      type: "epubDraft",
+      title: t("library.detailsDraftTabTitle", "精排草稿"),
+      bookId: book.id,
+      draftId,
+    });
   };
 
   const updateReview = (reviewId: string, content: string) => {
@@ -410,7 +509,7 @@ export function BookDetailsDialog({ book, open, onOpenChange }: BookDetailsDialo
       await mkdir(coversDir, { recursive: true });
       const relativePath = `covers/${book.id}-custom-${Date.now()}.${safeExt}`;
       await copyFile(selected, await join(libraryRoot, relativePath));
-      persistCoverUrl(relativePath);
+      await persistCoverUrl(relativePath);
       toast.success(t("library.detailsCoverSaved", "Cover saved"));
     } catch (err) {
       console.warn("[BookDetailsDialog] Failed to change cover:", err);
@@ -452,7 +551,7 @@ export function BookDetailsDialog({ book, open, onOpenChange }: BookDetailsDialo
                   variant="ghost"
                   size="sm"
                   className="h-8 w-full justify-start rounded-none px-3 text-xs text-muted-foreground"
-                  onClick={() => persistCoverUrl("")}
+                  onClick={() => void persistCoverUrl("")}
                   disabled={!values.coverUrl && !book.meta.coverUrl}
                 >
                   <Trash2 className="size-3.5" />
@@ -592,6 +691,11 @@ export function BookDetailsDialog({ book, open, onOpenChange }: BookDetailsDialo
                       count={values.reviews.filter((review) => review.content.trim()).length}
                       onClick={() => setActiveTab("reviews")}
                     />
+                    <DetailsTabButton
+                      active={activeTab === "draft"}
+                      label={t("library.detailsTabDraft", "Draft")}
+                      onClick={() => setActiveTab("draft")}
+                    />
                   </div>
                   {activeTab === "basic" ? (
                     <Button
@@ -605,7 +709,7 @@ export function BookDetailsDialog({ book, open, onOpenChange }: BookDetailsDialo
                         ? t("common.done", "Done")
                         : t("library.detailsEditBasicInfo", "Edit basic info")}
                     </Button>
-                  ) : (
+                  ) : activeTab === "reviews" ? (
                     <Button
                       type="button"
                       variant="ghost"
@@ -616,7 +720,7 @@ export function BookDetailsDialog({ book, open, onOpenChange }: BookDetailsDialo
                       <Plus className="size-3.5" />
                       {t("library.detailsAddReview", "Add review")}
                     </Button>
-                  )}
+                  ) : null}
                 </div>
 
                 {activeTab === "basic" ? (
@@ -756,7 +860,7 @@ export function BookDetailsDialog({ book, open, onOpenChange }: BookDetailsDialo
                       onChange={(value) => setField("description", value)}
                     />
                   </>
-                ) : (
+                ) : activeTab === "reviews" ? (
                   <div className="space-y-4">
                     <ReviewsField
                       placeholder={t("library.detailsReviewPlaceholder", "Write your thoughts")}
@@ -771,6 +875,86 @@ export function BookDetailsDialog({ book, open, onOpenChange }: BookDetailsDialo
                       onUpdate={updateReview}
                       onRemove={removeReview}
                     />
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <section className="rounded-lg border bg-card/45 p-4 shadow-sm">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <Wand2 className="size-4 text-muted-foreground" />
+                            <h3 className="text-sm font-medium text-foreground">
+                              {t("library.detailsDraftTitle", "Create draft workspace")}
+                            </h3>
+                          </div>
+                          <p className="mt-2 max-w-2xl text-xs leading-relaxed text-muted-foreground">
+                            {t(
+                              "library.detailsDraftDesc",
+                              "Start the EPUB精排 flow from here. AI and user edits will share the same draft, history, diff, validate, and export path.",
+                            )}
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          onClick={() => void handleCreateDraft()}
+                          disabled={draftActionBusy}
+                        >
+                          <Sparkles className="mr-1.5 size-3.5" />
+                          {draftActionBusy
+                            ? t("library.detailsDraftCreating", "Creating...")
+                            : t("library.detailsDraftCreate", "Create draft")}
+                        </Button>
+                      </div>
+                      <div className="mt-4 grid gap-2 md:grid-cols-3">
+                        <DraftStep
+                          title={t("library.detailsDraftStep1", "Inspect")}
+                          desc={t(
+                            "library.detailsDraftStep1Desc",
+                            "Read EPUB structure, manifest, spine, metadata, and toc.",
+                          )}
+                        />
+                        <DraftStep
+                          title={t("library.detailsDraftStep2", "Edit")}
+                          desc={t(
+                            "library.detailsDraftStep2Desc",
+                            "Patch chapters or metadata in the controlled draft workspace.",
+                          )}
+                        />
+                        <DraftStep
+                          title={t("library.detailsDraftStep3", "Export")}
+                          desc={t(
+                            "library.detailsDraftStep3Desc",
+                            "Validate first, then export a new EPUB without touching the source file.",
+                          )}
+                        />
+                      </div>
+                      {draftActionResult ? (
+                        <div className="mt-4 rounded-md bg-background px-3 py-2">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-[11px] text-muted-foreground">
+                              {draftActionResult.ok
+                                ? t("library.detailsDraftCreated", "Draft created successfully")
+                                : t("library.detailsDraftCreateFailed", "Draft creation failed")}
+                            </p>
+                            {draftActionResult.ok && parseDraftCreateResult(draftActionResult)?.ok ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={handleOpenDraftWorkspace}
+                              >
+                                {t("library.detailsDraftOpenWorkspace", "Open workspace")}
+                              </Button>
+                            ) : null}
+                          </div>
+                          <pre className="mt-1 max-h-36 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-foreground">
+                            {draftActionResult.ok
+                              ? draftActionResult.stdout.trim()
+                              : draftActionResult.stderr.trim() || "Unknown error"}
+                          </pre>
+                        </div>
+                      ) : null}
+                    </section>
                   </div>
                 )}
               </section>
@@ -953,6 +1137,15 @@ function DetailsTabButton({
         </span>
       ) : null}
     </button>
+  );
+}
+
+function DraftStep({ title, desc }: { title: string; desc: string }) {
+  return (
+    <div className="rounded-md border bg-background px-3 py-2">
+      <p className="text-xs font-medium text-foreground">{title}</p>
+      <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{desc}</p>
+    </div>
   );
 }
 

@@ -15,7 +15,6 @@ import { eventBus } from "@readany/core/utils/event-bus";
 import { useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  ActivityIndicator,
   Animated,
   Dimensions,
   Easing,
@@ -102,7 +101,7 @@ export function TTSMiniPlayer({ visible, onClose, anchorLayout }: TTSMiniPlayerP
   }, [currentBookId, onClose]);
 
   const handlePlayPause = useCallback(() => {
-    if (playState === "playing") pause();
+    if (playState === "playing" || playState === "loading") pause();
     else if (playState === "paused") resume();
   }, [playState, pause, resume]);
 
@@ -228,13 +227,13 @@ export function TTSMiniPlayer({ visible, onClose, anchorLayout }: TTSMiniPlayerP
           <TouchableOpacity
             style={[styles.playBtn, { backgroundColor: colors.primary }]}
             onPress={handlePlayPause}
-            disabled={playState === "loading" || playState === "stopped"}
+            disabled={playState === "stopped"}
             accessibilityRole="button"
-            accessibilityLabel={playState === "playing" ? t("tts.pause") : t("tts.play")}
+            accessibilityLabel={
+              playState === "playing" || playState === "loading" ? t("tts.pause") : t("tts.play")
+            }
           >
-            {playState === "loading" ? (
-              <ActivityIndicator size="small" color={colors.primaryForeground} />
-            ) : playState === "playing" ? (
+            {playState === "playing" || playState === "loading" ? (
               <PauseIcon size={20} color={colors.primaryForeground} />
             ) : (
               <PlayIcon size={20} color={colors.primaryForeground} />

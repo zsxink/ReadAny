@@ -91,7 +91,7 @@ export function TTSControls({ onClose, className }: TTSControlsProps) {
             <div className="flex items-center gap-3">
               <span className="text-xs text-muted-foreground w-16 shrink-0">{t("tts.engine")}</span>
               <div className="flex gap-1">
-                {(["system", "dashscope"] as TTSEngine[]).map((eng) => (
+                {(["system", "dashscope", "xiaomi", "openai-compatible"] as TTSEngine[]).map((eng) => (
                   <Button
                     key={eng}
                     variant={config.engine === eng ? "default" : "secondary"}
@@ -99,7 +99,13 @@ export function TTSControls({ onClose, className }: TTSControlsProps) {
                     className="h-7 text-xs"
                     onClick={() => updateConfig({ engine: eng })}
                   >
-                    {eng === "system" ? t("tts.systemEngine") : t("tts.dashscopeEngine")}
+                    {eng === "system"
+                      ? t("tts.systemEngine")
+                      : eng === "dashscope"
+                        ? t("tts.dashscopeEngine")
+                        : eng === "xiaomi"
+                          ? "Xiaomi"
+                          : "OpenAI"}
                   </Button>
                 ))}
               </div>
@@ -242,12 +248,12 @@ export function TTSControls({ onClose, className }: TTSControlsProps) {
               size="icon"
               className="h-8 w-8 rounded-full"
               onClick={() => {
-                if (playState === "playing") pause();
+                if (playState === "playing" || playState === "loading") pause();
                 else if (playState === "paused") resume();
               }}
-              disabled={playState === "loading" || playState === "stopped"}
+              disabled={playState === "stopped"}
             >
-              {playState === "playing" ? (
+              {playState === "playing" || playState === "loading" ? (
                 <Pause className="h-3.5 w-3.5" />
               ) : (
                 <Play className="h-3.5 w-3.5 ml-0.5" />

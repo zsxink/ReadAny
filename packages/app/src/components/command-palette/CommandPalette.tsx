@@ -3,6 +3,7 @@ import { cn } from "@readany/core/utils";
 import {
   BookOpen,
   Brain,
+  Bot,
   Info,
   Keyboard,
   Languages,
@@ -210,6 +211,14 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         category: "settings",
         icon: Languages,
         action: () => openSettingsTab("translation"),
+      },
+      {
+        id: "settings.externalAi",
+        label: t("settings.externalAi"),
+        keywords: ["external", "ai", "agent", "mcp", "cli", "skill"],
+        category: "settings",
+        icon: Bot,
+        action: () => openSettingsTab("externalAi"),
       },
       {
         id: "settings.about",

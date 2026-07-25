@@ -4,7 +4,7 @@ import { useTTSStore } from "@/stores";
 import { type ThemeColors, fontSize, radius, useColors, withOpacity } from "@/styles/theme";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
 
@@ -137,7 +137,7 @@ export function TTSControls({ onClose, onReplay }: TTSControlsProps) {
 
   const handlePlayPress = useCallback(() => {
     console.log("[TTSControls] handlePlayPress called, playState:", playState);
-    if (playState === "playing") {
+    if (playState === "playing" || playState === "loading") {
       console.log("[TTSControls] pausing");
       pause();
     } else if (playState === "paused") {
@@ -230,11 +230,8 @@ export function TTSControls({ onClose, onReplay }: TTSControlsProps) {
           <TouchableOpacity
             style={s.playBtn}
             onPress={handlePlayPress}
-            disabled={playState === "loading"}
           >
-            {playState === "loading" ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : playState === "playing" ? (
+            {playState === "playing" || playState === "loading" ? (
               <PauseIcon size={16} color="#fff" />
             ) : (
               <PlayIcon size={16} color="#fff" />

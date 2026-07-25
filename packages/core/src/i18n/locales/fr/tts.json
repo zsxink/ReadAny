@@ -12,7 +12,35 @@
     "browserEngineDesc": "Gratuit hors ligne, utilise la voix système de l'appareil",
     "dashscopeEngine": "DashScope",
     "dashscopeEngineDesc": "Voix cloud de haute qualité, nécessite une clé API",
+    "provider": {
+      "edge": {
+        "label": "Edge TTS",
+        "description": "Voix neuronales Microsoft, sans clé API."
+      },
+      "system": {
+        "label": "Voix système",
+        "description": "Utilise les voix installées sur cet appareil."
+      },
+      "dashscope": {
+        "label": "DashScope",
+        "description": "Alibaba Cloud qwen3-tts-flash."
+      },
+      "xiaomi": {
+        "label": "Xiaomi MiMo",
+        "description": "MiMo-V2.5-TTS avec contrôle de voix et de style."
+      },
+      "openai-compatible": {
+        "label": "Compatible OpenAI",
+        "description": "Endpoint compatible OpenAI audio/speech ou audio de chat."
+      }
+    },
+    "providerCategory": {
+      "built-in": "Intégré",
+      "cloud": "Cloud",
+      "custom": "Personnalisé"
+    },
     "voice": "Voix",
+    "voiceProfile": "Profil de lecture",
     "defaultVoice": "Voix par défaut",
     "sleepTimer": "Minuterie de sommeil",
     "sleepTimerSubtitle": "Arrêter la narration automatiquement après le temps choisi.",
@@ -27,6 +55,12 @@
     "sleepTimerCancel": "Désactiver la minuterie de sommeil",
     "sleepTimerPrompt": "Définir une minuterie de sommeil en minutes",
     "apiKey": "Clé API",
+    "baseUrl": "Base URL",
+    "endpoint": "Endpoint",
+    "model": "Modèle",
+    "format": "Format",
+    "stylePrompt": "Style de lecture",
+    "defaultStylePrompt": "Naturel, régulier et confortable pour une longue écoute.",
     "apiKeyPlaceholder": "Entrer la clé API DashScope",
     "apiKeyHint": "Obtenez la clé API depuis Alibaba Cloud, utilisez le modèle qwen3-tts-flash",
     "getApiKey": "Obtenir la clé API",

@@ -112,15 +112,13 @@ export function BookChatScreen({ route, navigation }: Props) {
     setQuotes((prev) => prev.filter((q) => q.id !== id));
   }, []);
 
-  const {
-    threads,
-    loadThreads,
-    getActiveThreadId,
-    setBookActiveThread,
-    createThread,
-    removeThread,
-    getThreadsForContext,
-  } = useChatStore();
+  const threads = useChatStore((s) => s.threads);
+  const loadThreads = useChatStore((s) => s.loadThreads);
+  const getActiveThreadId = useChatStore((s) => s.getActiveThreadId);
+  const setBookActiveThread = useChatStore((s) => s.setBookActiveThread);
+  const createThread = useChatStore((s) => s.createThread);
+  const removeThread = useChatStore((s) => s.removeThread);
+  const getThreadsForContext = useChatStore((s) => s.getThreadsForContext);
 
   useEffect(() => {
     loadThreads(bookId);
@@ -132,6 +130,13 @@ export function BookChatScreen({ route, navigation }: Props) {
     [threads, activeThreadId],
   );
   const bookThreads = getThreadsForContext(bookId);
+  const firstBookThreadId = bookThreads[0]?.id;
+  useEffect(() => {
+    if (!activeThreadId && firstBookThreadId) {
+      setBookActiveThread(bookId, firstBookThreadId);
+    }
+  }, [activeThreadId, bookId, firstBookThreadId, setBookActiveThread]);
+
   const groupedThreads = useMemo(() => {
     const grouped = groupThreadsByTime(bookThreads);
     const sections: { key: string; label: string; threads: typeof bookThreads }[] = [
@@ -230,9 +235,10 @@ export function BookChatScreen({ route, navigation }: Props) {
     return convertToMessageV2(activeThread.messages);
   }, [activeThread]);
 
+  const activeCurrentMessage = activeThread?.id === currentMessage?.threadId ? currentMessage : null;
   const allMessages = useMemo(
-    () => mergeMessagesWithStreaming(messagesV2, currentMessage, isStreaming),
-    [currentMessage, isStreaming, messagesV2],
+    () => mergeMessagesWithStreaming(messagesV2, activeCurrentMessage, isStreaming),
+    [activeCurrentMessage, isStreaming, messagesV2],
   );
 
   const handleSend = useCallback(

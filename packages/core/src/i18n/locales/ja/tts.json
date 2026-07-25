@@ -12,7 +12,35 @@
     "browserEngineDesc": "無料オフライン、デバイスのシステム音声を使用",
     "dashscopeEngine": "DashScope",
     "dashscopeEngineDesc": "高品質クラウド音声、APIキーが必要",
+    "provider": {
+      "edge": {
+        "label": "Edge TTS",
+        "description": "Microsoft Neural 音声。APIキーは不要です。"
+      },
+      "system": {
+        "label": "システム音声",
+        "description": "このデバイスにインストール済みの音声を使用します。"
+      },
+      "dashscope": {
+        "label": "DashScope",
+        "description": "Alibaba Cloud qwen3-tts-flash。"
+      },
+      "xiaomi": {
+        "label": "Xiaomi MiMo",
+        "description": "MiMo-V2.5-TTS。音声とスタイルを調整できます。"
+      },
+      "openai-compatible": {
+        "label": "OpenAI互換",
+        "description": "OpenAI audio/speech またはチャット音声互換エンドポイント。"
+      }
+    },
+    "providerCategory": {
+      "built-in": "内蔵",
+      "cloud": "クラウド",
+      "custom": "カスタム"
+    },
     "voice": "音声",
+    "voiceProfile": "読み上げプロファイル",
     "defaultVoice": "デフォルト音声",
     "sleepTimer": "スリープタイマー",
     "sleepTimerSubtitle": "設定した時間後に自動的にナレーションを停止します。",
@@ -27,6 +55,12 @@
     "sleepTimerCancel": "スリープタイマーをオフ",
     "sleepTimerPrompt": "スリープタイマーを分単位で設定",
     "apiKey": "APIキー",
+    "baseUrl": "Base URL",
+    "endpoint": "エンドポイント",
+    "model": "モデル",
+    "format": "形式",
+    "stylePrompt": "読み上げスタイル",
+    "defaultStylePrompt": "自然で落ち着いた、長時間聴きやすい朗読。",
     "apiKeyPlaceholder": "DashScope APIキーを入力",
     "apiKeyHint": "Alibaba CloudからAPIキーを取得し、qwen3-tts-flashモデルを使用",
     "getApiKey": "APIキーを取得",

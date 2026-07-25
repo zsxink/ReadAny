@@ -4,4 +4,5 @@
 export {
   readingContextService,
   getReadingContextSnapshot,
+  useReadingContext,
 } from "@readany/core/ai/reading-context-service";

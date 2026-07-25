@@ -12,6 +12,7 @@ import { AboutSettings } from "./AboutSettings";
 import { FeedbackSettings } from "./FeedbackSettings";
 import { FontSettings } from "./FontSettings";
 import { GeneralSettings } from "./GeneralSettings";
+import { ExternalAISettings } from "./ExternalAISettings";
 import { ReadSettingsPanel } from "./ReadSettings";
 import { SyncSettings } from "./SyncSettings";
 import { TTSSettings } from "./TTSSettings";
@@ -32,6 +33,7 @@ const TAB_IDS: SettingsTab[] = [
   "tts",
   "translation",
   "sync",
+  "externalAi",
   "feedback",
   "about",
 ];
@@ -44,6 +46,7 @@ const TAB_KEYS: Record<SettingsTab, string> = {
   tts: "settings.tts",
   translation: "settings.translationTab",
   sync: "settings.sync",
+  externalAi: "settings.externalAi",
   feedback: "feedback.title",
   about: "settings.about",
 };
@@ -120,6 +123,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             {settingsTab === "tts" && <TTSSettings />}
             {settingsTab === "translation" && <TranslationSettings />}
             {settingsTab === "sync" && <SyncSettings />}
+            {settingsTab === "externalAi" && <ExternalAISettings />}
             {settingsTab === "feedback" && <FeedbackSettings />}
             {settingsTab === "about" && <AboutSettings />}
           </div>

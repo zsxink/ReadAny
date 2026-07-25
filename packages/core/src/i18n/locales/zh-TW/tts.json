@@ -12,10 +12,38 @@
     "browserEngineDesc": "免費離線，使用裝置系統語音",
     "dashscopeEngine": "DashScope",
     "dashscopeEngineDesc": "高品質雲端語音，需要 API 密鑰",
+    "provider": {
+      "edge": {
+        "label": "Edge TTS",
+        "description": "微軟神經網路語音，無需 API 密鑰"
+      },
+      "system": {
+        "label": "系統語音",
+        "description": "使用目前裝置已安裝的系統語音"
+      },
+      "dashscope": {
+        "label": "DashScope",
+        "description": "阿里雲 qwen3-tts-flash 語音"
+      },
+      "xiaomi": {
+        "label": "Xiaomi MiMo",
+        "description": "MiMo-V2.5-TTS，支援音色與風格控制"
+      },
+      "openai-compatible": {
+        "label": "OpenAI 相容",
+        "description": "自訂 OpenAI audio/speech 或聊天音訊介面"
+      }
+    },
+    "providerCategory": {
+      "built-in": "內建",
+      "cloud": "雲端",
+      "custom": "自訂"
+    },
     "engineDescEdge": "Microsoft · 多語言",
     "engineDescDashscope": "阿里雲通義 · 中文最佳化",
     "engineDescSystem": "系統內建 · 免費",
     "voice": "語音",
+    "voiceProfile": "朗讀方案",
     "defaultVoice": "預設語音",
     "sleepTimer": "定時停止",
     "sleepTimerSubtitle": "讓朗讀在你設定的時間後自動停止",
@@ -30,6 +58,12 @@
     "sleepTimerCancel": "關閉定時",
     "sleepTimerPrompt": "請輸入定時停止的分鐘數",
     "apiKey": "API 密鑰",
+    "baseUrl": "基礎 URL",
+    "endpoint": "介面",
+    "model": "模型",
+    "format": "格式",
+    "stylePrompt": "朗讀風格",
+    "defaultStylePrompt": "自然、平穩，適合長時間聽書。",
     "apiKeyPlaceholder": "輸入 DashScope API 密鑰",
     "apiKeyHint": "從阿里百煉平台取得 API 密鑰，使用 qwen3-tts-flash 模型",
     "getApiKey": "取得 API Key",

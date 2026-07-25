@@ -5,7 +5,7 @@
 <h1 align="center">ReadAny</h1>
 
 <p align="center">
-  <strong>Read Any, Understand More</strong>
+  <strong>Local-first AI e-book reader for desktop and mobile</strong>
 </p>
 
 <p align="center">
@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  An AI-powered e-book reader with semantic search, intelligent chat, and knowledge management
+  ReadAny helps you ask questions about books, find ideas by meaning, and build a private reading knowledge base with RAG chat, semantic search, highlights, TTS, and WebDAV sync.
 </p>
 
 <p align="center">
@@ -35,6 +35,13 @@
 ---
 
 > 🚀 **v2.0 Update**: Mobile apps (iOS/Android) now available! See [Mobile](#mobile-apps) section below.
+
+## AI-Native Reading Workflow
+
+- **Chat with your library** - Ask questions about the current book or selected passages, with answers grounded in your reading context
+- **Find ideas semantically** - Hybrid vector retrieval + BM25 search helps you find concepts even when the exact keyword is missing
+- **Keep knowledge private** - Local embeddings and a local vector store keep your books, highlights, and notes offline-capable
+- **Use your preferred model** - Connect OpenAI, Claude, Gemini, Ollama, DeepSeek, or custom-compatible providers
 
 ## Why ReadAny?
 
@@ -170,7 +177,7 @@ TXT and UMD are imported by converting them to EPUB for reading, notes, search, 
 | macOS (Intel) | [Download .dmg](https://github.com/codedogQBY/ReadAny/releases/latest) |
 | Windows | [Download .msi](https://github.com/codedogQBY/ReadAny/releases/latest) |
 | Linux | [Download .AppImage](https://github.com/codedogQBY/ReadAny/releases/latest) |
-| iOS | App Store (Coming Soon) |
+| iOS | [Join TestFlight](https://testflight.apple.com/join/qNdvNv2p) |
 | Android | [Download .apk](https://github.com/codedogQBY/ReadAny/releases/latest) |
 
 #### Homebrew (macOS)

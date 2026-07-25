@@ -7,6 +7,7 @@
     "fonts": "글꼴",
     "ai": "AI",
     "translationTab": "번역",
+    "externalAi": "외부 AI 액세스",
     "tts": "TTS",
     "about": "소개",
     "other": "기타",
@@ -238,7 +239,7 @@
     "syncPassword": "비밀번호",
     "syncRemoteRoot": "원격 폴더",
     "syncRemoteRootPlaceholder": "readany",
-    "syncRemoteRootDesc": "동기화에 사용할 원격 폴더를 선택하세요. 중첩 경로도 지원되며, 테스트 또는 첫 동기화 시 자동으로 생성돼요.",
+    "syncRemoteRootDesc": "ReadAny 동기화 전용으로 사용할 원격 폴더를 선택하세요. 중첩 경로도 지원되며, 테스트 또는 첫 동기화 시 자동으로 생성돼요. ReadAny는 여기에 이미 올려둔 책을 스캔하지 않아요. 기존 WebDAV 서재를 가져오려면 \"다른 WebDAV 연결\"을 사용하세요.",
     "syncTestConnection": "연결 테스트",
     "syncTesting": "테스트 중...",
     "syncTestSuccess": "연결 성공",
@@ -423,6 +424,170 @@
     "ai_currentLabel": "현재:",
     "ai_searchModels": "모델 검색...",
     "ai_noMatchingResults": "일치하는 결과 없음",
-    "ai_totalModels": "총 {{count}}개 모델"
+    "ai_totalModels": "총 {{count}}개 모델",
+    "externalAiSettings": {
+      "overview": {
+        "title": "외부 AI 액세스 Beta",
+        "description": "CLI, Skill, 클라이언트 검색 폴더, MCP 설정을 확인해요. 복구는 현재 선택한 profile을 사용해요.",
+        "mcpConfigHint": "MCP config는 일반 설정 파일에 ReadAny가 있다는 뜻이에요. 실제 클라이언트에 로드됐는지는 재시작하거나 새 세션에서 확인하세요."
+      },
+      "cli": {
+        "title": "ReadAny CLI",
+        "description": "데스크톱 앱은 승인된 CLI 검사만 실행하고 임의 shell 명령은 열지 않아요.",
+        "notInstalledOrPath": "설치되지 않았거나 PATH에서 사용할 수 없음",
+        "runtimeEvidence": "런타임 / 패키징 증거"
+      },
+      "agent": {
+        "title": "Agent 초기화",
+        "description": "이 명령을 외부 AI에 복사하세요. ReadAny CLI와 Skill을 설치하고 MCP 설정 조각을 반환해요.",
+        "clientDiscoveryStatus": "클라이언트 검색 상태",
+        "clientDiscoveryEmpty": "진단을 실행하면 클라이언트 Skill 검색 상태가 표시돼요.",
+        "mcpConfigStatus": "MCP 설정 상태",
+        "mcpConfigEmpty": "진단을 실행하면 MCP 설정 결과가 표시돼요.",
+        "profileRiskWarning": "이 profile은 draft 쓰기 또는 내보내기 권한을 열어요. 복사하거나 초기화하기 전에 위 위험 스위치를 확인하세요.",
+        "latestInstallResult": "최근 원클릭 설치 결과"
+      },
+      "skill": {
+        "title": "AI 어시스턴트 설치",
+        "description": "AI 어시스턴트에 지시문 하나를 복사해 Skill과 MCP를 설치하게 해요.",
+        "copyToCurrentAssistant": "현재 AI 어시스턴트에 복사",
+        "copyHint": "선택한 profile로 바로 설치해요.",
+        "allClients": "모든 클라이언트",
+        "skillInstalled": "스킬 설치됨",
+        "pending": "대기 중"
+      },
+      "mcp": {
+        "title": "MCP 액세스 profile",
+        "description": "MCP 액세스 수준을 선택하세요. editor / publisher는 명시 확인이 필요하며, CLI 또는 Skill 설치만으로 쓰기 권한이 생기지 않아요.",
+        "currentTemplate": "{{description}} 현재 {{client}} 템플릿을 복사해요.",
+        "riskConfirmation": "외부 AI의 쓰기/내보내기 도구 사용 허용",
+        "currentTools": "현재 MCP 도구"
+      },
+      "profileDescriptions": {
+        "readonly": "읽기 전용 액세스: 라이브러리, 챕터, 노트, 하이라이트, RAG, 진단 읽기.",
+        "editor": "편집 액세스: readonly를 포함하며 EPUB draft 생성과 draft 내용 편집을 허용해요.",
+        "publisher": "게시 액세스: editor를 포함하며 validate / export / notes export / knowledge export를 허용해요."
+      },
+      "clients": {
+        "generic": "범용 JSON",
+        "genericShort": "범용",
+        "codex": "Codex TOML",
+        "agents": "Agents 범용"
+      },
+      "output": {
+        "notRun": "아직 실행하지 않았어요.",
+        "success": "명령이 성공적으로 완료됐어요.",
+        "exitStatus": "명령 종료 코드 {{status}}",
+        "accessUninstalled": "외부 AI 접속이 제거되었습니다.",
+        "cliUninstalled": "ReadAny CLI가 제거되었습니다."
+      },
+      "skillPrompt": {
+        "intro": "ReadAny 외부 AI Skill을 바로 설치하고 활성화해 주세요.",
+        "execute": "단계 설명만 하지 말고 설치 경로 표도 출력하지 말고, 다음을 직접 실행해 주세요:",
+        "mergeConfig": "현재 AI 클라이언트 설정을 수정할 수 있으면 MCP 설정을 직접 병합하세요. 아니면 필요한 최소 설정 조각만 주세요.",
+        "done": "완료 후에는 다음만 답하세요: ReadAny Skill이 설치되었습니다. 현재 AI 클라이언트를 재시작하거나 새 세션을 열어 주세요.",
+        "protectBooks": "내 책 내용을 수정, 내보내기, 삭제하지 마세요."
+      },
+      "status": {
+        "betaReady": "Beta 사용 가능",
+        "needsRepair": "복구 필요",
+        "notReady": "준비 안 됨",
+        "available": "사용 가능",
+        "missing": "누락",
+        "passed": "통과",
+        "failed": "실패",
+        "healthy": "정상",
+        "abnormal": "비정상",
+        "installed": "설치됨",
+        "notInstalled": "미설치",
+        "complete": "완료",
+        "configured": "설정됨",
+        "needsPasteRestart": "붙여넣기/재시작 필요",
+        "notDetected": "감지 안 됨",
+        "notDetectedYet": "아직 감지 안 됨",
+        "canCopy": "복사 가능",
+        "canConfigure": "설정 가능",
+        "waitingConfirmation": "확인 대기",
+        "exists": "존재함",
+        "managed": "관리됨",
+        "unmanaged": "비관리",
+        "checked": "확인됨",
+        "notFound": "찾을 수 없음",
+        "containsReadAny": "readany 포함",
+        "needsConfig": "설정 필요"
+      },
+      "actions": {
+        "verify": "검증",
+        "repairExternalAI": "외부 AI 복구",
+        "diagnose": "진단",
+        "install": "설치",
+        "repair": "복구",
+        "uninstall": "제거",
+        "update": "업데이트",
+        "copied": "복사됨",
+        "copyEvidence": "증거 복사",
+        "copyCommand": "명령 복사",
+        "copyAllCommand": "전체 클라이언트 명령 복사",
+        "oneClickInstall": "원클릭 설치",
+        "oneClickInstallAll": "전체 원클릭 설치",
+        "uninstallAccess": "접속 제거",
+        "copyInstructions": "지시문 복사",
+        "copyConfig": "설정 복사",
+        "expandDetails": "자세히 열기"
+      },
+      "labels": {
+        "cli": "CLI",
+        "doctor": "진단",
+        "runtime": "런타임",
+        "skill": "스킬",
+        "clientLinks": "클라이언트 링크",
+        "mcpConfig": "MCP 설정",
+        "version": "버전",
+        "profile": "권한",
+        "tools": "도구",
+        "commandSource": "실행 출처",
+        "client": "클라이언트",
+        "skillTarget": "스킬 대상",
+        "returnedCommand": "반환된 명령",
+        "removedCliShim": "제거된 CLI shim",
+        "removedSkill": "제거된 스킬",
+        "distribution": "배포 형식",
+        "builtBundle": "빌드된 번들",
+        "desktopResource": "데스크톱 리소스",
+        "nativeBinary": "네이티브 바이너리",
+        "usesNodeRuntime": "Node 런타임 사용",
+        "node": "Node",
+        "nativeSqlite": "네이티브 SQLite",
+        "bundleRoot": "번들 루트",
+        "entrypoint": "진입점",
+        "nodeExecutable": "Node 실행 파일",
+        "cliShim": "CLI shim",
+        "mcpFormat": "MCP 형식"
+      },
+      "empty": {
+        "runDiagnostics": "진단을 실행하면 표시돼요."
+      },
+      "doctorChecks": {
+        "nodeRuntime": {
+          "name": "Node 런타임",
+          "message": "Node 런타임을 사용할 수 있어요: {{executable}} ({{version}})."
+        },
+        "nativeSqlite": {
+          "name": "네이티브 SQLite",
+          "ok": "better-sqlite3를 라이브러리와 MCP 데이터 명령에 사용할 수 있어요.",
+          "fail": "better-sqlite3를 사용할 수 없어 라이브러리와 MCP 데이터 명령이 실패할 수 있어요."
+        },
+        "readanyHome": {
+          "name": "ReadAny 홈",
+          "ok": "ReadAny 홈에 쓸 수 있어요.",
+          "fail": "ReadAny 홈에 쓸 수 없어요."
+        },
+        "skill": {
+          "name": "스킬",
+          "ok": "ReadAny 스킬이 {{path}}에 설치되어 있어요.",
+          "fail": "ReadAny 스킬이 {{path}}에 설치되어 있지 않아요."
+        }
+      }
+    }
   }
 }

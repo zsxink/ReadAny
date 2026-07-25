@@ -1,10 +1,13 @@
-import { ConfigGuideDialog, type ConfigGuideType } from "@/components/shared/ConfigGuideDialog";
 /**
  * ChatPage — standalone full-page chat for general conversations.
  */
+import { ConfigGuideDialog, type ConfigGuideType } from "@/components/shared/ConfigGuideDialog";
 import { useStreamingChat } from "@/hooks/use-streaming-chat";
+import { getBook as getBookRecord } from "@/lib/db/database";
+import { openDesktopBook } from "@/lib/library/open-book";
 import { useChatReaderStore } from "@/stores/chat-reader-store";
 import { useChatStore } from "@/stores/chat-store";
+import { useLibraryStore } from "@/stores/library-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { getPlatformService } from "@readany/core/services";
 import type { CitationPart } from "@readany/core/types";
@@ -52,7 +55,9 @@ function ThreadsSidebar({
   onSelect: (threadId: string) => void;
 }) {
   const { t } = useTranslation();
-  const { getThreadsForContext, getActiveThreadId, removeThread } = useChatStore();
+  const getThreadsForContext = useChatStore((s) => s.getThreadsForContext);
+  const getActiveThreadId = useChatStore((s) => s.getActiveThreadId);
+  const removeThread = useChatStore((s) => s.removeThread);
   const generalThreads = getThreadsForContext();
   const activeThreadId = getActiveThreadId();
 
@@ -60,7 +65,9 @@ function ThreadsSidebar({
     <div
       className={`absolute inset-0 z-50 ${open ? "pointer-events-auto" : "pointer-events-none"}`}
     >
-      <div
+      <button
+        type="button"
+        aria-label={t("common.close")}
         className={`absolute inset-0 transition-opacity duration-300 ${open ? "bg-black/5 opacity-100" : "opacity-0"}`}
         onClick={onClose}
       />
@@ -94,11 +101,17 @@ function ThreadsSidebar({
               if (!olderByMonth.has(monthLabel)) {
                 olderByMonth.set(monthLabel, []);
               }
-              olderByMonth.get(monthLabel)!.push(thread);
+              const monthThreads = olderByMonth.get(monthLabel);
+              if (monthThreads) {
+                monthThreads.push(thread);
+              }
             }
             const sortedMonths = [...olderByMonth.keys()].sort((a, b) => b.localeCompare(a));
             for (const month of sortedMonths) {
-              sections.push({ key: month, label: month, threads: olderByMonth.get(month)! });
+              const monthThreads = olderByMonth.get(month);
+              if (monthThreads) {
+                sections.push({ key: month, label: month, threads: monthThreads });
+              }
             }
 
             return sections.map(({ key, label, threads }) => {
@@ -120,6 +133,13 @@ function ThreadsSidebar({
                         onClick={() => {
                           onSelect(thread.id);
                           onClose();
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            onSelect(thread.id);
+                            onClose();
+                          }
                         }}
                         className={`group flex cursor-pointer items-start gap-2 rounded-lg px-3 py-2.5 transition-colors ${thread.id === activeThreadId ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"}`}
                       >
@@ -185,14 +205,15 @@ function EmptyState({ onSuggestionClick }: { onSuggestionClick: (text: string) =
             </h2>
             <div className="grid grid-cols-2 gap-3">
               {SUGGESTIONS.map(({ key, icon: Icon }) => (
-                <div
+                <button
+                  type="button"
                   key={key}
                   onClick={() => onSuggestionClick(t(key))}
-                  className="flex cursor-pointer flex-col items-start gap-3 rounded-xl bg-muted/70 p-4 transition-colors hover:bg-muted"
+                  className="flex cursor-pointer flex-col items-start gap-3 rounded-xl bg-muted/70 p-4 text-left transition-colors hover:bg-muted"
                 >
                   <Icon className="size-5 text-muted-foreground" />
                   <span className="text-sm text-foreground">{t(key)}</span>
-                </div>
+                </button>
               ))}
             </div>
           </div>
@@ -204,15 +225,14 @@ function EmptyState({ onSuggestionClick }: { onSuggestionClick: (text: string) =
 
 export function ChatPage() {
   const { t } = useTranslation();
-  const {
-    threads,
-    loadAllThreads,
-    initialized,
-    createThread,
-    setGeneralActiveThread,
-    getActiveThreadId,
-  } = useChatStore();
+  const threads = useChatStore((s) => s.threads);
+  const initialized = useChatStore((s) => s.initialized);
+  const loadAllThreads = useChatStore((s) => s.loadAllThreads);
+  const createThread = useChatStore((s) => s.createThread);
+  const setGeneralActiveThread = useChatStore((s) => s.setGeneralActiveThread);
+  const getActiveThreadId = useChatStore((s) => s.getActiveThreadId);
   const { bookTitle } = useChatReaderStore();
+  const books = useLibraryStore((s) => s.books);
 
   // /chats page should only use general threads - always pass undefined for bookId
   const { isStreaming, currentMessage, currentStep, sendMessage, stopStream } = useStreamingChat();
@@ -268,14 +288,44 @@ export function ChatPage() {
     setGeneralActiveThread(null);
   }, [setGeneralActiveThread]);
 
-  const handleCitationClick = useCallback((citation: CitationPart) => {
-    // TODO: Navigate to reader page with this citation
-    // For now, log to console. Future enhancement: use router to navigate to /reader/${citation.bookId}?cfi=${citation.cfi}
-    console.log("Citation clicked:", citation);
-  }, []);
+  const handleCitationClick = useCallback(
+    async (citation: CitationPart) => {
+      const book =
+        books.find((item) => item.id === citation.bookId) ??
+        (await getBookRecord(citation.bookId, { includeDeleted: true }).catch((err) => {
+          console.warn("[ChatPage] Failed to get cited book record:", err);
+          return null;
+        }));
+
+      if (!book) {
+        toast.error(t("chat.citationBookNotFound", "找不到这条引用对应的书籍"));
+        return;
+      }
+
+      const trimmedCfi = citation.cfi?.trim();
+      const initialCfi = trimmedCfi || `chapter:${Math.max(0, Number(citation.chapterIndex) || 0)}`;
+
+      const opened = await openDesktopBook({
+        book,
+        t,
+        initialCfi,
+      });
+
+      if (!opened) {
+        toast.error(t("chat.citationOpenFailed", "无法打开这条引用"));
+      }
+    },
+    [books, t],
+  );
 
   const displayMessages = convertToMessageV2(activeThread?.messages || []);
-  const allMessages = mergeMessagesWithStreaming(displayMessages, currentMessage, isStreaming);
+  const activeCurrentMessage =
+    activeThread?.id === currentMessage?.threadId ? currentMessage : null;
+  const allMessages = mergeMessagesWithStreaming(
+    displayMessages,
+    activeCurrentMessage,
+    isStreaming,
+  );
 
   const exportTitle = activeThread?.title || t("chat.aiAssistant");
 
@@ -333,7 +383,7 @@ export function ChatPage() {
           </button>
           {bookTitle && (
             <span className="text-xs text-muted-foreground">
-              {t("chat.context")}: <span className="font-medium text-neutral-700">{bookTitle}</span>
+              {t("chat.context")}: <span className="font-medium text-foreground">{bookTitle}</span>
             </span>
           )}
         </div>

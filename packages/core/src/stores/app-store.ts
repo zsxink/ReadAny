@@ -3,13 +3,14 @@
  */
 import { create } from "zustand";
 
-export type TabType = "home" | "reader" | "chat" | "notes" | "skills";
+export type TabType = "home" | "reader" | "chat" | "notes" | "skills" | "epubDraft";
 
 export interface Tab {
   id: string;
   type: TabType;
   title: string;
   bookId?: string; // for reader tabs
+  draftId?: string; // for EPUB draft workspace tabs
   threadId?: string; // for chat tabs
   initialCfi?: string; // for reader tabs - initial location to navigate to
   isModified?: boolean;
@@ -27,6 +28,7 @@ export type SettingsTab =
   | "tts"
   | "translation"
   | "sync"
+  | "externalAi"
   | "feedback"
   | "about";
 
@@ -62,7 +64,7 @@ export const useAppStore = create<AppState>((set) => ({
       const existingIndex = state.tabs.findIndex((t) => t.id === tab.id);
       if (existingIndex >= 0) {
         const existingTab = state.tabs[existingIndex];
-        if (tab.initialCfi && existingTab) {
+        if (existingTab && "initialCfi" in tab) {
           const updatedTabs = [...state.tabs];
           updatedTabs[existingIndex] = {
             ...existingTab,

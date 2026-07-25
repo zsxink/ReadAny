@@ -171,8 +171,17 @@
     function postToRN(type, data) {
       if (RN) RN.postMessage(JSON.stringify({ type, ...data }));
     }
-    window.__READANY_READER_BUILD_ID = 'selection-paging-page-growth';
+    window.__READANY_READER_BUILD_ID = 'android-local-server-cors';
     postToRN('debug', { message: '[ReaderBuild] ' + window.__READANY_READER_BUILD_ID });
+    Promise.withResolvers ??= function () {
+      let resolve;
+      let reject;
+      const promise = new Promise((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      return { promise, resolve, reject };
+    };
 
     // State
     let view = null;
@@ -1335,6 +1344,9 @@
         case 'extractChapters':
           await handleExtractChapters();
           break;
+        case 'extractBookChapters':
+          await handleExtractBookChapters(msg);
+          break;
         case 'getChapterParagraphs':
           handleGetChapterParagraphs();
           break;
@@ -1380,6 +1392,14 @@
             type: msg.mimeType || 'application/epub+zip'
           });
         } else if (msg.uri) {
+          postToRN('debug', {
+            message: `[ReaderFetch] open ${JSON.stringify({
+              uri: msg.uri,
+              fileName: msg.fileName || '',
+              mimeType: msg.mimeType || ''
+            })}`
+          });
+
           // Try Range-based lazy loading for ZIP-based formats (EPUB, CBZ, FBZ)
           // This avoids loading the entire file into memory — only reads
           // the ZIP central directory (~few KB) then fetches entries on demand.
@@ -1700,8 +1720,9 @@
 
       } catch (err) {
         console.error('[WebView] Error in openBook:', err);
-        loading.innerHTML = '<div class="error-text">' + escapeHtml(String(err)) + '</div>';
-        postToRN('error', { message: String(err) });
+        const message = `${String(err)}${msg?.uri ? ` (${msg.uri})` : ''}`;
+        loading.innerHTML = '<div class="error-text">' + escapeHtml(message) + '</div>';
+        postToRN('error', { message });
       }
     }
 
@@ -1826,6 +1847,12 @@
             -webkit-text-size-adjust: none;
             text-size-adjust: none;
           }
+          :root:not(.vrtl):not(.vltr) body *:not(svg):not(svg *):not(math):not(math *):not(pre):not(pre *):not(code):not(code *):not(kbd):not(kbd *):not(samp):not(samp *) {
+            font-family: var(--readany-font-family) !important;
+          }
+          :root:not(.vrtl):not(.vltr) body *:not(svg):not(svg *):not(math):not(math *):not(pre):not(pre *):not(code):not(code *):not(kbd):not(kbd *):not(samp):not(samp *):not(rt):not(rp) {
+            font-size: ${fSize}px !important;
+          }
           :root:is(.vrtl, .vltr),
           :root:is(.vrtl, .vltr) body {
             font-family: var(--readany-font-family);
@@ -1836,6 +1863,15 @@
           :root:not(.vrtl):not(.vltr) p,
           :root:not(.vrtl):not(.vltr) div,
           :root:not(.vrtl):not(.vltr) blockquote,
+          :root:not(.vrtl):not(.vltr) dd,
+          :root:not(.vrtl):not(.vltr) li,
+          :root:not(.vrtl):not(.vltr) span {
+            font-size: ${fSize}px !important;
+          }
+          :root:not(.vrtl):not(.vltr) p,
+          :root:not(.vrtl):not(.vltr) div,
+          :root:not(.vrtl):not(.vltr) blockquote,
+          :root:not(.vrtl):not(.vltr) dd,
           :root:not(.vrtl):not(.vltr) li,
           :root:not(.vrtl):not(.vltr) span,
           :root:not(.vrtl):not(.vltr) h1,
@@ -1870,6 +1906,7 @@
         if (typeof renderer.setStyles === 'function') {
           renderer.setStyles(themedStyles);
         }
+        syncReaderOverrideStylesForAllDocs(themedStyles);
         syncCustomFontStylesForAllDocs(currentCustomFontFaceCSS);
       }
 
@@ -1975,6 +2012,28 @@
       }
     }
 
+    function syncReaderOverrideStylesForDoc(doc, css) {
+      if (!doc || !doc.head) return;
+      const styleId = '__readany_reader_overrides__';
+      let el = doc.getElementById(styleId);
+      if (!el) {
+        el = doc.createElement('style');
+        el.id = styleId;
+        doc.head.appendChild(el);
+      }
+      el.textContent = css || '';
+      // Keep this style after book styles and our @font-face block so it wins
+      // against EPUBs that define fixed font sizes with !important.
+      doc.head.appendChild(el);
+    }
+
+    function syncReaderOverrideStylesForAllDocs(css) {
+      for (const content of getRendererContents()) {
+        if (!content || !content.doc) continue;
+        syncReaderOverrideStylesForDoc(content.doc, css);
+      }
+    }
+
     function injectCustomFontFace(css) {
       syncCustomFontStylesForDoc(document, css);
       syncCustomFontStylesForAllDocs(css);
@@ -1999,6 +2058,7 @@
         const currentStyles = lastRendererStyles || '';
         const themedStyles = injectThemeIntoStyles(currentStyles, bg, fg, primary);
         view.renderer.setStyles(themedStyles);
+        syncReaderOverrideStylesForAllDocs(themedStyles);
       }
 
       if (view && view.setSearchIndicator) {
@@ -2033,7 +2093,8 @@ a { color: ${primary} !important; }
       const body = doc.body;
       if (!body || body.querySelectorAll('p').length > 2) return;
 
-      const containers = Array.from(body.querySelectorAll('div, section, article, main'));
+      const containers = Array.from(body.querySelectorAll('div, section, article, main'))
+        .filter(shouldNormalizeBrParagraphContainer);
       if (shouldNormalizeBrParagraphContainer(body)) containers.push(body);
 
       for (const container of containers) {
@@ -2067,6 +2128,7 @@ a { color: ${primary} !important; }
     }
 
     function normalizeBrParagraphContainer(doc, container) {
+      const originalNodes = Array.from(container.childNodes);
       const fragment = doc.createDocumentFragment();
       let pending = [];
       let breakNodes = [];
@@ -2112,7 +2174,10 @@ a { color: ${primary} !important; }
       commitBreak();
       flushPending();
 
-      if (paragraphCount < 2) return false;
+      if (paragraphCount < 2) {
+        container.replaceChildren(...originalNodes);
+        return false;
+      }
       container.replaceChildren(fragment);
       container.setAttribute('data-readany-br-paragraphs', '');
       return true;
@@ -2173,6 +2238,15 @@ a { color: ${primary} !important; }
         ${verticalDoc ? getVerticalWritingCompatibilityStyles() : ''}
       `;
       doc.head.appendChild(style);
+      if (lastRendererStyles) {
+        const themedStyles = injectThemeIntoStyles(
+          lastRendererStyles,
+          currentThemeColors.bg,
+          currentThemeColors.fg,
+          currentThemeColors.primary,
+        );
+        syncReaderOverrideStylesForDoc(doc, themedStyles);
+      }
       doc.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); return false; }, true);
     }
 
@@ -3889,6 +3963,76 @@ a { color: ${primary} !important; }
     };
 
     // ─── Chapter Extraction for Vectorization ───
+    function isPDFBookMessage(msg) {
+      const mimeType = (msg.mimeType || '').split(';')[0].trim().toLowerCase();
+      return mimeType === 'application/pdf' || /\.pdf$/i.test(msg.fileName || '');
+    }
+
+    async function createBookFileFromMessage(msg) {
+      if (msg.base64) {
+        const binary = atob(msg.base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return new File([bytes], msg.fileName || 'book.epub', {
+          type: msg.mimeType || 'application/epub+zip'
+        });
+      }
+
+      if (msg.uri) {
+        const res = await fetch(msg.uri);
+        const isLocalFileStatus = res.status === 0 && /^file:\/\//i.test(msg.uri);
+        if (!res.ok && !isLocalFileStatus) throw new Error(`Failed to fetch: ${res.status}`);
+        const blob = await res.blob();
+        return new File([blob], msg.fileName || 'book.epub', {
+          type: msg.mimeType || blob.type || 'application/octet-stream'
+        });
+      }
+
+      throw new Error('No book data provided');
+    }
+
+    async function handleExtractBookChapters(msg) {
+      try {
+        if (isPDFBookMessage(msg)) {
+          if (typeof window._extractPDFChapters !== 'function') {
+            throw new Error('PDF extraction is not available in this reader build');
+          }
+
+          postToRN('debug', {
+            message: `[PDFExtract] start ${JSON.stringify({
+              fileName: msg.fileName || '',
+              mimeType: msg.mimeType || '',
+              base64Length: msg.base64 ? msg.base64.length : 0
+            })}`
+          });
+
+          const file = await createBookFileFromMessage(msg);
+          const chapters = await window._extractPDFChapters(file, {
+            onProgress: (detail) => {
+              postToRN('debug', { message: `[PDFExtract] page ${JSON.stringify(detail)}` });
+            }
+          });
+
+          postToRN('debug', {
+            message: `[PDFExtract] done ${JSON.stringify({
+              chapters: chapters.length,
+              segments: chapters.reduce((sum, chapter) => sum + (chapter.segments?.length || 0), 0),
+              contentLength: chapters.reduce((sum, chapter) => sum + (chapter.content?.length || 0), 0)
+            })}`
+          });
+
+          postToRN('chaptersExtracted', { chapters });
+          return;
+        }
+
+        currentBook = await makeBook(await createBookFileFromMessage(msg));
+        await handleExtractChapters();
+      } catch (err) {
+        console.error('[WebView] Error extracting book chapters:', err);
+        postToRN('chaptersExtracted', { error: String(err) });
+      }
+    }
+
     async function handleExtractChapters() {
       if (!currentBook) {
         postToRN('chaptersExtracted', { error: 'No book loaded' });
@@ -3919,10 +4063,14 @@ a { color: ${primary} !important; }
         walkToc(toc);
 
         const chapters = [];
+        let skippedNoCreateDocument = 0;
 
         for (let i = 0; i < sections.length; i++) {
           const section = sections[i];
-          if (!section.createDocument) continue;
+          if (!section.createDocument) {
+            skippedNoCreateDocument += 1;
+            continue;
+          }
 
           try {
             const doc = await section.createDocument();
@@ -3951,6 +4099,13 @@ a { color: ${primary} !important; }
             console.warn(`[WebView] Failed to extract section ${i}:`, err);
           }
         }
+
+        console.log('[WebView] Chapter extraction summary:', {
+          sections: sections.length,
+          chapters: chapters.length,
+          segments: chapters.reduce((sum, chapter) => sum + (chapter.segments?.length || 0), 0),
+          skippedNoCreateDocument
+        });
 
         postToRN('chaptersExtracted', { chapters });
       } catch (err) {
@@ -4517,6 +4672,24 @@ a { color: ${primary} !important; }
       }
       if (doc) doRemoveRubyAnnotations(doc);
     };
+  </script>
+
+  <script>
+    if (typeof Promise.withResolvers !== 'function') {
+      Object.defineProperty(Promise, 'withResolvers', {
+        configurable: true,
+        writable: true,
+        value: function withResolvers() {
+          var resolveFn;
+          var rejectFn;
+          var promise = new Promise(function(resolve, reject) {
+            resolveFn = resolve;
+            rejectFn = reject;
+          });
+          return { promise: promise, resolve: resolveFn, reject: rejectFn };
+        },
+      });
+    }
   </script>
 
   <!-- __READANY_FOLIATE_BUNDLE_INSERT_POINT_7f3a9b2e__ -->

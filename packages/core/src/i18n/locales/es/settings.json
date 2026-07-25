@@ -7,6 +7,7 @@
     "fonts": "Fuentes",
     "ai": "IA",
     "translationTab": "Traducción",
+    "externalAi": "Acceso de IA externa",
     "tts": "TTS",
     "about": "Acerca de",
     "other": "Más",
@@ -236,7 +237,7 @@
     "syncPassword": "Contraseña",
     "syncRemoteRoot": "Carpeta remota",
     "syncRemoteRootPlaceholder": "readany",
-    "syncRemoteRootDesc": "Elige la carpeta remota para sincronización. Las rutas anidadas son compatibles y se crearán automáticamente durante la prueba o la primera sincronización.",
+    "syncRemoteRootDesc": "Elige la carpeta remota reservada para la sincronización de ReadAny. Se admiten rutas anidadas y se crearán automáticamente durante la prueba o la primera sincronización. ReadAny no escanea los libros que ya hayas colocado allí; importa una biblioteca WebDAV existente con \"Conectar otro WebDAV\".",
     "syncTestConnection": "Probar conexión",
     "syncTesting": "Probando...",
     "syncTestSuccess": "Conexión exitosa",
@@ -421,6 +422,170 @@
     "ai_currentLabel": "Actual:",
     "ai_searchModels": "Buscar modelo...",
     "ai_noMatchingResults": "Sin resultados",
-    "ai_totalModels": "{{count}} modelos en total"
+    "ai_totalModels": "{{count}} modelos en total",
+    "externalAiSettings": {
+      "overview": {
+        "title": "Acceso de IA externa Beta",
+        "description": "Comprueba la CLI, Skill, carpetas de descubrimiento de clientes y configuración MCP. La reparación usa el profile seleccionado.",
+        "mcpConfigHint": "MCP config significa que ReadAny aparece en archivos de configuración comunes. Reinicia o abre una nueva sesión para confirmar que las herramientas se cargaron."
+      },
+      "cli": {
+        "title": "ReadAny CLI",
+        "description": "La app de escritorio solo ejecuta comprobaciones CLI aprobadas, no comandos shell arbitrarios.",
+        "notInstalledOrPath": "No instalado o no disponible en PATH",
+        "runtimeEvidence": "Evidencia de runtime / paquete"
+      },
+      "agent": {
+        "title": "Inicialización de agente",
+        "description": "Copia este comando a una IA externa. Instala ReadAny CLI y Skill, y devuelve un fragmento de configuración MCP.",
+        "clientDiscoveryStatus": "Estado de descubrimiento de clientes",
+        "clientDiscoveryEmpty": "Ejecuta diagnóstico para mostrar el estado de descubrimiento de Skill.",
+        "mcpConfigStatus": "Estado de configuración MCP",
+        "mcpConfigEmpty": "Ejecuta diagnóstico para mostrar resultados de configuración MCP.",
+        "profileRiskWarning": "Este profile permite escrituras draft o exportaciones. Confirma el interruptor de riesgo antes de copiar o ejecutar la inicialización.",
+        "latestInstallResult": "Último resultado de instalación con un clic"
+      },
+      "skill": {
+        "title": "Instalar asistente IA",
+        "description": "Copia una instrucción a un asistente IA y deja que instale Skill y MCP.",
+        "copyToCurrentAssistant": "Copiar al asistente IA actual",
+        "copyHint": "Instalará directamente usando el profile seleccionado.",
+        "allClients": "Todos los clientes",
+        "skillInstalled": "Skill instalada",
+        "pending": "Pendiente"
+      },
+      "mcp": {
+        "title": "Perfil de acceso MCP",
+        "description": "Elige el nivel de acceso MCP. editor / publisher requieren confirmación explícita; instalar CLI o Skill no concede escritura por sí solo.",
+        "currentTemplate": "{{description}} Copiando la plantilla {{client}}.",
+        "riskConfirmation": "Permitir a la IA externa usar herramientas de escritura/exportación",
+        "currentTools": "Herramientas MCP actuales"
+      },
+      "profileDescriptions": {
+        "readonly": "Acceso de solo lectura: biblioteca, capítulos, notas, resaltados, RAG y lecturas de diagnóstico.",
+        "editor": "Acceso editor: incluye readonly y permite crear drafts EPUB y editar su contenido.",
+        "publisher": "Acceso publisher: incluye editor y permite validate / export / notes export / knowledge export."
+      },
+      "clients": {
+        "generic": "JSON genérico",
+        "genericShort": "Genérico",
+        "codex": "Codex TOML",
+        "agents": "Agents genérico"
+      },
+      "output": {
+        "notRun": "Aún no se ejecutó.",
+        "success": "Comando completado correctamente.",
+        "exitStatus": "El comando salió con código {{status}}",
+        "accessUninstalled": "Se quitó el acceso de IA externa.",
+        "cliUninstalled": "ReadAny CLI se desinstaló."
+      },
+      "skillPrompt": {
+        "intro": "Instala y activa directamente la Skill de IA externa de ReadAny.",
+        "execute": "No expliques solo los pasos ni muestres una tabla de rutas. Ejecuta directamente:",
+        "mergeConfig": "Si puedes modificar la configuración del cliente de IA actual, fusiona la configuración MCP directamente; si no, dame solo el fragmento mínimo necesario.",
+        "done": "Al terminar, responde solo: ReadAny Skill instalada. Reinicia o abre una nueva sesión en el cliente de IA actual.",
+        "protectBooks": "No modifiques, exportes ni elimines el contenido de mis libros."
+      },
+      "status": {
+        "betaReady": "Beta lista",
+        "needsRepair": "Requiere reparación",
+        "notReady": "No listo",
+        "available": "Disponible",
+        "missing": "Falta",
+        "passed": "Correcto",
+        "failed": "Falló",
+        "healthy": "Saludable",
+        "abnormal": "Anómalo",
+        "installed": "Instalado",
+        "notInstalled": "No instalado",
+        "complete": "Completo",
+        "configured": "Configurado",
+        "needsPasteRestart": "Pegar / reiniciar",
+        "notDetected": "No detectado",
+        "notDetectedYet": "Aún no detectado",
+        "canCopy": "Se puede copiar",
+        "canConfigure": "Se puede configurar",
+        "waitingConfirmation": "Esperando confirmación",
+        "exists": "Existe",
+        "managed": "Gestionado",
+        "unmanaged": "No gestionado",
+        "checked": "Comprobado",
+        "notFound": "No encontrado",
+        "containsReadAny": "Contiene readany",
+        "needsConfig": "Requiere config."
+      },
+      "actions": {
+        "verify": "Verificar",
+        "repairExternalAI": "Reparar IA externa",
+        "diagnose": "Diagnosticar",
+        "install": "Instalar",
+        "repair": "Reparar",
+        "uninstall": "Desinstalar",
+        "update": "Actualizar",
+        "copied": "Copiado",
+        "copyEvidence": "Copiar evidencia",
+        "copyCommand": "Copiar comando",
+        "copyAllCommand": "Copiar comando completo",
+        "oneClickInstall": "Instalar con un clic",
+        "oneClickInstallAll": "Instalar todo con un clic",
+        "uninstallAccess": "Quitar acceso",
+        "copyInstructions": "Copiar instrucciones",
+        "copyConfig": "Copiar config.",
+        "expandDetails": "Expandir"
+      },
+      "labels": {
+        "cli": "CLI",
+        "doctor": "Diagnóstico",
+        "runtime": "Entorno de ejecución",
+        "skill": "Habilidad",
+        "clientLinks": "Enlaces de clientes",
+        "mcpConfig": "Configuración MCP",
+        "version": "Versión",
+        "profile": "Permiso",
+        "tools": "Herramientas",
+        "commandSource": "Origen del comando",
+        "client": "Cliente",
+        "skillTarget": "Destino de habilidad",
+        "returnedCommand": "Comando devuelto",
+        "removedCliShim": "CLI shim eliminado",
+        "removedSkill": "Habilidad eliminada",
+        "distribution": "Distribución",
+        "builtBundle": "Bundle construido",
+        "desktopResource": "Recurso desktop",
+        "nativeBinary": "Binario nativo",
+        "usesNodeRuntime": "Usa runtime Node",
+        "node": "Node",
+        "nativeSqlite": "SQLite nativo",
+        "bundleRoot": "Raíz del bundle",
+        "entrypoint": "Punto de entrada",
+        "nodeExecutable": "Ejecutable Node",
+        "cliShim": "CLI shim",
+        "mcpFormat": "Formato MCP"
+      },
+      "empty": {
+        "runDiagnostics": "Ejecuta diagnóstico para mostrar resultados."
+      },
+      "doctorChecks": {
+        "nodeRuntime": {
+          "name": "Runtime Node",
+          "message": "Runtime Node disponible en {{executable}} ({{version}})."
+        },
+        "nativeSqlite": {
+          "name": "SQLite nativo",
+          "ok": "better-sqlite3 está disponible para comandos de biblioteca y datos MCP.",
+          "fail": "better-sqlite3 no está disponible; los comandos de biblioteca y datos MCP pueden fallar."
+        },
+        "readanyHome": {
+          "name": "Directorio ReadAny",
+          "ok": "El directorio ReadAny tiene permiso de escritura.",
+          "fail": "El directorio ReadAny no tiene permiso de escritura."
+        },
+        "skill": {
+          "name": "Habilidad",
+          "ok": "ReadAny Skill está instalada en {{path}}.",
+          "fail": "ReadAny Skill no está instalada en {{path}}."
+        }
+      }
+    }
   }
 }

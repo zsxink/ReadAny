@@ -11,6 +11,7 @@ import {
 import {
   DASHSCOPE_VOICES,
   EDGE_TTS_VOICES,
+  XIAOMI_TTS_VOICES,
   getLocaleDisplayLabel,
   groupEdgeTTSVoices,
   type TTSConfig,
@@ -90,16 +91,28 @@ export function VoicePickerModal({
 
           {/* Engine selector */}
           <View style={s.engineSection}>
-            {(["edge", "dashscope", "system"] as const).map((eng) => {
+            {(["edge", "dashscope", "xiaomi", "openai-compatible", "system"] as const).map((eng) => {
               const isActive = config.engine === eng;
               const label =
-                eng === "edge" ? "Edge TTS" : eng === "dashscope" ? "DashScope" : t("tts.system");
+                eng === "edge"
+                  ? "Edge TTS"
+                  : eng === "dashscope"
+                    ? "DashScope"
+                    : eng === "xiaomi"
+                      ? "Xiaomi MiMo"
+                      : eng === "openai-compatible"
+                        ? "OpenAI"
+                        : t("tts.system");
               const desc =
                 eng === "edge"
                   ? "Microsoft · 多语言"
                   : eng === "dashscope"
                     ? "阿里云通义 · 中文优化"
-                    : "系统内置 · 免费";
+                    : eng === "xiaomi"
+                      ? "MiMo-V2.5-TTS"
+                      : eng === "openai-compatible"
+                        ? "自定义 OpenAI 格式"
+                        : "系统内置 · 免费";
               return (
                 <TouchableOpacity
                   key={eng}
@@ -141,6 +154,27 @@ export function VoicePickerModal({
                     style={[s.voiceItem, isSelected && s.voiceItemSelected]}
                     onPress={() => {
                       onUpdateConfig({ dashscopeVoice: v.id });
+                      onClose();
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[s.voiceItemTxt, isSelected && s.voiceItemTxtSelected]}>
+                      {v.label}
+                    </Text>
+                    {isSelected && <Text style={s.voiceItemCheck}>✓</Text>}
+                  </TouchableOpacity>
+                );
+              })}
+
+            {config.engine === "xiaomi" &&
+              XIAOMI_TTS_VOICES.map((v) => {
+                const isSelected = config.xiaomiVoice === v.id;
+                return (
+                  <TouchableOpacity
+                    key={v.id}
+                    style={[s.voiceItem, isSelected && s.voiceItemSelected]}
+                    onPress={() => {
+                      onUpdateConfig({ xiaomiVoice: v.id });
                       onClose();
                     }}
                     activeOpacity={0.7}

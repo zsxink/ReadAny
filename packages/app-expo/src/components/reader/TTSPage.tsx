@@ -336,7 +336,11 @@ export function TTSPage({
       ? "Edge TTS"
       : config.engine === "dashscope"
         ? "DashScope"
-        : t("tts.system");
+        : config.engine === "xiaomi"
+          ? "Xiaomi MiMo"
+          : config.engine === "openai-compatible"
+            ? "OpenAI"
+            : t("tts.system");
 
   useEffect(() => {
     if (!sleepTimerEndsAt) return;

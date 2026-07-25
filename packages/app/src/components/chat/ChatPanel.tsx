@@ -1,8 +1,9 @@
-import { ConfigGuideDialog, type ConfigGuideType } from "@/components/shared/ConfigGuideDialog";
 /**
  * ChatPanel — book-scoped sidebar chat panel.
  */
+import { ConfigGuideDialog, type ConfigGuideType } from "@/components/shared/ConfigGuideDialog";
 import { useStreamingChat } from "@/hooks/use-streaming-chat";
+import { useReadingContext } from "@/lib/ai/reading-context-service";
 import { useChatStore } from "@/stores/chat-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { getPlatformService } from "@readany/core/services";
@@ -26,6 +27,7 @@ import {
   FileText,
   History,
   MessageCirclePlus,
+  Quote,
   Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -44,15 +46,13 @@ export function ChatPanel({ book, onNavigateToCitation }: ChatPanelProps) {
   const { t } = useTranslation();
   const bookId = book?.id;
 
-  const {
-    threads,
-    loadThreads,
-    createThread,
-    removeThread,
-    setBookActiveThread,
-    getActiveThreadId,
-    getThreadsForContext,
-  } = useChatStore();
+  const threads = useChatStore((s) => s.threads);
+  const loadThreads = useChatStore((s) => s.loadThreads);
+  const createThread = useChatStore((s) => s.createThread);
+  const removeThread = useChatStore((s) => s.removeThread);
+  const setBookActiveThread = useChatStore((s) => s.setBookActiveThread);
+  const getActiveThreadId = useChatStore((s) => s.getActiveThreadId);
+  const getThreadsForContext = useChatStore((s) => s.getThreadsForContext);
 
   // Use streaming chat hook with book context
   const { isStreaming, currentMessage, currentStep, sendMessage, stopStream } = useStreamingChat({
@@ -70,6 +70,16 @@ export function ChatPanel({ book, onNavigateToCitation }: ChatPanelProps) {
   const activeThreadId = bookId ? getActiveThreadId(bookId) : null;
   const activeThread = threads.find((t) => t.id === activeThreadId);
   const bookThreads = bookId ? getThreadsForContext(bookId) : [];
+  const readerContext = useReadingContext();
+  const activeReaderContext =
+    readerContext && readerContext.bookId === bookId ? readerContext : null;
+  const firstBookThreadId = bookThreads[0]?.id;
+
+  useEffect(() => {
+    if (bookId && !activeThreadId && firstBookThreadId) {
+      setBookActiveThread(bookId, firstBookThreadId);
+    }
+  }, [activeThreadId, bookId, firstBookThreadId, setBookActiveThread]);
 
   const [showThreadList, setShowThreadList] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -121,6 +131,23 @@ export function ChatPanel({ book, onNavigateToCitation }: ChatPanelProps) {
   const handleRemoveQuote = useCallback((id: string) => {
     setAttachedQuotes((prev) => prev.filter((q) => q.id !== id));
   }, []);
+
+  const attachCurrentSelection = useCallback(() => {
+    const context = activeReaderContext;
+    if (!context?.selection?.text) return;
+    const selection = context.selection;
+
+    const newQuote: AttachedQuote = {
+      id: crypto.randomUUID(),
+      text: selection.text,
+      source: selection.chapterTitle || context.currentChapter.title,
+    };
+
+    setAttachedQuotes((prev) => {
+      if (prev.some((quote) => quote.text === newQuote.text)) return prev;
+      return [...prev, newQuote];
+    });
+  }, [activeReaderContext]);
 
   // Check for pending quote when component mounts (from reader selection when panel was closed)
   useEffect(() => {
@@ -196,7 +223,9 @@ export function ChatPanel({ book, onNavigateToCitation }: ChatPanelProps) {
 
   // Build message list with streaming message
   const storeMessages = convertToMessageV2(displayMessages);
-  const allMessages = mergeMessagesWithStreaming(storeMessages, currentMessage, isStreaming);
+  const activeCurrentMessage =
+    activeThread?.id === currentMessage?.threadId ? currentMessage : null;
+  const allMessages = mergeMessagesWithStreaming(storeMessages, activeCurrentMessage, isStreaming);
 
   const exportTitle = activeThread?.title || book?.meta?.title || t("chat.aiAssistant");
 
@@ -342,11 +371,17 @@ export function ChatPanel({ book, onNavigateToCitation }: ChatPanelProps) {
                     if (!olderByMonth.has(monthLabel)) {
                       olderByMonth.set(monthLabel, []);
                     }
-                    olderByMonth.get(monthLabel)!.push(thread);
+                    const monthThreads = olderByMonth.get(monthLabel);
+                    if (monthThreads) {
+                      monthThreads.push(thread);
+                    }
                   }
                   const sortedMonths = [...olderByMonth.keys()].sort((a, b) => b.localeCompare(a));
                   for (const month of sortedMonths) {
-                    sections.push({ key: month, label: month, threads: olderByMonth.get(month)! });
+                    const monthThreads = olderByMonth.get(month);
+                    if (monthThreads) {
+                      sections.push({ key: month, label: month, threads: monthThreads });
+                    }
                   }
 
                   return sections.map(({ key, label, threads }) => {
@@ -368,9 +403,15 @@ export function ChatPanel({ book, onNavigateToCitation }: ChatPanelProps) {
                               className={`group flex cursor-pointer items-start gap-2 rounded-md px-2.5 py-2 transition-colors ${
                                 thread.id === activeThreadId
                                   ? "bg-primary/10 text-primary"
-                                  : "text-neutral-600 hover:bg-muted"
+                                  : "text-foreground hover:bg-muted"
                               }`}
                               onClick={() => handleSelectThread(thread.id)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  handleSelectThread(thread.id);
+                                }
+                              }}
                             >
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-1.5">
@@ -410,6 +451,34 @@ export function ChatPanel({ book, onNavigateToCitation }: ChatPanelProps) {
         )}
       </div>
 
+      {activeReaderContext ? (
+        <div className="mx-3 mb-2 rounded-md border border-border/60 bg-muted/40 px-2.5 py-2">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="truncate text-[11px] font-medium text-foreground">
+                {activeReaderContext.currentChapter.title ||
+                  book?.meta?.title ||
+                  t("chat.aiAssistant")}
+              </p>
+              <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+                {Math.round(activeReaderContext.currentPosition.percentage * 100)}%
+                {activeReaderContext.selection?.text ? " · selected text ready" : ""}
+              </p>
+            </div>
+            {activeReaderContext.selection?.text ? (
+              <button
+                type="button"
+                onClick={attachCurrentSelection}
+                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-primary/20 bg-primary/5 px-2 py-1 text-[10px] text-primary hover:bg-primary/10"
+              >
+                <Quote className="size-3" />
+                <span>Attach</span>
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       {/* Messages or empty state */}
       <div className="flex-1 overflow-hidden">
         {allMessages.length > 0 ? (
@@ -425,7 +494,7 @@ export function ChatPanel({ book, onNavigateToCitation }: ChatPanelProps) {
             <div className="flex flex-col items-start gap-3 pl-1">
               <img src="/think.svg" alt="" className="h-28 w-28 shrink-0 dark:invert" />
               <div className="space-y-1">
-                <h3 className="text-lg font-semibold text-neutral-900">{t("chat.aiAssistant")}</h3>
+                <h3 className="text-lg font-semibold text-foreground">{t("chat.aiAssistant")}</h3>
                 <p className="max-w-sm text-sm text-muted-foreground">
                   {t("chat.aiAssistantDesc")}
                 </p>
@@ -437,7 +506,7 @@ export function ChatPanel({ book, onNavigateToCitation }: ChatPanelProps) {
                   key={text}
                   type="button"
                   onClick={() => handleSend(text)}
-                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-neutral-700 transition-colors hover:bg-muted/70"
+                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-muted/70"
                 >
                   {text}
                 </button>

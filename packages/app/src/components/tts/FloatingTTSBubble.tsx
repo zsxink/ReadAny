@@ -114,7 +114,7 @@ export function FloatingTTSBubble() {
   const handlePlayPause = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      if (playState === "playing") pause();
+      if (playState === "playing" || playState === "loading") pause();
       else if (playState === "paused") resume();
     },
     [playState, pause, resume],
@@ -340,14 +340,15 @@ export function FloatingTTSBubble() {
             <button
               type="button"
               onClick={handlePlayPause}
-              disabled={playState === "loading"}
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-              aria-label={playState === "playing" ? t("tts.pause") : t("tts.play")}
-              title={playState === "playing" ? t("tts.pause") : t("tts.play")}
+              aria-label={
+                playState === "playing" || playState === "loading" ? t("tts.pause") : t("tts.play")
+              }
+              title={
+                playState === "playing" || playState === "loading" ? t("tts.pause") : t("tts.play")
+              }
             >
-              {playState === "loading" ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : playState === "playing" ? (
+              {playState === "playing" || playState === "loading" ? (
                 <Pause className="h-5 w-5" />
               ) : (
                 <Play className="h-5 w-5" />

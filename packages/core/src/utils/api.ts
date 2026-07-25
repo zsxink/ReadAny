@@ -1,3 +1,5 @@
+import { getPlatformService } from "../services/platform";
+
 /**
  * API utilities for handling provider endpoints and base URLs.
  *
@@ -454,7 +456,7 @@ export async function testEmbeddingEndpoint({
   modelId,
   apiKey,
   input = "test",
-  fetcher = globalThis.fetch,
+  fetcher = getDefaultEmbeddingEndpointFetch(),
 }: TestEmbeddingEndpointOptions): Promise<TestEmbeddingEndpointResult> {
   const requestUrl = normalizeEmbeddingEndpointUrl(url);
   const trimmedModelId = modelId.trim();
@@ -510,6 +512,15 @@ export async function testEmbeddingEndpoint({
   }
 
   return { url: requestUrl, dimension, isOllama };
+}
+
+function getDefaultEmbeddingEndpointFetch(): EmbeddingEndpointFetch | undefined {
+  try {
+    const platform = getPlatformService();
+    return (input, init) => platform.fetch(input, init);
+  } catch {
+    return globalThis.fetch;
+  }
 }
 
 export function getProviderConfig(providerId: string): ProviderConfig {

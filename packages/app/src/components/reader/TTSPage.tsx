@@ -369,7 +369,11 @@ export function TTSPage({
                   ? "Edge TTS"
                   : config.engine === "dashscope"
                     ? "DashScope"
-                    : t("tts.system")}
+                    : config.engine === "xiaomi"
+                      ? "Xiaomi MiMo"
+                      : config.engine === "openai-compatible"
+                        ? "OpenAI"
+                        : t("tts.system")}
                 {onUpdateConfig && <ChevronRight className="h-2.5 w-2.5" />}
               </button>
             </div>
@@ -395,20 +399,28 @@ export function TTSPage({
                     <div className="sticky top-0 z-10 border-b border-border/30 bg-background/95 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                       {t("tts.selectEngine")}
                     </div>
-                    {(["edge", "dashscope", "system"] as const).map((eng) => {
+                    {(["edge", "dashscope", "xiaomi", "openai-compatible", "system"] as const).map((eng) => {
                       const isActive = config.engine === eng;
                       const label =
                         eng === "edge"
                           ? "Edge TTS"
                           : eng === "dashscope"
                             ? "DashScope"
-                            : t("tts.system");
+                            : eng === "xiaomi"
+                              ? "Xiaomi MiMo"
+                              : eng === "openai-compatible"
+                                ? "OpenAI Compatible"
+                                : t("tts.system");
                       const desc =
                         eng === "edge"
                           ? t("tts.engineDescEdge")
                           : eng === "dashscope"
                             ? t("tts.engineDescDashscope")
-                            : t("tts.engineDescSystem");
+                            : eng === "xiaomi"
+                              ? "MiMo-V2.5-TTS"
+                              : eng === "openai-compatible"
+                                ? "OpenAI audio endpoint"
+                                : t("tts.engineDescSystem");
                       return (
                         <button
                           key={eng}

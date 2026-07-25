@@ -154,15 +154,13 @@ export function ChatScreen() {
   }, [backdropAnim, isTabletLandscape, sidebarAnim, sidebarWidth]);
 
   // Chat store
-  const {
-    threads,
-    generalActiveThreadId,
-    loadAllThreads,
-    removeThread,
-    setGeneralActiveThread,
-    getThreadsForContext,
-    initialized,
-  } = useChatStore();
+  const threads = useChatStore((s) => s.threads);
+  const generalActiveThreadId = useChatStore((s) => s.generalActiveThreadId);
+  const initialized = useChatStore((s) => s.initialized);
+  const loadAllThreads = useChatStore((s) => s.loadAllThreads);
+  const removeThread = useChatStore((s) => s.removeThread);
+  const setGeneralActiveThread = useChatStore((s) => s.setGeneralActiveThread);
+  const getThreadsForContext = useChatStore((s) => s.getThreadsForContext);
 
   useEffect(() => {
     if (!initialized) loadAllThreads();
@@ -179,8 +177,9 @@ export function ChatScreen() {
     ? threads.find((th) => th.id === generalActiveThreadId)
     : null;
 
+  const activeCurrentMessage = activeThread?.id === currentMessage?.threadId ? currentMessage : null;
   const displayMessages = convertToMessageV2(activeThread?.messages || []);
-  const allMessages = mergeMessagesWithStreaming(displayMessages, currentMessage, isStreaming);
+  const allMessages = mergeMessagesWithStreaming(displayMessages, activeCurrentMessage, isStreaming);
 
   // Handlers
   const handleSend = useCallback(

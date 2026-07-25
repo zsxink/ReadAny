@@ -9,15 +9,21 @@
  *
  * Provides real-time context for AI tools.
  */
+import { useEffect, useState } from "react";
 import { getHighlights } from "../db/database";
+import { getPlatformService } from "../services/platform";
 import type { ReadingContext } from "../types/chat";
 
 type ReadingContextListener = (context: ReadingContext | null) => void;
+
+const STORE_DIR = "readany-store";
+const SNAPSHOT_FILE = "reader-context.json";
 
 class ReadingContextService {
   private context: ReadingContext | null = null;
   private listeners: Set<ReadingContextListener> = new Set();
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private snapshotWriteQueue: Promise<void> = Promise.resolve();
 
   subscribe(listener: ReadingContextListener): () => void {
     this.listeners.add(listener);
@@ -39,6 +45,37 @@ class ReadingContextService {
     }, 50);
   }
 
+  private scheduleSnapshotWrite(): void {
+    const snapshot = this.context;
+    this.snapshotWriteQueue = this.snapshotWriteQueue.then(
+      () => this.writeSnapshot(snapshot),
+      () => this.writeSnapshot(snapshot),
+    );
+  }
+
+  async flushSnapshot(): Promise<void> {
+    await this.snapshotWriteQueue;
+  }
+
+  private async writeSnapshot(snapshot: ReadingContext | null): Promise<void> {
+    try {
+      const platform = getPlatformService();
+      const dataDir = await platform.getDataDir();
+      const dir = await platform.joinPath(dataDir, STORE_DIR);
+      await platform.mkdir(dir);
+      const filePath = await platform.joinPath(dir, SNAPSHOT_FILE);
+      if (!snapshot) {
+        if (await platform.exists(filePath)) {
+          await platform.deleteFile(filePath);
+        }
+        return;
+      }
+      await platform.writeTextFile(filePath, JSON.stringify(snapshot));
+    } catch (error) {
+      console.warn("[ReadingContext] Failed to persist context snapshot:", error);
+    }
+  }
+
   getContext(): ReadingContext | null {
     return this.context;
   }
@@ -47,6 +84,7 @@ class ReadingContextService {
     if (!partial.bookId) {
       this.context = null;
       this.notify();
+      this.scheduleSnapshotWrite();
       return;
     }
 
@@ -79,6 +117,7 @@ class ReadingContextService {
     }
 
     this.debouncedNotify();
+    this.scheduleSnapshotWrite();
   }
 
   updateSelection(selection: ReadingContext["selection"]): void {
@@ -92,6 +131,7 @@ class ReadingContextService {
     };
 
     this.debouncedNotify();
+    this.scheduleSnapshotWrite();
   }
 
   clearSelection(): void {
@@ -105,6 +145,7 @@ class ReadingContextService {
     };
 
     this.debouncedNotify();
+    this.scheduleSnapshotWrite();
   }
 
   updatePosition(position: Partial<ReadingContext["currentPosition"]>): void {
@@ -120,6 +161,7 @@ class ReadingContextService {
     };
 
     this.debouncedNotify();
+    this.scheduleSnapshotWrite();
   }
 
   updateChapter(chapter: Partial<ReadingContext["currentChapter"]>): void {
@@ -135,6 +177,7 @@ class ReadingContextService {
     };
 
     this.debouncedNotify();
+    this.scheduleSnapshotWrite();
   }
 
   setOperationType(type: ReadingContext["operationType"]): void {
@@ -147,18 +190,26 @@ class ReadingContextService {
     };
 
     this.debouncedNotify();
+    this.scheduleSnapshotWrite();
   }
 
   clearContext(): void {
     this.context = null;
     this.notify();
+    this.scheduleSnapshotWrite();
   }
 }
 
 export const readingContextService = new ReadingContextService();
 
 export function useReadingContext(): ReadingContext | null {
-  return null;
+  const [context, setContext] = useState<ReadingContext | null>(() =>
+    readingContextService.getContext(),
+  );
+
+  useEffect(() => readingContextService.subscribe(setContext), []);
+
+  return context;
 }
 
 export function getReadingContextSnapshot(): ReadingContext | null {

@@ -7,10 +7,20 @@
  */
 
 import { getPlatformService } from "../services/platform";
+import {
+  CLOUD_TTS_PCM_SAMPLE_RATE,
+  base64ToBytes,
+  buildOpenAIChatTTSMessages,
+  buildTTSHttpError,
+  buildXiaomiTTSUrl,
+  buildXiaomiTTSMessages,
+  fetchOpenAITTSAudio,
+  isTTSAbortError,
+} from "./cloud-tts";
 import { fetchEdgeTTSAudio } from "./edge-tts";
 import { type ChunkBoundary, resolveCurrentChunk } from "./playback-cursor";
 import { splitIntoChunks } from "./text-utils";
-import type { ITTSPlayer, TTSConfig } from "./types";
+import { normalizeXiaomiTTSVoice, type ITTSPlayer, type TTSConfig } from "./types";
 
 // ── Browser SpeechSynthesis ──
 
@@ -213,6 +223,7 @@ export class DashScopeTTSPlayer implements ITTSPlayer {
       try {
         await this.streamChunk(chunks[i], config, i === 0, myRun);
       } catch (err) {
+        if (!this._playing || myRun !== this.runId || isTTSAbortError(err)) return;
         console.error("[DashScope TTS] chunk error:", err);
       }
     }
@@ -429,6 +440,521 @@ export class DashScopeTTSPlayer implements ITTSPlayer {
   }
 }
 
+// ── Generic cloud PCM streaming player ──
+
+abstract class PCMStreamingTTSPlayer implements ITTSPlayer {
+  private audioCtx: AudioContext | null = null;
+  private gainNode: GainNode | null = null;
+  private scheduledEnd = 0;
+  private _playing = false;
+  private _paused = false;
+  private allChunksDone = false;
+  private hasAudioData = false;
+  private abortController: AbortController | null = null;
+  private checkEndTimer: ReturnType<typeof setInterval> | null = null;
+  private pendingBytes: Uint8Array[] = [];
+  private decodeTimeout: ReturnType<typeof setTimeout> | null = null;
+  private chunkBoundaries: ChunkBoundary[] = [];
+  private totalChunks = 0;
+  private currentStreamIndex = 0;
+  private boundaryRecorded = false;
+  private lastNotifiedChunkIndex = -1;
+  private runId = 0;
+
+  onStateChange?: (state: "playing" | "paused" | "stopped") => void;
+  onChunkChange?: (index: number, total: number) => void;
+  onEnd?: () => void;
+
+  get paused() {
+    return this._paused;
+  }
+
+  protected abstract engineName: string;
+
+  protected abstract streamChunkAudio(
+    text: string,
+    config: TTSConfig,
+    signal: AbortSignal,
+    onAudio: (bytes: Uint8Array) => void,
+  ): Promise<void>;
+
+  async speak(text: string | string[], config: TTSConfig) {
+    this.stop();
+
+    const chunks = Array.isArray(text) ? text.filter(Boolean) : splitIntoChunks(text);
+    const myRun = ++this.runId;
+    this._playing = true;
+    this._paused = false;
+    this.allChunksDone = false;
+    this.hasAudioData = false;
+    this.totalChunks = chunks.length;
+    this.chunkBoundaries = [];
+    this.lastNotifiedChunkIndex = -1;
+
+    this.audioCtx = new AudioContext();
+    this.gainNode = this.audioCtx.createGain();
+    this.gainNode.connect(this.audioCtx.destination);
+    this.scheduledEnd = 0;
+
+    this.checkEndTimer = setInterval(() => {
+      if (!this._playing) return;
+      if (this.audioCtx) {
+        const current = resolveCurrentChunk(this.chunkBoundaries, this.audioCtx.currentTime);
+        if (current >= 0 && current !== this.lastNotifiedChunkIndex) {
+          this.lastNotifiedChunkIndex = current;
+          this.onChunkChange?.(current, this.totalChunks);
+        }
+      }
+      if (
+        this.allChunksDone &&
+        this.audioCtx &&
+        this.pendingBytes.length === 0 &&
+        !this.decodeTimeout
+      ) {
+        if (!this.hasAudioData) {
+          this.finishPlayback();
+          return;
+        }
+        if (this.audioCtx.currentTime >= this.scheduledEnd - 0.05) {
+          this.finishPlayback();
+        }
+      }
+    }, 200);
+
+    for (let i = 0; i < chunks.length; i++) {
+      if (!this._playing || myRun !== this.runId) return;
+      this.currentStreamIndex = i;
+      this.boundaryRecorded = false;
+      this.pendingBytes = [];
+      this.abortController = new AbortController();
+      let firstAudioReceived = false;
+      try {
+        await this.streamChunkAudio(
+          chunks[i],
+          config,
+          this.abortController.signal,
+          (bytes) => {
+            if (!this._playing || myRun !== this.runId || !this.audioCtx) return;
+            this.pendingBytes.push(bytes);
+            if (!firstAudioReceived) {
+              firstAudioReceived = true;
+              if (i === 0) this.onStateChange?.("playing");
+            }
+            this.scheduleFlush();
+          },
+        );
+      } catch (err) {
+        if (!this._playing || myRun !== this.runId || isTTSAbortError(err)) return;
+        console.error(`[${this.engineName} TTS] chunk error:`, err);
+        this.stop();
+        return;
+      }
+      if (myRun !== this.runId) return;
+      this.flushPendingBytes();
+    }
+
+    if (myRun !== this.runId) return;
+    this.allChunksDone = true;
+  }
+
+  private scheduleFlush() {
+    if (this.decodeTimeout) return;
+    this.decodeTimeout = setTimeout(() => {
+      this.decodeTimeout = null;
+      this.flushPendingBytes();
+    }, 100);
+  }
+
+  private flushPendingBytes() {
+    if (this.decodeTimeout) {
+      clearTimeout(this.decodeTimeout);
+      this.decodeTimeout = null;
+    }
+    if (this.pendingBytes.length === 0 || !this.audioCtx || !this.gainNode) return;
+
+    const totalLen = this.pendingBytes.reduce((sum, chunk) => sum + chunk.length, 0);
+    const merged = new Uint8Array(totalLen);
+    let offset = 0;
+    for (const chunk of this.pendingBytes) {
+      merged.set(chunk, offset);
+      offset += chunk.length;
+    }
+    this.pendingBytes = [];
+
+    const numSamples = Math.floor(merged.length / 2);
+    if (numSamples === 0) return;
+
+    const ctx = this.audioCtx;
+    const gain = this.gainNode;
+    const audioBuffer = ctx.createBuffer(1, numSamples, CLOUD_TTS_PCM_SAMPLE_RATE);
+    const channelData = audioBuffer.getChannelData(0);
+    const view = new DataView(merged.buffer, merged.byteOffset, merged.byteLength);
+
+    for (let i = 0; i < numSamples; i++) {
+      channelData[i] = view.getInt16(i * 2, true) / 32768;
+    }
+
+    if (!this._playing) return;
+    const source = ctx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(gain);
+
+    const startAt = Math.max(ctx.currentTime, this.scheduledEnd);
+    source.start(startAt);
+    this.scheduledEnd = startAt + audioBuffer.duration;
+    this.hasAudioData = true;
+
+    if (!this.boundaryRecorded) {
+      this.chunkBoundaries.push({ index: this.currentStreamIndex, startAt });
+      this.boundaryRecorded = true;
+    }
+  }
+
+  private finishPlayback() {
+    if (this.checkEndTimer) {
+      clearInterval(this.checkEndTimer);
+      this.checkEndTimer = null;
+    }
+    const onEnd = this.onEnd;
+    this.cleanupAudio();
+    this._playing = false;
+    this._paused = false;
+    this.onStateChange?.("stopped");
+    onEnd?.();
+  }
+
+  pause() {
+    if (!this._playing || this._paused) return;
+    this.audioCtx?.suspend();
+    this._paused = true;
+    this.onStateChange?.("paused");
+  }
+
+  resume() {
+    if (!this._playing || !this._paused) return;
+    this.audioCtx?.resume();
+    this._paused = false;
+    this.onStateChange?.("playing");
+  }
+
+  stop() {
+    this.runId += 1;
+    this.abortController?.abort();
+    this.abortController = null;
+    if (this.checkEndTimer) {
+      clearInterval(this.checkEndTimer);
+      this.checkEndTimer = null;
+    }
+    if (this.decodeTimeout) {
+      clearTimeout(this.decodeTimeout);
+      this.decodeTimeout = null;
+    }
+    this.cleanupAudio();
+    this.pendingBytes = [];
+    this.allChunksDone = false;
+    this.hasAudioData = false;
+    this.chunkBoundaries = [];
+    this.lastNotifiedChunkIndex = -1;
+    this.boundaryRecorded = false;
+    this._playing = false;
+    this._paused = false;
+    this.onStateChange?.("stopped");
+  }
+
+  private cleanupAudio() {
+    if (this.audioCtx) {
+      this.audioCtx.close().catch(() => {});
+      this.audioCtx = null;
+    }
+    this.gainNode = null;
+    this.scheduledEnd = 0;
+  }
+}
+
+async function readChatAudioSSE(
+  response: Response,
+  onAudio: (bytes: Uint8Array) => void,
+): Promise<void> {
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("No response body reader");
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (!line.startsWith("data:")) continue;
+      const jsonStr = line.slice(5).trim();
+      if (!jsonStr || jsonStr === "[DONE]") continue;
+      try {
+        const evt = JSON.parse(jsonStr);
+        const audioData = evt?.choices?.[0]?.delta?.audio?.data;
+        if (audioData) onAudio(base64ToBytes(audioData));
+      } catch (err) {
+        console.warn("[TTS] Failed to parse chat audio stream JSON:", err);
+      }
+    }
+  }
+}
+
+function bytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
+export class XiaomiTTSPlayer extends PCMStreamingTTSPlayer {
+  protected engineName = "Xiaomi MiMo";
+
+  protected async streamChunkAudio(
+    text: string,
+    config: TTSConfig,
+    signal: AbortSignal,
+    onAudio: (bytes: Uint8Array) => void,
+  ): Promise<void> {
+    if (!config.xiaomiApiKey) throw new Error("Xiaomi MiMo API key is required");
+
+    const platform = getPlatformService();
+    const response = await platform.fetch(buildXiaomiTTSUrl(config), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "api-key": config.xiaomiApiKey,
+      },
+      body: JSON.stringify({
+        model: "mimo-v2.5-tts",
+        messages: buildXiaomiTTSMessages(text, config),
+        audio: {
+          format: "pcm16",
+          voice: normalizeXiaomiTTSVoice(config.xiaomiVoice),
+        },
+        stream: true,
+      }),
+      signal,
+    });
+
+    if (!response.ok) throw await buildTTSHttpError("Xiaomi MiMo TTS", response);
+    await readChatAudioSSE(response, onAudio);
+  }
+}
+
+class BufferedAudioTTSPlayer implements ITTSPlayer {
+  private audioCtx: AudioContext | null = null;
+  private gainNode: GainNode | null = null;
+  private scheduledEnd = 0;
+  private _playing = false;
+  private _paused = false;
+  private allChunksDone = false;
+  private hasAudioData = false;
+  private abortController: AbortController | null = null;
+  private checkEndTimer: ReturnType<typeof setInterval> | null = null;
+  private chunkBoundaries: ChunkBoundary[] = [];
+  private lastNotifiedChunkIndex = -1;
+  private totalChunks = 0;
+  private runId = 0;
+
+  onStateChange?: (state: "playing" | "paused" | "stopped") => void;
+  onChunkChange?: (index: number, total: number) => void;
+  onEnd?: () => void;
+
+  constructor(private fetchAudio: (text: string, config: TTSConfig) => Promise<Uint8Array>) {}
+
+  get paused() {
+    return this._paused;
+  }
+
+  async speak(text: string | string[], config: TTSConfig) {
+    this.stop();
+    const chunks = Array.isArray(text) ? text.filter(Boolean) : splitIntoChunks(text);
+    const myRun = ++this.runId;
+    this._playing = true;
+    this._paused = false;
+    this.allChunksDone = false;
+    this.hasAudioData = false;
+    this.totalChunks = chunks.length;
+    this.chunkBoundaries = [];
+    this.lastNotifiedChunkIndex = -1;
+
+    this.audioCtx = new AudioContext();
+    this.gainNode = this.audioCtx.createGain();
+    this.gainNode.connect(this.audioCtx.destination);
+    this.scheduledEnd = 0;
+
+    this.checkEndTimer = setInterval(() => {
+      if (!this._playing || !this.audioCtx) return;
+      const current = resolveCurrentChunk(this.chunkBoundaries, this.audioCtx.currentTime);
+      if (current >= 0 && current !== this.lastNotifiedChunkIndex) {
+        this.lastNotifiedChunkIndex = current;
+        this.onChunkChange?.(current, this.totalChunks);
+      }
+      if (this.allChunksDone) {
+        if (!this.hasAudioData || this.audioCtx.currentTime >= this.scheduledEnd - 0.05) {
+          this.finishPlayback();
+        }
+      }
+    }, 200);
+
+    for (let i = 0; i < chunks.length; i++) {
+      if (!this._playing || myRun !== this.runId) return;
+      this.abortController = new AbortController();
+      try {
+        const bytes = await this.fetchAudio(chunks[i], config);
+        if (!this._playing || myRun !== this.runId || !this.audioCtx || !this.gainNode) return;
+        const audioBuffer = await this.audioCtx.decodeAudioData(bytesToArrayBuffer(bytes));
+        if (!this._playing || myRun !== this.runId || !this.audioCtx || !this.gainNode) return;
+        const source = this.audioCtx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(this.gainNode);
+        const startAt = Math.max(this.audioCtx.currentTime, this.scheduledEnd);
+        source.start(startAt);
+        this.scheduledEnd = startAt + audioBuffer.duration;
+        this.hasAudioData = true;
+        this.chunkBoundaries.push({ index: i, startAt });
+        if (i === 0) this.onStateChange?.("playing");
+      } catch (err) {
+        if (!this._playing || myRun !== this.runId || isTTSAbortError(err)) return;
+        console.error("[Buffered TTS] chunk error:", err);
+      }
+    }
+
+    if (myRun !== this.runId) return;
+    this.allChunksDone = true;
+  }
+
+  private finishPlayback() {
+    if (this.checkEndTimer) {
+      clearInterval(this.checkEndTimer);
+      this.checkEndTimer = null;
+    }
+    const onEnd = this.onEnd;
+    this.cleanupAudio();
+    this._playing = false;
+    this._paused = false;
+    this.onStateChange?.("stopped");
+    onEnd?.();
+  }
+
+  pause() {
+    if (!this._playing || this._paused) return;
+    this.audioCtx?.suspend();
+    this._paused = true;
+    this.onStateChange?.("paused");
+  }
+
+  resume() {
+    if (!this._playing || !this._paused) return;
+    this.audioCtx?.resume();
+    this._paused = false;
+    this.onStateChange?.("playing");
+  }
+
+  stop() {
+    this.runId += 1;
+    this.abortController?.abort();
+    this.abortController = null;
+    if (this.checkEndTimer) {
+      clearInterval(this.checkEndTimer);
+      this.checkEndTimer = null;
+    }
+    this.cleanupAudio();
+    this._playing = false;
+    this._paused = false;
+    this.allChunksDone = false;
+    this.hasAudioData = false;
+    this.chunkBoundaries = [];
+    this.lastNotifiedChunkIndex = -1;
+    this.onStateChange?.("stopped");
+  }
+
+  private cleanupAudio() {
+    if (this.audioCtx) {
+      this.audioCtx.close().catch(() => {});
+      this.audioCtx = null;
+    }
+    this.gainNode = null;
+    this.scheduledEnd = 0;
+  }
+}
+
+export class OpenAICompatibleTTSPlayer implements ITTSPlayer {
+  private pcmPlayer = new (class extends PCMStreamingTTSPlayer {
+    protected engineName = "OpenAI-compatible";
+
+    protected async streamChunkAudio(
+      text: string,
+      config: TTSConfig,
+      signal: AbortSignal,
+      onAudio: (bytes: Uint8Array) => void,
+    ): Promise<void> {
+      if (!config.openaiTtsApiKey) throw new Error("OpenAI-compatible TTS API key is required");
+      const baseUrl = config.openaiTtsBaseUrl.replace(/\/+$/u, "");
+      const platform = getPlatformService();
+      const response = await platform.fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${config.openaiTtsApiKey}`,
+        },
+        body: JSON.stringify({
+          model: config.openaiTtsModel,
+          messages: buildOpenAIChatTTSMessages(text, config),
+          audio: {
+            format: "pcm16",
+            voice: config.openaiTtsVoice,
+          },
+          stream: true,
+        }),
+        signal,
+      });
+      if (!response.ok) {
+        throw new Error(`OpenAI-compatible chat TTS failed: ${response.status}`);
+      }
+      await readChatAudioSSE(response, onAudio);
+    }
+  })();
+
+  private bufferedPlayer = new BufferedAudioTTSPlayer(fetchOpenAITTSAudio);
+  private activePlayer: ITTSPlayer = this.bufferedPlayer;
+
+  onStateChange?: (state: "playing" | "paused" | "stopped") => void;
+  onChunkChange?: (index: number, total: number) => void;
+  onEnd?: () => void;
+
+  get paused() {
+    return this.activePlayer.paused;
+  }
+
+  async speak(text: string | string[], config: TTSConfig) {
+    this.activePlayer =
+      config.openaiTtsEndpoint === "chat-completions" && config.openaiTtsFormat === "pcm16"
+        ? this.pcmPlayer
+        : this.bufferedPlayer;
+    this.activePlayer.onStateChange = (state) => this.onStateChange?.(state);
+    this.activePlayer.onChunkChange = (index, total) => this.onChunkChange?.(index, total);
+    this.activePlayer.onEnd = () => this.onEnd?.();
+    return this.activePlayer.speak(text, config);
+  }
+
+  pause() {
+    this.activePlayer.pause();
+  }
+
+  resume() {
+    this.activePlayer.resume();
+  }
+
+  stop() {
+    this.pcmPlayer.stop();
+    this.bufferedPlayer.stop();
+  }
+}
+
 // ── Edge TTS (Microsoft Neural voices — free, high quality) ──
 
 export class EdgeTTSPlayer implements ITTSPlayer {
@@ -438,7 +964,6 @@ export class EdgeTTSPlayer implements ITTSPlayer {
   private chunks: string[] = [];
   private _playing = false;
   private _paused = false;
-  private aborted = false;
   private hasAudioData = false;
   private playingNotified = false;
   private checkEndTimer: ReturnType<typeof setInterval> | null = null;
@@ -447,7 +972,11 @@ export class EdgeTTSPlayer implements ITTSPlayer {
   private producerIndex = 0;
   private producerWake: (() => void) | null = null;
   private chunkStartTimers = new Set<ReturnType<typeof setTimeout>>();
+  private activeSources = new Set<AudioBufferSourceNode>();
   private pausedAt = 0; // Date.now() when suspended (wall-clock ms)
+  /** Monotonic per-run token, bumped on every speak() to invalidate the previous
+   *  run's in-flight async continuations (mirrors DashScopeTTSPlayer). */
+  private runId = 0;
   private static readonly BUFFER_SIZE = 4;
 
   onStateChange?: (state: "playing" | "paused" | "stopped") => void;
@@ -461,11 +990,21 @@ export class EdgeTTSPlayer implements ITTSPlayer {
     return this._paused;
   }
 
+  /** Clear the producer's wake resolver. Extracted into a method so callers'
+   *  control-flow analysis keeps producerWake's declared (() => void) | null
+   *  type — runProducer reassigns it across an un-awaited call TS can't track. */
+  private resetProducerWake() {
+    this.producerWake = null;
+  }
+
   async speak(text: string | string[], config: TTSConfig) {
-    this.aborted = true;
+    // Invalidate any in-flight run immediately: its captured myRun no longer
+    // equals this.runId, so every continuation/timer below bails on its guard.
+    const myRun = ++this.runId;
     this.cleanupAudio();
     this.fetchBuffer.clear();
     this.producerWake?.();
+    this.resetProducerWake();
     if (this.checkEndTimer) {
       clearInterval(this.checkEndTimer);
       this.checkEndTimer = null;
@@ -474,7 +1013,6 @@ export class EdgeTTSPlayer implements ITTSPlayer {
     this.chunks = Array.isArray(text) ? text.filter(Boolean) : splitIntoChunks(text, 800);
     this._playing = true;
     this._paused = false;
-    this.aborted = false;
     this.allChunksDone = false;
     this.hasAudioData = false;
     this.playingNotified = false;
@@ -486,10 +1024,15 @@ export class EdgeTTSPlayer implements ITTSPlayer {
     this.scheduledEnd = 0;
 
     if (this.audioCtx.state === "suspended") {
-      await this.audioCtx.resume();
+      // 重入下（同步 stop()+speak()）后继 run 可能在此 await 期间 close 掉本 ctx，
+      // 使 resume() reject；吞掉它——下方的 myRun !== this.runId 守卫本就会丢弃本 run。
+      await this.audioCtx.resume().catch(() => {});
     }
+    // A newer run may have superseded us during the resume() await.
+    if (myRun !== this.runId) return;
 
     this.checkEndTimer = setInterval(() => {
+      if (myRun !== this.runId) return;
       if (!this._playing || this._paused) return;
       // Also guard against the AudioContext being auto-suspended by the OS
       // (e.g. iOS background / lock-screen) without us explicitly pausing.
@@ -513,12 +1056,12 @@ export class EdgeTTSPlayer implements ITTSPlayer {
     this.producerIndex = 0;
     this.fetchBuffer.clear();
 
-    this.runProducer(base);
+    this.runProducer(base, myRun);
 
     const prewarmCount = Math.min(EdgeTTSPlayer.BUFFER_SIZE, this.chunks.length);
     for (let p = 0; p < prewarmCount; p++) {
       if (this.fetchBuffer.has(p)) continue;
-      if (!this._playing || this.aborted) return;
+      if (!this._playing || myRun !== this.runId) return;
       const promise = fetchEdgeTTSAudio({ text: this.chunks[p], ...base });
       promise.catch(() => {});
       this.fetchBuffer.set(p, promise);
@@ -526,12 +1069,15 @@ export class EdgeTTSPlayer implements ITTSPlayer {
     }
 
     for (let i = 0; i < this.chunks.length; i++) {
-      if (!this._playing || this.aborted) return;
+      if (!this._playing || myRun !== this.runId) return;
       try {
-        const audioData = await this.waitForChunk(i);
-        if (!this._playing || this.aborted) return;
-        await this.decodeAndSchedule(audioData, i);
+        const audioData = await this.waitForChunk(i, myRun);
+        if (!this._playing || myRun !== this.runId) return;
+        await this.decodeAndSchedule(audioData, i, myRun);
+        // Old run resuming here must not delete/wake the new run's buffer.
+        if (!this._playing || myRun !== this.runId) return;
       } catch (err) {
+        if (myRun !== this.runId) return;
         if ((err as Error)?.message === "aborted") return;
         console.error("[Edge TTS] chunk error:", err);
       }
@@ -540,22 +1086,28 @@ export class EdgeTTSPlayer implements ITTSPlayer {
       this.producerWake?.();
     }
 
+    if (myRun !== this.runId) return;
     this.allChunksDone = true;
   }
 
-  private async runProducer(base: { voice: string; lang: string; rate: number; pitch: number }) {
+  private async runProducer(
+    base: { voice: string; lang: string; rate: number; pitch: number },
+    myRun: number,
+  ) {
     while (this.producerIndex < this.chunks.length) {
-      if (!this._playing || this.aborted) return;
+      if (!this._playing || myRun !== this.runId) return;
 
       while (this.fetchBuffer.size >= EdgeTTSPlayer.BUFFER_SIZE) {
-        if (!this._playing || this.aborted) return;
+        if (!this._playing || myRun !== this.runId) return;
         await new Promise<void>((resolve) => {
           this.producerWake = resolve;
         });
+        // Old producer resuming here must not clobber the new run's producerWake.
+        if (myRun !== this.runId) return;
         this.producerWake = null;
       }
 
-      if (!this._playing || this.aborted) return;
+      if (!this._playing || myRun !== this.runId) return;
 
       const idx = this.producerIndex++;
       const promise = fetchEdgeTTSAudio({ text: this.chunks[idx], ...base });
@@ -564,32 +1116,46 @@ export class EdgeTTSPlayer implements ITTSPlayer {
     }
   }
 
-  private async waitForChunk(index: number): Promise<ArrayBuffer> {
+  private async waitForChunk(index: number, myRun: number): Promise<ArrayBuffer> {
     while (!this.fetchBuffer.has(index)) {
-      if (!this._playing || this.aborted) {
+      if (!this._playing || myRun !== this.runId) {
         throw new Error("aborted");
       }
       await new Promise<void>((r) => setTimeout(r, 50));
     }
-    return this.fetchBuffer.get(index)!;
+    const chunk = this.fetchBuffer.get(index);
+    if (!chunk) throw new Error("aborted");
+    return chunk;
   }
 
-  private async decodeAndSchedule(mp3Data: ArrayBuffer, index: number): Promise<void> {
-    if (!this.audioCtx || !this.gainNode || !this._playing || this.aborted) return;
+  private async decodeAndSchedule(
+    mp3Data: ArrayBuffer,
+    index: number,
+    myRun: number,
+  ): Promise<void> {
+    const ctx = this.audioCtx;
+    const gain = this.gainNode;
+    if (!ctx || !gain || !this._playing || myRun !== this.runId) return;
 
-    const audioBuffer = await this.audioCtx.decodeAudioData(mp3Data.slice(0));
-    if (!this._playing || this.aborted || !this.audioCtx || !this.gainNode) return;
+    const audioBuffer = await ctx.decodeAudioData(mp3Data.slice(0));
+    // Bail if superseded, or if a new run swapped in a different AudioContext —
+    // never schedule into a ctx that isn't this run's.
+    if (!this._playing || myRun !== this.runId || this.audioCtx !== ctx || !this.gainNode) return;
 
-    const source = this.audioCtx.createBufferSource();
+    const source = ctx.createBufferSource();
     source.buffer = audioBuffer;
-    source.connect(this.gainNode);
+    source.connect(gain);
+    this.activeSources.add(source);
+    source.onended = () => {
+      this.activeSources.delete(source);
+    };
 
-    const startAt = Math.max(this.audioCtx.currentTime, this.scheduledEnd);
+    const startAt = Math.max(ctx.currentTime, this.scheduledEnd);
     const notifyChunkStart = () => {
-      if (!this._playing || this.aborted) return;
+      if (!this._playing || myRun !== this.runId) return;
       this.onChunkChange?.(index, this.chunks.length);
     };
-    const startDelayMs = Math.max(0, (startAt - this.audioCtx.currentTime) * 1000);
+    const startDelayMs = Math.max(0, (startAt - ctx.currentTime) * 1000);
     if (startDelayMs <= 16) {
       notifyChunkStart();
     } else {
@@ -650,7 +1216,7 @@ export class EdgeTTSPlayer implements ITTSPlayer {
   }
 
   stop() {
-    this.aborted = true;
+    this.runId += 1;
     if (this.checkEndTimer) {
       clearInterval(this.checkEndTimer);
       this.checkEndTimer = null;
@@ -658,6 +1224,7 @@ export class EdgeTTSPlayer implements ITTSPlayer {
     this.cleanupAudio();
     this.fetchBuffer.clear();
     this.producerWake?.();
+    this.producerWake = null;
     this.chunks = [];
     this._playing = false;
     this._paused = false;
@@ -667,6 +1234,19 @@ export class EdgeTTSPlayer implements ITTSPlayer {
   private cleanupAudio() {
     for (const timer of this.chunkStartTimers) clearTimeout(timer);
     this.chunkStartTimers.clear();
+    for (const source of this.activeSources) {
+      try {
+        source.stop();
+      } catch {
+        // Already stopped.
+      }
+      try {
+        source.disconnect();
+      } catch {
+        // Already disconnected.
+      }
+    }
+    this.activeSources.clear();
     if (this.audioCtx) {
       this.audioCtx.close().catch(() => {});
       this.audioCtx = null;
