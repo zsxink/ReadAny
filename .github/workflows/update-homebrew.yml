@@ -32,7 +32,7 @@ jobs:
       - name: Download macOS assets and calculate SHA256
         id: sha
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ steps.tag.outputs.tag }}"
           mkdir -p dist
