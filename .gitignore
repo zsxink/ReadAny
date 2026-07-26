@@ -12,6 +12,7 @@ target/
 .obsidian/
 .idea/
 .codebuddy/
+.codegraph/
 *.swp
 *.swo
 *~
@@ -45,4 +46,5 @@ readese/*
 
 # Local WebDAV test server
 webdav-server/
+.claude/settings.local.json
 theme-studio/.claude/settings.local.json
