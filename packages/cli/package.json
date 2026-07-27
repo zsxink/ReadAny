@@ -29,7 +29,7 @@
   },
   "dependencies": {
     "@readany/core": "workspace:*",
-    "pdfjs-dist": "^5.5.207"
+    "pdfjs-dist": "5.5.207"
   },
   "optionalDependencies": {
     "better-sqlite3": "^12.10.1"
