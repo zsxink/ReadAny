@@ -8,6 +8,7 @@ overrides:
   react: 19.1.0
   react-dom: 19.1.0
   '@types/react': 19.1.17
+  pdfjs-dist: 5.5.207
 
 patchedDependencies:
   '@langchain/core':
@@ -175,7 +176,7 @@ importers:
         specifier: ^0.18.12
         version: 0.18.12(markmap-common@0.18.9)
       pdfjs-dist:
-        specifier: ^5.5.207
+        specifier: 5.5.207
         version: 5.5.207
       qrcode.react:
         specifier: ^4.2.0
@@ -480,7 +481,7 @@ importers:
         specifier: workspace:*
         version: link:../core
       pdfjs-dist:
-        specifier: ^5.5.207
+        specifier: 5.5.207
         version: 5.5.207
     optionalDependencies:
       better-sqlite3:
@@ -545,7 +546,7 @@ importers:
         specifier: ^25.8.13
         version: 25.8.18(typescript@5.9.3)
       pdfjs-dist:
-        specifier: ^5.5.207
+        specifier: 5.5.207
         version: 5.5.207
       react:
         specifier: 19.1.0
@@ -576,6 +577,10 @@ importers:
   packages/feedback-worker: {}
 
   packages/foliate-js:
+    dependencies:
+      pdfjs-dist:
+        specifier: 5.5.207
+        version: 5.5.207
     devDependencies:
       '@eslint/js':
         specifier: ^9.9.1
@@ -598,9 +603,6 @@ importers:
       globals:
         specifier: ^15.9.0
         version: 15.15.0
-      pdfjs-dist:
-        specifier: ^4.7.76
-        version: 4.10.38
       rollup:
         specifier: ^4.22.4
         version: 4.59.0
@@ -7655,10 +7657,6 @@ packages:
 
   pathe@2.0.3:
     resolution: {integrity: sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w==}
-
-  pdfjs-dist@4.10.38:
-    resolution: {integrity: sha512-/Y3fcFrXEAsMjJXeL9J8+ZG9U01LbuWaYypvDW2ycW1jL269L3js3DVBjDJ0Up9Np1uqDXsDrRihHANhZOlwdQ==}
-    engines: {node: '>=20'}
 
   pdfjs-dist@5.5.207:
     resolution: {integrity: sha512-WMqqw06w1vUt9ZfT0gOFhMf3wHsWhaCrxGrckGs5Cci6ybDW87IvPaOd2pnBwT6BJuP/CzXDZxjFgmSULLdsdw==}
@@ -18267,10 +18265,6 @@ snapshots:
   path-type@4.0.0: {}
 
   pathe@2.0.3: {}
-
-  pdfjs-dist@4.10.38:
-    optionalDependencies:
-      '@napi-rs/canvas': 0.1.96
 
   pdfjs-dist@5.5.207:
     optionalDependencies:
