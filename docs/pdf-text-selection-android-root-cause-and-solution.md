@@ -4,11 +4,21 @@
 >
 > 适用分支：`fix/android-pdf-text-selection`
 >
-> 当前状态：依赖、锁文件、vendor 和 reader bundle 已统一到 5.5.207；最终修复仍需 Android 真机回归确认。
+> 当前状态：依赖、锁文件、vendor 和 reader bundle 已统一到 5.5.207；针对 Android WebView 的 TextLayer 数值几何兼容修复已补充，仍需 Android 真机回归确认。
 
 ## 1. 结论
 
-Android 上 PDF “正常大小的文字无法选择、每行前面只能选到约正常字号 1/20 的小字”的根因，不再是触摸事件、长按菜单或页面层级问题，而是 **PDF.js 运行时代码与 TextLayer CSS 来自不同的大版本**。
+Android 上 PDF “正常大小的文字无法选择、每行前面只能选到约正常字号 1/20 的小字”的第一层根因，不是触摸事件、长按菜单或页面层级问题，而是 **PDF.js 运行时代码与 TextLayer CSS 来自不同的大版本**。
+
+统一到 5.5.207 后，真机截图进一步证明还有第二层几何问题：TextLayer 已经能选择和复制，但选区命中的是正文旁边的极小文字。截图本身只能证明 TextLayer 与 Canvas 不一致；结合 5.5.207 实现，**PDF.js 5 的 CSS 数值运算和跨文档最小字体测量是高概率兼容路径，仍需真机 computed style 数据最终确认**：
+
+- PDF.js 5 的官方 TextLayer CSS 使用 `calc()` 中的单位乘除法计算字号和最小字体补偿；
+- `TextLayer` 类在模块所属的主文档中测量并静态缓存 `--min-font-size`；
+- ReadAny 把 TextLayer 实际渲染到另一个 PDF 页面 iframe 中；
+- Android WebView 对主文档/iframe 的最小字体策略和 CSS typed arithmetic 支持可能不同；
+- 如果 `font-size` 运算失效而逆向缩放仍生效，文字会缩小到约 1/16–1/20 并偏离 Canvas；主文档与 iframe 的最小字体差异会进一步改变补偿结果，但不能单独证明这一比例。
+
+此外，`FixedLayout` 的缩放回调是异步渲染，但布局层不会等待它完成。窗口或 WebView 尺寸连续变化时，多个 Canvas/TextLayer 任务可能交叉结束；如果旧 TextLayer 晚于新 Canvas 完成，最终也会形成不同缩放代次的图层组合。
 
 修复前移动端阅读器的实际组合是：
 
@@ -27,7 +37,7 @@ Android 上 PDF “正常大小的文字无法选择、每行前面只能选到�
 | `packages/app/public/vendor/pdfjs/*` | 5.4.624 | Web 端 vendor API、worker 和 CSS |
 | `packages/foliate-js/pdf.js` 的 TextLayer CSS | 5.4.x 写法 | 移动端透明文字层样式 |
 
-**最终修复方向：将所有 `pdfjs-dist` 精确统一为 `5.5.207`，更新两套锁文件、vendor 资源并重新生成 Expo 的 `reader.html`。**
+**最终修复方向：先将所有 `pdfjs-dist` 精确统一为 `5.5.207`，再在 iframe 内重新测量最小字体，并把 TextLayer 每个 span 的字号、旋转和缩放固化为普通数值 CSS；最后更新 vendor 资源并重新生成 Expo 的 `reader.html`。**
 
 只继续修改触摸事件、`z-index`、iframe 结构或 WebView 参数，无法修复当前的文字层字号和几何尺寸。
 
@@ -339,7 +349,29 @@ reader.html bundle    5.5.207
 
 `packages/foliate-js/pdf.js` 当前通过 `pdfjsLib.version` 生成 CDN worker、CMap 和标准字体地址；依赖统一后，这些 URL 也会自动指向 5.5.207。
 
-### 6.6 暂时保留前两轮触摸和结构修复
+### 6.6 在 iframe 内固化 TextLayer 数值几何
+
+统一版本解决了 4.x/5.x 协议错配，但 Android 真机仍可能不能可靠执行 PDF.js 5 CSS 中的数值乘除法。`packages/foliate-js/pdf.js` 因此在 `TextLayer.render()` 完成后执行以下兼容处理：
+
+1. 在 PDF 页面 iframe 自己的 `document` 中用 1px 探针测量实际最小字体尺寸；
+2. 使用 `viewport.scale * viewport.userUnit` 得到与 Canvas 相同的总缩放；
+3. 从每个 span 的 `--font-height`、`--scale-x` 和 `--rotate` 读取 PDF.js 已计算的原始几何；
+4. 写入明确的像素字号和纯数字 `rotate/scaleX/scale` transform；
+5. Canvas 使用旋转后的 `viewport.width/height`；TextLayer 和 AnnotationLayer 使用未旋转的 `rawDims * totalScaleFactor`，再按 PDF.js 官方 `data-main-rotation` 规则旋转，保证 0/90/180/270 度页面坐标一致。
+6. 为每个 PDF iframe 维护唯一渲染代次；新缩放开始时取消旧 Canvas/TextLayer 任务，旧任务即使稍后返回也不能再写入页面。
+
+等价计算为：
+
+```text
+fontSizePx = fontHeight * viewport.scale * viewport.userUnit * minimumFontSize
+transform  = rotate(angle) scaleX(scaleX) scale(1 / minimumFontSize)
+```
+
+最终视觉字号仍是 `fontHeight * viewport.scale * viewport.userUnit`，但不再要求 Android WebView 在 CSS `calc()` 中完成单位乘除，也不再复用主文档测得的最小字体值。
+
+这不是手工重建 PDF 文字层：文字内容、位置百分比、字体、旋转和横向缩放仍由官方 `TextLayer` 生成，只把它生成后的 CSS 变量表达式解析为兼容性更强的普通数值 CSS。
+
+### 6.7 暂时保留前两轮触摸和结构修复
 
 版本统一时不建议立即撤销前两轮修改。它们分别处理：
 
@@ -351,7 +383,7 @@ reader.html bundle    5.5.207
 
 应先完成版本统一和真机回归，再根据测试结果逐项精简，而不是在同一轮同时回退多个变量。
 
-### 6.7 兼容性和回归风险
+### 6.8 兼容性和回归风险
 
 统一到 5.5.207 对不同包的含义不同：
 
@@ -505,9 +537,11 @@ const span = layer?.querySelector("span");
 2. bundle 中是否仍包含 `4.10.38`；
 3. `packages/foliate-js/node_modules/pdfjs-dist` 是否仍是旧目录；
 4. span 是否拿到了非零 `--font-height`；
-5. API 与 worker 是否混用了不同版本。
+5. span 的内联 `font-size` 和 `transform` 是否已经变成普通数值，而不是只依赖 CSS 变量；
+6. TextLayer 的宽高是否与 Canvas 的 CSS 宽高完全一致；
+7. API 与 worker 是否混用了不同版本。
 
-这仍属于版本或构建产物未统一，而不是 Android 手势问题。
+这属于版本、构建产物或 TextLayer 数值几何兼容层未生效，而不是 Android 手势问题。
 
 ### B. 文字大小和位置正确，但长按无法建立选区
 
@@ -544,8 +578,10 @@ const span = layer?.querySelector("span");
 
 当前现象不是“Android 不支持 PDF 文字选择”，也不是“PDF.js 没有生成文字层”。恰恰相反，极小文字能够被选中，证明文字层和选择机制都存在。
 
-真正的问题是：
+完整问题由两层组成：
 
 > Android reader 实际执行 PDF.js 4.10.38，却使用 PDF.js 5.4.x 的 TextLayer CSS 和缩放变量；4.x 需要的 `--scale-factor`、内联字号布局，与 5.x 的 `--total-scale-factor`、`--font-height` 布局不能混用，最终导致透明文字层字号趋近于零并与 Canvas 脱离。
 
-因此最小且正确的修复不是继续堆叠 Android 特判，而是先把 PDF.js API、worker、CSS、依赖和生成产物统一到 **5.5.207**，再在此一致基线上验证触摸选择。
+> 统一到 5.5.207 后，截图确认仍存在 TextLayer 几何错位。代码审计显示 PDF.js 5 依赖 CSS typed arithmetic，并在模块主文档而不是页面 iframe 中缓存最小字体尺寸；Android WebView 若使字号表达式失效而逆向缩放继续生效，就能解释旁置小字，但该兼容路径仍需真机 computed style 数据确认。
+
+因此最小且正确的修复不是继续堆叠触摸特判，而是先把 PDF.js API、worker、CSS、依赖和生成产物统一到 **5.5.207**，再把官方 TextLayer 已计算出的几何在实际 iframe 中固化为普通数值 CSS，最后进行 Android 真机选择回归。

@@ -76,6 +76,9 @@ const TEXT_LAYER_CSS = `
   user-select: none;
 }
 .textLayer.selecting .endOfContent { top: 0; }
+[data-main-rotation="90"] { transform: rotate(90deg) translateY(-100%); }
+[data-main-rotation="180"] { transform: rotate(180deg) translate(-100%, -100%); }
+[data-main-rotation="270"] { transform: rotate(270deg) translateX(-100%); }
 `;
 
 const ANNOTATION_LAYER_CSS = `
@@ -85,6 +88,15 @@ const ANNOTATION_LAYER_CSS = `
   left: 0;
   pointer-events: none;
   transform-origin: 0 0;
+}
+.annotationLayer[data-main-rotation="90"] .norotate {
+  transform: rotate(270deg) translateX(-100%);
+}
+.annotationLayer[data-main-rotation="180"] .norotate {
+  transform: rotate(180deg) translate(-100%, -100%);
+}
+.annotationLayer[data-main-rotation="270"] .norotate {
+  transform: rotate(90deg) translateY(-100%);
 }
 .annotationLayer section {
   position: absolute;
@@ -116,9 +128,21 @@ const NULL_CHAR = String.fromCharCode(0);
 const removeNullCharacters = (str) => str.replaceAll(NULL_CHAR, "");
 const normalizeSelectedText = (str) => removeNullCharacters(pdfjsLib.normalizeUnicode(str)).trim();
 
-const applyPDFPageScale = (doc, viewport, scale) => {
+const getViewportScale = (viewport) => viewport.scale * viewport.userUnit;
+
+const stabilizeLayerDimensions = (container, viewport) => {
+  const totalScaleFactor = getViewportScale(viewport);
+  const { pageWidth, pageHeight } = viewport.rawDims;
+  Object.assign(container.style, {
+    width: `${pageWidth * totalScaleFactor}px`,
+    height: `${pageHeight * totalScaleFactor}px`,
+  });
+  container.dataset.mainRotation = String(viewport.rotation);
+};
+
+const applyPDFPageScale = (doc, viewport) => {
   const page = doc.querySelector("#page");
-  const scaleValue = String(scale);
+  const scaleValue = String(getViewportScale(viewport));
   for (const element of [
     doc.documentElement,
     doc.body,
@@ -138,6 +162,45 @@ const applyPDFPageScale = (doc, viewport, scale) => {
       width: `${viewport.width}px`,
       height: `${viewport.height}px`,
     });
+  }
+};
+
+const measureMinimumFontSize = (doc) => {
+  const probe = doc.createElement("div");
+  Object.assign(probe.style, {
+    opacity: "0",
+    lineHeight: "1",
+    fontSize: "1px",
+    position: "absolute",
+    pointerEvents: "none",
+  });
+  probe.textContent = "X";
+  doc.body.append(probe);
+  const height = probe.getBoundingClientRect().height;
+  probe.remove();
+  return Number.isFinite(height) && height > 0 ? height : 1;
+};
+
+const stabilizeTextLayerGeometry = (container, viewport) => {
+  const minimumFontSize = measureMinimumFontSize(container.ownerDocument);
+  const totalScaleFactor = getViewportScale(viewport);
+
+  container.style.setProperty("--min-font-size", String(minimumFontSize));
+  stabilizeLayerDimensions(container, viewport);
+
+  for (const span of container.querySelectorAll("span")) {
+    const fontHeight = Number.parseFloat(span.style.getPropertyValue("--font-height"));
+    if (!Number.isFinite(fontHeight) || fontHeight <= 0) continue;
+
+    const rawScaleX = Number.parseFloat(span.style.getPropertyValue("--scale-x"));
+    const scaleX = Number.isFinite(rawScaleX) && rawScaleX > 0 ? rawScaleX : 1;
+    const rotate = span.style.getPropertyValue("--rotate") || "0deg";
+
+    // PDF.js 5 uses CSS typed multiplication/division for this calculation.
+    // Resolve it to ordinary numeric CSS for older Android WebViews, and measure
+    // the minimum font size in the iframe where the text actually renders.
+    span.style.fontSize = `${fontHeight * totalScaleFactor * minimumFontSize}px`;
+    span.style.transform = `rotate(${rotate}) scaleX(${scaleX}) scale(${1 / minimumFontSize})`;
   }
 };
 
@@ -242,6 +305,16 @@ const getSelectedText = (selection, container) => {
  */
 const render = async (page, doc, zoom) => {
   if (!doc) return;
+
+  const previousRender = doc.__readanyPdfRenderState;
+  previousRender?.canvasTask?.cancel();
+  previousRender?.textLayer?.cancel();
+  doc.__readanyPdfTextSelectionAbortController?.abort();
+
+  const renderState = { canvasTask: null, textLayer: null };
+  doc.__readanyPdfRenderState = renderState;
+  const isCurrentRender = () => doc.__readanyPdfRenderState === renderState;
+
   const scale = zoom;
   const outputScale = globalThis.devicePixelRatio || 1;
 
@@ -249,17 +322,27 @@ const render = async (page, doc, zoom) => {
   doc.documentElement.style.removeProperty("transform-origin");
 
   const viewport = page.getViewport({ scale });
-  applyPDFPageScale(doc, viewport, scale);
+  applyPDFPageScale(doc, viewport);
 
   // Render canvas (in main document for font loading, then adopt into iframe)
   const canvas = document.createElement("canvas");
   canvas.height = Math.floor(viewport.height * outputScale);
   canvas.width = Math.floor(viewport.width * outputScale);
-  canvas.style.width = `${Math.floor(viewport.width)}px`;
-  canvas.style.height = `${Math.floor(viewport.height)}px`;
+  canvas.style.width = `${viewport.width}px`;
+  canvas.style.height = `${viewport.height}px`;
   const canvasContext = canvas.getContext("2d");
   const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
-  await page.render({ canvasContext, transform, viewport }).promise;
+  const canvasTask = page.render({ canvasContext, transform, viewport });
+  renderState.canvasTask = canvasTask;
+  try {
+    await canvasTask.promise;
+  } catch (error) {
+    if (!isCurrentRender() || error instanceof pdfjsLib.RenderingCancelledException) return;
+    throw error;
+  } finally {
+    renderState.canvasTask = null;
+  }
+  if (!isCurrentRender()) return;
 
   const canvasContainer = doc.querySelector("#canvas");
   if (!canvasContainer) return;
@@ -270,16 +353,25 @@ const render = async (page, doc, zoom) => {
   if (textContainer) {
     textContainer.replaceChildren();
     try {
+      const textContentSource = await page.streamTextContent({
+        includeMarkedContent: true,
+        disableNormalization: true,
+      });
+      if (!isCurrentRender()) return;
+
       const textLayer = new pdfjsLib.TextLayer({
-        textContentSource: await page.streamTextContent({
-          includeMarkedContent: true,
-          disableNormalization: true,
-        }),
+        textContentSource,
         container: textContainer,
         viewport,
       });
+      renderState.textLayer = textLayer;
       await textLayer.render();
+      renderState.textLayer = null;
+      if (!isCurrentRender()) return;
+      stabilizeTextLayerGeometry(textContainer, viewport);
     } catch (error) {
+      renderState.textLayer = null;
+      if (!isCurrentRender() || error instanceof pdfjsLib.AbortException) return;
       console.error(`Failed to render PDF text layer for page ${page.pageNumber}.`, error);
     }
 
@@ -499,8 +591,8 @@ const render = async (page, doc, zoom) => {
   if (annotationDiv) {
     annotationDiv.replaceChildren();
     Object.assign(annotationDiv.style, {
-      width: `${Math.floor(viewport.width)}px`,
-      height: `${Math.floor(viewport.height)}px`,
+      width: `${viewport.width}px`,
+      height: `${viewport.height}px`,
     });
     const linkService = {
       goToDestination: () => {},
@@ -510,12 +602,16 @@ const render = async (page, doc, zoom) => {
       },
     };
     try {
+      const annotations = await page.getAnnotations();
+      if (!isCurrentRender()) return;
       await new pdfjsLib.AnnotationLayer({
         page,
         viewport: viewport.clone({ dontFlip: true }),
         div: annotationDiv,
         linkService,
-      }).render({ annotations: await page.getAnnotations() });
+      }).render({ annotations });
+      if (!isCurrentRender()) return;
+      stabilizeLayerDimensions(annotationDiv, viewport);
     } catch {
       // Annotation rendering may fail for some pages
     }
