@@ -29,11 +29,13 @@ const TEXT_LAYER_CSS = `
   overflow: clip;
   opacity: 1;
   line-height: 1;
+  -webkit-text-size-adjust: none;
+  -moz-text-size-adjust: none;
   text-size-adjust: none;
   forced-color-adjust: none;
   transform-origin: 0 0;
   caret-color: CanvasText;
-  z-index: 0;
+  z-index: 1;
   letter-spacing: normal;
   word-spacing: normal;
 }
@@ -113,6 +115,31 @@ const ANNOTATION_LAYER_CSS = `
 const NULL_CHAR = String.fromCharCode(0);
 const removeNullCharacters = (str) => str.replaceAll(NULL_CHAR, "");
 const normalizeSelectedText = (str) => removeNullCharacters(pdfjsLib.normalizeUnicode(str)).trim();
+
+const applyPDFPageScale = (doc, viewport, scale) => {
+  const page = doc.querySelector("#page");
+  const scaleValue = String(scale);
+  for (const element of [
+    doc.documentElement,
+    doc.body,
+    page,
+    doc.querySelector(".textLayer"),
+    doc.querySelector(".annotationLayer"),
+  ]) {
+    if (!element) continue;
+    element.style.setProperty("--user-unit", "1");
+    element.style.setProperty("--total-scale-factor", scaleValue);
+    element.style.setProperty("--scale-round-x", "1px");
+    element.style.setProperty("--scale-round-y", "1px");
+  }
+
+  if (page) {
+    Object.assign(page.style, {
+      width: `${viewport.width}px`,
+      height: `${viewport.height}px`,
+    });
+  }
+};
 
 const getRangeTextWithLineBreaks = (range) => {
   try {
@@ -220,12 +247,9 @@ const render = async (page, doc, zoom) => {
 
   doc.documentElement.style.removeProperty("transform");
   doc.documentElement.style.removeProperty("transform-origin");
-  doc.documentElement.style.setProperty("--total-scale-factor", scale);
-  doc.documentElement.style.setProperty("--user-unit", "1");
-  doc.documentElement.style.setProperty("--scale-round-x", "1px");
-  doc.documentElement.style.setProperty("--scale-round-y", "1px");
 
   const viewport = page.getViewport({ scale });
+  applyPDFPageScale(doc, viewport, scale);
 
   // Render canvas (in main document for font loading, then adopt into iframe)
   const canvas = document.createElement("canvas");
@@ -474,6 +498,10 @@ const render = async (page, doc, zoom) => {
   const annotationDiv = doc.querySelector(".annotationLayer");
   if (annotationDiv) {
     annotationDiv.replaceChildren();
+    Object.assign(annotationDiv.style, {
+      width: `${Math.floor(viewport.width)}px`,
+      height: `${Math.floor(viewport.height)}px`,
+    });
     const linkService = {
       goToDestination: () => {},
       getDestinationHash: (dest) => JSON.stringify(dest),
@@ -504,17 +532,59 @@ const renderPage = async (page) => {
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=${viewport.width}, height=${viewport.height}">
+<meta name="viewport" content="width=${viewport.width}, height=${viewport.height}, initial-scale=1, maximum-scale=1, user-scalable=no">
 <style>
-html, body { margin: 0; padding: 0; }
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  -webkit-text-size-adjust: none;
+  -moz-text-size-adjust: none;
+  text-size-adjust: none;
+}
+body {
+  position: relative;
+  background: transparent;
+}
+#page {
+  position: relative;
+  width: ${viewport.width}px;
+  height: ${viewport.height}px;
+  overflow: hidden;
+  direction: ltr;
+  --user-unit: 1;
+  --total-scale-factor: 1;
+  --scale-round-x: 1px;
+  --scale-round-y: 1px;
+}
+#canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+#canvas canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  margin: 0;
+  contain: content;
+}
+.annotationLayer {
+  z-index: 2;
+}
 ${TEXT_LAYER_CSS}
 ${ANNOTATION_LAYER_CSS}
 </style>
 </head>
 <body>
-<div id="canvas"></div>
-<div class="textLayer"></div>
-<div class="annotationLayer"></div>
+<div id="page">
+  <div id="canvas"></div>
+  <div class="textLayer"></div>
+  <div class="annotationLayer"></div>
+</div>
 </body>
 </html>`;
 
