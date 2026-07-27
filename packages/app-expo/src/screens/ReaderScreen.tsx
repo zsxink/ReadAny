@@ -1496,6 +1496,10 @@ export function ReaderScreen({ route, navigation }: Props) {
             showsVerticalScrollIndicator={false}
             originWhitelist={["*"]}
             mixedContentMode="always"
+            overScrollMode="never"
+            setSupportMultipleWindows={false}
+            setBuiltInZoomControls={false}
+            setDisplayZoomControls={false}
           />
         </View>
 

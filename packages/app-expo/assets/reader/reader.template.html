@@ -2428,6 +2428,8 @@ a { color: ${primary} !important; }
           return;
         }
 
+        const startedInPdfText = !!(e.target?.closest?.(".textLayer"));
+
         const touch = e.touches[0];
         pullState = {
           startX: touch.clientX,
@@ -2435,11 +2437,13 @@ a { color: ${primary} !important; }
           active: false,
           armed: false,
           cancelled: false,
+          suppressed: startedInPdfText,
         };
       }, { passive: true, capture: true });
 
       doc.addEventListener('touchmove', (e) => {
         if (!pullState || e.touches.length !== 1) return;
+        if (pullState.suppressed) return;
         const touch = e.touches[0];
         const deltaX = touch.clientX - pullState.startX;
         const deltaY = touch.clientY - pullState.startY;

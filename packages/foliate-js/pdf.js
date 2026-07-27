@@ -386,13 +386,24 @@ const render = async (page, doc, zoom) => {
     textContainer.onpointerdown = (e) => {
       const selection = doc.getSelection();
       const hasTextSelection = selection && selection.toString().length > 0;
-      const elementUnderCursor = doc.elementFromPoint(e.clientX, e.clientY);
-      const hasTextUnderneath =
-        elementUnderCursor &&
-        (elementUnderCursor.tagName === "SPAN" || elementUnderCursor.tagName === "P") &&
-        elementUnderCursor.textContent.trim().length > 0;
+      // 优先用事件目标（Blink 内部命中，比 elementFromPoint 可靠），
+      // 未命中再用 elementFromPoint 兜底（保留桌面精确行为）
+      let hasTextUnderneath = false;
+      const targetEl = e.target?.closest?.(".textLayer span, .textLayer p");
+      if (targetEl && targetEl.textContent.trim().length > 0) {
+        hasTextUnderneath = true;
+      } else {
+        const elementUnderCursor = doc.elementFromPoint(e.clientX, e.clientY);
+        hasTextUnderneath =
+          elementUnderCursor &&
+          (elementUnderCursor.tagName === "SPAN" || elementUnderCursor.tagName === "P") &&
+          elementUnderCursor.textContent.trim().length > 0;
+      }
 
-      if (!hasTextUnderneath && !hasTextSelection) {
+      // 触摸设备：从不主动进入平移模式，交给浏览器原生触摸选区
+      const isTouch = e.pointerType === "touch";
+
+      if (!hasTextUnderneath && !hasTextSelection && !isTouch) {
         isPanning = true;
         startX = e.screenX;
         startY = e.screenY;
@@ -414,7 +425,7 @@ const render = async (page, doc, zoom) => {
     };
 
     textContainer.onpointermove = (e) => {
-      if (isPanning && scrollParent) {
+      if (isPanning && scrollParent && e.pointerType !== "touch") {
         e.preventDefault();
         const dx = e.screenX - startX;
         const dy = e.screenY - startY;
