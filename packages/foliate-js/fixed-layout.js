@@ -205,7 +205,13 @@ export class FixedLayout extends HTMLElement {
     const transform = (frame) => {
       const { element, iframe, width, height, blank, onZoom } = frame;
       if (!iframe) return;
-      if (onZoom) onZoom({ doc: frame.iframe.contentDocument, scale });
+      if (onZoom) {
+        void Promise.resolve(onZoom({ doc: frame.iframe.contentDocument, scale })).catch(
+          (error) => {
+            console.error("Failed to render fixed-layout content at the requested zoom.", error);
+          },
+        );
+      }
       const iframeScale = onZoom ? scale : 1;
       Object.assign(iframe.style, {
         width: `${width * iframeScale}px`,
