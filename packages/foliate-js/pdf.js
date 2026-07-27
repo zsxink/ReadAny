@@ -128,6 +128,19 @@ const NULL_CHAR = String.fromCharCode(0);
 const removeNullCharacters = (str) => str.replaceAll(NULL_CHAR, "");
 const normalizeSelectedText = (str) => removeNullCharacters(pdfjsLib.normalizeUnicode(str)).trim();
 
+// iOS 的 WKWebView 原生长按选区在 transformed 的 PDF 文本层上可用，
+// 因此自定义触摸选区只对非 iOS 平台生效。iOS / 桌面继续走原生选区。
+const isIOS = () => {
+  try {
+    return (
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+    );
+  } catch {
+    return false;
+  }
+};
+
 const getViewportScale = (viewport) => viewport.scale * viewport.userUnit;
 
 const stabilizeLayerDimensions = (container, viewport) => {
@@ -582,6 +595,135 @@ const render = async (page, doc, zoom) => {
     doc.addEventListener("pointerup", resetEndOfContent, { signal });
     doc.addEventListener("keyup", resetEndOfContent, { signal });
     doc.defaultView.addEventListener("blur", resetEndOfContent, { signal });
+
+    // ─── Android 自定义触摸选区（绕过原生选区无法发起的根因） ───
+    // Android WebView 的原生长按选区引擎无法在「transform + position:absolute」
+    // 的逐字 span 上发起选区；此处改为用触摸坐标程序化构造 Range。
+    // 仅对非 iOS 的 touch 生效，iOS / 桌面仍走原生；监听挂在已有的 { signal }
+    // 上，重渲染时随 AbortController 自动卸载。
+    if (!isIOS()) {
+      const SELECTION_DRAG_THRESHOLD = 6;
+
+      // 触摸坐标 → 字符位置：遍历 span，取包含该点者按 x 比例算偏移；
+      // 无包含点时取最近 span，按左右侧钳到 0 / len。
+      const pointToPosition = (point) => {
+        const spans = textContainer.querySelectorAll("span");
+        let nearest = null;
+        let nearestDist = Infinity;
+        for (const span of spans) {
+          if (span.getAttribute("role") === "img") continue;
+          if (span.closest(".endOfContent")) continue;
+          const textNode = span.firstChild;
+          if (!textNode || textNode.nodeType !== Node.TEXT_NODE) continue;
+          const textContent = textNode.nodeValue || "";
+          if (textContent.length === 0) continue;
+          const rect = span.getBoundingClientRect();
+          if (rect.width === 0 && rect.height === 0) continue;
+          if (
+            point.x >= rect.left &&
+            point.x <= rect.right &&
+            point.y >= rect.top &&
+            point.y <= rect.bottom
+          ) {
+            const offset = Math.max(
+              0,
+              Math.min(
+                textContent.length,
+                Math.round(((point.x - rect.left) / rect.width) * textContent.length),
+              ),
+            );
+            return { node: textNode, offset };
+          }
+          const centerX = rect.left + rect.width / 2;
+          const centerY = rect.top + rect.height / 2;
+          const dist = (point.x - centerX) ** 2 + (point.y - centerY) ** 2;
+          if (dist < nearestDist) {
+            nearestDist = dist;
+            nearest = {
+              node: textNode,
+              offset: point.x < centerX ? 0 : textContent.length,
+            };
+          }
+        }
+        return nearest;
+      };
+
+      // 把锚点/焦点按 DOM 顺序归一化（compareDocumentPosition 处理跨 span）
+      const normalizeBoundaryOrder = (a, b) => {
+        if (a.node === b.node) {
+          return a.offset <= b.offset ? [a, b] : [b, a];
+        }
+        const relation = a.node.compareDocumentPosition(b.node);
+        if (relation & Node.DOCUMENT_POSITION_PRECEDING) return [b, a];
+        return [a, b];
+      };
+
+      let anchorPosition = null;
+      let anchorPoint = null;
+      let isSelecting = false;
+
+      textContainer.addEventListener(
+        "touchstart",
+        (event) => {
+          const touch = event.touches[0];
+          if (!touch) return;
+          if (!event.target.closest(".textLayer")) return;
+          anchorPosition = pointToPosition({ x: touch.clientX, y: touch.clientY });
+          anchorPoint = { x: touch.clientX, y: touch.clientY };
+          isSelecting = false;
+        },
+        { passive: false, signal },
+      );
+
+      textContainer.addEventListener(
+        "touchmove",
+        (event) => {
+          if (!anchorPosition) return;
+          const touch = event.touches[0];
+          if (!touch) return;
+          if (!isSelecting) {
+            const dx = touch.clientX - anchorPoint.x;
+            const dy = touch.clientY - anchorPoint.y;
+            if (Math.hypot(dx, dy) < SELECTION_DRAG_THRESHOLD) return;
+            isSelecting = true;
+          }
+          // 进入选词：阻止页面滚动 / 橡皮筋
+          event.preventDefault();
+          const focusPosition = pointToPosition({ x: touch.clientX, y: touch.clientY });
+          if (!focusPosition) return;
+          const [start, end] = normalizeBoundaryOrder(anchorPosition, focusPosition);
+          const range = doc.createRange();
+          range.setStart(start.node, start.offset);
+          range.setEnd(end.node, end.offset);
+          const selection = doc.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
+          // 程序化 addRange 触发原生 ::selection 高亮 + selectionchange →
+          // 模板 attachSelectionListener 自动 postToRN('selection', …) 给 RN。
+        },
+        { passive: false, signal },
+      );
+
+      const finishCustomSelection = () => {
+        if (!isSelecting) {
+          // 只是点一下（未进入选词）：清除 textLayer 内选区
+          doc.getSelection()?.removeAllRanges();
+        } else {
+          const selection = doc.getSelection();
+          if (selection && selection.toString().length > 0) {
+            textContainer.classList.add("selecting");
+          } else {
+            selection?.removeAllRanges();
+          }
+        }
+        anchorPosition = null;
+        anchorPoint = null;
+        isSelecting = false;
+      };
+
+      textContainer.addEventListener("touchend", finishCustomSelection, { passive: true, signal });
+      textContainer.addEventListener("touchcancel", finishCustomSelection, { passive: true, signal });
+    }
 
     textContainer.style.cursor = "grab";
   }
