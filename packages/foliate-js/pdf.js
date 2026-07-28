@@ -614,6 +614,11 @@ const render = async (page, doc, zoom) => {
       const getSpanSnapshot = () => {
         if (spanSnapshot) return spanSnapshot;
         spanSnapshot = [];
+        // Android 上 span 有 scale(1/minimumFontSize) 变换，
+        // getBoundingClientRect() 返回缩小后的视觉矩形（~5%）。
+        // 改用 offset*（不受 CSS transform 影响的布局尺寸），
+        // 配合 textLayer 容器的 getBoundingClientRect 换算视口坐标。
+        const containerRect = textContainer.getBoundingClientRect();
         for (const span of textContainer.querySelectorAll("span")) {
           if (span.getAttribute("role") === "img") continue;
           if (span.closest(".endOfContent")) continue;
@@ -621,9 +626,21 @@ const render = async (page, doc, zoom) => {
           if (!textNode || textNode.nodeType !== Node.TEXT_NODE) continue;
           const textContent = textNode.nodeValue || "";
           if (textContent.length === 0) continue;
-          const rect = span.getBoundingClientRect();
-          if (rect.width === 0 && rect.height === 0) continue;
-          spanSnapshot.push({ textNode, textContent, rect });
+          const w = span.offsetWidth;
+          const h = span.offsetHeight;
+          if (w === 0 || h === 0) continue;
+          spanSnapshot.push({
+            textNode,
+            textContent,
+            rect: {
+              left: containerRect.left + span.offsetLeft,
+              top: containerRect.top + span.offsetTop,
+              right: containerRect.left + span.offsetLeft + w,
+              bottom: containerRect.top + span.offsetTop + h,
+              width: w,
+              height: h,
+            },
+          });
         }
         return spanSnapshot;
       };
@@ -639,6 +656,11 @@ const render = async (page, doc, zoom) => {
       // 命中失败或落在 textLayer 外时回退几何近似——取包含该点的 span
       // 按 x 比例算偏移。拖选焦点允许吸附最近 span，初始锚点必须真实命中文字，
       // 避免从行间空白或页边发起滚动时误选。
+      //
+      // Android 上 span 有 scale(1/minimumFontSize) 变换，
+      // getBoundingClientRect() 返回变换后的小矩形，不能用来做包含检测。
+      // caretRangeFromPoint 会正确处理变换后的文字命中，所以信任它，
+      // 用 textLayer 容器（正常大小、无缩放）做边界验证。
       const pointToPosition = (point, allowNearest = true) => {
         try {
           const caret = doc.caretRangeFromPoint?.(point.x, point.y);
@@ -649,8 +671,15 @@ const render = async (page, doc, zoom) => {
             textContainer.contains(node) &&
             !node.parentElement?.closest(".endOfContent")
           ) {
-            const rect = node.parentElement?.getBoundingClientRect();
-            if (allowNearest || (rect && containsPoint(rect, point))) {
+            // caretRangeFromPoint 已通过 Blink 字体度量正确命中文字，
+            // 不再检查单个 span 的 post-transform 矩形（Android 上过于小）。
+            // 初始锚点用 textLayer 容器边界验证，确保点在页内文字区域。
+            if (allowNearest) {
+              return { node, offset: caret.startOffset };
+            }
+            // allowNearest = false 时：验证触摸点在 textLayer 容器区域内
+            const textRect = textContainer.getBoundingClientRect();
+            if (textRect && containsPoint(textRect, point)) {
               return { node, offset: caret.startOffset };
             }
           }
