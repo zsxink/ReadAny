@@ -2620,7 +2620,15 @@ a { color: ${primary} !important; }
     }
 
     function emitSelection(doc, sel, range) {
-      const text = getRangeTextWithoutRuby(range, sel.toString());
+      // PDF：优先用 pdf.js 侧暴露的提取器（按视觉行排序、行间补换行、
+      // normalizeUnicode、去 \0 占位符）；EPUB 或提取失败时回退通用逻辑
+      let text = '';
+      try {
+        if (typeof doc.__readanyPdfGetSelectedText === 'function') {
+          text = doc.__readanyPdfGetSelectedText(sel) || '';
+        }
+      } catch { text = ''; }
+      if (!text) text = getRangeTextWithoutRuby(range, sel.toString());
       if (!text) return;
 
       const rect = range.getBoundingClientRect();

@@ -128,14 +128,11 @@ const NULL_CHAR = String.fromCharCode(0);
 const removeNullCharacters = (str) => str.replaceAll(NULL_CHAR, "");
 const normalizeSelectedText = (str) => removeNullCharacters(pdfjsLib.normalizeUnicode(str)).trim();
 
-// iOS 的 WKWebView 原生长按选区在 transformed 的 PDF 文本层上可用，
-// 因此自定义触摸选区只对非 iOS 平台生效。iOS / 桌面继续走原生选区。
-const isIOS = () => {
+// 自定义触摸选区只用于 Android WebView。iOS、桌面和其他触屏浏览器
+// 继续使用原生选区，避免扩大手势行为的影响面。
+const isAndroid = () => {
   try {
-    return (
-      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
-    );
+    return /Android/i.test(navigator.userAgent);
   } catch {
     return false;
   }
@@ -596,21 +593,28 @@ const render = async (page, doc, zoom) => {
     doc.addEventListener("keyup", resetEndOfContent, { signal });
     doc.defaultView.addEventListener("blur", resetEndOfContent, { signal });
 
+    // 暴露给模板 emitSelection 的 PDF 选区文本提取器：
+    // 按视觉行排序、行间补换行、normalizeUnicode、去 \0 占位符。
+    // 对所有平台生效（iOS/桌面的原生选区复制同样受益）；重渲染时随新闭包覆盖。
+    doc.__readanyPdfGetSelectedText = (selection) => getSelectedText(selection, textContainer);
+
     // ─── Android 自定义触摸选区（绕过原生选区无法发起的根因） ───
     // Android WebView 的原生长按选区引擎无法在「transform + position:absolute」
     // 的逐字 span 上发起选区；此处改为用触摸坐标程序化构造 Range。
-    // 仅对非 iOS 的 touch 生效，iOS / 桌面仍走原生；监听挂在已有的 { signal }
+    // 仅对 Android 的 touch 生效，iOS / 桌面仍走原生；监听挂在已有的 { signal }
     // 上，重渲染时随 AbortController 自动卸载。
-    if (!isIOS()) {
-      const SELECTION_DRAG_THRESHOLD = 6;
+    if (isAndroid()) {
+      const SELECTION_LONG_PRESS_MS = 500;
+      const SELECTION_MOVE_TOLERANCE = 10;
 
-      // 触摸坐标 → 字符位置：遍历 span，取包含该点者按 x 比例算偏移；
-      // 无包含点时取最近 span，按左右侧钳到 0 / len。
-      const pointToPosition = (point) => {
-        const spans = textContainer.querySelectorAll("span");
-        let nearest = null;
-        let nearestDist = Infinity;
-        for (const span of spans) {
+      // span 几何快照：首次命中计算时建立，整个拖选手势期间复用
+      // （选词中页面几何不变，endOfContent 为 absolute 移动不影响 span 布局），
+      // 避免每次 touchmove 全量强制布局查询；手势结束时清空。
+      let spanSnapshot = null;
+      const getSpanSnapshot = () => {
+        if (spanSnapshot) return spanSnapshot;
+        spanSnapshot = [];
+        for (const span of textContainer.querySelectorAll("span")) {
           if (span.getAttribute("role") === "img") continue;
           if (span.closest(".endOfContent")) continue;
           const textNode = span.firstChild;
@@ -619,12 +623,45 @@ const render = async (page, doc, zoom) => {
           if (textContent.length === 0) continue;
           const rect = span.getBoundingClientRect();
           if (rect.width === 0 && rect.height === 0) continue;
+          spanSnapshot.push({ textNode, textContent, rect });
+        }
+        return spanSnapshot;
+      };
+
+      const containsPoint = (rect, point) =>
+        point.x >= rect.left &&
+        point.x <= rect.right &&
+        point.y >= rect.top &&
+        point.y <= rect.bottom;
+
+      // 触摸坐标 → 字符位置：优先 caretRangeFromPoint 精确命中（Chromium
+      // 按真实字体度量做 hit-test，天然处理 transform/旋转/RTL）；
+      // 命中失败或落在 textLayer 外时回退几何近似——取包含该点的 span
+      // 按 x 比例算偏移。拖选焦点允许吸附最近 span，初始锚点必须真实命中文字，
+      // 避免从行间空白或页边发起滚动时误选。
+      const pointToPosition = (point, allowNearest = true) => {
+        try {
+          const caret = doc.caretRangeFromPoint?.(point.x, point.y);
+          const node = caret?.startContainer;
           if (
-            point.x >= rect.left &&
-            point.x <= rect.right &&
-            point.y >= rect.top &&
-            point.y <= rect.bottom
+            node &&
+            node.nodeType === Node.TEXT_NODE &&
+            textContainer.contains(node) &&
+            !node.parentElement?.closest(".endOfContent")
           ) {
+            const rect = node.parentElement?.getBoundingClientRect();
+            if (allowNearest || (rect && containsPoint(rect, point))) {
+              return { node, offset: caret.startOffset };
+            }
+          }
+        } catch {
+          // 回退几何近似
+        }
+
+        let nearest = null;
+        let nearestDist = Number.POSITIVE_INFINITY;
+        for (const { textNode, textContent, rect } of getSpanSnapshot()) {
+          if (containsPoint(rect, point)) {
             const offset = Math.max(
               0,
               Math.min(
@@ -645,7 +682,7 @@ const render = async (page, doc, zoom) => {
             };
           }
         }
-        return nearest;
+        return allowNearest ? nearest : null;
       };
 
       // 把锚点/焦点按 DOM 顺序归一化（compareDocumentPosition 处理跨 span）
@@ -658,40 +695,198 @@ const render = async (page, doc, zoom) => {
         return [a, b];
       };
 
+      const comparePositions = (a, b) => {
+        if (a.node === b.node) return a.offset - b.offset;
+        const relation = a.node.compareDocumentPosition(b.node);
+        if (relation & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+        if (relation & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+        return 0;
+      };
+
       let anchorPosition = null;
       let anchorPoint = null;
+      let initialSelectionBounds = null;
       let isSelecting = false;
+      let longPressTimer = null;
+      let navigationLocked = false;
+
+      const clearLongPressTimer = () => {
+        if (longPressTimer !== null) {
+          clearTimeout(longPressTimer);
+          longPressTimer = null;
+        }
+      };
+
+      const setNavigationLocked = (locked) => {
+        if (navigationLocked === locked) return;
+        navigationLocked = locked;
+        try {
+          globalThis.setNavigationLocked?.(locked);
+        } catch {
+          // 非 RN 宿主没有导航锁，选区逻辑仍可独立工作。
+        }
+      };
+
+      const resetGesture = () => {
+        clearLongPressTimer();
+        anchorPosition = null;
+        anchorPoint = null;
+        initialSelectionBounds = null;
+        isSelecting = false;
+        spanSnapshot = null;
+        setNavigationLocked(false);
+      };
+
+      const getInitialSelectionBounds = (text, offset) => {
+        let index = Math.max(0, Math.min(offset, text.length));
+        if (index === text.length) index -= 1;
+        if (index < 0) return null;
+
+        // Android WebView supports Intl.Segmenter on current Chromium versions.
+        // Prefer a natural word/CJK segment, then fall back to one Unicode code point.
+        try {
+          const segments = Array.from(
+            new Intl.Segmenter(undefined, { granularity: "word" }).segment(text),
+          );
+          const containing = segments.find(
+            (segment) => index >= segment.index && index < segment.index + segment.segment.length,
+          );
+          if (containing?.isWordLike || containing?.segment.trim()) {
+            return [containing.index, containing.index + containing.segment.length];
+          }
+
+          const nearestWord = segments
+            .filter((segment) => segment.isWordLike)
+            .map((segment) => {
+              const end = segment.index + segment.segment.length;
+              const distance =
+                index < segment.index ? segment.index - index : Math.max(0, index - end + 1);
+              return { segment, distance };
+            })
+            .sort((a, b) => a.distance - b.distance)[0]?.segment;
+          if (nearestWord) {
+            return [nearestWord.index, nearestWord.index + nearestWord.segment.length];
+          }
+        } catch {
+          // Older WebViews fall back to a single Unicode code point.
+        }
+
+        const code = text.charCodeAt(index);
+        if (index > 0 && code >= 0xdc00 && code <= 0xdfff) index -= 1;
+        const codePoint = text.codePointAt(index);
+        const end = Math.min(text.length, index + (codePoint > 0xffff ? 2 : 1));
+        return end > index ? [index, end] : null;
+      };
+
+      const selectInitialText = ({ node, offset }) => {
+        const text = node.nodeValue || "";
+        if (!text) return false;
+
+        const bounds = getInitialSelectionBounds(text, offset);
+        if (!bounds) return false;
+        const [start, end] = bounds;
+
+        const range = doc.createRange();
+        range.setStart(node, start);
+        range.setEnd(node, end);
+        const selection = doc.getSelection();
+        if (!selection) return null;
+        selection.removeAllRanges();
+        selection.addRange(range);
+        return {
+          start: { node, offset: start },
+          end: { node, offset: end },
+        };
+      };
+
+      const activateCustomSelection = () => {
+        longPressTimer = null;
+        if (!anchorPosition || signal.aborted) return;
+
+        // 某些 Android WebView 版本仍能成功发起原生选区，此时保留原生行为。
+        const currentSelection = doc.getSelection();
+        if (
+          currentSelection &&
+          !currentSelection.isCollapsed &&
+          currentSelection.toString().trim()
+        ) {
+          resetGesture();
+          return;
+        }
+
+        initialSelectionBounds = selectInitialText(anchorPosition);
+        if (!initialSelectionBounds) {
+          resetGesture();
+          return;
+        }
+        isSelecting = true;
+        setNavigationLocked(true);
+      };
 
       textContainer.addEventListener(
         "touchstart",
         (event) => {
+          resetGesture();
+          if (event.touches.length !== 1) return;
+
+          const currentSelection = doc.getSelection();
+          if (
+            currentSelection &&
+            !currentSelection.isCollapsed &&
+            currentSelection.toString().trim()
+          ) {
+            return;
+          }
+
           const touch = event.touches[0];
           if (!touch) return;
-          if (!event.target.closest(".textLayer")) return;
-          anchorPosition = pointToPosition({ x: touch.clientX, y: touch.clientY });
+          anchorPosition = pointToPosition({ x: touch.clientX, y: touch.clientY }, false);
+          if (!anchorPosition) {
+            resetGesture();
+            return;
+          }
           anchorPoint = { x: touch.clientX, y: touch.clientY };
-          isSelecting = false;
+          longPressTimer = setTimeout(activateCustomSelection, SELECTION_LONG_PRESS_MS);
         },
-        { passive: false, signal },
+        { passive: true, signal },
       );
 
       textContainer.addEventListener(
         "touchmove",
         (event) => {
-          if (!anchorPosition) return;
+          if (!anchorPosition || !anchorPoint) return;
+          if (event.touches.length !== 1) {
+            resetGesture();
+            return;
+          }
           const touch = event.touches[0];
           if (!touch) return;
           if (!isSelecting) {
             const dx = touch.clientX - anchorPoint.x;
             const dy = touch.clientY - anchorPoint.y;
-            if (Math.hypot(dx, dy) < SELECTION_DRAG_THRESHOLD) return;
-            isSelecting = true;
+            if (Math.hypot(dx, dy) > SELECTION_MOVE_TOLERANCE) resetGesture();
+            return;
           }
           // 进入选词：阻止页面滚动 / 橡皮筋
           event.preventDefault();
           const focusPosition = pointToPosition({ x: touch.clientX, y: touch.clientY });
           if (!focusPosition) return;
-          const [start, end] = normalizeBoundaryOrder(anchorPosition, focusPosition);
+          let start = anchorPosition;
+          let end = focusPosition;
+          if (initialSelectionBounds) {
+            if (comparePositions(focusPosition, initialSelectionBounds.start) < 0) {
+              start = focusPosition;
+              end = initialSelectionBounds.end;
+            } else if (comparePositions(focusPosition, initialSelectionBounds.end) > 0) {
+              start = initialSelectionBounds.start;
+              end = focusPosition;
+            } else {
+              start = initialSelectionBounds.start;
+              end = initialSelectionBounds.end;
+            }
+          } else {
+            [start, end] = normalizeBoundaryOrder(anchorPosition, focusPosition);
+          }
           const range = doc.createRange();
           range.setStart(start.node, start.offset);
           range.setEnd(end.node, end.offset);
@@ -705,10 +900,8 @@ const render = async (page, doc, zoom) => {
       );
 
       const finishCustomSelection = () => {
-        if (!isSelecting) {
-          // 只是点一下（未进入选词）：清除 textLayer 内选区
-          doc.getSelection()?.removeAllRanges();
-        } else {
+        clearLongPressTimer();
+        if (isSelecting) {
           const selection = doc.getSelection();
           if (selection && selection.toString().length > 0) {
             textContainer.classList.add("selecting");
@@ -716,13 +909,15 @@ const render = async (page, doc, zoom) => {
             selection?.removeAllRanges();
           }
         }
-        anchorPosition = null;
-        anchorPoint = null;
-        isSelecting = false;
+        resetGesture();
       };
 
       textContainer.addEventListener("touchend", finishCustomSelection, { passive: true, signal });
-      textContainer.addEventListener("touchcancel", finishCustomSelection, { passive: true, signal });
+      textContainer.addEventListener("touchcancel", finishCustomSelection, {
+        passive: true,
+        signal,
+      });
+      signal.addEventListener("abort", resetGesture, { once: true });
     }
 
     textContainer.style.cursor = "grab";
