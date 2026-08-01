@@ -187,17 +187,115 @@
 
 ---
 
-## 六、剩余验证（需真机/模拟器）
+## 六、Phase 2：移动端 PDF 文字选择稳定性（2026-08-01）
 
-开发环境无法启动模拟器，以下需人工确认：
+> 分支 `fix/mobile-pdf-text-selection`。Phase 1（本文档前五节）解决了「选择错位」的根本原因（过期 bundle + 模板注入击穿 TextLayer + 字号/内存 workaround）；Phase 2 解决「选择不稳定的交互层」：渲染竞态、user-select 覆盖、触摸与平移冲突、Android 长按选词、选区视觉统一、运行时诊断。
 
-1. **桌面回归**：开 PDF，验证文字选择对齐、跨行复制、双页 spread 无缝隙、缩放清晰度与改前一致（理论上零回归，桌面 `isMobileWebView() === false`）。
-2. **移动端**（`expo run:ios` / `android:dev`）：
-   - iPhone 真机多页 PDF：长按选词、拖选跨行，选区与字形严格对齐，复制进工具条。
-   - iOS 设置 → 辅助功能 → 显示与文字大小 → 大字号 → 重开 PDF：选区仍对齐（getFontScale）；EPUB 不受影响。
-   - iPad（dpr=3）：连续翻页/缩放不触发 WebContent 崩溃（getRenderDpr 钳制）。
-   - Android：选择 + 复制正常，无 OOM。
-   - 回归：EPUB 选择/注解/TTS、PDF 翻页/TOC/搜索/章节提取正常，`.textLayer span color` 修复后无可见文本叠加。
+### 6.1 最新一次渲染胜出（latest-wins render）
+
+**问题**：`FixedLayout.#render()` 会被 ResizeObserver / 缩放 / 翻页**重复触发**；其 `onZoom` 是异步的，且没有任何等待/取消/版本号。慢的旧渲染可能比新的晚完成，把过期结果写进同一个 iframe DOM（TextLayer span 错位、选区句柄乱跳）。
+
+**修复**（`packages/foliate-js/pdf.js`）：
+
+- 每个 doc 一份渲染状态：`doc.__readanyPdfRenderState ??= { generation: 0, renderTask: null, selectionAbortController: null }`。
+- `render()` 开头 `++generation`，随后**同步取消**上一代的 `renderTask.cancel()` 与 `selectionAbortController.abort()`。
+- 每个 async 阶段之后都检查 `isStale()`（`state.generation !== generation`）—— 过期即返回，**绝不把过期结果提交到 DOM**。
+- Canvas `RenderTask` 的 `.promise` 被捕获保存进 `state.renderTask`；取消抛 `RenderingCancelledException` 时静默返回（`return` 而非 rethrow）。
+- 每次渲染都是**一套新的 AbortController**，旧监听器随上一代一起释放 —— 翻页/缩放后不会残留幽灵 selection 监听。
+
+**关键结构：detached-DOM 原子提交**。pdf.js TextLayer 是流式往 container 里追加 span，**没有中途 commit 点**、也无法中途取消 —— 所以先把 TextLayer 渲染进一个**离屏的 `div.textLayer`**（`doc.createElement` + `visibility:hidden`），渲染完成后若 `isStale()` 直接丢弃；只有最新一代才 `textContainer.replaceChildren(detached)` 原子换入，同时清掉 inline `visibility`。Annotation layer 同样 detached + 原子提交。这样任何被放弃的渲染都不可能把 span 追加到新 canvas 上。
+
+`packages/foliate-js/fixed-layout.js`：`#render()` 顶部 `#zoomGeneration++`；`transform(frame)` 只在 `#lastScale.get(iframe) !== scale` 时才调用 `onZoom`（去重同一缩放值的重复 ResizeObserver tick），且 fire-and-forget —— 不等待、不串行化 `onZoom` 完成（pdf.js 自己负责取消过期渲染）。
+
+### 6.2 修掉 fixed-layout 的 user-select 覆盖
+
+**问题**：模板 fixed-layout 分支曾注入 `* { -webkit-user-select: text !important; user-select: text !important }`。通配符 + `!important` 会击穿 pdf.js TextLayer 对 `.endOfContent` / `span[role="img"]` 的内部 `user-select: none` 防护 —— 拖选时可能把整页（含辅助的 `endOfContent`）选进去，选区爆成整页蓝条。
+
+**修复**（`packages/app-expo/assets/reader/reader.template.html` 的 `buildFixedLayoutStyles`）：
+
+```css
+html, body, .textLayer { -webkit-user-select: text; user-select: text; }
+.textLayer .endOfContent, .textLayer span[role="img"] {
+  -webkit-user-select: none !important; user-select: none !important;
+}
+```
+
+- 选择能力放在具体元素上（不再对 `*` 全开）。
+- **只对 `.endOfContent` / `span[role="img"]` 用 `!important`** —— 这是"永远不许被选中"的护栏，方向正确；不再用 `!important` 去对抗 TextLayer 内部的保护规则。
+- `.textLayer, .textLayer :is(span, br) { color: transparent !important; }` 保留（字形必须透明）。
+- 另外 `moveEndOfContent` 每次放置 `endOfContent` 时**重新断言** `userSelect = "none"`，防渲染期默认值漏进来。
+
+### 6.3 触摸选择与 PDF 平移隔离
+
+**问题**：整页 `.textLayer` 上设 `touch-action: none` 会禁用滚动手势；同时 `elementFromPoint` 在 iframe 边界外或手指挡住目标时定位不可靠，触摸可能被当成平移。
+
+**修复**（`packages/foliate-js/pdf.js`）：
+
+- `pointerType === "touch"` **永远不进入 isPanning**；只有鼠标（桌面）平移才走 panning 路径。
+- 命中检测优先 `event.target?.closest?.(".textLayer span, .textLayer p")`（`getPointerTextHit`），`elementFromPoint` 仅作鼠标回退。
+- **不在整页 `.textLayer` 设 `touch-action: none`**；只在使用 `.highlighting` class（Android 长按激活中）时按 pdf.js 自己的 CSS 规则作用域化 `touch-action: none`。
+
+### 6.4 Android 自定义长按选词
+
+**问题**：iOS WKWebView 原生长按选区可用（且与 TextLayer 对齐，桌面修复后）；Android WebView 长按行为不稳、句柄跳动。需要一套纯 JS 的自定义选择路径。
+
+**修复**（`packages/foliate-js/pdf.js`，仅 Android：`/Android/i.test(navigator.userAgent)`）：
+
+- **长按定时器**：`onpointerdown` touch 分支 arm 一个 `LONG_PRESS_DELAY = 400ms` 定时器，`LONG_PRESS_MOVE_TOLERANCE = 10px` 内移动则触发；移动超距取消 pending。
+- **定位**：`caretRangeFromPoint`（iframe doc 的视图）为主，几何快照回退（`caretRangeAtPoint` 用 span 矩形二分/`document.caretRangeFromPoint`）。
+- **选词粒度**：`expandToWordOrCodePoint` —— CJK（`/[぀-ヿ一-鿿㐀-䶿豈-﫿가-힯]/u`）取**单个码点**，拉丁语按词边界。
+- **拖选**：`selectAtPoint` 存 `longPress.baseRange` 作锚点；`flushPointerMove`（RAF 节流）固定起点、扩展到当前 caret 终点，`removeAllRanges + addRange` 合并。
+- **节流 + 锁导航**：`requestAnimationFrame` 节流 pointermove；激活时 `setNavigationLocked(true)`（设 `doc.__readany_selection_interaction` 且调宿主 `host.setNavigationLocked`），模板 `attachTapListener` 据此暂停翻页。
+- **原生优先**：若 WebView 已产生原生选区，不覆盖、保留。
+
+### 6.5 选区视觉统一
+
+模板 fixed-layout 与 pdf.js TEXT_LAYER_CSS 的 `::selection` 统一为**单一来源** `rgba(59, 130, 246, 0.24)`（两侧都加注释指向对方）。
+
+### 6.6 运行时诊断（debug-gated）
+
+`packages/foliate-js/pdf.js` 暴露 `globalThis.__readanyPdfDebug(enabled)`；模板 `handleCommand` 加 `setPdfDebug` 分支。开启后按渲染代际记录 `{gen, page, scale, dpr, spans, ...}`，覆盖：render 生命周期（start/canvasRendered/textLayerRendered/committed/aborted）、gesture 状态（longPress/panning/selecting）、span 计数、选区 rect。默认关闭，零开销。
+
+### 6.7 复核中发现并修复的两个潜伏 bug（`moveEndOfContent`）
+
+嵌套 `.textLayer`（detached 换入后 span 的 direct parent 是内层 layer）暴露了 pdf.js 原实现两个边界问题：
+
+1. **祖先判断**：原 `anchor?.parentElement?.closest(".textLayer") === textContainer` 在内层 layer 下恒 false → `endOfContent` 永不定位/插入，整页选择辅助失效。改为 `textContainer.contains(anchor.parentElement)`（走祖先链而不是 `closest` 匹配内层）。
+2. **向上走界**：`endOffset === 0` 时向上找上一个兄弟的 `while` 循环边界原为 `textContainer`，会越过内层 layer 把 `anchor` 设成 canvas（`textContainer` 的 previousSibling）→ `endOfContent` 插到 layer 外，失去 `.textLayer .endOfContent` 样式。边界改为内层 `detached`。
+
+### 6.8 改动文件与验证
+
+| 文件 | 改动 |
+|---|---|
+| `packages/foliate-js/pdf.js` | +531 行。latest-wins 渲染状态机、detached-DOM 原子提交、touch/pan 隔离、Android 长按选词、诊断、选区色统一、`moveEndOfContent` 两处边界修复 |
+| `packages/foliate-js/fixed-layout.js` | `#zoomGeneration++`、`#lastScale` 去重、`onZoom` fire-and-forget |
+| `packages/app-expo/assets/reader/reader.template.html` | `buildFixedLayoutStyles` 的 user-select 白名单重写、`handleCommand` 加 `setPdfDebug` |
+| `packages/app-expo/assets/reader/reader.html` | 重建产物，build id **`sha256-cadfe7dc…`**（Phase 1 为 `b06a46ef…`） |
+
+| 检查 | 结果 |
+|---|---|
+| core 测试（vitest） | ✅ 565 passed |
+| pdf.js / fixed-layout.js / 全部 foliate-js 语法 | ✅ esbuild transform 通过 |
+| 模板 3 个 script 块 | ✅ esbuild transform 通过 |
+| `reader.html` 可复现性 | ✅ 连续两次构建字节相同；当前 id `sha256-cadfe7dc9c61fb3dfea0ae68b24b9490c227dc9cde07f34f78ad2dce51604352` |
+| bundle 内容抽查 | ✅ 含 `.contains(pe.parentElement)`（withinLiveLayer）、`userSelect="none"`（endOfContent 断言）、`rgba(59,130,246,0.24)`、`.textLayer.highlighting` |
+
+### 6.9 剩余验证（需真机/模拟器）
+
+Phase 2 的回归矩阵（人工）：
+
+1. **Android PDF 长按稳定**：长按出选区、句柄不跳动；拖选跨行正常；选词粒度（CJK 单字 / 拉丁按词）。
+2. **Android 缩放/旋转**：文字层不偏移、无暗块（latest-wins 渲染 + detached 原子提交）。
+3. **Android 页边距/跨行拖选**：无整页蓝条（user-select 白名单 + `endOfContent` 护栏）。
+4. **Android EPUB/CBZ 不受影响**：reflow 选择/注解/TTS 正常。
+5. **iOS PDF 原生选择不变**：仍走系统选区，未被 Android 路径干扰。
+6. **桌面 PDF 正常**：鼠标选择/跨行复制/双页 spread 零回归。
+7. **同一 WebView EPUB→PDF 切换**：无 reflow 样式泄漏进 PDF 第一页（Phase 1 已修，Phase 2 复查）。
+8. **PDF 快速翻页**：旧页渲染/监听被清理，无 span 残留、无渲染竞争写脏（`renderTask.cancel` + AbortController + `isStale` 丢弃）。
+
+---
+
+## 七、涉及的关键概念
 
 ---
 

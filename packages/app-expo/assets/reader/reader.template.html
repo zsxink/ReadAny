@@ -1251,6 +1251,15 @@
 
     async function handleCommand(msg) {
       switch (msg.type) {
+        case 'setPdfDebug':
+          // Runtime PDF render diagnostics (P1). Wired into the foliate-js bundle
+          // via globalThis.__readanyPdfDebug; toggling it on makes every PDF
+          // render log its generation, layer rects, span counts, commit/discard
+          // order and gesture states through console.log / postToRN('debug').
+          if (typeof globalThis.__readanyPdfDebug === 'function') {
+            globalThis.__readanyPdfDebug(!!msg.enabled);
+          }
+          break;
         case 'openBook':
           await openBook(msg);
           break;
@@ -1789,12 +1798,29 @@
           background-color: ${bg} !important;
           color: ${fg} !important;
         }
+        /* TextLayer glyphs stay transparent; positions are pure CSS-variable math. */
         .textLayer,
         .textLayer :is(span, br) {
           color: transparent !important;
         }
+        /* Make page text selectable WITHOUT the blanket '* { user-select: text
+           !important }' that overrode pdf.js's own TextLayer protections. We
+           only enable selection on the layer and the document shell, and keep
+           the pdf.js-internal non-selectable nodes (the full-page .endOfContent
+           helper, image/span[role=img] glyphs) explicitly non-selectable.
+           This is what keeps a margin/cross-line drag from blowing up into a
+           whole-page blue band or a giant endOfContent range. */
+        html, body, .textLayer {
+          -webkit-user-select: text;
+          user-select: text;
+        }
+        .textLayer .endOfContent,
+        .textLayer span[role="img"] {
+          -webkit-user-select: none !important;
+          user-select: none !important;
+        }
         ::selection {
-          background: rgba(59, 130, 246, 0.3) !important;
+          background: rgba(59, 130, 246, 0.24) !important;
         }
       `;
     }
@@ -2286,7 +2312,6 @@ a { color: ${primary} !important; }
       const { bg, fg, primary } = currentThemeColors;
       style.textContent = isFixedLayout
         ? `
-        * { -webkit-touch-callout: none !important; -webkit-user-select: text !important; user-select: text !important; }
         html, body { background-color: ${bg} !important; color: ${fg} !important; }
         img, picture, svg, image, canvas {
           -webkit-user-drag: none !important;

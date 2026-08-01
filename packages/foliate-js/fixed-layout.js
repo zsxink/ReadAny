@@ -43,6 +43,15 @@ export class FixedLayout extends HTMLElement {
   #side;
   #zoom;
   #zoomFactor = 1;
+  // Bumped on every #render(); lets callers (and diagnostics) tell a stale,
+  // still-in-flight onZoom completion from the latest one. onZoom itself is
+  // fire-and-forget: pdf.js's render() cancels its own stale in-flight render,
+  // so the FixedLayout must NOT queue/await onZoom completions here — doing so
+  // would serialize zoom changes and interleave writes into the same iframe DOM.
+  #zoomGeneration = 0;
+  // Last scale dispatched to each frame, to skip redundant re-renders when a
+  // ResizeObserver tick doesn't actually change the fit scale.
+  #lastScale = new WeakMap();
   constructor() {
     super();
 
@@ -172,6 +181,7 @@ export class FixedLayout extends HTMLElement {
   }
   #render(side = this.#side) {
     if (!side) return;
+    this.#zoomGeneration++;
     const left = this.#left ?? {};
     const right = this.#center ?? this.#right ?? {};
     const target = side === "left" ? left : right;
@@ -205,7 +215,17 @@ export class FixedLayout extends HTMLElement {
     const transform = (frame) => {
       const { element, iframe, width, height, blank, onZoom } = frame;
       if (!iframe) return;
-      if (onZoom) onZoom({ doc: frame.iframe.contentDocument, scale });
+      if (onZoom) {
+        // Latest-wins: dispatch the current scale without awaiting it. pdf.js's
+        // render() tracks its own generation and cancels any in-flight render,
+        // so a stale onZoom completion can never overwrite a newer one. Dedupe
+        // identical scales (ResizeObserver can fire with no size change).
+        const doc = frame.iframe.contentDocument;
+        if (this.#lastScale.get(iframe) !== scale) {
+          this.#lastScale.set(iframe, scale);
+          onZoom({ doc, scale });
+        }
+      }
       const iframeScale = onZoom ? scale : 1;
       Object.assign(iframe.style, {
         width: `${width * iframeScale}px`,
