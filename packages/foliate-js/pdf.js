@@ -120,8 +120,10 @@ const TEXT_LAYER_CSS = `
 }
 .textLayer .markedContent { display: contents; }
 .textLayer span[role="img"] { user-select: none; cursor: default; }
+/* Single source of truth for the selection highlight (unified with the reader
+   template's fixed-layout block: rgba(59, 130, 246, 0.24)). */
 .textLayer ::selection {
-  background: rgba(0, 100, 255, 0.3);
+  background: rgba(59, 130, 246, 0.24);
 }
 .textLayer br::selection { background: transparent; }
 .textLayer .endOfContent {
@@ -269,13 +271,90 @@ const getSelectedText = (selection, container) => {
 };
 
 /**
+ * Per-document render state shared by every page render of the same iframe.
+ * Guarantees "latest wins": each render() call bumps `generation` and every
+ * async stage checks it before touching the real DOM, so Canvas/TextLayer/
+ * AnnotationLayer always come from the same zoom render and an older render can
+ * never overwrite a newer one (which caused stale TextLayers to land on a fresh
+ * canvas, double selection boxes, and handle jumping onto dead spans).
+ */
+const getRenderState = (doc) => {
+  if (!doc.__readanyPdfRenderState) {
+    doc.__readanyPdfRenderState = {
+      generation: 0,
+      renderTask: null,
+      selectionAbortController: null,
+    };
+  }
+  return doc.__readanyPdfRenderState;
+};
+
+// ─── Runtime diagnostics (P1) ───
+// Debug/dev builds or an explicit opt-in (`setPdfDebug(true)` from RN) get a
+// structured log of every render lifecycle event plus anomaly detection. Each
+// event is tagged with the render generation it belongs to so out-of-order
+// submissions are visible immediately.
+let readanyPdfDebug = false;
+const setReadanyPdfDebug = (enabled) => {
+  readanyPdfDebug = !!enabled;
+  if (readanyPdfDebug) console.log("[readany-pdf] diagnostics enabled");
+};
+const pdfDebugLog = (doc, message, detail) => {
+  if (!readanyPdfDebug) return;
+  const state = doc?.__readanyPdfRenderState;
+  const tag = { gen: state?.generation ?? 0 };
+  if (detail) {
+    const { page, scale, dpr, ...rest } = detail;
+    if (page != null) tag.page = page;
+    if (scale != null) tag.scale = scale;
+    if (dpr != null) tag.dpr = dpr;
+    Object.assign(tag, rest);
+  }
+  console.log(`[readany-pdf] ${message}`, tag);
+};
+
+// Holds transient long-press state so a stale/aborted render can release it.
+let readanyPdfLongPressState = null;
+
+/**
  * Render canvas + text layer + annotation layer for a PDF page inside an iframe document.
  * Called on initial load and on every zoom change.
+ *
+ * latest-wins contract:
+ *  - bumps the doc's render generation; any earlier async render still in flight
+ *    is cancelled (canvas RenderTask, selection AbortController).
+ *  - renders the text and annotation layers into detached containers first, then
+ *    commits them to the live DOM atomically only if this generation is still
+ *    current. An out-of-date render never writes into `#canvas`/`.textLayer`/
+ *    `.annotationLayer`.
  */
 const render = async (page, doc, zoom) => {
   if (!doc) return;
   const scale = zoom;
   const renderDpr = getRenderDpr(page, zoom);
+
+  const state = getRenderState(doc);
+  const generation = ++state.generation;
+  pdfDebugLog(doc, "render.start", { page: page.pageNumber, scale, dpr: renderDpr });
+
+  // Cancel any in-flight render of this iframe: its canvas RenderTask and the
+  // selection listeners it installed. A render that loses the race must not keep
+  // drawing or keep moving endOfContent on a canvas it no longer belongs to.
+  state.renderTask?.cancel?.();
+  state.renderTask = null;
+  state.selectionAbortController?.abort();
+  state.selectionAbortController = null;
+  if (readanyPdfLongPressState) {
+    readanyPdfLongPressState.abort?.();
+    readanyPdfLongPressState = null;
+  }
+
+  // Guard helper checked after every await in this render.
+  const isStale = () => {
+    const stale = state.generation !== generation;
+    if (stale) pdfDebugLog(doc, "render.discarded", { page: page.pageNumber });
+    return stale;
+  };
 
   doc.documentElement.style.removeProperty("transform");
   doc.documentElement.style.removeProperty("transform-origin");
@@ -297,28 +376,53 @@ const render = async (page, doc, zoom) => {
   canvas.style.height = `${Math.floor(viewport.height)}px`;
   const canvasContext = canvas.getContext("2d");
   const transform = renderDpr !== 1 ? [renderDpr, 0, 0, renderDpr, 0, 0] : null;
-  await page.render({ canvasContext, transform, viewport }).promise;
+  const renderTask = page.render({ canvasContext, transform, viewport });
+  state.renderTask = renderTask;
+  try {
+    await renderTask.promise;
+  } catch (error) {
+    if (error?.name === "RenderingCancelledException") {
+      pdfDebugLog(doc, "render.canvasCancelled", { page: page.pageNumber });
+      return;
+    }
+    throw error;
+  }
+  state.renderTask = null;
+  if (isStale()) return;
 
+  // Atomically commit the canvas to the iframe.
   const canvasContainer = doc.querySelector("#canvas");
   if (!canvasContainer) return;
   canvasContainer.replaceChildren(doc.adoptNode(canvas));
+  pdfDebugLog(doc, "render.canvasCommitted", {
+    page: page.pageNumber,
+    bitmap: `${canvas.width}x${canvas.height}`,
+  });
 
-  // Render text layer
+  // Render the text layer into a detached container first. pdf.js TextLayer has
+  // no cancel mid-stream (it pumps the stream into the container incrementally),
+  // so it must NOT touch the live DOM until it is fully rendered and this
+  // generation is still current — otherwise an abandoned render would keep
+  // appending spans onto the new canvas.
   const textContainer = doc.querySelector(".textLayer");
   if (textContainer) {
-    textContainer.replaceChildren();
-
-    // `replaceChildren` leaves inline styles intact, so reset a scale left by a
-    // previous accessibility-font-size render before rendering this page.
-    textContainer.style.removeProperty("--text-scale-factor");
+    // Build the layer detached so an abandoned render (a newer zoom arrived) can
+    // never append spans onto the live DOM mid-stream. The class CSS already
+    // sizes/positions `.textLayer`; `visibility:hidden` is only a helper while
+    // the container is off-DOM (layout is no-op there) and is cleared on commit.
+    const detached = doc.createElement("div");
+    detached.className = "textLayer";
+    detached.style.visibility = "hidden";
 
     // Counteract the OS font-size accessibility scaling on the text layer's glyph
     // size only (see getFontScale). `--text-scale-factor` feeds `font-size` and
     // nothing else, so dividing it leaves positions (which scale with
     // `--total-scale-factor`) aligned with the canvas at any font-size setting.
+    // Set on the detached container (where the spans live) before construction;
+    // the live container is reset to the default `calc(...)` on the next render.
     const fontScale = getFontScale(doc);
     if (fontScale !== 1) {
-      textContainer.style.setProperty(
+      detached.style.setProperty(
         "--text-scale-factor",
         `calc(var(--total-scale-factor) * var(--min-font-size) / ${fontScale})`,
       );
@@ -330,10 +434,14 @@ const render = async (page, doc, zoom) => {
           includeMarkedContent: true,
           disableNormalization: true,
         }),
-        container: textContainer,
+        container: detached,
         viewport,
       });
       await textLayer.render();
+      pdfDebugLog(doc, "render.textLayerRendered", {
+        page: page.pageNumber,
+        spans: detached.querySelectorAll("span, br").length,
+      });
     } catch (error) {
       console.error(`Failed to render PDF text layer for page ${page.pageNumber}.`, error);
     }
@@ -350,9 +458,30 @@ const render = async (page, doc, zoom) => {
       });
     }
 
-    doc.__readanyPdfTextSelectionAbortController?.abort();
+    if (isStale()) return;
+
+    // This generation is still current: atomically swap the detached layer in.
+    // Any selection the user is dragging was anchored into the previous layer,
+    // so collapse it before replacing the DOM — a range holding dead spans is
+    // what made handles jump.
+    const selection = doc.getSelection?.();
+    if (selection && !selection.isCollapsed) {
+      try {
+        selection.removeAllRanges();
+      } catch {
+        // selection may be unavailable in some WebViews
+      }
+    }
+    textContainer.replaceChildren(detached);
+    textContainer.classList.remove("selecting");
+    detached.style.visibility = "";
+    textContainer.style.visibility = "";
+
+    // Selection + copy wiring. All listeners are bound to this generation's
+    // AbortController so an aborted render releases them in one shot.
+    state.selectionAbortController?.abort();
     const selectionAbortController = new AbortController();
-    doc.__readanyPdfTextSelectionAbortController = selectionAbortController;
+    state.selectionAbortController = selectionAbortController;
     const { signal } = selectionAbortController;
     const SelectionRange = doc.defaultView.Range;
     const endOfContent = doc.createElement("div");
@@ -401,17 +530,31 @@ const render = async (page, doc, zoom) => {
       if (anchor.classList?.contains("highlight")) anchor = anchor.parentNode;
 
       if (!isModifyingStart && range.endOffset === 0) {
-        while (anchor && anchor !== textContainer && !anchor.previousSibling) {
+        // Spans live in a nested `.textLayer` (the detached container we swapped
+        // in), so bound the upward walk there — never climb to `textContainer`
+        // and pick up the canvas as `previousSibling`, which would insert
+        // `endOfContent` outside the layer (no longer matched by the
+        // `.textLayer .endOfContent` styles).
+        while (anchor && anchor !== detached && !anchor.previousSibling) {
           anchor = anchor.parentNode;
         }
         if (anchor?.previousSibling) anchor = anchor.previousSibling;
       }
 
-      const parentTextLayer = anchor?.parentElement?.closest(".textLayer");
-      if (parentTextLayer === textContainer && anchor.parentElement) {
+      // The text layer spans live in a nested `.textLayer` container (rendered
+      // detached, then swapped in), so walk the anchor's ancestor chain up to
+      // the live container that owns `.endOfContent`.
+      const withinLiveLayer =
+        anchor?.parentElement && textContainer.contains(anchor.parentElement);
+      if (withinLiveLayer && anchor.parentElement) {
+        // The `.endOfContent` node must stay non-selectable: our doc styles (see
+        // template fixed-layout block) force `user-select: none` on it so a drag
+        // can never anchor onto the full-page helper and blow the range up to the
+        // whole page. Re-assert it here in case a render-era default slipped
+        // through.
+        endOfContent.style.userSelect = "none";
         endOfContent.style.width = `${Math.ceil(viewport.width)}px`;
         endOfContent.style.height = `${Math.ceil(viewport.height)}px`;
-        endOfContent.style.userSelect = "text";
         anchor.parentElement.insertBefore(
           endOfContent,
           isModifyingStart ? anchor : anchor.nextSibling,
@@ -432,13 +575,27 @@ const render = async (page, doc, zoom) => {
     textContainer.oncopy = handleCopy;
     doc.addEventListener("copy", handleCopy, { signal });
 
-    // Panning + text selection cursor logic
+    // Panning + text selection cursor logic.
+    //
+    // Touch is never allowed to pan: on Android the browser is establishing a
+    // selection the moment a finger lands on text, and letting the app also
+    // scroll the outer renderer at the same time is exactly what made the
+    // selection jump and grow while dragging a handle. Mouse keeps the
+    // drag-to-pan affordance for desktop users grabbing empty canvas.
     let isPanning = false;
     let startX = 0;
     let startY = 0;
     let scrollLeft = 0;
     let scrollTop = 0;
     let scrollParent = null;
+    let scrollWatched = null;
+    let scrollStartLeft = 0;
+    let scrollStartTop = 0;
+    // Android long-press selection state machine:
+    // idle -> pendingLongPress -> selecting -> idle (see P1).
+    let longPress = null;
+    const LONG_PRESS_DELAY = 400;
+    const LONG_PRESS_MOVE_TOLERANCE = 10;
 
     const findScrollableParent = (element) => {
       let current = element;
@@ -462,33 +619,281 @@ const render = async (page, doc, zoom) => {
       return window;
     };
 
-    textContainer.onpointerdown = (e) => {
-      const selection = doc.getSelection();
-      const hasTextSelection = selection && selection.toString().length > 0;
-      const elementUnderCursor = doc.elementFromPoint(e.clientX, e.clientY);
-      const hasTextUnderneath =
-        elementUnderCursor &&
-        (elementUnderCursor.tagName === "SPAN" || elementUnderCursor.tagName === "P") &&
-        elementUnderCursor.textContent.trim().length > 0;
+    const isTextTarget = (target) => {
+      const el = target?.closest?.(".textLayer span, .textLayer p");
+      return Boolean(el?.textContent?.trim());
+    };
 
-      if (!hasTextUnderneath && !hasTextSelection) {
-        isPanning = true;
-        startX = e.screenX;
-        startY = e.screenY;
-        const iframe = doc.defaultView.frameElement;
-        if (iframe) {
-          scrollParent = findScrollableParent(iframe);
-          if (scrollParent === window) {
-            scrollLeft = window.scrollX || window.pageXOffset;
-            scrollTop = window.scrollY || window.pageYOffset;
-          } else {
-            scrollLeft = scrollParent.scrollLeft;
-            scrollTop = scrollParent.scrollTop;
-          }
-          textContainer.style.cursor = "grabbing";
+    const getPointerTextHit = (e) => {
+      // Prefer the event target: it is the actual span under the pointer even
+      // when transparent/transformed layers make elementFromPoint unreliable
+      // (Android WebView). elementFromPoint is only a mouse fallback.
+      if (e.target && e.target.nodeType === 1) {
+        if (isTextTarget(e.target)) return true;
+      }
+      if (e.pointerType === "touch") return false;
+      const el = doc.elementFromPoint(e.clientX, e.clientY);
+      return Boolean(el?.closest?.(".textLayer span, .textLayer p"));
+    };
+
+    const beginPanning = (e) => {
+      isPanning = true;
+      startX = e.screenX;
+      startY = e.screenY;
+      const iframe = doc.defaultView.frameElement;
+      if (iframe) {
+        scrollParent = findScrollableParent(iframe);
+        if (scrollParent === window) {
+          scrollLeft = window.scrollX || window.pageXOffset;
+          scrollTop = window.scrollY || window.pageYOffset;
+        } else {
+          scrollLeft = scrollParent.scrollLeft;
+          scrollTop = scrollParent.scrollTop;
         }
+        textContainer.style.cursor = "grabbing";
+        // Watch the renderer's scroll during the drag so a conflict with
+        // selection is diagnosable (diagnostics only).
+        scrollWatched = scrollParent;
+        scrollStartLeft = scrollParent === window ? window.scrollX : scrollParent.scrollLeft;
+        scrollStartTop = scrollParent === window ? window.scrollY : scrollParent.scrollTop;
+      }
+    };
+
+    const stopPanning = () => {
+      isPanning = false;
+      scrollParent = null;
+      scrollWatched = null;
+      textContainer.style.cursor = "grab";
+    };
+
+    // ── Android custom long-press selection (P1) ──
+    // The platform's own long-press is slow and unreliable on transparent,
+    // absolutely-positioned, transformed TextLayer spans in the Android
+    // WebView, so on Android only we arm a 350–450ms timer on real text and
+    // establish the selection ourselves. iOS/desktop keep native selection.
+    const IS_ANDROID = /Android/i.test(navigator.userAgent);
+
+    const clearLongPress = (reason) => {
+      if (!longPress) return;
+      pdfDebugLog(doc, "longPress.clear", { reason, page: page.pageNumber });
+      if (longPress.timer) clearTimeout(longPress.timer);
+      longPress = null;
+    };
+
+    const releaseSelecting = () => {
+      if (longPress?.selecting) {
+        longPress.selecting = false;
+        setNavigationLocked(false);
+        textContainer.classList.remove("highlighting");
+        if (scrollWatched && scrollWatched !== window) {
+          if (
+            Math.abs(scrollWatched.scrollLeft - scrollStartLeft) > 0.5 ||
+            Math.abs(scrollWatched.scrollTop - scrollStartTop) > 0.5
+          ) {
+            pdfDebugLog(doc, "dragSelectionScrollMoved", {
+              page: page.pageNumber,
+              scrollLeftDelta: scrollWatched.scrollLeft - scrollStartLeft,
+              scrollTopDelta: scrollWatched.scrollTop - scrollStartTop,
+            });
+          }
+        }
+        scrollWatched = null;
+        pdfDebugLog(doc, "gesture.idle", { page: page.pageNumber });
+      }
+      clearLongPress("release");
+    };
+
+    // Collapsed caret at a page point. Prefers the WebView's native
+    // caretRangeFromPoint (works even with the transparent, transformed spans);
+    // falls back to a geometry snapshot of the nearest span.
+    const caretRangeAtPoint = (x, y) => {
+      const view = doc.defaultView;
+      if (typeof view.caretRangeFromPoint === "function") {
+        try {
+          const caret = view.caretRangeFromPoint(x, y);
+          if (caret && caret.startContainer?.parentElement?.closest?.(".textLayer")) {
+            return caret;
+          }
+        } catch {
+          // fall through to geometry snapshot
+        }
+      }
+      const spans = Array.from(textContainer.querySelectorAll("span"));
+      if (!spans.length) return null;
+      const spanRect = (span) => {
+        try {
+          return span.getBoundingClientRect();
+        } catch {
+          return null;
+        }
+      };
+      let best = null;
+      let bestDist = Infinity;
+      for (const span of spans) {
+        const r = spanRect(span);
+        if (!r || r.width === 0 || r.height === 0) continue;
+        const cx = r.left + r.width / 2;
+        const cy = r.top + r.height / 2;
+        const d = Math.hypot(x - cx, y - cy);
+        if (d < bestDist) {
+          bestDist = d;
+          best = span;
+        }
+      }
+      if (!best) return null;
+      const textNode = Array.from(best.childNodes).find(
+        (n) => n.nodeType === Node.TEXT_NODE && n.nodeValue?.trim(),
+      );
+      if (!textNode) return null;
+      const text = textNode.nodeValue;
+      const rect = best.getBoundingClientRect();
+      const ratio = Math.min(1, Math.max(0, (x - rect.left) / (rect.width || 1)));
+      const offset = Math.min(text.length, Math.floor(ratio * text.length));
+      const range = doc.createRange();
+      range.setStart(textNode, offset);
+      range.collapse(true);
+      return range;
+    };
+
+    // Expand a collapsed caret to a word-level Range: a single Unicode code
+    // point for CJK / non-Latin (TextLayer spans split arbitrarily, so there is
+    // no reliable word boundary), a Latin word otherwise.
+    const expandToWordOrCodePoint = (caret) => {
+      const range = caret.cloneRange();
+      const textNode = caret.startContainer;
+      if (textNode.nodeType !== Node.TEXT_NODE || !textNode.nodeValue) return range;
+      const value = textNode.nodeValue;
+      const pos = caret.startOffset;
+      const CJK = /[぀-ヿ㐀-鿿豈-﫿가-힯]/u;
+      const char = value.slice(pos, pos + 2) || "";
+      if (CJK.test(char) || !/\w/.test(value[pos] || "")) {
+        const start = Math.min(pos, value.length - 1);
+        // Single code point (handles astral-plane surrogates in CJK-adjacent
+        // scripts).
+        let end = start + 1;
+        const cp = value.codePointAt(start);
+        if (cp !== undefined && cp > 0xffff) end = start + 2;
+        try {
+          range.setStart(textNode, start);
+          range.setEnd(textNode, Math.min(value.length, end));
+        } catch {
+          range.setStart(textNode, pos);
+          range.setEnd(textNode, Math.min(value.length, pos + 1));
+        }
+        return range;
+      }
+      let s = pos;
+      let e = pos;
+      while (s > 0 && /\w/.test(value[s - 1])) s -= 1;
+      while (e < value.length && /\w/.test(value[e])) e += 1;
+      if (s === e) e = Math.min(value.length, s + 1);
+      range.setStart(textNode, s);
+      range.setEnd(textNode, e);
+      return range;
+    };
+
+    const wordRangeAtPoint = (x, y) => {
+      const caret = caretRangeAtPoint(x, y);
+      if (!caret) return null;
+      return expandToWordOrCodePoint(caret);
+    };
+
+    const selectAtPoint = (x, y) => {
+      const sel = doc.getSelection();
+      if (!sel) return;
+      // If the browser already established a native non-collapsed selection
+      // (e.g. its own long-press won the race), keep it.
+      if (!sel.isCollapsed && sel.toString().trim()) return;
+      const range = wordRangeAtPoint(x, y);
+      if (!range) return;
+      sel.removeAllRanges();
+      sel.addRange(range);
+      // Anchor for drag-select: always the initial word, regardless of drag
+      // direction.
+      if (longPress) longPress.baseRange = range.cloneRange();
+    };
+
+    const setNavigationLocked = (locked) => {
+      // Coordinate with the template's tap detector so a selection gesture
+      // doesn't also trigger tap-to-turn-page. The template reads
+      // `doc.__readany_selection_interaction` on every touchstart/touchend.
+      try {
+        doc.__readany_selection_interaction = !!locked;
+      } catch {
+        // doc may be a plain object in some embeddings
+      }
+      const frame = doc.defaultView.frameElement;
+      const host = frame?.ownerDocument?.defaultView?.parent;
+      try {
+        if (host?.setNavigationLocked) host.setNavigationLocked(locked);
+      } catch {
+        // not available in every embedding
+      }
+    };
+
+    textContainer.onpointerdown = (e) => {
+      const isTouch = e.pointerType === "touch";
+      const hasTextSelection = !!(doc.getSelection()?.toString().length > 0);
+
+      // Touch: hand off to long-press; never start panning.
+      if (isTouch) {
+        clearLongPress("newPointerDown");
+        longPress = {
+          startX: e.clientX,
+          startY: e.clientY,
+          timer: null,
+          selecting: false,
+          baseRange: null,
+        };
+        longPress.timer = setTimeout(() => {
+          if (!longPress) return;
+          if (IS_ANDROID) {
+            longPress.selecting = true;
+            pdfDebugLog(doc, "gesture.selecting", { page: page.pageNumber });
+            setNavigationLocked(true);
+            // Disable touch panning while dragging handles so the WebView can't
+            // scroll the renderer out from under the selection (scoped to the
+            // active selection only, not the whole layer).
+            textContainer.classList.add("highlighting");
+            selectAtPoint(longPress.startX, longPress.startY);
+          } else {
+            clearLongPress("iosNative");
+          }
+        }, LONG_PRESS_DELAY);
+        return;
+      }
+
+      // Mouse path (touch never reaches here).
+      const hasTextUnderneath = getPointerTextHit(e);
+      if (!hasTextUnderneath && !hasTextSelection) {
+        beginPanning(e);
       } else {
         textContainer.classList.add("selecting");
+      }
+    };
+
+    let pointerMoveRAF = null;
+    let pendingMovePoint = null;
+    const flushPointerMove = () => {
+      pointerMoveRAF = null;
+      if (!longPress?.selecting || !pendingMovePoint) return;
+      const { x, y } = pendingMovePoint;
+      pendingMovePoint = null;
+      const sel = doc.getSelection();
+      if (!sel || !longPress.baseRange) return;
+      const caret = caretRangeAtPoint(x, y);
+      if (!caret) return;
+      // Drag-select: anchor at the long-pressed word, extend to the current
+      // caret. Merging the two boundaries keeps the anchor stable while the
+      // user drags either direction (standard text-selection semantics).
+      const merged = longPress.baseRange.cloneRange();
+      try {
+        merged.setStart(longPress.baseRange.startContainer, longPress.baseRange.startOffset);
+        merged.setEnd(caret.endContainer, caret.endOffset);
+        sel.removeAllRanges();
+        sel.addRange(merged);
+      } catch {
+        // ignore malformed boundary merges
       }
     };
 
@@ -502,23 +907,44 @@ const render = async (page, doc, zoom) => {
           scrollParent.scrollLeft = scrollLeft - dx;
           scrollParent.scrollTop = scrollTop - dy;
         }
+        return;
+      }
+
+      if (longPress) {
+        if (longPress.selecting && e.pointerType === "touch") {
+          // RAF-throttled extend while selecting; prevents scroll-jump feedback.
+          pendingMovePoint = { x: e.clientX, y: e.clientY };
+          if (!pointerMoveRAF) {
+            pointerMoveRAF = doc.defaultView.requestAnimationFrame(flushPointerMove);
+          }
+        } else if (!longPress.selecting) {
+          // Still within the long-press wait: moving beyond tolerance cancels it
+          // and falls back to normal scrolling.
+          const dx = e.clientX - longPress.startX;
+          const dy = e.clientY - longPress.startY;
+          if (Math.hypot(dx, dy) > LONG_PRESS_MOVE_TOLERANCE) {
+            clearLongPress("moved");
+          }
+        }
       }
     };
 
     textContainer.onpointerup = () => {
       if (isPanning) {
-        isPanning = false;
-        scrollParent = null;
-        textContainer.style.cursor = "grab";
-      } else resetEndOfContent();
+        stopPanning();
+      } else {
+        resetEndOfContent();
+        releaseSelecting();
+      }
+    };
+
+    textContainer.onpointercancel = () => {
+      if (isPanning) stopPanning();
+      releaseSelecting();
     };
 
     textContainer.onpointerleave = () => {
-      if (isPanning) {
-        isPanning = false;
-        scrollParent = null;
-        textContainer.style.cursor = "grab";
-      }
+      if (isPanning) stopPanning();
     };
 
     doc.addEventListener(
@@ -538,10 +964,18 @@ const render = async (page, doc, zoom) => {
     textContainer.style.cursor = "grab";
   }
 
-  // Render annotation layer (links etc.)
+  if (isStale()) return;
+
+  // Render annotation layer (links etc.) — committed atomically like the text
+  // layer so it always matches the current canvas generation.
   const annotationDiv = doc.querySelector(".annotationLayer");
   if (annotationDiv) {
-    annotationDiv.replaceChildren();
+    const detachedAnnot = doc.createElement("div");
+    detachedAnnot.className = "annotationLayer";
+    // Class CSS already positions the layer (top/left 0). No inline visibility:
+    // the container is off-DOM during render, and nothing must hide it after the
+    // atomic swap into the live `.annotationLayer`.
+    detachedAnnot.style.inset = "0";
     const linkService = {
       goToDestination: () => {},
       getDestinationHash: (dest) => JSON.stringify(dest),
@@ -557,14 +991,24 @@ const render = async (page, doc, zoom) => {
       await new pdfjsLib.AnnotationLayer({
         page,
         viewport: viewport.clone({ dontFlip: true }),
-        div: annotationDiv,
+        div: detachedAnnot,
         linkService,
       }).render({ annotations: await page.getAnnotations() });
     } catch {
       // Annotation rendering may fail for some pages
     }
+    if (isStale()) return;
+    annotationDiv.replaceChildren(detachedAnnot);
+    pdfDebugLog(doc, "render.annotationCommitted", { page: page.pageNumber });
   }
+
+  pdfDebugLog(doc, "render.done", { page: page.pageNumber });
 };
+
+// Exposed for the reader template's runtime diagnostics toggle.
+if (typeof globalThis !== "undefined") {
+  globalThis.__readanyPdfDebug = setReadanyPdfDebug;
+}
 
 /**
  * Render a single PDF page and return src/onZoom for the fixed-layout renderer.
